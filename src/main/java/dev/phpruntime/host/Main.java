@@ -16,6 +16,7 @@ import java.nio.file.Path;
  *     --cpus N         concurrent PHP execution slots (default: available processors)
  *     --quantum-ms N   time slice before a busy request is preempted (default 10)
  *     --max-exec-ms N  per-request CPU budget, 0 = unlimited (default 30000)
+ *     --http netty|jdk HTTP front end (default netty: native epoll on Linux)
  * </pre>
  */
 public final class Main {
@@ -55,22 +56,27 @@ public final class Main {
         long quantum = 10;
         long maxExec = 30_000;
         Path docRoot = Path.of(".");
+        String http = "netty";
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
                 case "--port" -> port = Integer.parseInt(args[++i]);
                 case "--cpus" -> cpus = Integer.parseInt(args[++i]);
                 case "--quantum-ms" -> quantum = Long.parseLong(args[++i]);
                 case "--max-exec-ms" -> maxExec = Long.parseLong(args[++i]);
+                case "--http" -> http = args[++i];
                 default -> docRoot = Path.of(args[i]);
             }
         }
         Scheduler scheduler = new Scheduler(cpus, quantum, maxExec);
         PhpEngine engine = new PhpEngine(scheduler);
         PhpDispatcher dispatcher = new PhpDispatcher(docRoot, engine);
-        PhpServer server = new PhpHttpServer(dispatcher, port, 256);
+        PhpServer server = http.equals("jdk")
+                ? new PhpHttpServer(dispatcher, port, 256)
+                : new NettyPhpServer(dispatcher, port, 256);
+        String transport = server instanceof NettyPhpServer n ? n.transport() : "jdk-httpserver";
         server.start();
-        System.out.printf("php-truffle serving %s on http://localhost:%d (cpus=%d, quantum=%dms, max-exec=%dms)%n",
-                docRoot.toAbsolutePath().normalize(), server.port(), cpus, quantum, maxExec);
+        System.out.printf("php-truffle serving %s on http://localhost:%d (%s, cpus=%d, quantum=%dms, max-exec=%dms)%n",
+                docRoot.toAbsolutePath().normalize(), server.port(), transport, cpus, quantum, maxExec);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.close();
             engine.close();
@@ -80,6 +86,6 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [docroot]");
+        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [docroot]");
     }
 }
