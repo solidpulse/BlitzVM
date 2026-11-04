@@ -58,7 +58,7 @@ public class LoadGen {
 
     private static void load(String url, int concurrency, int seconds) throws Exception {
         // Warm-up: lets JITs (Graal, opcache) settle before measuring.
-        long warmEnd = System.nanoTime() + Duration.ofSeconds(Math.min(5, seconds)).toNanos();
+        long warmEnd = System.nanoTime() + Duration.ofSeconds(Long.getLong("warmup", 5)).toNanos();
         run(url, concurrency, warmEnd, null, new AtomicLong());
 
         List<List<Long>> perThread = new ArrayList<>();
