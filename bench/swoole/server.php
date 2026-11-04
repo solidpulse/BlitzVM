@@ -16,12 +16,27 @@ $server->set([
     'hook_flags' => SWOOLE_HOOK_ALL,             // usleep/sleep become coroutine yields
     'enable_preemptive_scheduler' => $preempt,   // opt-in 10ms coroutine time slicing
     'log_level' => SWOOLE_LOG_WARNING,
+    'document_root' => '/www',                   // static files, like nginx in front of FPM
+    'enable_static_handler' => true,
 ]);
 
 $server->on('request', function ($req, $res) {
     $path = $req->server['request_uri'];
     $q = $req->get ?? [];
     switch ($path) {
+        case '/':
+        case '/index.php':
+            // Same output as www/index.php.
+            $name = htmlspecialchars($q['name'] ?? 'World');
+            $res->header('X-Request-Id', getmypid() . '-' . hrtime(true));
+            $items = '';
+            foreach (['method' => $req->server['request_method'], 'uri' => $req->server['request_uri'] . (isset($req->server['query_string']) ? '?' . $req->server['query_string'] : '')] as $k => $v) {
+                $items .= "    <li>$k: " . htmlspecialchars($v) . "</li>\n";
+            }
+            $res->end("<!doctype html>\n<html>\n<head><title>Hello from PHP on Truffle</title></head>\n<body>\n"
+                . "  <h1>Hello, $name!</h1>\n  <p>Served by swoole (" . php_sapi_name() . ") at " . date('Y-m-d H:i:s') . ".</p>\n"
+                . "  <ul>\n$items  </ul>\n</body>\n</html>\n");
+            return;
         case '/hello.php':
             $res->end("Hello, World!\n");
             return;
