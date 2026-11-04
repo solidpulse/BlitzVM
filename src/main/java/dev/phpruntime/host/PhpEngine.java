@@ -7,6 +7,7 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.SourceSection;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -92,28 +93,54 @@ public final class PhpEngine implements AutoCloseable {
         }
     }
 
+    /** Prints the failure the way php-cli does and turns it into an HTTP 500. */
     private int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e) {
-        String message;
+        SourceSection where = e.getSourceLocation();
+        String file = where != null && where.getSource().getPath() != null ? where.getSource().getPath() : request.scriptFilename;
+        int line = where != null ? where.getStartLine() : 0;
+        String text;
         if (task != null && task.timedOut()) {
             double secs = scheduler.maxExecutionMillis() / 1000.0;
             String shown = secs == Math.rint(secs) ? Long.toString((long) secs) : Double.toString(secs);
-            message = "Maximum execution time of " + shown + " second" + (secs == 1 ? "" : "s") + " exceeded";
+            text = "PHP Fatal error:  Maximum execution time of " + shown + " second" + (secs == 1 ? "" : "s") + " exceeded"
+                    + (file.isEmpty() ? "" : " in " + file);
+        } else if (e.isSyntaxError()) {
+            text = "PHP Parse error:  " + e.getMessage() + " in " + file + " on line " + line;
         } else if (e.isCancelled()) {
-            message = "Execution cancelled";
+            text = "PHP Fatal error:  Execution cancelled";
         } else if (e.isGuestException()) {
-            message = e.getMessage();
+            text = "PHP Fatal error:  Uncaught " + e.getMessage() + " in " + file + ":" + line + "\n" + phpStackTrace(e)
+                    + "  thrown in " + file + " on line " + line;
         } else {
-            message = "Internal error: " + e.getMessage();
+            text = "PHP Fatal error:  Internal error: " + e.getMessage();
         }
-        String line = e.getSourceLocation() != null ? " on line " + e.getSourceLocation().getStartLine() : "";
-        String text = "PHP Fatal error:  " + message + line + "\n";
         try {
-            out.write(text.getBytes(StandardCharsets.UTF_8));
+            out.write((text + "\n").getBytes(StandardCharsets.UTF_8));
         } catch (IOException ignored) {
             // client went away
         }
         request.status = 500;
         return 500;
+    }
+
+    /** "#0 file(line): fn()" frames from the guest part of the polyglot stack trace. */
+    private static String phpStackTrace(PolyglotException e) {
+        StringBuilder sb = new StringBuilder("Stack trace:\n");
+        int i = 0;
+        String calledFn = null;
+        for (PolyglotException.StackFrame f : e.getPolyglotStackTrace()) {
+            if (!f.isGuestFrame()) {
+                continue;
+            }
+            String name = f.getRootName();
+            if (calledFn != null && f.getSourceLocation() != null) {
+                sb.append('#').append(i++).append(' ').append(f.getSourceLocation().getSource().getPath())
+                        .append('(').append(f.getSourceLocation().getStartLine()).append("): ").append(calledFn).append("()\n");
+            }
+            calledFn = name;
+        }
+        sb.append('#').append(i).append(" {main}\n");
+        return sb.toString();
     }
 
     private Source source(Path script) throws IOException {
