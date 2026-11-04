@@ -9,7 +9,7 @@ is in `docs/bench-results.txt`.
 | php-fpm + JIT | as above with `opcache.jit=tracing` |
 | Swoole | 6.2.3 on PHP 8.4.27 (`phpswoole/swoole` image, host network), `SWOOLE_HOOK_ALL` |
 | Swoole + preemptive | as above with `enable_preemptive_scheduler => true` |
-| php-truffle (Netty) | this repo, GraalVM CE 23.0.2 (Graal JIT), Netty 4.2 native epoll front end (default) |
+| php-truffle (Netty) | this repo, GraalVM CE 23.0.2 with Truffle 24.1 (Graal JIT), Netty 4.2 native epoll front end (default). The repo now uses GraalVM 25.5; these numbers predate the upgrade |
 | php-truffle (JDK) | same runtime behind the JDK's built-in `HttpServer` (`--http jdk`) |
 
 Load: `bench/LoadGen.java`, closed loop, 32 keep-alive connections over raw sockets,
