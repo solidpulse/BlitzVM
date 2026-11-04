@@ -6,6 +6,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ ! -d "$ROOT/target/classes" || ! -d "$ROOT/target/lib" ]]; then
   (cd "$ROOT" && mvn -q -B -DskipTests package) >&2
 fi
+if [[ -z "${JAVA_HOME:-}" ]]; then
+  # Prefer the GraalVM fetched by scripts/get-graalvm.sh: same AST, plus the Graal JIT.
+  for g in "$ROOT"/.graalvm/graalvm-community-openjdk-*; do
+    [[ -x "$g/bin/java" ]] && JAVA_HOME="$g"
+  done
+fi
 JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 exec "$JAVA" ${PHP_TRUFFLE_OPTS:-} \
   -Dpolyglot.engine.WarnInterpreterOnly=false \
