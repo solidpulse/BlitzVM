@@ -66,7 +66,8 @@ public final class Main {
         }
         Scheduler scheduler = new Scheduler(cpus, quantum, maxExec);
         PhpEngine engine = new PhpEngine(scheduler);
-        PhpHttpServer server = new PhpHttpServer(docRoot, port, engine, 256);
+        PhpDispatcher dispatcher = new PhpDispatcher(docRoot, engine);
+        PhpServer server = new PhpHttpServer(dispatcher, port, 256);
         server.start();
         System.out.printf("php-truffle serving %s on http://localhost:%d (cpus=%d, quantum=%dms, max-exec=%dms)%n",
                 docRoot.toAbsolutePath().normalize(), server.port(), cpus, quantum, maxExec);
