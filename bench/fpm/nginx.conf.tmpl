@@ -6,6 +6,7 @@ http {
   access_log off;
   server {
     listen __HTTP_PORT__;
+    root /www;
     location ~ \.php$ {
       fastcgi_pass 127.0.0.1:__FPM_PORT__;
       include fastcgi_params;
