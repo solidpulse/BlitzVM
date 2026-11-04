@@ -14,6 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <graalvm.version>24.1.2</graalvm.version>
         <junit.version>5.10.2</junit.version>
+        <netty.version>4.2.19.Final</netty.version>
     </properties>
 
     <dependencies>
@@ -33,6 +34,24 @@
             <artifactId>truffle-runtime</artifactId>
             <version>${graalvm.version}</version>
             <scope>runtime</scope>
+        </dependency>
+        <!-- HTTP front end: Netty with the native epoll transport on Linux (NIO elsewhere). -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-codec-http</artifactId>
+            <version>${netty.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-transport-native-epoll</artifactId>
+            <version>${netty.version}</version>
+            <classifier>linux-x86_64</classifier>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-transport-native-epoll</artifactId>
+            <version>${netty.version}</version>
+            <classifier>linux-aarch_64</classifier>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
