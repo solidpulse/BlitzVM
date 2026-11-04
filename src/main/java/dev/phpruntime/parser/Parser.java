@@ -67,7 +67,15 @@ public final class Parser {
     private int pos;
 
     public Parser(PhpLanguage language, Source source) {
-        this(language, source, Lexer.tokenize(source.getCharacters().toString()), new Scope(true), new ArrayList<>());
+        this(language, source, lex(source), new Scope(true), new ArrayList<>());
+    }
+
+    private static List<Token> lex(Source source) {
+        try {
+            return Lexer.tokenize(source.getCharacters().toString());
+        } catch (PhpParseError e) {
+            throw e.withSource(source);
+        }
     }
 
     private Parser(PhpLanguage language, Source source, List<Token> tokens, Scope scope, List<PhpFunction> functions) {
@@ -79,14 +87,18 @@ public final class Parser {
     }
 
     public PhpMainRootNode parseMain() {
-        List<PhpNode> stmts = new ArrayList<>();
-        while (peek().kind() != Kind.EOF) {
-            PhpNode s = statement();
-            if (s != null) {
-                stmts.add(s);
+        try {
+            List<PhpNode> stmts = new ArrayList<>();
+            while (peek().kind() != Kind.EOF) {
+                PhpNode s = statement();
+                if (s != null) {
+                    stmts.add(s);
+                }
             }
+            return new PhpMainRootNode(language, scope.build(), source, block(stmts), functions);
+        } catch (PhpParseError e) {
+            throw e.withSource(source);
         }
-        return new PhpMainRootNode(language, scope.build(), block(stmts), functions);
     }
 
     // =================================================================== tokens
@@ -525,7 +537,7 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             int[] slotArray = slots.stream().mapToInt(Integer::intValue).toArray();
-            PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), name, slotArray,
+            PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), source, nameTok.line(), name, slotArray,
                     defaults.toArray(new PhpNode[0]), body);
             functions.add(new PhpFunction(name, root.getCallTarget()));
         } finally {
