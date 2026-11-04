@@ -44,7 +44,7 @@ Contains about 175 functions across strings, arrays, math, output (`var_dump`, `
 Contains `Scheduler`, which coordinates fair multi-tenant request execution and time slicing across guest threads. Its implementation is detailed in the Preemptive Scheduling section.
 
 ### host
-Process hosting and HTTP integration. `PhpEngine` maintains one shared polyglot `Engine` so parsed ASTs and compiled code are reused across requests, and allocates one `Context` per request, which gives PHP's shared-nothing request model. `PhpHttpServer` uses JDK `HttpServer` to map URLs to files under the document root and populates `$_GET`, `$_POST`, `$_SERVER`, and `$_REQUEST`. `Main` provides the command-line interface.
+Process hosting and HTTP integration. `PhpEngine` maintains one shared polyglot `Engine` so parsed ASTs and compiled code are reused across requests, and allocates one `Context` per request, which gives PHP's shared-nothing request model. `PhpDispatcher` maps URLs to files under the document root and populates `$_GET`, `$_POST`, `$_SERVER`, and `$_REQUEST`. `NettyPhpServer` (default) is a Netty 4.2 front end on native epoll: event-loop threads only parse and write HTTP, PHP runs on worker threads, and each connection answers pipelined requests in order. `PhpHttpServer` is the older JDK `HttpServer` front end, kept behind `--http jdk` for comparison. `Main` provides the command-line interface.
 
 ## Preemptive Scheduling
 
