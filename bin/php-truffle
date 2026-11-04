@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Launcher. Uses $JAVA_HOME if set; point it at a GraalVM JDK to get the Graal JIT,
+# otherwise Truffle runs the same AST in interpreter-only mode on any JDK 21+.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ ! -d "$ROOT/target/classes" || ! -d "$ROOT/target/lib" ]]; then
+  (cd "$ROOT" && mvn -q -B -DskipTests package) >&2
+fi
+JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+exec "$JAVA" ${PHP_TRUFFLE_OPTS:-} \
+  -Dpolyglot.engine.WarnInterpreterOnly=false \
+  -cp "$ROOT/target/classes:$ROOT/target/lib/*" \
+  dev.phpruntime.host.Main "$@"
