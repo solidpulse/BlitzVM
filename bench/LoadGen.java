@@ -9,7 +9,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Minimal closed-loop HTTP load generator (no wrk/ab needed).
+ * Minimal closed-loop HTTP load generator (no wrk/ab needed). Load mode uses one
+ * blocking keep-alive socket per connection and parses responses itself: the JDK
+ * HttpClient funnels all I/O through one selector thread and becomes the bottleneck
+ * above a few thousand requests per second.
  *
  * <pre>
  *   java bench/LoadGen.java load  URL CONCURRENCY SECONDS   throughput and latency percentiles
@@ -74,6 +77,12 @@ public class LoadGen {
     }
 
     private static void run(String url, int concurrency, long end, List<List<Long>> sink, AtomicLong errors) throws Exception {
+        URI uri = URI.create(url);
+        String host = uri.getHost();
+        int port = uri.getPort() < 0 ? 80 : uri.getPort();
+        String target = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + host + ":" + port + "\r\nUser-Agent: loadgen\r\n\r\n")
+                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < concurrency; i++) {
             List<Long> lat = new ArrayList<>();
@@ -83,15 +92,23 @@ public class LoadGen {
                 }
             }
             threads.add(Thread.ofPlatform().start(() -> {
+                RawConnection conn = null;
                 while (System.nanoTime() < end) {
                     long t = System.nanoTime();
                     try {
-                        HttpResponse<String> r = get(url);
-                        if (r.statusCode() != 200) {
+                        if (conn == null) {
+                            conn = new RawConnection(host, port);
+                        }
+                        int status = conn.exchange(request);
+                        if (status != 200) {
                             errors.incrementAndGet();
+                        }
+                        if (conn.closed) {
+                            conn = null;
                         }
                     } catch (Exception e) {
                         errors.incrementAndGet();
+                        conn = null;
                     }
                     lat.add(System.nanoTime() - t);
                 }
@@ -99,6 +116,82 @@ public class LoadGen {
         }
         for (Thread t : threads) {
             t.join();
+        }
+    }
+
+    /** One keep-alive HTTP/1.1 connection; understands Content-Length and chunked bodies. */
+    private static final class RawConnection {
+        private final java.net.Socket socket;
+        private final java.io.OutputStream out;
+        private final java.io.BufferedInputStream in;
+        boolean closed;
+
+        RawConnection(String host, int port) throws java.io.IOException {
+            socket = new java.net.Socket(host, port);
+            socket.setTcpNoDelay(true);
+            socket.setSoTimeout(60_000);
+            out = socket.getOutputStream();
+            in = new java.io.BufferedInputStream(socket.getInputStream(), 16384);
+        }
+
+        int exchange(byte[] request) throws java.io.IOException {
+            out.write(request);
+            out.flush();
+            String statusLine = line();
+            int status = Integer.parseInt(statusLine.split(" ")[1]);
+            long length = -1;
+            boolean chunked = false;
+            for (String h = line(); !h.isEmpty(); h = line()) {
+                int c = h.indexOf(':');
+                String name = h.substring(0, c).trim();
+                String value = h.substring(c + 1).trim();
+                if (name.equalsIgnoreCase("Content-Length")) {
+                    length = Long.parseLong(value);
+                } else if (name.equalsIgnoreCase("Transfer-Encoding") && value.equalsIgnoreCase("chunked")) {
+                    chunked = true;
+                } else if (name.equalsIgnoreCase("Connection") && value.equalsIgnoreCase("close")) {
+                    closed = true;
+                }
+            }
+            if (chunked) {
+                for (long size = Long.parseLong(line().trim(), 16); size > 0; size = Long.parseLong(line().trim(), 16)) {
+                    skip(size);
+                    line();
+                }
+                line();
+            } else if (length > 0) {
+                skip(length);
+            }
+            if (closed) {
+                socket.close();
+            }
+            return status;
+        }
+
+        private String line() throws java.io.IOException {
+            StringBuilder sb = new StringBuilder();
+            for (int b = in.read(); b != '\n'; b = in.read()) {
+                if (b < 0) {
+                    throw new java.io.EOFException();
+                }
+                if (b != '\r') {
+                    sb.append((char) b);
+                }
+            }
+            return sb.toString();
+        }
+
+        private void skip(long n) throws java.io.IOException {
+            while (n > 0) {
+                long k = in.skip(n);
+                if (k <= 0) {
+                    if (in.read() < 0) {
+                        throw new java.io.EOFException();
+                    }
+                    k = 1;
+                }
+                n -= k;
+            }
         }
     }
 
