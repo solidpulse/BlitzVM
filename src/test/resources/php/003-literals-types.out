@@ -1,0 +1,6 @@
+int(42)
+float(3.14159)
+string(45) "single quoted string with $var and \n literal"
+bool(true)
+bool(false)
+NULL

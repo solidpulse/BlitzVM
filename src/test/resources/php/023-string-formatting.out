@@ -1,0 +1,9 @@
+Decimal: 255, String: items, Hex: ff
+Float: 03.14
+1,234,567.89
+PHP-----
+00042
+&lt;div&gt;&quot;Hello&quot; &amp; &#039;World&#039;&lt;/div&gt;
+{"name":"Alice","age":25,"active":true}
+"a string"
+123

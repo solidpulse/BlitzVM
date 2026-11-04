@@ -1,0 +1,24 @@
+8
+abc1
+0.3
+2.5
+1
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+integer
+double
+string
+boolean
+NULL
+array
+123
+45
+int(99)
+string(3) "123"
+float(3.14)
+bool(false)
+bool(true)

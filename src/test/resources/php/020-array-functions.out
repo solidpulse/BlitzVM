@@ -1,0 +1,21 @@
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+bool(false)
+Array
+(
+    [0] => id
+    [1] => name
+    [2] => role
+)
+Array
+(
+    [0] => 101
+    [1] => Charlie
+    [2] => 
+)

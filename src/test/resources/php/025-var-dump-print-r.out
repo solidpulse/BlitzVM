@@ -1,0 +1,31 @@
+int(42)
+float(2.718)
+string(5) "hello"
+bool(true)
+NULL
+array(2) {
+  ["a"]=>
+  int(1)
+  ["b"]=>
+  array(2) {
+    [0]=>
+    int(2)
+    [1]=>
+    int(3)
+  }
+}
+42
+2.718
+hello
+1
+
+Array
+(
+    [a] => 1
+    [b] => Array
+        (
+            [0] => 2
+            [1] => 3
+        )
+
+)
