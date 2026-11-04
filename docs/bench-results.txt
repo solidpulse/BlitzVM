@@ -1,88 +1,128 @@
-# Raw output of bench/run.sh. The truffle section is the rerun after the launcher fix
-# (the first full run used Temurin without the JIT because JAVA_HOME was set).
+# Raw output of bench/run.sh (raw-socket load generator, 15 s warm-up, 10 s measured).
 
 ################ truffle
-== throughput: hello.php, 4 workers, 32 connections, 10s after 5s warm-up
-requests=23415 errors=0 rps=2340 p50=9.60ms p99=53.27ms max=155.87ms
-== memory after load: 382 MB
+== throughput: hello.php, 4 workers, 32 connections, 10s after 15s warm-up
+requests=206462 errors=0 rps=20644 p50=1.28ms p99=7.59ms max=26.33ms
+== throughput: index.php (template, superglobals, date, htmlspecialchars)
+requests=195719 errors=0 rps=19567 p50=1.50ms p99=4.63ms max=27.61ms
+== throughput: static.txt (HTTP front end only, no PHP)
+requests=802448 errors=0 rps=80236 p50=0.32ms p99=1.91ms max=45.38ms
+== memory after load: 508 MB
 == fib(27), 6 runs (last is warm)
-200 113.2ms fib(27) = 196418 in 10.0 ms
-200 90.3ms fib(27) = 196418 in 3.7 ms
+200 82.3ms fib(27) = 196418 in 3.0 ms
+200 83.4ms fib(27) = 196418 in 4.3 ms
 == starvation: 1 worker, spin.php?s=4 running, then hello every 300ms
-probe 1: 200 in 129.4 ms
-probe 2: 200 in 16.2 ms
-probe 3: 200 in 15.2 ms
-probe 4: 200 in 13.1 ms
-   spin: 200 4295.7ms spun 41770080 iterations in 4s
+probe 1: 200 in 112.8 ms
+probe 2: 200 in 16.3 ms
+probe 3: 200 in 5.5 ms
+probe 4: 200 in 9.5 ms
+   spin: 200 4271.1ms spun 42809601 iterations in 4s
 == blocking: 1 worker, sleep.php?ms=1500 running, then hello
-probe 1: 200 in 90.3 ms
-probe 2: 200 in 14.2 ms
-   sleep: 200 1680.4ms slept
+probe 1: 200 in 88.4 ms
+probe 2: 200 in 14.1 ms
+   sleep: 200 1704.8ms slept
+################ truffle-jdk
+== throughput: hello.php, 4 workers, 32 connections, 10s after 15s warm-up
+requests=166357 errors=0 rps=16633 p50=1.76ms p99=5.08ms max=21.50ms
+== throughput: index.php (template, superglobals, date, htmlspecialchars)
+requests=156472 errors=0 rps=15643 p50=1.93ms p99=4.95ms max=22.53ms
+== throughput: static.txt (HTTP front end only, no PHP)
+requests=479635 errors=0 rps=47957 p50=0.51ms p99=3.07ms max=23.67ms
+== memory after load: 513 MB
+== fib(27), 6 runs (last is warm)
+200 89.6ms fib(27) = 196418 in 3.9 ms
+200 90.3ms fib(27) = 196418 in 2.2 ms
+== starvation: 1 worker, spin.php?s=4 running, then hello every 300ms
+probe 1: 200 in 113.2 ms
+probe 2: 200 in 15.1 ms
+probe 3: 200 in 11.7 ms
+probe 4: 200 in 17.9 ms
+   spin: 200 4302.0ms spun 41865810 iterations in 4s
+== blocking: 1 worker, sleep.php?ms=1500 running, then hello
+probe 1: 200 in 86.8 ms
+probe 2: 200 in 12.5 ms
+   sleep: 200 1721.3ms slept
 ################ fpm
-== throughput: hello.php, 4 workers, 32 connections, 10s after 5s warm-up
-requests=61356 errors=0 rps=6134 p50=4.31ms p99=15.75ms max=33.29ms
-== memory after load: 129 MB
+== throughput: hello.php, 4 workers, 32 connections, 10s after 15s warm-up
+requests=175120 errors=0 rps=17510 p50=1.76ms p99=3.34ms max=16.25ms
+== throughput: index.php (template, superglobals, date, htmlspecialchars)
+requests=141601 errors=0 rps=14156 p50=2.19ms p99=4.21ms max=9.89ms
+== throughput: static.txt (HTTP front end only, no PHP)
+requests=903174 errors=0 rps=90313 p50=0.32ms p99=0.68ms max=20.15ms
+== memory after load: 138 MB
 == fib(27), 6 runs (last is warm)
-200 97.8ms fib(27) = 196418 in 10.9 ms
-200 85.4ms fib(27) = 196418 in 8.3 ms
+200 90.6ms fib(27) = 196418 in 7.8 ms
+200 93.1ms fib(27) = 196418 in 7.9 ms
 == starvation: 1 worker, spin.php?s=4 running, then hello every 300ms
-probe 1: 200 in 3391.5 ms
-probe 2: 200 in 5.4 ms
-probe 3: 200 in 4.8 ms
-probe 4: 200 in 7.0 ms
-   spin: 200 4164.0ms spun 147259738 iterations in 4s
+probe 1: 200 in 3474.9 ms
+probe 2: 200 in 6.3 ms
+probe 3: 200 in 6.3 ms
+probe 4: 200 in 3.6 ms
+   spin: 200 4190.4ms spun 147706322 iterations in 4s
 == blocking: 1 worker, sleep.php?ms=1500 running, then hello
-probe 1: 200 in 1262.4 ms
-probe 2: 200 in 8.1 ms
-   sleep: 200 1642.0ms slept
+probe 1: 200 in 1274.2 ms
+probe 2: 200 in 5.2 ms
+   sleep: 200 1697.8ms slept
 ################ fpm-jit
-== throughput: hello.php, 4 workers, 32 connections, 10s after 5s warm-up
-requests=46403 errors=0 rps=4639 p50=6.52ms p99=16.21ms max=37.60ms
-== memory after load: 129 MB
+== throughput: hello.php, 4 workers, 32 connections, 10s after 15s warm-up
+requests=188585 errors=0 rps=18855 p50=1.64ms p99=3.12ms max=12.59ms
+== throughput: index.php (template, superglobals, date, htmlspecialchars)
+requests=146457 errors=0 rps=14642 p50=2.11ms p99=3.89ms max=13.39ms
+== throughput: static.txt (HTTP front end only, no PHP)
+requests=921467 errors=0 rps=92143 p50=0.32ms p99=0.64ms max=16.20ms
+== memory after load: 138 MB
 == fib(27), 6 runs (last is warm)
-200 101.4ms fib(27) = 196418 in 9.0 ms
-200 92.5ms fib(27) = 196418 in 8.7 ms
+200 93.2ms fib(27) = 196418 in 8.6 ms
+200 97.1ms fib(27) = 196418 in 7.9 ms
 == starvation: 1 worker, spin.php?s=4 running, then hello every 300ms
-probe 1: 200 in 3433.6 ms
-probe 2: 200 in 4.7 ms
-probe 3: 200 in 6.9 ms
-probe 4: 200 in 6.4 ms
-   spin: 200 4163.5ms spun 148687040 iterations in 4s
+probe 1: 200 in 3410.2 ms
+probe 2: 200 in 7.6 ms
+probe 3: 200 in 4.3 ms
+probe 4: 200 in 4.6 ms
+   spin: 200 4177.2ms spun 147040499 iterations in 4s
 == blocking: 1 worker, sleep.php?ms=1500 running, then hello
-probe 1: 200 in 1284.9 ms
-probe 2: 200 in 4.4 ms
-   sleep: 200 1631.5ms slept
+probe 1: 200 in 1336.5 ms
+probe 2: 200 in 5.3 ms
+   sleep: 200 1653.1ms slept
 ################ swoole
-== throughput: hello.php, 4 workers, 32 connections, 10s after 5s warm-up
-requests=193882 errors=0 rps=19384 p50=1.01ms p99=8.03ms max=21.26ms
-== memory after load: 12.71MiB  MB
+== throughput: hello.php, 4 workers, 32 connections, 10s after 15s warm-up
+requests=1315511 errors=0 rps=131536 p50=0.18ms p99=1.44ms max=33.19ms
+== throughput: index.php (template, superglobals, date, htmlspecialchars)
+requests=1040579 errors=0 rps=104052 p50=0.24ms p99=1.37ms max=32.23ms
+== throughput: static.txt (HTTP front end only, no PHP)
+requests=334777 errors=0 rps=33475 p50=0.72ms p99=4.36ms max=23.00ms
+== memory after load: 25.53 MB
 == fib(27), 6 runs (last is warm)
-200 95.8ms fib(27) = 196418 in 9.8 ms
-200 89.4ms fib(27) = 196418 in 10.8 ms
+200 90.4ms fib(27) = 196418 in 9.9 ms
+200 68.2ms fib(27) = 196418 in 9.2 ms
 == starvation: 1 worker, spin.php?s=4 running, then hello every 300ms
-probe 1: 200 in 3530.7 ms
-probe 2: 200 in 4.7 ms
-probe 3: 200 in 2.3 ms
-probe 4: 200 in 5.4 ms
-   spin: 200 4153.5ms spun 150548853 iterations in 4s
+probe 1: 200 in 3490.5 ms
+probe 2: 200 in 7.3 ms
+probe 3: 200 in 5.2 ms
+probe 4: 200 in 5.0 ms
+   spin: 200 4147.6ms spun 149825133 iterations in 4s
 == blocking: 1 worker, sleep.php?ms=1500 running, then hello
-probe 1: 200 in 80.3 ms
-probe 2: 200 in 4.7 ms
-   sleep: 200 1624.5ms slept
+probe 1: 200 in 134.2 ms
+probe 2: 200 in 5.8 ms
+   sleep: 200 1681.2ms slept
 ################ swoole-preempt
-== throughput: hello.php, 4 workers, 32 connections, 10s after 5s warm-up
-requests=128898 errors=0 rps=12886 p50=1.94ms p99=9.52ms max=27.42ms
-== memory after load: 13.1MiB  MB
+== throughput: hello.php, 4 workers, 32 connections, 10s after 15s warm-up
+requests=1326467 errors=0 rps=132633 p50=0.18ms p99=1.36ms max=24.88ms
+== throughput: index.php (template, superglobals, date, htmlspecialchars)
+requests=1071003 errors=0 rps=107085 p50=0.25ms p99=1.02ms max=17.03ms
+== throughput: static.txt (HTTP front end only, no PHP)
+requests=335837 errors=0 rps=33577 p50=0.72ms p99=4.36ms max=19.33ms
+== memory after load: 25.61 MB
 == fib(27), 6 runs (last is warm)
-200 95.0ms fib(27) = 196418 in 9.6 ms
-200 90.2ms fib(27) = 196418 in 9.9 ms
+200 94.8ms fib(27) = 196418 in 9.7 ms
+200 96.7ms fib(27) = 196418 in 10.4 ms
 == starvation: 1 worker, spin.php?s=4 running, then hello every 300ms
-probe 1: 200 in 85.1 ms
-probe 2: 200 in 16.7 ms
-probe 3: 200 in 15.6 ms
-probe 4: 200 in 13.3 ms
-   spin: 200 4146.0ms spun 148529758 iterations in 4s
+probe 1: 200 in 89.5 ms
+probe 2: 200 in 9.3 ms
+probe 3: 200 in 6.8 ms
+probe 4: 200 in 13.6 ms
+   spin: 200 4178.6ms spun 149522190 iterations in 4s
 == blocking: 1 worker, sleep.php?ms=1500 running, then hello
-probe 1: 200 in 77.7 ms
-probe 2: 200 in 4.9 ms
-   sleep: 200 1624.7ms slept
+probe 1: 200 in 86.0 ms
+probe 2: 200 in 5.9 ms
+   sleep: 200 1663.3ms slept
