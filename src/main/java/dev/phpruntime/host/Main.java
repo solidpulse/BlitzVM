@@ -39,6 +39,7 @@ public final class Main {
         }
         PhpRequest request = new PhpRequest();
         request.uri = script.toString();
+        request.scriptFilename = script.toAbsolutePath().normalize().toString();
         request.server.put("SCRIPT_FILENAME", script.toAbsolutePath().toString());
         request.server.put("argc", Integer.toString(args.length));
         try (PhpEngine engine = new PhpEngine(null)) {

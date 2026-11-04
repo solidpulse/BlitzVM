@@ -123,6 +123,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void warning(String message, int line) {
-        err.println("PHP Warning:  " + message + (line > 0 ? " on line " + line : ""));
+        String file = request().scriptFilename;
+        err.println("PHP Warning:  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
     }
 }
