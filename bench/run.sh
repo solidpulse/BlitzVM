@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compares php-truffle with php-fpm (behind nginx) and Swoole on the same scenarios.
-#   bench/run.sh [target...]   targets: truffle fpm fpm-jit swoole swoole-preempt (default: all)
+#   bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit swoole swoole-preempt (default: all)
 # Needs: php-fpm8.5 on the host, docker (nginx:alpine, phpswoole/swoole:latest).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,8 +14,8 @@ LOAD_SECONDS="${LOAD_SECONDS:-10}"
 
 wait_up() { for _ in $(seq 1 100); do curl -fs "$1" >/dev/null 2>&1 && return 0; sleep 0.2; done; echo "server did not come up: $1" >&2; return 1; }
 
-start_truffle() { # $1 workers
-  "$ROOT/bin/php-truffle" serve --port 18401 --cpus "$1" --quantum-ms 10 --max-exec-ms 30000 "$ROOT/www" > "$RUN/truffle.log" 2>&1 &
+start_truffle() { # $1 workers, $2 http front end (netty|jdk)
+  "$ROOT/bin/php-truffle" serve --port 18401 --cpus "$1" --quantum-ms 10 --max-exec-ms 30000 --http "${2:-netty}" "$ROOT/www" > "$RUN/truffle.log" 2>&1 &
   PIDS=$!; BASE=http://127.0.0.1:18401; wait_up "$BASE/hello.php"
 }
 start_fpm() { # $1 workers, $2 jit mode
@@ -40,7 +40,8 @@ stop_all() {
 }
 start() { # $1 target, $2 workers
   case "$1" in
-    truffle) start_truffle "$2" ;;
+    truffle) start_truffle "$2" netty ;;
+    truffle-jdk) start_truffle "$2" jdk ;;
     fpm) start_fpm "$2" disable ;;
     fpm-jit) start_fpm "$2" tracing ;;
     swoole) start_swoole "$2" 0 ;;
@@ -49,7 +50,7 @@ start() { # $1 target, $2 workers
 }
 rss_mb() { # resident memory of the serving processes
   case "$1" in
-    truffle) ps -o rss= -p "$(pgrep -f 'host.Main serve --port 18401' | head -1)" | awk '{printf "%.0f", $1/1024}' ;;
+    truffle*) ps -o rss= -p "$(pgrep -f 'host.Main serve --port 18401' | head -1)" | awk '{printf "%.0f", $1/1024}' ;;
     fpm|fpm-jit) ps -C php-fpm8.5 -o rss= | awk '{s+=$1} END {printf "%.0f", s/1024}' ;;
     swoole*) docker stats --no-stream --format '{{.MemUsage}}' bench-swoole | cut -d/ -f1 | sed 's/MiB//; s/ //g' ;;
   esac
@@ -62,6 +63,8 @@ scenario() { # $1 target
   start "$t" "$THROUGHPUT_WORKERS"
   echo "== throughput: hello.php, $THROUGHPUT_WORKERS workers, 32 connections, ${LOAD_SECONDS}s after 5s warm-up"
   $LOAD load "$BASE/hello.php" 32 "$LOAD_SECONDS"
+  echo "== throughput: index.php (template, superglobals, date, htmlspecialchars)"
+  $LOAD load "$BASE/index.php?name=bench" 32 "$LOAD_SECONDS"
   echo "== memory after load: $(rss_mb "$t") MB"
   echo "== fib(27), 6 runs (last is warm)"
   for _ in 1 2 3 4 5 6; do $LOAD once "$BASE/fib.php?n=27"; done | tail -2
@@ -86,6 +89,6 @@ scenario() { # $1 target
 
 trap stop_all EXIT
 TARGETS=("$@")
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle fpm fpm-jit swoole swoole-preempt)
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
 for t in "${TARGETS[@]}"; do scenario "$t"; done
