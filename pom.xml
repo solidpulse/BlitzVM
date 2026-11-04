@@ -12,7 +12,7 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <graalvm.version>24.1.2</graalvm.version>
+        <graalvm.version>25.5.5.0.3</graalvm.version>
         <junit.version>5.10.2</junit.version>
         <netty.version>4.2.19.Final</netty.version>
     </properties>
