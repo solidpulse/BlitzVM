@@ -78,6 +78,10 @@ public final class Scheduler implements AutoCloseable {
                 + " completed=" + completed.get() + " preemptions=" + preemptions.get() + " timeouts=" + timeouts.get();
     }
 
+    public long maxExecutionMillis() {
+        return maxCpuNanos == Long.MAX_VALUE ? 0 : TimeUnit.NANOSECONDS.toMillis(maxCpuNanos);
+    }
+
     public long preemptions() {
         return preemptions.get();
     }

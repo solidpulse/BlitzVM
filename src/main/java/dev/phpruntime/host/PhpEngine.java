@@ -86,16 +86,18 @@ public final class PhpEngine implements AutoCloseable {
             return request.status;
         } catch (PolyglotException e) {
             // close() of a cancelled context rethrows the cancellation
-            return task != null && task.timedOut() ? 500 : fail(request, out, task, e);
+            return fail(request, out, task, e);
         } finally {
             PhpRequest.uninstall();
         }
     }
 
-    private static int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e) {
+    private int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e) {
         String message;
         if (task != null && task.timedOut()) {
-            message = "Maximum execution time exceeded";
+            double secs = scheduler.maxExecutionMillis() / 1000.0;
+            String shown = secs == Math.rint(secs) ? Long.toString((long) secs) : Double.toString(secs);
+            message = "Maximum execution time of " + shown + " second" + (secs == 1 ? "" : "s") + " exceeded";
         } else if (e.isCancelled()) {
             message = "Execution cancelled";
         } else if (e.isGuestException()) {
