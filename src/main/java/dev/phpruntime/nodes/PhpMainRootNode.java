@@ -3,7 +3,7 @@ package dev.phpruntime.nodes;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.runtime.PhpArray;
@@ -18,13 +18,13 @@ import java.util.Map;
  * Root of a script. Sets up superglobals from the request, hoists function
  * declarations, attaches the scheduler and runs top-level code.
  */
-public final class PhpMainRootNode extends RootNode {
+public final class PhpMainRootNode extends PhpRootNode {
 
     @Child private PhpNode body;
     private final List<PhpFunction> functions;
 
-    public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, PhpNode body, List<PhpFunction> functions) {
-        super(language, fd);
+    public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body, List<PhpFunction> functions) {
+        super(language, fd, source, 1);
         this.body = body;
         this.functions = functions;
     }

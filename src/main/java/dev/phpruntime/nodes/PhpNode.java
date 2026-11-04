@@ -4,7 +4,10 @@ import com.oracle.truffle.api.dsl.TypeSystemReference;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.NodeInfo;
+import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
+import com.oracle.truffle.api.source.Source;
+import com.oracle.truffle.api.source.SourceSection;
 import dev.phpruntime.runtime.PhpTypes;
 import dev.phpruntime.runtime.PhpTypesGen;
 
@@ -36,6 +39,22 @@ public abstract class PhpNode extends Node {
 
     public boolean executeBoolean(VirtualFrame frame) throws UnexpectedResultException {
         return PhpTypesGen.expectBoolean(execute(frame));
+    }
+
+    @Override
+    public SourceSection getSourceSection() {
+        RootNode root = getRootNode();
+        if (line > 0 && root instanceof PhpRootNode r) {
+            return section(r.source(), line);
+        }
+        return null;
+    }
+
+    static SourceSection section(Source source, int line) {
+        if (source == null || line <= 0 || line > source.getLineCount()) {
+            return null;
+        }
+        return source.createSection(line);
     }
 
     public final int line() {

@@ -5,7 +5,7 @@ import com.oracle.truffle.api.TruffleSafepoint;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
-import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
@@ -15,7 +15,7 @@ import dev.phpruntime.runtime.PhpNull;
  * body and turns a Return control-flow exception into the result. Polls a safepoint
  * on entry so deep recursion without loops can still be preempted.
  */
-public final class PhpFunctionRootNode extends RootNode {
+public final class PhpFunctionRootNode extends PhpRootNode {
 
     private final String name;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
@@ -23,9 +23,9 @@ public final class PhpFunctionRootNode extends RootNode {
     private final int requiredArgs;
     @Child private PhpNode body;
 
-    public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, String name,
+    public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
                                int[] paramSlots, PhpNode[] defaults, PhpNode body) {
-        super(language, fd);
+        super(language, fd, source, line);
         this.name = name;
         this.paramSlots = paramSlots;
         this.defaults = defaults;
@@ -61,7 +61,7 @@ public final class PhpFunctionRootNode extends RootNode {
 
     private PhpError tooFewArguments(int passed) {
         String exactly = requiredArgs == paramSlots.length ? "exactly" : "at least";
-        return new PhpError("Too few arguments to function " + name + "(), " + passed
+        return new PhpError(PhpError.ARGUMENT_COUNT, "Too few arguments to function " + name + "(), " + passed
                 + " passed and " + exactly + " " + requiredArgs + " expected", body);
     }
 
