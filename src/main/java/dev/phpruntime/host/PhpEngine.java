@@ -85,8 +85,8 @@ public final class PhpEngine implements AutoCloseable {
             request.status = 503;
             return request.status;
         } catch (PolyglotException e) {
-            // close() of a cancelled context rethrows the cancellation
-            return fail(request, out, task, e);
+            // close() of a cancelled context rethrows the cancellation; report it only once
+            return request.status >= 500 ? request.status : fail(request, out, task, e);
         } finally {
             PhpRequest.uninstall();
         }
