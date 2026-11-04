@@ -40,12 +40,26 @@ public final class CallNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         if (callNode == null && builtin == null) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
-            resolve();
+            resolveOnce();
         }
         if (callNode != null) {
             return callNode.call(evalArgs(frame));
         }
         return callBuiltin(frame);
+    }
+
+    /** The AST is shared by concurrent requests, so the first-call rewrite takes the AST lock. */
+    @TruffleBoundary
+    private void resolveOnce() {
+        java.util.concurrent.locks.Lock lock = getLock();
+        lock.lock();
+        try {
+            if (callNode == null && builtin == null) {
+                resolve();
+            }
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void resolve() {
