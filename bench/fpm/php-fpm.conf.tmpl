@@ -1,0 +1,15 @@
+; Rendered by bench/run.sh. Static pool so the worker count is exact.
+[global]
+error_log = __RUN__/php-fpm.log
+pid = __RUN__/php-fpm.pid
+daemonize = no
+
+[www]
+listen = 127.0.0.1:__FPM_PORT__
+pm = static
+pm.max_children = __WORKERS__
+; request_terminate_timeout is FPM's wall-clock kill switch (max_execution_time is CPU-time and per-script)
+request_terminate_timeout = 30s
+php_admin_value[opcache.enable] = 1
+php_admin_value[opcache.jit] = __JIT__
+php_admin_value[opcache.jit_buffer_size] = 64M

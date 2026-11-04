@@ -1,0 +1,15 @@
+# Rendered by bench/run.sh. nginx runs in Docker with host networking.
+# No FastCGI keep-alive: with a small static pool an idle persistent connection pins a child.
+worker_processes 2;
+events { worker_connections 1024; }
+http {
+  access_log off;
+  server {
+    listen __HTTP_PORT__;
+    location ~ \.php$ {
+      fastcgi_pass 127.0.0.1:__FPM_PORT__;
+      include fastcgi_params;
+      fastcgi_param SCRIPT_FILENAME __WWW__$fastcgi_script_name;
+    }
+  }
+}
