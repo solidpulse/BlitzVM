@@ -1,0 +1,149 @@
+package dev.phpruntime.runtime;
+
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+
+import java.util.Map;
+
+/** Generic (slow-path) arithmetic used by DSL fallbacks and compound assignment. */
+public final class PhpArith {
+
+    private PhpArith() {
+    }
+
+    public enum Op {
+        ADD, SUB, MUL, DIV, MOD, POW, CONCAT, BIT_AND, BIT_OR, BIT_XOR, SHL, SHR, COALESCE
+    }
+
+    @TruffleBoundary
+    public static Object apply(Op op, Object a, Object b) {
+        return switch (op) {
+            case ADD -> add(a, b);
+            case SUB -> sub(a, b);
+            case MUL -> mul(a, b);
+            case DIV -> div(a, b);
+            case MOD -> mod(a, b);
+            case POW -> pow(a, b);
+            case CONCAT -> PhpOps.toStr(a).concat(PhpOps.toStr(b));
+            case BIT_AND -> PhpOps.toLong(a) & PhpOps.toLong(b);
+            case BIT_OR -> PhpOps.toLong(a) | PhpOps.toLong(b);
+            case BIT_XOR -> PhpOps.toLong(a) ^ PhpOps.toLong(b);
+            case SHL -> PhpOps.toLong(a) << PhpOps.toLong(b);
+            case SHR -> PhpOps.toLong(a) >> PhpOps.toLong(b);
+            case COALESCE -> a == null || a == PhpNull.INSTANCE ? b : a;
+        };
+    }
+
+    @TruffleBoundary
+    public static Object add(Object a, Object b) {
+        if (a instanceof PhpArray x && b instanceof PhpArray y) {
+            // Array union: keys from the left win.
+            PhpArray r = x.share().forWrite(); // always a fresh copy of x
+            for (Map.Entry<Object, Object> e : y.entries()) {
+                if (!r.containsKey(e.getKey())) {
+                    r.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+                }
+            }
+            return r;
+        }
+        Object x = PhpOps.toNumber(a);
+        Object y = PhpOps.toNumber(b);
+        if (x instanceof Long l && y instanceof Long m) {
+            long r = l + m;
+            if (((l ^ r) & (m ^ r)) < 0) {
+                return (double) l + (double) m;
+            }
+            return r;
+        }
+        return PhpOps.toDouble(x) + PhpOps.toDouble(y);
+    }
+
+    @TruffleBoundary
+    public static Object sub(Object a, Object b) {
+        Object x = PhpOps.toNumber(a);
+        Object y = PhpOps.toNumber(b);
+        if (x instanceof Long l && y instanceof Long m) {
+            long r = l - m;
+            if (((l ^ m) & (l ^ r)) < 0) {
+                return (double) l - (double) m;
+            }
+            return r;
+        }
+        return PhpOps.toDouble(x) - PhpOps.toDouble(y);
+    }
+
+    @TruffleBoundary
+    public static Object mul(Object a, Object b) {
+        Object x = PhpOps.toNumber(a);
+        Object y = PhpOps.toNumber(b);
+        if (x instanceof Long l && y instanceof Long m) {
+            long hi = Math.multiplyHigh(l, m);
+            long lo = l * m;
+            if ((hi == 0 && lo >= 0) || (hi == -1 && lo < 0)) {
+                return lo;
+            }
+            return (double) l * (double) m;
+        }
+        return PhpOps.toDouble(x) * PhpOps.toDouble(y);
+    }
+
+    @TruffleBoundary
+    public static Object div(Object a, Object b) {
+        Object x = PhpOps.toNumber(a);
+        Object y = PhpOps.toNumber(b);
+        if (PhpOps.toDouble(y) == 0) {
+            throw new PhpError("Division by zero");
+        }
+        if (x instanceof Long l && y instanceof Long m && m != 0 && l % m == 0 && !(l == Long.MIN_VALUE && m == -1)) {
+            return l / m;
+        }
+        return PhpOps.toDouble(x) / PhpOps.toDouble(y);
+    }
+
+    @TruffleBoundary
+    public static Object mod(Object a, Object b) {
+        long x = PhpOps.toLong(a);
+        long y = PhpOps.toLong(b);
+        if (y == 0) {
+            throw new PhpError("Modulo by zero");
+        }
+        if (y == -1) {
+            return 0L;
+        }
+        return x % y;
+    }
+
+    @TruffleBoundary
+    public static Object pow(Object a, Object b) {
+        Object x = PhpOps.toNumber(a);
+        Object y = PhpOps.toNumber(b);
+        if (x instanceof Long base && y instanceof Long exp && exp >= 0) {
+            long result = 1;
+            long bb = base;
+            long e = exp;
+            try {
+                while (e > 0) {
+                    if ((e & 1) == 1) {
+                        result = Math.multiplyExact(result, bb);
+                    }
+                    e >>= 1;
+                    if (e > 0) {
+                        bb = Math.multiplyExact(bb, bb);
+                    }
+                }
+                return result;
+            } catch (ArithmeticException overflow) {
+                return Math.pow(base, exp);
+            }
+        }
+        return Math.pow(PhpOps.toDouble(x), PhpOps.toDouble(y));
+    }
+
+    @TruffleBoundary
+    public static Object negate(Object v) {
+        Object n = PhpOps.toNumber(v);
+        if (n instanceof Long l) {
+            return l == Long.MIN_VALUE ? -(double) l : -l;
+        }
+        return -(Double) n;
+    }
+}
