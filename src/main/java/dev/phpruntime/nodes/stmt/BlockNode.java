@@ -3,6 +3,7 @@ package dev.phpruntime.nodes.stmt;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.nodes.PhpNode;
+import dev.phpruntime.runtime.PhpError;
 
 public final class BlockNode extends PhpNode {
 
@@ -16,7 +17,12 @@ public final class BlockNode extends PhpNode {
     @ExplodeLoop
     public Object execute(VirtualFrame frame) {
         for (PhpNode s : statements) {
-            s.executeVoid(frame);
+            try {
+                s.executeVoid(frame);
+            } catch (PhpError e) {
+                // Runtime helpers throw without a node; blame the statement for file and line.
+                throw e.at(s);
+            }
         }
         return null;
     }

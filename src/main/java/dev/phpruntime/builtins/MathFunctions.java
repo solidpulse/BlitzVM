@@ -39,7 +39,7 @@ final class MathFunctions {
             long x = PhpOps.toLong(a[0]);
             long y = PhpOps.toLong(a[1]);
             if (y == 0) {
-                throw new PhpError("Division by zero");
+                throw new PhpError(PhpError.DIVISION_BY_ZERO, "Division by zero", null);
             }
             if (x == Long.MIN_VALUE && y == -1) {
                 throw new PhpError("Division of PHP_INT_MIN by -1 is not an integer");

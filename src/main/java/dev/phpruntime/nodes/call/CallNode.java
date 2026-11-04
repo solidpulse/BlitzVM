@@ -96,13 +96,17 @@ public final class CallNode extends PhpNode {
 
     @TruffleBoundary
     private Object invoke(Builtins.Def def, Object[] values) {
-        return def.impl().call(PhpContext.get(this), values);
+        try {
+            return def.impl().call(PhpContext.get(this), values);
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
     }
 
     private void checkArity(Builtins.Def def, int n) {
         if (n < def.minArgs() || (def.maxArgs() >= 0 && n > def.maxArgs())) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError(def.name() + "() expects " + arity(def, n) + ", " + n + " given", this);
+            throw new PhpError(PhpError.ARGUMENT_COUNT, def.name() + "() expects " + arity(def, n) + ", " + n + " given", this);
         }
     }
 

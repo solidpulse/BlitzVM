@@ -91,7 +91,7 @@ public final class PhpArith {
         Object x = PhpOps.toNumber(a);
         Object y = PhpOps.toNumber(b);
         if (PhpOps.toDouble(y) == 0) {
-            throw new PhpError("Division by zero");
+            throw new PhpError(PhpError.DIVISION_BY_ZERO, "Division by zero", null);
         }
         if (x instanceof Long l && y instanceof Long m && m != 0 && l % m == 0 && !(l == Long.MIN_VALUE && m == -1)) {
             return l / m;
@@ -104,7 +104,7 @@ public final class PhpArith {
         long x = PhpOps.toLong(a);
         long y = PhpOps.toLong(b);
         if (y == 0) {
-            throw new PhpError("Modulo by zero");
+            throw new PhpError(PhpError.DIVISION_BY_ZERO, "Modulo by zero", null);
         }
         if (y == -1) {
             return 0L;

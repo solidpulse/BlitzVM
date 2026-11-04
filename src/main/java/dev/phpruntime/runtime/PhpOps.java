@@ -56,14 +56,14 @@ public final class PhpOps {
         if (v instanceof String s) {
             Object n = parseNumericPrefix(s);
             if (n == null) {
-                throw new PhpError("Unsupported operand types: string \"" + s + "\" is non-numeric");
+                throw new PhpError(PhpError.TYPE_ERROR, "Unsupported operand types: non-numeric string \"" + s + "\"", null);
             }
             return n;
         }
         if (v instanceof PhpArray) {
-            throw new PhpError("Unsupported operand types: array");
+            throw new PhpError(PhpError.TYPE_ERROR, "Unsupported operand types: array", null);
         }
-        throw new PhpError("Unsupported operand type " + typeName(v));
+        throw new PhpError(PhpError.TYPE_ERROR, "Unsupported operand type " + typeName(v), null);
     }
 
     @TruffleBoundary
