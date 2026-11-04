@@ -17,7 +17,7 @@ scripts/demo.sh        # the preemption demo end to end
 Build and execution steps:
 
 - `mvn package`: compiles and packages the runtime into a JAR with runtime dependencies in `target/lib`. Requires JDK 21+.
-- `scripts/get-graalvm.sh` (optional): downloads GraalVM CE 23.0.2 into `./.graalvm`, which pairs with Truffle 24.1 and enables the Graal JIT; `bin/php-truffle` uses it automatically when `JAVA_HOME` is unset.
+- `scripts/get-graalvm.sh` (optional): downloads GraalVM CE 23.0.2 into `./.graalvm`, which pairs with Truffle 24.1 and enables the Graal JIT; `bin/php-truffle` prefers it over `JAVA_HOME` (set `PHP_TRUFFLE_JAVA_HOME` to override).
 - `bin/php-truffle script.php`: runs a PHP script in CLI mode and streams output to standard output and standard error.
 - `bin/php-truffle serve --port 8080 --cpus 1 --quantum-ms 10 --max-exec-ms 5000 www`: starts the HTTP server on port 8080, serving directory `www` with 1 CPU execution slot, a 10 ms time-slice quantum, and a 5000 ms per-request execution budget.
 - `curl 'localhost:8080/?name=World'`: executes `www/index.php` and returns the generated HTTP response.
@@ -63,7 +63,7 @@ The scheduler allocates CPU time across concurrent HTTP requests:
 
 ## Measured Results
 
-Setup: 1 CPU slot, 10 ms quantum, GraalVM CE 23.0.2:
+Setup: 1 CPU slot, 10 ms quantum. The scheduling results below were taken on Temurin 21 (interpreter only); preemption behaves the same with the Graal JIT, see `docs/COMPARISON.md`.
 
 - While `spin.php` held the only slot for 4 s, three hello-world requests completed in 19 ms, 8 ms and 8 ms; scheduler reported preemptions=3; `spin.php` still completed its 4 s of work.
 - `forever.php` (`while (true) {}`) was cancelled at the 5 s budget with HTTP 500.
@@ -71,6 +71,8 @@ Setup: 1 CPU slot, 10 ms quantum, GraalVM CE 23.0.2:
   - `php-cli` 8.5: about 9 ms.
   - `php-truffle` on GraalVM: about 11 ms after warm-up (first run 295 ms).
   - `php-truffle` on stock Temurin 21 without the Graal JIT: about 116 ms after warm-up.
+
+See `docs/COMPARISON.md` for a side-by-side benchmark against php-fpm and Swoole (`bench/run.sh`).
 
 ## Testing
 
