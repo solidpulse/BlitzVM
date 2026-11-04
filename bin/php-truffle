@@ -9,10 +9,8 @@ fi
 # Prefer the GraalVM fetched by scripts/get-graalvm.sh (same AST, plus the Graal JIT),
 # even if JAVA_HOME points elsewhere (sdkman sets it). PHP_TRUFFLE_JAVA_HOME overrides.
 JAVA_HOME_USED="${PHP_TRUFFLE_JAVA_HOME:-}"
-if [[ -z "$JAVA_HOME_USED" ]]; then
-  for g in "$ROOT"/.graalvm/graalvm-community-openjdk-*; do
-    [[ -x "$g/bin/java" ]] && JAVA_HOME_USED="$g"
-  done
+if [[ -z "$JAVA_HOME_USED" && -x "$ROOT/.graalvm/current/bin/java" ]]; then
+  JAVA_HOME_USED="$ROOT/.graalvm/current"
 fi
 JAVA_HOME="${JAVA_HOME_USED:-${JAVA_HOME:-}}"
 JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
