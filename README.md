@@ -1,6 +1,6 @@
 # php-truffle
 
-php-truffle is a PHP 8 subset interpreter written in Java on the Truffle framework, with an HTTP front end and a preemptive scheduler. Inspired by abertschi/graalphp (https://github.com/abertschi/graalphp), which used the Eclipse PDT parser and Truffle 20.2. This project is a fresh implementation: hand-written lexer and Pratt parser, Truffle 24.1 APIs (FrameDescriptor.Builder, ContextPolicy.SHARED, TruffleSafepoint, ThreadLocalAction).
+php-truffle is a PHP 8 subset interpreter written in Java on the Truffle framework, with an HTTP front end and a preemptive scheduler. Inspired by abertschi/graalphp (https://github.com/abertschi/graalphp), which used the Eclipse PDT parser and Truffle 20.2. This project is a fresh implementation: hand-written lexer and Pratt parser, Truffle 25.5 APIs (FrameDescriptor.Builder, ContextPolicy.SHARED, TruffleSafepoint, ThreadLocalAction).
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ scripts/demo.sh        # the preemption demo end to end
 Build and execution steps:
 
 - `mvn package`: compiles and packages the runtime into a JAR with runtime dependencies in `target/lib`. Requires JDK 21+.
-- `scripts/get-graalvm.sh` (optional): downloads GraalVM CE 23.0.2 into `./.graalvm`, which pairs with Truffle 24.1 and enables the Graal JIT; `bin/php-truffle` prefers it over `JAVA_HOME` (set `PHP_TRUFFLE_JAVA_HOME` to override).
+- `scripts/get-graalvm.sh` (optional): downloads GraalVM Community 25.5 (JDK 25) into `./.graalvm` and links it as `./.graalvm/current`; it pairs with Truffle 25.5 and enables the Graal JIT. `bin/php-truffle` prefers it over `JAVA_HOME` (set `PHP_TRUFFLE_JAVA_HOME` to override).
 - `bin/php-truffle script.php`: runs a PHP script in CLI mode and streams output to standard output and standard error.
 - `bin/php-truffle serve --port 8080 --cpus 1 --quantum-ms 10 --max-exec-ms 5000 www`: starts the HTTP server on port 8080, serving directory `www` with 1 CPU execution slot, a 10 ms time-slice quantum, and a 5000 ms per-request execution budget.
 - `curl 'localhost:8080/?name=World'`: executes `www/index.php` and returns the generated HTTP response.
