@@ -196,9 +196,7 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .charts .wide { grid-column: 1 / -1; }
 @media (max-width: 900px) { .charts { grid-template-columns: minmax(0, 1fr); } }
 .groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
-.wide .groups { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 32px; }
-@media (max-width: 1080px) { .wide .groups { grid-template-columns: minmax(0, 1fr); } }
-.wide .groups .row { grid-template-columns: 6.6em minmax(0, 1fr) 5.4em; gap: 10px; }
+.wide .groups { gap: 24px; }
 @media (max-width: 760px) { .groups { grid-template-columns: minmax(0, 1fr); } }
 .group { display: grid; gap: 12px; min-width: 0; }
 .group-label { font: 400 12px/1 var(--mono); color: var(--muted); }
