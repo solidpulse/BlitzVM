@@ -102,8 +102,17 @@ compute() { # $1 target: CPU-bound kernels on 1 worker, warm timings
   stop_all
 }
 
+mixed() { # $1 target: wait on a backend for 20 ms, then compute; 4 workers, 32 connections
+  local t="$1"
+  echo "################ $t mixed"
+  start "$t" "$THROUGHPUT_WORKERS"
+  echo "== throughput: compute.php?k=api&n=300 (usleep 20 ms + pixel loop), $THROUGHPUT_WORKERS workers, 32 connections"
+  $LOAD load "$BASE/compute.php?k=api&n=300" 32 "$LOAD_SECONDS"
+  stop_all
+}
+
 trap stop_all EXIT
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
-for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute for kernels only
+for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute or mixed

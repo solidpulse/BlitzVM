@@ -184,6 +184,11 @@ function run_kernel($k, $n) {
         case 'primes': $r = count_primes($n ?: 2000000); break;
         case 'gcd': $r = gcd_sum($n ?: 600); break;
         case 'pixels': $r = render_pixels($n ?: 800); break;
+        case 'api':
+            // An API-style request: wait 20 ms on a backend (database, HTTP call), then do real work.
+            usleep(20000);
+            $r = render_pixels($n ?: 300);
+            break;
         default: return "unknown kernel\n";
     }
     return sprintf("%s = %s in %.1f ms\n", $k, $r, (microtime(true) - $t) * 1000);
