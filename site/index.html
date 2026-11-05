@@ -89,7 +89,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .bench .rows { gap: 16px; }
 .hgroups { display: grid; gap: 18px; }
 .hgroup { display: grid; gap: 10px; }
-.bench .row { grid-template-columns: 7.6em minmax(0, 1fr) 6.6em; }
+.bench .row { grid-template-columns: 8.4em minmax(0, 1fr) 6.6em; }
 .bench .bar { height: 14px; border-radius: 4px; }
 .bench .bar i { border-radius: 4px; }
 .bench-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--rule); font: 400 12px/1.5 var(--mono); color: var(--muted); }
@@ -613,8 +613,8 @@ const DATA = {
     title: "An API-style request",
     unit: "wait 20 ms on a backend, then do some real work. 4 workers, 32 connections, higher is better.",
     rows: [
-      { who: "BlitzVM", us: true, v: 293 },
-      { who: "Swoole", note: "default", v: 193 },
+      { who: "PHP-BlitzVM", us: true, v: 293 },
+      { who: "PHP-Swoole", note: "default", v: 193 },
       { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
     ]
   },
