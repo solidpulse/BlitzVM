@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BlitzVM</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="BlitzVM is a research runtime that compiles PHP to machine code on GraalVM and time-slices every request.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column with wide bands for the hero timeline, benchmark grid and architecture diagram. */
+:root {
+  --bg: #F3F4F7;
+  --surface: #FFFFFF;
+  --ink: #12151C;
+  --muted: #5A6274;
+  --rule: #D8DCE4;
+  --bolt: #FFB71A;
+  --bolt-ink: #7A4D00;
+  --other: #C2C8D3;
+  --code-bg: #EBEEF3;
+  --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --measure: 66ch;
+  --wide: 1120px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1016; --surface: #151A23; --ink: #E8EBF1; --muted: #98A0B1; --rule: #283040;
+    --bolt: #FFC23D; --bolt-ink: #FFD27A; --other: #3A4354; --code-bg: #181E29;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1016; --surface: #151A23; --ink: #E8EBF1; --muted: #98A0B1; --rule: #283040;
+  --bolt: #FFC23D; --bolt-ink: #FFD27A; --other: #3A4354; --code-bg: #181E29;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 17px/1.6 var(--body);
+}
+a { color: inherit; text-decoration-color: var(--bolt); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--bolt); outline-offset: 3px; border-radius: 2px; }
+code, pre { font-family: var(--mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 3px; }
+
+.wrap {
+  max-width: var(--wide);
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.prose { max-width: var(--measure); }
+
+/* Header */
+.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 12px; }
+.mark { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.mark svg { width: 26px; height: 26px; flex: none; }
+.wordmark { font: 850 22px/1 var(--display); font-stretch: 125%; letter-spacing: -0.01em; }
+.top nav { display: flex; gap: 20px; flex-wrap: wrap; font-size: 14px; }
+.top nav a { text-decoration: none; color: var(--muted); }
+.top nav a:hover { color: var(--ink); }
+@media (max-width: 640px) { .top nav { display: none; } }
+
+/* Hero */
+.hero { padding-block: 64px 40px; }
+.eyebrow { font: 500 12px/1.4 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 18px; }
+.hero h1 {
+  font: 850 clamp(40px, 7.4vw, 88px)/0.95 var(--display);
+  font-stretch: 125%;
+  letter-spacing: -0.025em;
+  margin: 0 0 24px;
+  text-wrap: balance;
+  max-width: 15ch;
+}
+.hero h1 em { font-style: normal; background: linear-gradient(transparent 62%, var(--bolt) 62%, var(--bolt) 92%, transparent 92%); }
+.lede { font-size: 20px; line-height: 1.55; max-width: 60ch; margin: 0 0 32px; color: var(--ink); }
+.byline { font-size: 14px; color: var(--muted); margin: 0; }
+.byline strong { color: var(--ink); font-weight: 600; }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 2px solid var(--ink); margin-top: 48px; }
+.stat { padding: 18px 20px 4px 0; display: grid; gap: 6px; align-content: start; }
+.stat + .stat { padding-left: 20px; border-left: 1px solid var(--rule); }
+.stat b { font: 800 clamp(34px, 4.6vw, 52px)/1 var(--display); font-stretch: 112%; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat span { font-size: 14px; color: var(--muted); line-height: 1.45; }
+@media (max-width: 760px) {
+  .stats { grid-template-columns: 1fr; }
+  .stat, .stat + .stat { padding: 16px 0; border-left: 0; border-bottom: 1px solid var(--rule); }
+}
+
+/* Timeline */
+.timeline { margin-top: 48px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 22px 22px 18px; }
+.timeline h2 { font: 700 15px/1.3 var(--body); margin: 0 0 4px; }
+.timeline .sub { font-size: 14px; color: var(--muted); margin: 0 0 18px; }
+.lane { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; align-items: end; padding-top: 22px; margin-bottom: 10px; }
+.lane-name { font: 500 13px/1.3 var(--mono); }
+.lane-name small { display: block; color: var(--muted); font-size: 11.5px; }
+.track { position: relative; height: 34px; border-radius: 3px; background: var(--code-bg); }
+.seg { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.seg.spin { background: repeating-linear-gradient(135deg, var(--other) 0 6px, color-mix(in srgb, var(--other) 70%, var(--bg)) 6px 12px); }
+.seg.wait { top: 13px; bottom: 13px; background: none; border-top: 2px dashed var(--muted); border-radius: 0; }
+.seg.hello { background: var(--bolt); min-width: 6px; z-index: 1; }
+.seg.hello.late { background: var(--ink); }
+.flag { position: absolute; top: -2px; transform: translateY(-100%); font: 500 11.5px/1.2 var(--mono); white-space: nowrap; color: var(--ink); }
+.flag.right { transform: translate(-100%, -100%); }
+.axis { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; }
+.ticks { position: relative; height: 18px; font: 400 11px/1 var(--mono); color: var(--muted); border-top: 1px solid var(--rule); }
+.ticks span { position: absolute; top: 5px; transform: translateX(-50%); white-space: nowrap; }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+.legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+@media (max-width: 640px) {
+  .lane, .axis { grid-template-columns: 1fr; gap: 6px; }
+  .axis > :first-child { display: none; }
+  .lane .track { margin-top: 22px; }
+}
+
+/* Sections */
+section { padding-block: 72px 8px; }
+.section-head { display: grid; gap: 10px; margin-bottom: 32px; }
+h2.title {
+  font: 800 clamp(30px, 4.4vw, 46px)/1.02 var(--display);
+  font-stretch: 118%;
+  letter-spacing: -0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+.section-head p { margin: 0; color: var(--muted); max-width: var(--measure); }
+
+/* Why it's fast */
+.reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 44px 56px; }
+@media (max-width: 860px) { .reasons { grid-template-columns: 1fr; } }
+.reason { min-width: 0; }
+.reason h3 { font: 700 20px/1.25 var(--body); margin: 0 0 10px; text-wrap: balance; }
+.reason p { margin: 0 0 12px; }
+.reason .k { font: 500 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--bolt-ink); margin-bottom: 8px; display: block; }
+pre.code {
+  margin: 14px 0 0; padding: 16px 18px; overflow-x: auto;
+  background: var(--code-bg); border-radius: 6px; line-height: 1.5; font-size: 13.5px;
+}
+pre.code .c { color: var(--muted); }
+pre.code .a { color: var(--bolt-ink); }
+
+/* Benchmarks */
+.bench-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 860px) { .bench-grid { grid-template-columns: 1fr; } }
+.chart { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 22px; min-width: 0; display: grid; gap: 14px; align-content: start; }
+.chart.wide { grid-column: 1 / -1; }
+.chart.wide .groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 40px; }
+@media (max-width: 860px) { .chart.wide .groups { grid-template-columns: 1fr; } }
+.chart h3 { font: 700 17px/1.3 var(--body); margin: 0; text-wrap: balance; }
+.chart .what { font-size: 14px; color: var(--muted); margin: -8px 0 0; }
+.rows { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 9.5em minmax(0, 1fr) 6.2em; gap: 12px; align-items: center; font-size: 14px; }
+.row .who { line-height: 1.25; }
+.row .who small { display: block; color: var(--muted); font-size: 12px; }
+.bar { height: 22px; background: var(--code-bg); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; min-width: 4px; background: var(--other); border-radius: 3px; }
+.row.us .bar i { background: var(--bolt); }
+.row.us .who { font-weight: 600; }
+.val { font: 500 13.5px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.row.us .val { font-weight: 600; }
+.verdict { font-size: 14px; border-top: 1px solid var(--rule); padding-top: 12px; margin: 0; }
+.verdict b { color: var(--bolt-ink); }
+.group-label { font: 500 12px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+@media (max-width: 480px) { .row { grid-template-columns: 7.5em minmax(0, 1fr) 5.4em; gap: 8px; font-size: 13px; } }
+
+/* Architecture */
+.diagram { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.diagram .box { fill: var(--surface); stroke: var(--ink); stroke-width: 1.4; }
+.diagram .box.ext { fill: var(--code-bg); }
+.diagram .box.hot { fill: var(--bolt); stroke: var(--ink); }
+.diagram .boundary { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 6 5; }
+.diagram .t { fill: var(--ink); font: 600 14px var(--body); }
+.diagram .t.hot { fill: #12151C; }
+.diagram .ts { fill: var(--muted); font: 400 11.5px var(--mono); }
+.diagram .ts.hot { fill: #3A2A00; }
+.diagram .lbl { fill: var(--ink); font: 500 11.5px var(--mono); paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+.diagram .bl { fill: var(--muted); font: 700 13px var(--display); letter-spacing: 0.04em; }
+.diagram .edge { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.diagram .edge.pre { stroke: var(--bolt-ink); stroke-width: 1.8; stroke-dasharray: 5 4; }
+.diagram .head { fill: var(--ink); }
+.diagram .head.pre { fill: var(--bolt-ink); }
+.diagram .head.open { fill: var(--surface); stroke: var(--ink); stroke-width: 1.4; }
+.diagram-notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 28px; }
+.diagram-notes div { min-width: 0; font-size: 15px; }
+.diagram-notes b { display: block; margin-bottom: 4px; }
+@media (max-width: 860px) { .diagram-notes { grid-template-columns: 1fr; gap: 18px; } }
+
+/* Roadmap */
+.road { display: grid; gap: 0; border-top: 2px solid var(--ink); }
+.road > div { display: grid; grid-template-columns: 11em minmax(0, 1fr); gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--rule); }
+.road .state { font: 500 12px/1.6 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.road .state.now { color: var(--bolt-ink); }
+.road h3 { font: 700 18px/1.3 var(--body); margin: 0 0 6px; }
+.road p { margin: 0; max-width: var(--measure); }
+@media (max-width: 640px) { .road > div { grid-template-columns: 1fr; gap: 6px; } }
+
+/* Method + access */
+.method { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 48px; font-size: 15px; }
+.method dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 20px; }
+.method dt { color: var(--muted); }
+.method dd { margin: 0; }
+@media (max-width: 760px) { .method { grid-template-columns: 1fr; } .method dl { grid-template-columns: 1fr; gap: 2px; } .method dd { margin-bottom: 10px; } }
+
+.access { margin-top: 80px; background: var(--ink); color: var(--bg); }
+.access .wrap { padding-block: 56px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 40px; align-items: end; }
+.access h2 { font: 850 clamp(30px, 4.6vw, 48px)/1 var(--display); font-stretch: 125%; letter-spacing: -0.02em; margin: 0 0 16px; }
+.access p { margin: 0; max-width: 56ch; color: color-mix(in srgb, var(--bg) 80%, var(--ink)); }
+.access .who { font-size: 15px; display: grid; gap: 4px; }
+.access .who b { font: 700 20px/1.2 var(--body); color: var(--bg); }
+@media (max-width: 760px) { .access .wrap { grid-template-columns: 1fr; } }
+footer { padding-block: 24px 40px; font-size: 13px; color: var(--muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bar i { transition: width 900ms cubic-bezier(.2,.7,.2,1); }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="#top" aria-label="BlitzVM home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="var(--ink)"/><path d="M18.5 4 8 18h7l-2 10 11-15h-7.2z" fill="var(--bolt)"/></svg>
+      <span class="wordmark">BlitzVM</span>
+    </a>
+    <nav aria-label="Sections">
+      <a href="#why">Why it is fast</a>
+      <a href="#benchmarks">Benchmarks</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#access">Access</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <p class="eyebrow">Research runtime · PHP today, Node.js-compatible environments next</p>
+    <h1>PHP, compiled to machine code and <em>never starved</em>.</h1>
+    <p class="lede">BlitzVM runs PHP on GraalVM. Hot code is partially evaluated into machine code, every request runs in its own isolated context, and a preemptive scheduler time-slices CPU-bound requests so one slow script cannot block everyone else.</p>
+    <p class="byline">Research by <strong>Avinash D'Silva</strong></p>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="timeline" aria-label="Timeline of a hello request arriving while a 4 second CPU-bound request runs">
+      <h2>One worker, one 4-second CPU loop, then a hello request</h2>
+      <p class="sub">What a visitor waits for when another request is busy computing. Drawn to scale.</p>
+      <div id="lanes"></div>
+      <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
+      <div class="legend">
+        <span><i style="background:repeating-linear-gradient(135deg,var(--other) 0 4px,color-mix(in srgb,var(--other) 70%,var(--bg)) 4px 8px)"></i>CPU-bound request</span>
+        <span><i style="background:none;border-top:2px dashed var(--muted);height:0;vertical-align:3px"></i>hello request waiting</span>
+        <span><i style="background:var(--bolt)"></i>hello answered</span>
+      </div>
+    </div>
+  </div>
+
+  <section id="why">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Why it is fast</p>
+        <h2 class="title">Four design decisions, each measurable</h2>
+      </div>
+      <div class="reasons">
+        <article class="reason">
+          <span class="k">Execution</span>
+          <h3>The interpreter specializes itself, then Graal compiles it</h3>
+          <p>PHP source is parsed by a hand-written lexer and Pratt parser into a tree of Truffle nodes. Each node rewrites itself to the types it actually sees. An <code>+</code> that has only seen integers becomes a single machine add with an overflow check, and falls back to floats only if a value overflows, exactly as PHP 8 specifies.</p>
+          <p>Once a function is hot, Graal partially evaluates the interpreter together with the specialized tree and emits machine code. Call sites cache their target, so user functions are inlined across calls. That is why recursive, loop-heavy PHP runs several times faster than opcache, including opcache's own tracing JIT.</p>
+          <pre class="code"><span class="c">// Integer path: one add and an overflow branch.</span>
+<span class="a">@Specialization</span>(rewriteOn = ArithmeticException.class)
+long doLong(long a, long b) { return Math.addExact(a, b); }
+
+<span class="a">@Specialization</span>
+double doDouble(double a, double b) { return a + b; }</pre>
+        </article>
+        <article class="reason">
+          <span class="k">Scheduling</span>
+          <h3>Preemption at guest safepoints, also inside compiled code</h3>
+          <p>A request needs one of N CPU slots to run. A ticker checks every half quantum. When a request has used its 10 ms quantum and others are waiting, the scheduler queues an action on that request's thread. The action runs at the next guest safepoint and hands the slot to the next request in line.</p>
+          <p>Graal compiles those safepoint checks into the machine code it emits, at loop back-edges and calls, so preemption keeps working after a hot loop has been JIT-compiled. php-fpm cannot do this: one process serves one request until it finishes. Swoole's default coroutine scheduler only switches at I/O.</p>
+        </article>
+        <article class="reason">
+          <span class="k">Isolation</span>
+          <h3>Shared compiled code, private request state</h3>
+          <p>All requests share one engine, which holds the parsed trees and the machine code Graal produced. Each request gets a fresh context with its own globals, so requests share nothing, as under php-fpm, without re-parsing or re-compiling anything.</p>
+          <p>CPU time is charged per request. A runaway script is cancelled when it exceeds its budget and gets a PHP-style fatal error, while the process and every other request keep running.</p>
+        </article>
+        <article class="reason">
+          <span class="k">Front end</span>
+          <h3>Netty with native epoll, and PHP never runs on the event loop</h3>
+          <p>HTTP is parsed by Netty on its native epoll transport. Event-loop threads only read and write sockets; each request is handed to a worker that waits for a CPU slot. There is one process and one hop, where php-fpm needs nginx, FastCGI and a pool process.</p>
+          <p>Each connection answers pipelined requests in order from a small queue and stops reading while a request is in flight, which gives the server natural backpressure against clients that queue unbounded work.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="benchmarks">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Benchmarks</p>
+        <h2 class="title">Measured against php-fpm and Swoole</h2>
+        <p>Same machine, same PHP files, closed-loop load over raw keep-alive sockets after a 15 second warm-up. Details are under Methodology below.</p>
+      </div>
+      <div class="bench-grid" id="charts"></div>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Architecture</p>
+        <h2 class="title">How a request becomes machine code</h2>
+        <p>The language implementation plugs into Truffle. Graal compiles the specialized tree. The request path around it is the scheduler and the isolation model, which do not depend on PHP.</p>
+      </div>
+      <div class="diagram">
+        <svg viewBox="0 0 900 560" role="img" aria-labelledby="arch-title arch-desc">
+          <title id="arch-title">BlitzVM architecture</title>
+          <desc id="arch-desc">GraalVM's Graal compiler compiles and Truffle executes the self-specializing PHP tree. The PHP language implementation uses the lexer and parser to build that tree. HTTP requests enter through Netty, wait for a CPU slot in the scheduler, and run in an isolated context on a shared engine. The scheduler preempts running code at safepoints.</desc>
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="head" d="M0 0 10 5 0 10z"/></marker>
+            <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="head pre" d="M0 0 10 5 0 10z"/></marker>
+            <marker id="tri" viewBox="0 0 14 14" refX="13" refY="7" markerWidth="13" markerHeight="13" orient="auto"><path class="head open" d="M1 1 13 7 1 13z"/></marker>
+          </defs>
+
+          <!-- external: GraalVM -->
+          <rect class="box ext" x="285" y="16" width="190" height="58" rx="2"/>
+          <text class="t" x="380" y="41" text-anchor="middle">Graal JIT compiler</text>
+          <text class="ts" x="380" y="60" text-anchor="middle">partial evaluation</text>
+          <rect class="box ext" x="640" y="16" width="200" height="58" rx="2"/>
+          <text class="t" x="740" y="41" text-anchor="middle">Truffle framework</text>
+          <text class="ts" x="740" y="60" text-anchor="middle">nodes, frames, safepoints</text>
+
+          <!-- boundary -->
+          <rect class="boundary" x="178" y="108" width="702" height="436" rx="4"/>
+          <text class="bl" x="196" y="530">BLITZVM</text>
+
+          <!-- AST -->
+          <rect class="box hot" x="285" y="150" width="190" height="66" rx="12"/>
+          <text class="t hot" x="380" y="178" text-anchor="middle">Specializing AST</text>
+          <text class="ts hot" x="380" y="198" text-anchor="middle">typed fast paths</text>
+          <path class="edge" d="M285 196 H238 V128 H330 V148" marker-end="url(#ah)"/>
+          <text class="lbl" x="200" y="166">rewrites</text>
+
+          <!-- parser + language -->
+          <rect class="box" x="285" y="270" width="190" height="58" rx="2"/>
+          <text class="t" x="380" y="295" text-anchor="middle">Lexer + Pratt parser</text>
+          <text class="ts" x="380" y="314" text-anchor="middle">hand-written</text>
+          <rect class="box" x="640" y="262" width="200" height="74" rx="2"/>
+          <text class="t" x="740" y="290" text-anchor="middle">PHP language</text>
+          <text class="ts" x="740" y="309" text-anchor="middle">TruffleLanguage</text>
+          <text class="ts" x="740" y="325" text-anchor="middle">179 builtins</text>
+
+          <!-- source -->
+          <path class="box ext" d="M30 262 H122 L142 282 V338 H30 Z"/>
+          <path class="edge" d="M122 262 V282 H142" style="stroke-width:1.2"/>
+          <text class="t" x="84" y="302" text-anchor="middle">PHP</text>
+          <text class="t" x="84" y="320" text-anchor="middle">source</text>
+
+          <!-- request path -->
+          <rect class="box ext" x="30" y="420" width="112" height="58" rx="2"/>
+          <text class="t" x="86" y="446" text-anchor="middle">HTTP</text>
+          <text class="t" x="86" y="464" text-anchor="middle">clients</text>
+          <rect class="box" x="208" y="416" width="176" height="66" rx="2"/>
+          <text class="t" x="296" y="442" text-anchor="middle">Netty front end</text>
+          <text class="ts" x="296" y="462" text-anchor="middle">native epoll</text>
+          <rect class="box hot" x="428" y="416" width="176" height="66" rx="2"/>
+          <text class="t hot" x="516" y="442" text-anchor="middle">Scheduler</text>
+          <text class="ts hot" x="516" y="462" text-anchor="middle">N slots · 10 ms quantum</text>
+          <rect class="box" x="648" y="416" width="192" height="66" rx="2"/>
+          <text class="t" x="744" y="442" text-anchor="middle">Request contexts</text>
+          <text class="ts" x="744" y="462" text-anchor="middle">isolated, one per request</text>
+
+          <!-- edges -->
+          <path class="edge" d="M380 74 V148" marker-end="url(#ah)"/>
+          <text class="lbl" x="390" y="100">compiles</text>
+          <path class="edge" d="M690 74 L478 180" marker-end="url(#ah)"/>
+          <text class="lbl" x="560" y="122">executes</text>
+          <path class="edge" d="M780 262 V76" marker-end="url(#tri)"/>
+          <text class="lbl" x="790" y="176">implements</text>
+          <path class="edge" d="M640 284 L478 206" marker-end="url(#ah)"/>
+          <text class="lbl" x="528" y="236">builds</text>
+          <path class="edge" d="M640 306 H478" marker-end="url(#ah)"/>
+          <text class="lbl" x="540" y="324">uses</text>
+          <path class="edge" d="M285 299 H145" marker-end="url(#ah)"/>
+          <text class="lbl" x="192" y="291">parses</text>
+
+          <path class="edge" d="M142 449 H205" marker-end="url(#ah)"/>
+          <path class="edge" d="M384 449 H425" marker-end="url(#ah)"/>
+          <path class="edge" d="M604 449 H645" marker-end="url(#ah)"/>
+          <path class="edge" d="M744 416 V339" marker-end="url(#ah)"/>
+          <text class="lbl" x="752" y="384">runs in</text>
+          <path class="edge pre" d="M500 416 L438 219" marker-end="url(#ahp)"/>
+          <text class="lbl" x="342" y="372">preempts at safepoints</text>
+        </svg>
+      </div>
+      <div class="diagram-notes">
+        <div><b>Parse once</b>The parsed tree is cached per file on the shared engine and reused by every request until the file changes.</div>
+        <div><b>Compile once</b>Machine code produced by Graal belongs to the engine, so the second request to a hot page starts out compiled.</div>
+        <div><b>Isolate every request</b>Globals, output buffer, headers and CPU budget live in the request's own context, which is discarded afterwards.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Roadmap</p>
+        <h2 class="title">From PHP to Node.js-compatible environments</h2>
+        <p>The scheduler, the isolation model and the HTTP front end do not depend on PHP. PHP is the first language because its request model makes the scheduling and isolation results easy to measure against established servers.</p>
+      </div>
+      <div class="road">
+        <div><span class="state now">Working</span><div><h3>PHP 8 core</h3><p>Functions with defaults and by-reference arguments, copy-on-write arrays, PHP 8 type juggling and integer overflow, alternative syntax, templates, superglobals, headers and status codes, and 179 builtins. Output is checked against PHP 8.5 on a conformance suite.</p></div></div>
+        <div><span class="state now">Prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Running request contexts on Java virtual threads lets a sleeping or waiting request cost almost nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span id="vt-virtual"></span>, against <span id="vt-pool"></span> on a 64-thread pool.</p></div></div>
+        <div><span class="state">Next</span><div><h3>Classes, closures and include</h3><p>The rest of the PHP language surface needed to run real applications.</p></div></div>
+        <div><span class="state">Next</span><div><h3>Builtins as compiled nodes</h3><p>Hot builtins such as <code>strlen</code>, <code>count</code> and <code>microtime</code> rewritten as Truffle nodes, so Graal can inline them into the surrounding code.</p></div></div>
+        <div><span class="state">Planned</span><div><h3>Node.js-compatible environments</h3><p>JavaScript workloads on the same core: preemptive time slicing for event-loop code, per-request isolation, and the shared compiled engine.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="method">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Methodology</p>
+        <h2 class="title">How the numbers were taken</h2>
+      </div>
+      <div class="method">
+        <dl>
+          <dt>Machine</dt><dd>8 cores, Linux 6.8, client and servers on the same host</dd>
+          <dt>BlitzVM</dt><dd>GraalVM Community 25.5 (JDK 25), Truffle 25.5, Netty 4.2 epoll</dd>
+          <dt>php-fpm</dt><dd>PHP 8.5, opcache on, static pool, nginx in front; also with <code>opcache.jit=tracing</code></dd>
+          <dt>Swoole</dt><dd>Swoole 6.2 on PHP 8.4, default configuration, <code>SWOOLE_HOOK_ALL</code></dd>
+        </dl>
+        <dl>
+          <dt>Load</dt><dd>Closed loop, 32 keep-alive connections over raw sockets, 15 s warm-up, 10 s measured</dd>
+          <dt>Workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM CPU slots), 1 for the latency scenarios</dd>
+          <dt>Compute</dt><dd>Time measured inside the script with <code>microtime</code>, after five warm-up requests</dd>
+          <dt>Latency</dt><dd>Hello requests every 300 ms while a 4 s CPU loop holds the only worker; load-generator start-up excluded</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+</main>
+
+<section class="access" id="access">
+  <div class="wrap">
+    <div>
+      <h2>Source available on request</h2>
+      <p>The repository is private while papers on the scheduling and isolation work are in preparation. Access is granted on request to reviewers, researchers and teams evaluating the work.</p>
+    </div>
+    <div class="who">
+      <span>Research and implementation</span>
+      <b>Avinash D'Silva</b>
+    </div>
+  </div>
+</section>
+<footer><div class="wrap">BlitzVM is an independent research project. PHP, GraalVM, Swoole and Netty are the names of their respective projects.</div></footer>
+
+<script>
+/* All benchmark numbers on the page come from this block. */
+const DATA = {
+  stats: [
+    { value: "5×", label: "faster than PHP 8.5 with the opcache tracing JIT on compiled compute (fib)" },
+    { value: "~5 ms", label: "for other requests to be answered while a CPU-bound request runs, against about 3.5 s on php-fpm and default Swoole" },
+    { value: "1.9×", label: "the requests per second of php-fpm behind nginx on hello.php" }
+  ],
+  timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
+  charts: [
+    {
+      title: "Compute: fib(27), warm",
+      what: "Recursive function calls and integer arithmetic. Lower is better.",
+      unit: "ms", lower: true,
+      rows: [
+        { who: "BlitzVM", us: true, v: 1.4 },
+        { who: "php-fpm", note: "opcache", v: 7.5 },
+        { who: "php-fpm", note: "opcache tracing JIT", v: 7.0 },
+        { who: "Swoole", note: "default", v: 8.5 }
+      ]
+    },
+    {
+      title: "A hello request while a 4 s CPU loop runs",
+      what: "One worker. Time until the hello request is answered. Lower is better.",
+      verdict: "answered in milliseconds instead of waiting for the loop to finish",
+      unit: "ms", lower: true,
+      rows: [
+        { who: "BlitzVM", us: true, v: 5 },
+        { who: "php-fpm", note: "opcache", v: 3450 },
+        { who: "php-fpm", note: "opcache tracing JIT", v: 3455 },
+        { who: "Swoole", note: "default", v: 3480 }
+      ]
+    },
+    {
+      wide: true,
+      title: "Throughput against php-fpm behind nginx",
+      what: "4 workers, 32 keep-alive connections. Requests per second. Higher is better.",
+      unit: "req/s", lower: false,
+      groups: [
+        { label: "hello.php", rows: [
+          { who: "BlitzVM", us: true, v: 57967 },
+          { who: "php-fpm", note: "nginx + opcache", v: 31121 }
+        ]},
+        { label: "index.php template", rows: [
+          { who: "BlitzVM", us: true, v: 50060 },
+          { who: "php-fpm", note: "nginx + opcache", v: 28357 }
+        ]}
+      ]
+    }
+  ],
+  virtualThreads: { virtualMs: 378, poolMs: 6432 }
+};
+
+const fmt = (v, unit) => {
+  if (unit === "req/s") return Math.round(v).toLocaleString("en-US");
+  if (v >= 100) return Math.round(v).toLocaleString("en-US") + " ms";
+  return (v < 10 ? v.toFixed(1) : Math.round(v).toString()) + " ms";
+};
+
+function rowsHtml(rows, max, unit) {
+  return rows.map(r => {
+    const pct = Math.max(0.6, (r.v / max) * 100);
+    return `<div class="row${r.us ? " us" : ""}">
+      <span class="who">${r.who}${r.note ? `<small>${r.note}</small>` : ""}</span>
+      <span class="bar"><i style="width:${pct.toFixed(2)}%"></i></span>
+      <span class="val">${fmt(r.v, unit)}</span></div>`;
+  }).join("");
+}
+
+function verdict(chart) {
+  if (chart.verdict) return `<p class="verdict">BlitzVM: <b>${chart.verdict}</b></p>`;
+  const groups = chart.groups || [{ rows: chart.rows }];
+  const parts = groups.map(g => {
+    const us = g.rows.find(r => r.us);
+    const others = g.rows.filter(r => !r.us);
+    if (chart.lower) {
+      const best = Math.min(...others.map(r => r.v));
+      return `${(best / us.v).toFixed(best / us.v >= 10 ? 0 : 1)}× faster than the best alternative`;
+    }
+    const best = Math.max(...others.map(r => r.v));
+    return `${g.label ? g.label + ": " : ""}${(us.v / best).toFixed(1)}× the requests per second`;
+  });
+  return `<p class="verdict">BlitzVM: <b>${parts.join("; ")}</b></p>`;
+}
+
+function renderCharts() {
+  const host = document.getElementById("charts");
+  host.innerHTML = DATA.charts.map(c => {
+    const all = (c.groups ? c.groups.flatMap(g => g.rows) : c.rows).map(r => r.v);
+    const max = Math.max(...all);
+    const body = c.groups
+      ? `<div class="groups">${c.groups.map(g => `<div style="display:grid;gap:10px;min-width:0"><div class="group-label">${g.label}</div><div class="rows">${rowsHtml(g.rows, max, c.unit)}</div></div>`).join("")}</div>`
+      : `<div class="rows">${rowsHtml(c.rows, max, c.unit)}</div>`;
+    return `<figure class="chart${c.wide ? " wide" : ""}" style="margin:0"><h3>${c.title}</h3><p class="what">${c.what}</p>${body}${verdict(c)}</figure>`;
+  }).join("");
+}
+
+function renderStats() {
+  document.getElementById("stats").innerHTML = DATA.stats
+    .map(s => `<div class="stat"><b>${s.value}</b><span>${s.label}</span></div>`).join("");
+}
+
+function renderTimeline() {
+  const t = DATA.timeline, span = t.hogSeconds * 1000, at = t.helloAt * 1000;
+  const pct = ms => (ms / span) * 100;
+  const fpmDone = Math.min(span, at + t.fpmMs);
+  const lanes = [
+    { name: "php-fpm", sub: "1 worker",
+      segs: `<span class="seg spin" style="left:0;width:100%"></span>
+             <span class="seg wait" style="left:${pct(at)}%;width:${pct(fpmDone - at)}%"></span>
+             <span class="seg hello late" style="left:calc(${pct(fpmDone)}% - 6px);width:6px"></span>
+             <span class="flag right" style="left:100%">hello answered after ${fmt(t.fpmMs, "ms").replace(" ms", "")} ms</span>` },
+    { name: "BlitzVM", sub: "1 CPU slot",
+      segs: `<span class="seg spin" style="left:0;width:100%"></span>
+             <span class="seg hello" style="left:${pct(at)}%;width:${Math.max(pct(t.blitzMs), 0.2)}%"></span>
+             <span class="flag" style="left:${pct(at)}%">hello answered after ${fmt(t.blitzMs, "ms")}</span>` }
+  ];
+  document.getElementById("lanes").innerHTML = lanes.map(l =>
+    `<div class="lane"><span class="lane-name">${l.name}<small>${l.sub}</small></span><div class="track">${l.segs}</div></div>`).join("");
+}
+
+function renderRoadmap() {
+  const v = DATA.virtualThreads;
+  document.getElementById("vt-virtual").textContent = (v.virtualMs / 1000).toFixed(2) + " s";
+  document.getElementById("vt-pool").textContent = (v.poolMs / 1000).toFixed(1) + " s";
+}
+
+renderStats();
+renderTimeline();
+renderCharts();
+renderRoadmap();
+</script>
+</body>
+</html>
