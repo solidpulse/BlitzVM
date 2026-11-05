@@ -97,6 +97,22 @@ deep recursion, integer loops with branches and code made of small user function
 Graal inlines across calls; the JIT wins on float loops and on loops dominated by `%`.
 Sieve is slow because large array writes take the generic array path.
 
+## API-style requests: a backend wait, then compute
+
+`SCENARIO=mixed bench/run.sh`: each request does `usleep(20000)` (standing in for a
+database or HTTP call) and then the pixel loop on 300 x 300. 4 workers, 32 connections,
+15 s warm-up, 10 s measured. php-fpm has the tracing JIT on.
+
+| | req/s | p50 | p99 |
+|---|---|---|---|
+| php-fpm, tracing JIT | 136 | 234 ms | 281 ms |
+| Swoole | 193 | 141 ms | 478 ms |
+| php-truffle | 293 to 325 | 81 to 96 ms | 214 to 229 ms |
+
+php-fpm workers sit idle through each wait. Swoole overlaps the waits but runs the
+compute part without a JIT. php-truffle releases its CPU slot during the wait and runs
+the compute part compiled.
+
 ## Architecture comparison
 
 | | php-fpm | Swoole | php-truffle |

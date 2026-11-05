@@ -211,7 +211,7 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .row.us .val { color: var(--amber); font-weight: 600; }
 @media (max-width: 480px) { .row { grid-template-columns: 6.8em minmax(0, 1fr) 5.6em; gap: 10px; font-size: 13px; } }
 
-/* Architecture (Fig. 4) */
+/* Architecture (Fig. 5) */
 .diagram { overflow-x: auto; }
 .diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .diagram .box { fill: var(--raised); stroke: var(--rule-strong); stroke-width: 1.2; }
@@ -506,7 +506,7 @@ $server-&gt;start();</pre>
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 4</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
+        <figcaption><b>Fig. 5</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
       </figure>
       <div class="notes">
         <div><b>Parsed once</b>Each file's tree is cached on the shared engine until the file changes.</div>
@@ -543,6 +543,7 @@ $server-&gt;start();</pre>
         <dt>load</dt><dd>Closed loop, 32 keep-alive connections over raw sockets, 15 s warm-up, 10 s measured</dd>
         <dt>workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM CPU slots), 1 for the latency scenario</dd>
         <dt>compute</dt><dd>Time measured inside the script with <code>microtime</code>; 12 runs per workload, one worker, median of the last three. Kernels in <code>www/compute.php</code></dd>
+        <dt>api request</dt><dd><code>compute.php?k=api</code>: <code>usleep(20000)</code>, then the pixel loop on 300 × 300; 15 s warm-up, 10 s measured</dd>
         <dt>latency</dt><dd>Hello requests every 300 ms while a 4 s CPU loop holds the only worker; load-generator start-up excluded</dd>
       </dl>
     </section>
@@ -576,6 +577,18 @@ const DATA = {
   charts: [
     {
       fig: 2,
+      wide: true,
+      title: "An API-style request: wait on a backend, then do some work",
+      unit: "requests per second, 4 workers, 32 connections, higher is better",
+      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits but can't JIT the work afterwards. BlitzVM gets both. php-fpm here has the tracing JIT on.",
+      rows: [
+        { who: "BlitzVM", us: true, v: 293 },
+        { who: "Swoole", note: "default", v: 193 },
+        { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
+      ]
+    },
+    {
+      fig: 3,
       title: "Hello request while a 4 s loop runs",
       unit: "ms until it's answered, lower is better",
       caption: "One worker. Anything that can't preempt just has to wait for the loop.",
@@ -587,7 +600,7 @@ const DATA = {
       ]
     },
     {
-      fig: 3,
+      fig: 4,
       title: "Requests per second vs php-fpm + nginx",
       unit: "4 workers, 32 connections, higher is better",
       caption: "A good part of this is just fewer hops. php-fpm goes from nginx over FastCGI to a pool process and starts the script from opcache every time.",
