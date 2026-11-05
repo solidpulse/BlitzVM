@@ -69,7 +69,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 /* Page grid */
 .layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 56px; padding-block: 0 40px; }
-.toc { position: sticky; top: 92px; align-self: start; padding-top: 72px; }
+.toc { position: sticky; top: 92px; align-self: start; padding-top: 64px; }
 .toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; border-left: 1px solid var(--rule); }
 .toc a { display: grid; grid-template-columns: 2.2em 1fr; padding: 5px 0 5px 14px; margin-left: -1px; border-left: 1px solid transparent; font-size: 13.5px; color: var(--muted); text-decoration: none; }
 .toc a span { font: 400 12px/1.7 var(--mono); }
@@ -78,7 +78,27 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 0; } .toc { display: none; } }
 
 /* Hero */
-.hero { padding-block: 72px 32px; border-bottom: 1px solid var(--rule); }
+.hero { padding-block: 64px 36px; border-bottom: 1px solid var(--rule); }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; }
+@media (max-width: 960px) { .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; } }
+.hero-copy { min-width: 0; }
+
+.bench { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px 16px; min-width: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+.tabs button {
+  font: 500 12.5px/1 var(--mono); color: var(--muted); background: transparent;
+  border: 1px solid var(--rule-strong); border-radius: 999px; padding: 8px 12px; cursor: pointer;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+.bench-title { font: 600 15px/1.35 var(--sans); color: var(--ink); margin: 0 0 4px; }
+.bench-unit { font: 400 12px/1.4 var(--mono); color: var(--muted); margin: 0 0 20px; }
+.bench .rows { gap: 16px; }
+.bench .row { grid-template-columns: 7.6em minmax(0, 1fr) 6.6em; }
+.bench .bar { height: 14px; border-radius: 4px; }
+.bench .bar i { border-radius: 4px; }
+.bench-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--rule); font: 400 12px/1.5 var(--mono); color: var(--muted); }
+.bench-foot b { color: var(--amber); font-weight: 600; }
 .eyebrow { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 400 12px/1.5 var(--mono); color: var(--muted); margin: 0 0 28px; }
 .eyebrow span::before { content: "/ "; color: var(--rule-strong); }
 .eyebrow span:first-child::before { content: none; }
@@ -88,7 +108,7 @@ h1 {
   letter-spacing: -0.028em;
   color: var(--ink);
   margin: 0 0 24px;
-  max-width: 17ch;
+  max-width: 14ch;
   text-wrap: balance;
 }
 h1 em { font-style: italic; font-weight: 400; color: var(--amber); }
@@ -100,16 +120,6 @@ h1 em { font-style: italic; font-weight: 400; color: var(--amber); }
 .components li { font: 400 12.5px/1 var(--mono); color: var(--soft); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 8px 12px; }
 .components li.own { color: var(--ink); border-color: var(--amber-dim); }
 .components li.own::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-right: 8px; vertical-align: 1px; }
-
-.figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 40px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); }
-.figures div { padding: 20px 22px; display: grid; gap: 8px; align-content: start; min-width: 0; }
-.figures div + div { border-left: 1px solid var(--rule); }
-.figures b { font: 500 34px/1 var(--mono); color: var(--amber); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.figures span { font-size: 14px; line-height: 1.5; color: var(--muted); }
-@media (max-width: 720px) {
-  .figures { grid-template-columns: 1fr; }
-  .figures div + div { border-left: 0; border-top: 1px solid var(--rule); }
-}
 
 /* Sections */
 section { padding-block: 64px 8px; }
@@ -253,10 +263,38 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
   </div>
 </header>
 
+<div class="wrap">
+  <div class="hero" id="overview">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow"><span>Research runtime</span><span>PHP first</span><span>Node.js-compatible next</span></p>
+        <h1>A <em>preemptive</em> runtime for <span style="white-space:nowrap">server-side</span> languages.</h1>
+        <p class="lede">Built around two ideas: no request should be able to starve the others, and no request should see another's state. BlitzVM compiles hot code to machine code, time-slices every request and isolates each one in its own context.</p>
+        <p class="byline">Research and implementation by <b>Avinash D'Silva</b></p>
+        <ul class="components" aria-label="Components">
+          <li class="own">PHP 8 front end</li>
+          <li class="own">self-specializing AST</li>
+          <li class="own">preemptive scheduler</li>
+          <li class="own">per-request isolation</li>
+          <li class="own">epoll HTTP server</li>
+        </ul>
+      </div>
+      <div class="bench" id="hero-chart" aria-label="Benchmark summary"></div>
+    </div>
+
+    <figure class="fig hero-fig">
+      <h3>A hello request arrives while a 4 s CPU loop holds the only worker</h3>
+      <p class="unit">time since the CPU loop started, drawn to scale</p>
+      <div id="lanes"></div>
+      <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
+      <figcaption><b>Fig. 1</b>php-fpm runs one request per process, so the hello request waits for the loop to finish. BlitzVM preempts the loop at its next safepoint and answers in milliseconds.</figcaption>
+    </figure>
+  </div>
+</div>
+
 <div class="wrap layout">
   <nav class="toc" aria-label="Contents">
     <ol>
-      <li><a href="#overview"><span>01</span>Overview</a></li>
       <li><a href="#why"><span>02</span>Why it is fast</a></li>
       <li><a href="#benchmarks"><span>03</span>Benchmarks</a></li>
       <li><a href="#architecture"><span>04</span>Architecture</a></li>
@@ -267,37 +305,11 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
   </nav>
 
   <main class="content">
-    <div class="hero" id="overview">
-      <p class="eyebrow"><span>Research runtime</span><span>PHP first</span><span>Node.js-compatible environments next</span></p>
-      <h1>A <em>preemptive</em> runtime for server-side languages.</h1>
-      <p class="lede">BlitzVM is a new runtime built around two ideas: no request should be able to starve the others, and no request should see another's state. It has its own parser, self-specializing interpreter, scheduler, isolation model and HTTP server. Hot code is compiled to machine code through the Graal compiler, which BlitzVM uses as its JIT back end, much as many languages use LLVM.</p>
-      <p class="byline">Research and implementation by <b>Avinash D'Silva</b></p>
-
-      <ul class="components" aria-label="Components">
-        <li class="own">PHP 8 front end</li>
-        <li class="own">self-specializing AST</li>
-        <li class="own">preemptive scheduler</li>
-        <li class="own">per-request isolation</li>
-        <li class="own">Netty HTTP server</li>
-        <li>Graal JIT back end</li>
-      </ul>
-
-      <div class="figures" id="stats"></div>
-
-      <figure class="fig hero-fig">
-        <h3>A hello request arrives while a 4 s CPU loop holds the only worker</h3>
-        <p class="unit">time since the CPU loop started, drawn to scale</p>
-        <div id="lanes"></div>
-        <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
-        <figcaption><b>Fig. 1</b>php-fpm runs one request per process, so the hello request waits for the loop to finish. BlitzVM preempts the loop at its next safepoint and answers in milliseconds.</figcaption>
-      </figure>
-    </div>
-
     <section id="why">
       <div class="sh">
         <span class="sn">02</span>
         <h2>Why it is fast</h2>
-        <p>Four design decisions. Each one maps to a number in the benchmarks below.</p>
+        <p>BlitzVM's own parser, interpreter, scheduler, isolation model and HTTP server make the design decisions below. For machine code it uses the Graal compiler as its JIT back end, much as many languages use LLVM. Each decision maps to a number in the benchmarks.</p>
       </div>
       <div class="reasons">
         <article class="reason">
@@ -488,10 +500,22 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
 <script>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
-  stats: [
-    { value: "3×", label: "faster than PHP 8.5 with the opcache tracing JIT on compiled compute (fib)" },
-    { value: "~5 ms", label: "to answer other requests while a CPU-bound request runs, against about 3.5 s on php-fpm and default Swoole" },
-    { value: "1.7×", label: "the requests per second of php-fpm behind nginx on hello.php" }
+  hero: [
+    { tab: "HTTP", title: "hello.php over HTTP", unit: "requests per second, 4 workers, higher is better", rows: [
+        { who: "BlitzVM", us: true, v: 52132 },
+        { who: "php-fpm", note: "nginx + opcache", v: 31121 } ] },
+    { tab: "Template", title: "index.php, a template page", unit: "requests per second, 4 workers, higher is better", rows: [
+        { who: "BlitzVM", us: true, v: 40671 },
+        { who: "php-fpm", note: "nginx + opcache", v: 28357 } ] },
+    { tab: "Compute", title: "fib(27), warm", unit: "runs per second on one core, higher is better", rows: [
+        { who: "BlitzVM", us: true, v: 1000 / 2.2 },
+        { who: "php-fpm", note: "opcache tracing JIT", v: 1000 / 7.0 },
+        { who: "php-fpm", note: "opcache", v: 1000 / 7.5 },
+        { who: "Swoole", note: "default", v: 1000 / 8.5 } ] },
+    { tab: "Under load", ms: true, title: "Hello request during a 4 s CPU loop", unit: "milliseconds until answered, 1 worker, lower is better", rows: [
+        { who: "BlitzVM", us: true, v: 5 },
+        { who: "php-fpm", note: "opcache", v: 3450 },
+        { who: "Swoole", note: "default", v: 3480 } ] }
   ],
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
   charts: [
@@ -564,9 +588,31 @@ function renderCharts() {
   }).join("");
 }
 
-function renderStats() {
-  document.getElementById("stats").innerHTML = DATA.stats
-    .map(s => `<div><b>${s.value}</b><span>${s.label}</span></div>`).join("");
+function renderHero(index) {
+  const host = document.getElementById("hero-chart");
+  const c = DATA.hero[index];
+  const max = Math.max(...c.rows.map(r => r.v));
+  const us = c.rows.find(r => r.us), others = c.rows.filter(r => !r.us);
+  const ratio = c.ms ? Math.min(...others.map(r => r.v)) / us.v : us.v / Math.max(...others.map(r => r.v));
+  const summary = c.ms ? `answered <b>${Math.round(ratio)}× sooner</b>` : `<b>${ratio.toFixed(1)}×</b> the next best`;
+  host.innerHTML = `<div class="tabs" role="tablist">${DATA.hero.map((h, i) =>
+      `<button type="button" role="tab" id="tab-${i}" aria-selected="${i === index}" tabindex="${i === index ? 0 : -1}">${h.tab}</button>`).join("")}</div>
+    <div role="tabpanel" aria-labelledby="tab-${index}">
+      <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
+      <div class="rows">${rowsHtml(c.rows, max, c.ms)}</div>
+      <div class="bench-foot"><span>BlitzVM v0.1: ${summary}</span><a href="#benchmarks">details in 03</a></div>
+    </div>`;
+  host.querySelectorAll('[role="tab"]').forEach((btn, i) => {
+    btn.addEventListener("click", () => { renderHero(i); document.getElementById("tab-" + i).focus(); });
+    btn.addEventListener("keydown", e => {
+      const n = DATA.hero.length;
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const j = (i + (e.key === "ArrowRight" ? 1 : n - 1)) % n;
+        renderHero(j); document.getElementById("tab-" + j).focus();
+      }
+    });
+  });
 }
 
 function renderTimeline() {
@@ -610,7 +656,7 @@ function trackSections() {
   byId.forEach((_, id) => { const el = document.getElementById(id); if (el) io.observe(el); });
 }
 
-renderStats();
+renderHero(0);
 renderTimeline();
 renderCharts();
 renderRoadmap();
