@@ -84,13 +84,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .hero-copy { min-width: 0; }
 
 .bench { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px 16px; min-width: 0; }
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
-.tabs button {
-  font: 500 12.5px/1 var(--mono); color: var(--muted); background: transparent;
-  border: 1px solid var(--rule-strong); border-radius: 999px; padding: 8px 12px; cursor: pointer;
-}
-.tabs button:hover { color: var(--ink); }
-.tabs button[aria-selected="true"] { color: var(--bg); background: var(--amber); border-color: var(--amber); }
 .bench-title { font: 600 15px/1.35 var(--sans); color: var(--ink); margin: 0 0 4px; }
 .bench-unit { font: 400 12px/1.4 var(--mono); color: var(--muted); margin: 0 0 20px; }
 .bench .rows { gap: 16px; }
@@ -108,7 +101,7 @@ h1 {
   letter-spacing: -0.028em;
   color: var(--ink);
   margin: 0 0 24px;
-  max-width: 14ch;
+  max-width: none;
   text-wrap: balance;
 }
 h1 em { font-style: italic; font-weight: 400; color: var(--amber); }
@@ -279,24 +272,17 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           <li class="own">epoll HTTP server</li>
         </ul>
       </div>
-      <div class="bench" id="hero-chart" aria-label="Benchmark summary"></div>
+      <div class="bench" id="hero-chart" aria-label="HTTP throughput"></div>
     </div>
 
-    <figure class="fig hero-fig">
-      <h3>A hello request arrives while a 4 s CPU loop holds the only worker</h3>
-      <p class="unit">time since the CPU loop started, drawn to scale</p>
-      <div id="lanes"></div>
-      <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
-      <figcaption><b>Fig. 1</b>php-fpm runs one request per process, so the hello request waits for the loop to finish. BlitzVM preempts the loop at its next safepoint and answers in milliseconds.</figcaption>
-    </figure>
   </div>
 </div>
 
 <div class="wrap layout">
   <nav class="toc" aria-label="Contents">
     <ol>
-      <li><a href="#why"><span>02</span>Why it is fast</a></li>
-      <li><a href="#benchmarks"><span>03</span>Benchmarks</a></li>
+      <li><a href="#benchmarks"><span>02</span>Benchmarks</a></li>
+      <li><a href="#why"><span>03</span>Why it is fast</a></li>
       <li><a href="#architecture"><span>04</span>Architecture</a></li>
       <li><a href="#roadmap"><span>05</span>Roadmap</a></li>
       <li><a href="#method"><span>06</span>Methodology</a></li>
@@ -305,15 +291,33 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
   </nav>
 
   <main class="content">
-    <section id="why">
+    <section id="benchmarks">
       <div class="sh">
         <span class="sn">02</span>
+        <h2>Benchmarks against php-fpm and Swoole</h2>
+        <p>Same machine, same PHP files, closed-loop load over raw keep-alive sockets after a 15 second warm-up. BlitzVM figures are the lower of two runs. Setup is in section 06.</p>
+      </div>
+      <div class="charts">
+        <figure class="fig wide">
+          <h3>A hello request arrives while a 4 s CPU loop holds the only worker</h3>
+          <p class="unit">time since the CPU loop started, drawn to scale</p>
+          <div id="lanes"></div>
+          <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
+          <figcaption><b>Fig. 1</b>php-fpm runs one request per process, so the hello request waits for the loop to finish. BlitzVM preempts the loop at its next safepoint and answers in milliseconds.</figcaption>
+        </figure>
+      </div>
+      <div class="charts" id="charts" style="margin-top:18px"></div>
+    </section>
+
+    <section id="why">
+      <div class="sh">
+        <span class="sn">03</span>
         <h2>Why it is fast</h2>
         <p>BlitzVM's own parser, interpreter, scheduler, isolation model and HTTP server make the design decisions below. For machine code it uses the Graal compiler as its JIT back end, much as many languages use LLVM. Each decision maps to a number in the benchmarks.</p>
       </div>
       <div class="reasons">
         <article class="reason">
-          <span class="num">2.1</span>
+          <span class="num">3.1</span>
           <div>
             <h3>The interpreter specializes itself, then the JIT compiles it</h3>
             <p>PHP source is parsed by a hand-written lexer and Pratt parser into a tree of self-specializing nodes. Each node rewrites itself to the types it actually sees. A <code>+</code> that has only seen integers becomes a single machine add with an overflow check, and moves to floating point only when a value overflows, as PHP 8 specifies.</p>
@@ -327,7 +331,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           </div>
         </article>
         <article class="reason">
-          <span class="num">2.2</span>
+          <span class="num">3.2</span>
           <div>
             <h3>Preemption at guest safepoints, also inside compiled code</h3>
             <p>A request needs one of N CPU slots to run. A ticker checks the slots every half quantum. When a request has used its 10 ms quantum and others are waiting, the scheduler queues an action on that request's thread. The action runs at the next guest safepoint and hands the slot to the next request in line.</p>
@@ -335,7 +339,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           </div>
         </article>
         <article class="reason">
-          <span class="num">2.3</span>
+          <span class="num">3.3</span>
           <div>
             <h3>Shared compiled code, private request state</h3>
             <p>All requests share one engine, which holds the parsed trees and the compiled machine code. Each request gets a fresh context with its own globals, so requests share nothing, as under php-fpm, without re-parsing or re-compiling anything.</p>
@@ -343,7 +347,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           </div>
         </article>
         <article class="reason">
-          <span class="num">2.4</span>
+          <span class="num">3.4</span>
           <div>
             <h3>An epoll front end that never runs guest code</h3>
             <p>HTTP is parsed by Netty on its native epoll transport. Event-loop threads only read and write sockets, and each request is handed to a worker that waits for a CPU slot. There is one process and one hop, where php-fpm needs nginx, FastCGI and a pool process.</p>
@@ -353,14 +357,6 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
       </div>
     </section>
 
-    <section id="benchmarks">
-      <div class="sh">
-        <span class="sn">03</span>
-        <h2>Benchmarks against php-fpm and Swoole</h2>
-        <p>Same machine, same PHP files, closed-loop load over raw keep-alive sockets after a 15 second warm-up. BlitzVM figures are the lower of two runs. Setup is in section 06.</p>
-      </div>
-      <div class="charts" id="charts"></div>
-    </section>
 
     <section id="architecture">
       <div class="sh">
@@ -443,7 +439,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 5</b>Compilation path (top) and request path (bottom). Highlighted components carry the scheduling and specialization work described in section 02.</figcaption>
+        <figcaption><b>Fig. 5</b>Compilation path (top) and request path (bottom). Highlighted components carry the scheduling and specialization work described in section 03.</figcaption>
       </figure>
       <div class="notes">
         <div><b>Parse once</b>The parsed tree is cached per file on the shared engine and reused by every request until the file changes.</div>
@@ -500,23 +496,9 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
 <script>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
-  hero: [
-    { tab: "HTTP", title: "hello.php over HTTP", unit: "requests per second, 4 workers, higher is better", rows: [
-        { who: "BlitzVM", us: true, v: 52132 },
-        { who: "php-fpm", note: "nginx + opcache", v: 31121 } ] },
-    { tab: "Template", title: "index.php, a template page", unit: "requests per second, 4 workers, higher is better", rows: [
-        { who: "BlitzVM", us: true, v: 40671 },
-        { who: "php-fpm", note: "nginx + opcache", v: 28357 } ] },
-    { tab: "Compute", title: "fib(27), warm", unit: "runs per second on one core, higher is better", rows: [
-        { who: "BlitzVM", us: true, v: 1000 / 2.2 },
-        { who: "php-fpm", note: "opcache tracing JIT", v: 1000 / 7.0 },
-        { who: "php-fpm", note: "opcache", v: 1000 / 7.5 },
-        { who: "Swoole", note: "default", v: 1000 / 8.5 } ] },
-    { tab: "Under load", ms: true, title: "Hello request during a 4 s CPU loop", unit: "milliseconds until answered, 1 worker, lower is better", rows: [
-        { who: "BlitzVM", us: true, v: 5 },
-        { who: "php-fpm", note: "opcache", v: 3450 },
-        { who: "Swoole", note: "default", v: 3480 } ] }
-  ],
+  hero: { title: "hello.php over HTTP", unit: "requests per second, 4 workers, 32 connections, higher is better", rows: [
+      { who: "BlitzVM", us: true, v: 52132 },
+      { who: "php-fpm", note: "nginx + opcache", v: 31121 } ] },
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
   charts: [
     {
@@ -588,31 +570,14 @@ function renderCharts() {
   }).join("");
 }
 
-function renderHero(index) {
-  const host = document.getElementById("hero-chart");
-  const c = DATA.hero[index];
+function renderHero() {
+  const c = DATA.hero;
   const max = Math.max(...c.rows.map(r => r.v));
-  const us = c.rows.find(r => r.us), others = c.rows.filter(r => !r.us);
-  const ratio = c.ms ? Math.min(...others.map(r => r.v)) / us.v : us.v / Math.max(...others.map(r => r.v));
-  const summary = c.ms ? `answered <b>${Math.round(ratio)}× sooner</b>` : `<b>${ratio.toFixed(1)}×</b> the next best`;
-  host.innerHTML = `<div class="tabs" role="tablist">${DATA.hero.map((h, i) =>
-      `<button type="button" role="tab" id="tab-${i}" aria-selected="${i === index}" tabindex="${i === index ? 0 : -1}">${h.tab}</button>`).join("")}</div>
-    <div role="tabpanel" aria-labelledby="tab-${index}">
-      <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
-      <div class="rows">${rowsHtml(c.rows, max, c.ms)}</div>
-      <div class="bench-foot"><span>BlitzVM v0.1: ${summary}</span><a href="#benchmarks">details in 03</a></div>
-    </div>`;
-  host.querySelectorAll('[role="tab"]').forEach((btn, i) => {
-    btn.addEventListener("click", () => { renderHero(i); document.getElementById("tab-" + i).focus(); });
-    btn.addEventListener("keydown", e => {
-      const n = DATA.hero.length;
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        const j = (i + (e.key === "ArrowRight" ? 1 : n - 1)) % n;
-        renderHero(j); document.getElementById("tab-" + j).focus();
-      }
-    });
-  });
+  const us = c.rows.find(r => r.us), best = Math.max(...c.rows.filter(r => !r.us).map(r => r.v));
+  document.getElementById("hero-chart").innerHTML = `
+    <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
+    <div class="rows">${rowsHtml(c.rows, max, false)}</div>
+    <div class="bench-foot"><span>BlitzVM v0.1: <b>${(us.v / best).toFixed(1)}×</b> php-fpm</span><a href="#benchmarks">more benchmarks below</a></div>`;
 }
 
 function renderTimeline() {
@@ -656,7 +621,7 @@ function trackSections() {
   byId.forEach((_, id) => { const el = document.getElementById(id); if (el) io.observe(el); });
 }
 
-renderHero(0);
+renderHero();
 renderTimeline();
 renderCharts();
 renderRoadmap();
