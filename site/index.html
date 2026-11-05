@@ -567,7 +567,7 @@ $server-&gt;start();</pre>
 const DATA = {
   hero: {
     title: "An API-style request",
-    unit: "wait 20 ms on a backend, then do some real work. Requests/sec, 4 workers, 32 connections, higher is better.",
+    unit: "wait 20 ms on a backend, then do some real work. 4 workers, 32 connections, higher is better.",
     rows: [
       { who: "BlitzVM", us: true, v: 293 },
       { who: "Swoole", note: "default", v: 193 },
@@ -620,11 +620,11 @@ const fmt = (v, ms) => ms
   ? (v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString("en-US")) + " ms"
   : Math.round(v).toLocaleString("en-US");
 
-function rowsHtml(rows, max, ms) {
+function rowsHtml(rows, max, ms, suffix = "") {
   return rows.map(r => `<div class="row${r.us ? " us" : ""}">
       <span class="who">${r.who}${r.note ? `<small>${r.note}</small>` : ""}</span>
       <span class="bar"><i style="width:${Math.max(0.6, (r.v / max) * 100).toFixed(2)}%"></i></span>
-      <span class="val">${fmt(r.v, ms)}</span></div>`).join("");
+      <span class="val">${fmt(r.v, ms)}${suffix}</span></div>`).join("");
 }
 
 function renderCharts() {
@@ -646,7 +646,7 @@ function renderHero() {
   const vs = others.map(r => `${(us / r.v).toFixed(1)}× ${r.who}`).join(", ");
   document.getElementById("hero-chart").innerHTML = `
     <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
-    <div class="rows">${rowsHtml(c.rows, max, false)}</div>
+    <div class="rows">${rowsHtml(c.rows, max, false, " req/s")}</div>
     <div class="bench-foot"><span><b>${vs}</b></span><a href="#benchmarks">more numbers below</a></div>`;
 }
 
