@@ -383,7 +383,7 @@ $server-&gt;start();</pre>
         <h3>What about Swoole's preemptive mode?</h3>
         <p>Swoole does have one. Set <code>'enable_preemptive_scheduler' =&gt; true</code> and coroutines get time-sliced every 10 ms. In my tests that answers the hello request about as fast as BlitzVM does, so on that one number it's a tie.</p>
         <p>Turning it on also means a coroutine can be paused in the middle of any loop, while every coroutine in the worker shares the app's globals and statics. So a static cache or a singleton that's halfway through being set up can be seen by another request mid-update. It's a big gun, always pointed at your feet. Miss one lock and you get a bug that only shows up under load and never on your laptop. The bigger costs don't go away either: you still have the long-running server, the state you have to reset between requests, and no JIT.</p>
-        <p>BlitzVM pauses requests at the same kind of points. The difference is that requests don't share anything, so there's nothing for them to race on.</p>
+        <p>BlitzVM pauses requests at the same kind of points. The difference is that BlitzVM requests work like classic php-fpm: they don't share anything, so there's nothing for them to race on.</p>
       </div>
       <p style="margin:22px 0 0;max-width:var(--measure);color:var(--muted);font-size:15px">To be clear, Laravel doesn't run yet. It needs classes and <code>require</code>, which are next on the list in section 06. When it does run, it should run unchanged.</p>
     </section>
