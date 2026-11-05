@@ -601,6 +601,7 @@ const DATA = {
     },
     {
       fig: 3,
+      wide: true,
       title: "Hello request while a 4 s loop runs",
       unit: "ms until it's answered, lower is better",
       caption: "One worker. Anything that can't preempt just has to wait for the loop.",
@@ -611,22 +612,6 @@ const DATA = {
         { who: "Swoole", note: "default", v: 3480 }
       ]
     },
-    {
-      fig: 4,
-      title: "Requests per second vs php-fpm + nginx",
-      unit: "4 workers, 32 connections, higher is better",
-      caption: "A good part of this is just fewer hops. php-fpm goes from nginx over FastCGI to a pool process and starts the script from opcache every time.",
-      groups: [
-        { label: "hello.php", rows: [
-          { who: "BlitzVM", us: true, v: 52132 },
-          { who: "php-fpm", note: "nginx + opcache", v: 31121 }
-        ]},
-        { label: "index.php, a template page", rows: [
-          { who: "BlitzVM", us: true, v: 40671 },
-          { who: "php-fpm", note: "nginx + opcache", v: 28357 }
-        ]}
-      ]
-    }
   ],
   virtualThreads: { virtualMs: 378, poolMs: 6432 }
 };
