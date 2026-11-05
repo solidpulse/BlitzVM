@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compares php-truffle with php-fpm (behind nginx) and Swoole on the same scenarios.
-#   bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit swoole swoole-preempt (default: all)
+#   [SCENARIO=compute] bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit swoole swoole-preempt (default: all)
 # Needs: php-fpm8.5 on the host, docker (nginx:alpine, phpswoole/swoole:latest).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -90,8 +90,19 @@ scenario() { # $1 target
   stop_all
 }
 
+compute() { # $1 target: CPU-bound kernels on 1 worker, warm timings
+  local t="$1"
+  echo "################ $t compute"
+  start "$t" 1
+  for spec in "fib.php?n=27" "compute.php?k=mandelbrot&n=600" "compute.php?k=spectral&n=300" "compute.php?k=collatz&n=300000"; do
+    echo "== $spec, 12 runs, last 3"
+    for _ in $(seq 1 12); do $LOAD once "$BASE/$spec"; done | tail -3
+  done
+  stop_all
+}
+
 trap stop_all EXIT
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
-for t in "${TARGETS[@]}"; do scenario "$t"; done
+for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute for kernels only
