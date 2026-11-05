@@ -95,7 +95,7 @@ compute() { # $1 target: CPU-bound kernels on 1 worker, warm timings
   local t="$1"
   echo "################ $t compute"
   start "$t" 1
-  for spec in "fib.php?n=27" "compute.php?k=mandelbrot&n=600" "compute.php?k=spectral&n=300" "compute.php?k=collatz&n=300000"; do
+  for spec in "fib.php?n=27" "compute.php?k=tak&n=24" "compute.php?k=pixels&n=800" "compute.php?k=primes&n=2000000" "compute.php?k=collatz&n=300000" "compute.php?k=gcd&n=600" "compute.php?k=mandelbrot&n=600" "compute.php?k=spectral&n=300"; do
     echo "== $spec, 12 runs, last 3"
     for _ in $(seq 1 12); do $LOAD once "$BASE/$spec"; done | tail -3
   done
