@@ -580,13 +580,8 @@ $server-&gt;start();</pre>
         <h2>References</h2>
         <p>Where the ideas came from, and the work this builds on.</p>
       </div>
-      <div class="credit">
-        <p class="who-ref">Andrin Bertschi, 2020</p>
-        <h3>graalphp, where this started</h3>
-        <p>Andrin built <a href="https://github.com/abertschi/graalphp">graalphp</a> for his undergraduate thesis at ETH Zurich. It was a PHP runtime on Truffle and GraalVM, and on the Computer Language Benchmarks Game he measured performance gains of up to 859% over PHP 7. He was the one who showed this was possible in the first place, and his results are why I thought it was worth building.</p>
-        <p>BlitzVM is its own codebase, written from scratch, and by now it covers a lot more ground: a hand-written parser, the preemptive scheduler, per-request isolation, the HTTP server, and the benchmarks against php-fpm and Swoole are all new. The starting idea is his. His write-up, <a href="https://abertschi.ch/blog/2020/building-graalphp/">Building graalphp</a>, is worth reading.</p>
-      </div>
-      <ol class="refs">
+      <ol class="refs" style="margin-top:0">
+        <li><span class="topic">origin</span><span><cite>A. Bertschi. <a href="https://github.com/abertschi/graalphp">graalphp: a PHP implementation built on GraalVM</a>. Undergraduate thesis, ETH Zurich, 2020.</cite><span class="why">Showed that PHP on Truffle could work, and the reason I started this. BlitzVM is a separate codebase written from scratch.</span></span></li>
         <li><span class="topic">truffle</span><span><cite>T. Würthinger et al. Self-Optimizing AST Interpreters. DLS 2012.</cite><span class="why">Nodes that rewrite themselves to the types they see. Section 4.1 is this idea applied to PHP.</span></span></li>
         <li><span class="topic">graalvm</span><span><cite>T. Würthinger et al. One VM to Rule Them All. Onward! 2013.</cite><span class="why">The case for building language runtimes on a shared VM and compiler.</span></span></li>
         <li><span class="topic">partial evaluation</span><span><cite>T. Würthinger et al. Practical Partial Evaluation for High-Performance Dynamic Language Runtimes. PLDI 2017.</cite><span class="why">How Graal turns an interpreter plus a tree into machine code.</span></span></li>
