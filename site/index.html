@@ -255,6 +255,19 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .method dt { font: 400 12.5px/1.9 var(--mono); color: var(--muted); padding-right: 32px; }
 @media (max-width: 560px) { .method { grid-template-columns: minmax(0, 1fr); } .method dt { border-bottom: 0; padding-bottom: 0; } }
 
+/* References */
+.credit { border: 1px solid var(--amber-dim); border-radius: 8px; background: var(--panel); padding: 22px 24px; max-width: 74ch; }
+.credit .who-ref { font: 500 12.5px/1.4 var(--mono); color: var(--amber); margin: 0 0 6px; }
+.credit h3 { font: 600 18px/1.35 var(--sans); color: var(--ink); margin: 0 0 10px; }
+.credit p { margin: 0 0 10px; }
+.credit p:last-child { margin-bottom: 0; }
+.refs { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--rule); }
+.refs li { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 20px; padding-block: 14px; border-bottom: 1px solid var(--rule); font-size: 15px; }
+.refs .topic { font: 400 12.5px/1.8 var(--mono); color: var(--muted); }
+.refs cite { font-style: normal; color: var(--ink); }
+.refs .why { display: block; color: var(--muted); font-size: 14px; margin-top: 2px; }
+@media (max-width: 560px) { .refs li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
 /* Access */
 .access { margin-top: 72px; border: 1px solid var(--amber-dim); border-radius: 8px; background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, var(--panel)), var(--panel)); padding: 34px 32px; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: end; }
 .access h2 { margin: 12px 0; }
@@ -313,7 +326,8 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
       <li><a href="#architecture"><span>05</span>How it fits together</a></li>
       <li><a href="#roadmap"><span>06</span>What's next</a></li>
       <li><a href="#method"><span>07</span>How I measured</a></li>
-      <li><a href="#access"><span>08</span>Code Access</a></li>
+      <li><a href="#references"><span>08</span>References</a></li>
+      <li><a href="#access"><span>09</span>Code Access</a></li>
     </ol>
   </nav>
 
@@ -560,9 +574,33 @@ $server-&gt;start();</pre>
       </dl>
     </section>
 
+    <section id="references">
+      <div class="sh">
+        <span class="sn">08</span>
+        <h2>References</h2>
+        <p>Where the ideas came from, and the work this builds on.</p>
+      </div>
+      <div class="credit">
+        <p class="who-ref">Andrin Bertschi, 2020</p>
+        <h3>graalphp, where this started</h3>
+        <p>Andrin built <a href="https://github.com/abertschi/graalphp">graalphp</a> for his undergraduate thesis at ETH Zurich. It was a PHP runtime on Truffle and GraalVM, and on the Computer Language Benchmarks Game he measured performance gains of up to 859% over PHP 7. He was the one who showed this was possible in the first place, and his results are why I thought it was worth building.</p>
+        <p>BlitzVM is its own codebase, written from scratch, and by now it covers a lot more ground: a hand-written parser, the preemptive scheduler, per-request isolation, the HTTP server, and the benchmarks against php-fpm and Swoole are all new. The starting idea is his. His write-up, <a href="https://abertschi.ch/blog/2020/building-graalphp/">Building graalphp</a>, is worth reading.</p>
+      </div>
+      <ol class="refs">
+        <li><span class="topic">truffle</span><span><cite>T. Würthinger et al. Self-Optimizing AST Interpreters. DLS 2012.</cite><span class="why">Nodes that rewrite themselves to the types they see. Section 4.1 is this idea applied to PHP.</span></span></li>
+        <li><span class="topic">graalvm</span><span><cite>T. Würthinger et al. One VM to Rule Them All. Onward! 2013.</cite><span class="why">The case for building language runtimes on a shared VM and compiler.</span></span></li>
+        <li><span class="topic">partial evaluation</span><span><cite>T. Würthinger et al. Practical Partial Evaluation for High-Performance Dynamic Language Runtimes. PLDI 2017.</cite><span class="why">How Graal turns an interpreter plus a tree into machine code.</span></span></li>
+        <li><span class="topic">truffle docs</span><span><cite><a href="https://www.graalvm.org/latest/graalvm-as-a-platform/language-implementation-framework/">Truffle language implementation framework</a></cite><span class="why">Including thread-local actions and safepoints, which the scheduler is built on.</span></span></li>
+        <li><span class="topic">parsing</span><span><cite>V. R. Pratt. Top Down Operator Precedence. POPL 1973.</cite><span class="why">The expression parser in BlitzVM's front end.</span></span></li>
+        <li><span class="topic">java</span><span><cite><a href="https://openjdk.org/jeps/444">JEP 444: Virtual Threads</a> and <a href="https://openjdk.org/jeps/491">JEP 491: Synchronize Virtual Threads without Pinning</a></cite><span class="why">The basis of the virtual-thread prototype in section 06.</span></span></li>
+        <li><span class="topic">http</span><span><cite><a href="https://netty.io">Netty</a></cite><span class="why">The HTTP front end, on its native epoll transport.</span></span></li>
+        <li><span class="topic">compared with</span><span><cite><a href="https://wiki.php.net/rfc/jit">PHP RFC: JIT</a> and <a href="https://github.com/swoole/swoole-src">Swoole</a></cite><span class="why">PHP's tracing JIT and Swoole are what the numbers in section 02 are measured against.</span></span></li>
+      </ol>
+    </section>
+
     <section id="access" class="access">
       <div>
-        <span class="sn">08</span>
+        <span class="sn">09</span>
         <h2>Code Access</h2>
         <p>The repo is private for now, because I'm writing up the scheduling and isolation work as papers first. If you're reviewing, researching or evaluating this, ask and I'll give you access.</p>
       </div>
