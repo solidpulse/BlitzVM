@@ -483,9 +483,9 @@ double doDouble(double a, double b) { return a + b; }</pre>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
   stats: [
-    { value: "5×", label: "faster than PHP 8.5 with the opcache tracing JIT on compiled compute (fib)" },
+    { value: "3×", label: "faster than PHP 8.5 with the opcache tracing JIT on compiled compute (fib)" },
     { value: "~5 ms", label: "for other requests to be answered while a CPU-bound request runs, against about 3.5 s on php-fpm and default Swoole" },
-    { value: "1.9×", label: "the requests per second of php-fpm behind nginx on hello.php" }
+    { value: "1.7×", label: "the requests per second of php-fpm behind nginx on hello.php" }
   ],
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
   charts: [
@@ -494,7 +494,7 @@ const DATA = {
       what: "Recursive function calls and integer arithmetic. Lower is better.",
       unit: "ms", lower: true,
       rows: [
-        { who: "BlitzVM", us: true, v: 1.4 },
+        { who: "BlitzVM", us: true, v: 2.2 },
         { who: "php-fpm", note: "opcache", v: 7.5 },
         { who: "php-fpm", note: "opcache tracing JIT", v: 7.0 },
         { who: "Swoole", note: "default", v: 8.5 }
@@ -519,11 +519,11 @@ const DATA = {
       unit: "req/s", lower: false,
       groups: [
         { label: "hello.php", rows: [
-          { who: "BlitzVM", us: true, v: 57967 },
+          { who: "BlitzVM", us: true, v: 52132 },
           { who: "php-fpm", note: "nginx + opcache", v: 31121 }
         ]},
         { label: "index.php template", rows: [
-          { who: "BlitzVM", us: true, v: 50060 },
+          { who: "BlitzVM", us: true, v: 40671 },
           { who: "php-fpm", note: "nginx + opcache", v: 28357 }
         ]}
       ]
