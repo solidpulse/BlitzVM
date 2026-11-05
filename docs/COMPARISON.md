@@ -30,6 +30,11 @@ Load: `bench/LoadGen.java`, closed loop, 32 keep-alive connections over raw sock
 | hello while a request sleeps 1.5 s, 1 worker | ~1,190 ms | ~1,260 ms | <60 ms | **<10 ms** | **<10 ms** | <10 ms |
 | `microtime()` loop iterations in 4 s | 148 M | 150 M | **150 M** | 150 M | 43 M | 43 M |
 
+**Correction.** The "fpm + JIT" column above ran with the JIT inactive: the bench set
+`opcache.jit` per pool, which PHP ignores because the JIT buffer is allocated when the
+master starts. Those numbers are plain opcache. `bench/run.sh` now passes the JIT
+settings on the php-fpm command line; see "Compute kernels" below for runs with the JIT on.
+
 The two "hello while ..." rows are the first request sent after the slow request started,
 minus the roughly 80 ms of client start-up that every first probe includes.
 
@@ -59,14 +64,34 @@ and answer hello within tens of milliseconds.
 **Blocking calls.** php-fpm blocks the worker during `usleep`. Swoole's hooks turn it into
 a coroutine yield, and php-truffle releases its CPU slot while sleeping.
 
-**Raw compute.** Once Graal has compiled `fib`, php-truffle runs it two to three times
-faster than opcache, with or without the opcache JIT. Its first request is slow (about
+**Raw compute.** Once Graal has compiled `fib`, php-truffle runs it about twice as fast as
+opcache with the JIT off (PHP's default). Against the tracing JIT it depends on the code;
+see "Compute kernels" below. Its first request is slow (about
 200 ms for fib(27)) because code starts interpreted. Builtin-heavy code goes the other way:
 the `microtime()` loop is 3.5 times slower, because every builtin call crosses a
 `@TruffleBoundary` into host Java instead of being inlined.
 
 **Memory.** One JVM at about 510 MB serves all requests: heap, Graal's compiler and the
 code cache. php-fpm's 138 MB is five processes; Swoole's 26 MB is the whole server.
+
+## Compute kernels (GraalVM 25, JIT verified on)
+
+`SCENARIO=compute bench/run.sh`, kernels in `www/compute.php`, 1 worker, 12 runs each,
+median of the last three. For php-truffle, the slower of two sessions.
+
+| Kernel | php-truffle | php-fpm, tracing JIT | php-fpm, opcache | Swoole, default |
+|---|---|---|---|---|
+| fib(27) | 3.8 ms | 4.3 ms | 7.3 ms | 8.8 ms |
+| mandelbrot 600 x 600 | 70.7 ms | **42.9 ms** | 183.9 ms | 240.7 ms |
+| spectral-norm n=300 | 64.4 ms | **48.9 ms** | 113.8 ms | 121.4 ms |
+| collatz to 300,000 | **144.1 ms** | 237.8 ms | 392.6 ms | 505.2 ms |
+| sieve to 1,000,000 | 260 to 960 ms | not run | 57 ms (CLI) | not run |
+
+php-truffle is 1.8 to 2.7 times faster than PHP with opcache and the JIT off, on every
+kernel except sieve. PHP's tracing JIT is faster on the float loops (mandelbrot,
+spectral-norm); php-truffle is faster on integer loops with branches (collatz) and about
+even on fib. Sieve is slow because large array writes go through the generic array path;
+that is the next performance item.
 
 ## Architecture comparison
 
