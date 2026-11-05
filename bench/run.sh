@@ -24,7 +24,8 @@ start_fpm() { # $1 workers, $2 jit mode
     "$ROOT/bench/fpm/php-fpm.conf.tmpl" > "$RUN/php-fpm.conf"
   sed -e "s|__HTTP_PORT__|$HTTP_PORT|g" -e "s|__FPM_PORT__|$FPM_PORT|g" -e "s|__WWW__|$ROOT/www|g" \
     "$ROOT/bench/fpm/nginx.conf.tmpl" > "$RUN/nginx.conf"
-  php-fpm8.5 -F -y "$RUN/php-fpm.conf" -p "$RUN" > "$RUN/fpm.out" 2>&1 &
+  # JIT settings only take effect at process start, so they go on the master's command line.
+  php-fpm8.5 -d opcache.enable=1 -d opcache.jit="$2" -d opcache.jit_buffer_size=64M -F -y "$RUN/php-fpm.conf" -p "$RUN" > "$RUN/fpm.out" 2>&1 &
   PIDS=$!
   docker run -d --rm --name bench-nginx --network host -v "$RUN/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$ROOT/www:/www:ro" nginx:alpine >/dev/null
   BASE=http://127.0.0.1:$HTTP_PORT; wait_up "$BASE/hello.php"

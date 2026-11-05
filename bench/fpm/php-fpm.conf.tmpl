@@ -10,6 +10,5 @@ pm = static
 pm.max_children = __WORKERS__
 ; request_terminate_timeout is FPM's wall-clock kill switch (max_execution_time is CPU-time and per-script)
 request_terminate_timeout = 30s
-php_admin_value[opcache.enable] = 1
-php_admin_value[opcache.jit] = __JIT__
-php_admin_value[opcache.jit_buffer_size] = 64M
+; opcache and JIT are set with -d on the php-fpm command line (bench/run.sh): per-pool
+; JIT settings are ignored because the JIT buffer is allocated when the master starts.
