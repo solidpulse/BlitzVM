@@ -86,11 +86,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .bench { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px 16px; min-width: 0; }
 .bench-title { font: 600 15px/1.35 var(--sans); color: var(--ink); margin: 0 0 4px; }
 .bench-unit { font: 400 12px/1.4 var(--mono); color: var(--muted); margin: 0 0 20px; }
-.bench .rows { gap: 8px; }
+.bench .rows { gap: 16px; }
 .hgroups { display: grid; gap: 18px; }
 .hgroup { display: grid; gap: 10px; }
 .bench .row { grid-template-columns: 7.6em minmax(0, 1fr) 6.6em; }
-.bench .bar { height: 10px; border-radius: 4px; }
+.bench .bar { height: 14px; border-radius: 4px; }
 .bench .bar i { border-radius: 4px; }
 .bench-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--rule); font: 400 12px/1.5 var(--mono); color: var(--muted); }
 .bench-foot b { color: var(--amber); font-weight: 600; }
@@ -196,6 +196,9 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .charts .wide { grid-column: 1 / -1; }
 @media (max-width: 900px) { .charts { grid-template-columns: minmax(0, 1fr); } }
 .groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.wide .groups { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 32px; }
+@media (max-width: 1080px) { .wide .groups { grid-template-columns: minmax(0, 1fr); } }
+.wide .groups .row { grid-template-columns: 6.6em minmax(0, 1fr) 5.4em; gap: 10px; }
 @media (max-width: 760px) { .groups { grid-template-columns: minmax(0, 1fr); } }
 .group { display: grid; gap: 12px; min-width: 0; }
 .group-label { font: 400 12px/1 var(--mono); color: var(--muted); }
@@ -292,7 +295,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           <li class="own">epoll HTTP server</li>
         </ul>
       </div>
-      <div class="bench" id="hero-chart" aria-label="Compute benchmarks"></div>
+      <div class="bench" id="hero-chart" aria-label="API-style request benchmark"></div>
     </div>
 
   </div>
@@ -565,12 +568,12 @@ $server-&gt;start();</pre>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
   hero: {
-    title: "Compute vs PHP's JIT",
-    unit: "runs/sec, higher is better. php-fpm has opcache's tracing JIT switched on. Swoole can't use the JIT at all.",
-    groups: [
-      { label: "tak(24, 16, 8), lots of recursion", ms: { blitz: 8.2, fpm: 14.6, swoole: 36.9 } },
-      { label: "collatz to 300,000, integer branches", ms: { blitz: 144.1, fpm: 237.8, swoole: 505.2 } },
-      { label: "pixel loop built from tiny helper functions", ms: { blitz: 20.5, fpm: 27.3, swoole: 69.5 } }
+    title: "An API-style request",
+    unit: "wait 20 ms on a backend, then do some real work. Requests/sec, 4 workers, 32 connections, higher is better.",
+    rows: [
+      { who: "BlitzVM", us: true, v: 293 },
+      { who: "Swoole", note: "default", v: 193 },
+      { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
     ]
   },
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
@@ -578,13 +581,24 @@ const DATA = {
     {
       fig: 2,
       wide: true,
-      title: "An API-style request: wait on a backend, then do some work",
-      unit: "requests per second, 4 workers, 32 connections, higher is better",
-      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits but can't JIT the work afterwards. BlitzVM gets both. php-fpm here has the tracing JIT on.",
-      rows: [
-        { who: "BlitzVM", us: true, v: 293 },
-        { who: "Swoole", note: "default", v: 193 },
-        { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
+      perGroup: true,
+      title: "Compute vs PHP's JIT",
+      unit: "ms per run, warm, lower is better. php-fpm has opcache's tracing JIT on. Swoole can't use the JIT at all.",
+      caption: "This is the kind of code where Graal's inlining pays off: lots of recursion, integer branches, and loops made of tiny helper functions. 1.3× to 1.8× faster than PHP's own JIT here.",
+      ms: true,
+      groups: [
+        { label: "tak(24, 16, 8)", rows: [
+          { who: "BlitzVM", us: true, v: 8.2 },
+          { who: "php-fpm", note: "tracing JIT", v: 14.6 },
+          { who: "Swoole", v: 36.9 } ] },
+        { label: "collatz to 300,000", rows: [
+          { who: "BlitzVM", us: true, v: 144.1 },
+          { who: "php-fpm", note: "tracing JIT", v: 237.8 },
+          { who: "Swoole", v: 505.2 } ] },
+        { label: "pixel loop, tiny helper functions", rows: [
+          { who: "BlitzVM", us: true, v: 20.5 },
+          { who: "php-fpm", note: "tracing JIT", v: 27.3 },
+          { who: "Swoole", v: 69.5 } ] }
       ]
     },
     {
@@ -635,7 +649,7 @@ function renderCharts() {
     const all = (c.groups ? c.groups.flatMap(g => g.rows) : c.rows).map(r => r.v);
     const max = Math.max(...all);
     const body = c.groups
-      ? `<div class="groups">${c.groups.map(g => `<div class="group"><span class="group-label">${g.label}</span><div class="rows">${rowsHtml(g.rows, max, c.ms)}</div></div>`).join("")}</div>`
+      ? `<div class="groups">${c.groups.map(g => `<div class="group"><span class="group-label">${g.label}</span><div class="rows">${rowsHtml(g.rows, c.perGroup ? Math.max(...g.rows.map(r => r.v)) : max, c.ms)}</div></div>`).join("")}</div>`
       : `<div class="rows">${rowsHtml(c.rows, max, c.ms)}</div>`;
     return `<figure class="fig${c.wide ? " wide" : ""}"><h3>${c.title}</h3><p class="unit">${c.unit}</p>${body}<figcaption><b>Fig. ${c.fig}</b>${c.caption}</figcaption></figure>`;
   }).join("");
@@ -643,25 +657,14 @@ function renderCharts() {
 
 function renderHero() {
   const c = DATA.hero;
-  const runs = ms => 1000 / ms;
-  const fmtRuns = v => v < 20 ? v.toFixed(1) : Math.round(v).toLocaleString("en-US");
-  const ratios = c.groups.map(g => g.ms.fpm / g.ms.blitz);
-  const groups = c.groups.map(g => {
-    const rows = [
-      { who: "BlitzVM", us: true, v: runs(g.ms.blitz) },
-      { who: "php-fpm", note: "tracing JIT", v: runs(g.ms.fpm) },
-      { who: "Swoole", v: runs(g.ms.swoole) }
-    ];
-    const max = rows[0].v;
-    return `<div class="hgroup"><span class="group-label">${g.label}</span><div class="rows">${rows.map(r => `<div class="row${r.us ? " us" : ""}">
-        <span class="who">${r.who}${r.note ? `<small>${r.note}</small>` : ""}</span>
-        <span class="bar"><i style="width:${Math.max(0.6, (r.v / max) * 100).toFixed(2)}%"></i></span>
-        <span class="val">${fmtRuns(r.v)}/s</span></div>`).join("")}</div></div>`;
-  }).join("");
+  const max = Math.max(...c.rows.map(r => r.v));
+  const us = c.rows.find(r => r.us).v;
+  const others = c.rows.filter(r => !r.us);
+  const vs = others.map(r => `${(us / r.v).toFixed(1)}× ${r.who}`).join(", ");
   document.getElementById("hero-chart").innerHTML = `
     <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
-    <div class="hgroups">${groups}</div>
-    <div class="bench-foot"><span><b>${Math.min(...ratios).toFixed(1)}× to ${Math.max(...ratios).toFixed(1)}×</b> faster than PHP's JIT</span><a href="#benchmarks">more numbers below</a></div>`;
+    <div class="rows">${rowsHtml(c.rows, max, false)}</div>
+    <div class="bench-foot"><span><b>${vs}</b></span><a href="#benchmarks">more numbers below</a></div>`;
 }
 
 function renderTimeline() {
