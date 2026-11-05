@@ -280,10 +280,10 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
   <div class="hero" id="overview">
     <div class="hero-grid">
       <div class="hero-copy">
-        <p class="eyebrow"><span>Research runtime</span><span>PHP first</span><span>Node.js-compatible next</span></p>
+        <p class="eyebrow"><span>research project</span><span>PHP for now</span><span>Node.js-compatible later</span></p>
         <h1>A <em>preemptive</em> runtime for <span style="white-space:nowrap">server-side</span> languages.</h1>
-        <p class="lede">Built around two ideas: no request should be able to starve the others, and no request should see another's state. BlitzVM compiles hot code to machine code, time-slices every request and isolates each one in its own context, while you keep writing ordinary PHP.</p>
-        <p class="byline">Research and implementation by <b>Avinash D'Silva</b></p>
+        <p class="lede">Every PHP shop hits this eventually: one heavy request ties up a worker and everyone queued behind it waits. BlitzVM compiles hot PHP to machine code, and once a request has had its 10 ms while others are waiting, it gets paused so the rest keep moving. Each request still starts with clean state, and the PHP you write is the same PHP you'd write for php-fpm.</p>
+        <p class="byline">built by <b>Avinash D'Silva</b></p>
         <ul class="components" aria-label="Components">
           <li class="own">PHP 8 front end</li>
           <li class="own">self-specializing AST</li>
@@ -301,12 +301,12 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
 <div class="wrap layout">
   <nav class="toc" aria-label="Contents">
     <ol>
-      <li><a href="#benchmarks"><span>02</span>Benchmarks</a></li>
-      <li><a href="#plain"><span>03</span>Ordinary PHP</a></li>
-      <li><a href="#why"><span>04</span>Why it is fast</a></li>
-      <li><a href="#architecture"><span>05</span>Architecture</a></li>
-      <li><a href="#roadmap"><span>06</span>Roadmap</a></li>
-      <li><a href="#method"><span>07</span>Methodology</a></li>
+      <li><a href="#benchmarks"><span>02</span>The numbers</a></li>
+      <li><a href="#plain"><span>03</span>Plain PHP</a></li>
+      <li><a href="#why"><span>04</span>Why it's fast</a></li>
+      <li><a href="#architecture"><span>05</span>How it fits together</a></li>
+      <li><a href="#roadmap"><span>06</span>What's next</a></li>
+      <li><a href="#method"><span>07</span>How I measured</a></li>
       <li><a href="#access"><span>08</span>Access</a></li>
     </ol>
   </nav>
@@ -315,16 +315,16 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
     <section id="benchmarks">
       <div class="sh">
         <span class="sn">02</span>
-        <h2>Benchmarks against php-fpm and Swoole</h2>
-        <p>Same machine, same PHP files, closed-loop load over raw keep-alive sockets after a 15 second warm-up. BlitzVM figures are the lower of two runs. Setup is in section 07.</p>
+        <h2>The numbers</h2>
+        <p>All of this ran on one 8-core Linux box with the same PHP files on every server. Everything gets 15 seconds of warm-up before I measure, and where my own runs disagreed I used the slower one. The full setup is in section 07.</p>
       </div>
       <div class="charts">
         <figure class="fig wide">
-          <h3>A hello request arrives while a 4 s CPU loop holds the only worker</h3>
-          <p class="unit">time since the CPU loop started, drawn to scale</p>
+          <h3>What happens to a quick request while a slow one is running</h3>
+          <p class="unit">one worker, a 4 s CPU loop, then a hello request. Drawn to scale.</p>
           <div id="lanes"></div>
           <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
-          <figcaption><b>Fig. 1</b>php-fpm runs one request per process, so the hello request waits for the loop to finish. BlitzVM preempts the loop at its next safepoint and answers in milliseconds.</figcaption>
+          <figcaption><b>Fig. 1</b>With one worker, php-fpm can't answer until the loop is done. BlitzVM pauses the loop at its next safepoint and serves the hello request straight away.</figcaption>
         </figure>
       </div>
       <div class="charts" id="charts" style="margin-top:18px"></div>
@@ -333,23 +333,23 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
     <section id="plain">
       <div class="sh">
         <span class="sn">03</span>
-        <h2>Ordinary PHP, no async rewrite</h2>
-        <p>Swoole gets its speed by turning the application into a long-running server: the app boots once, requests share its memory, and CPU-heavy code holds the worker until it finishes. BlitzVM keeps the php-fpm programming model and moves the concurrency into the runtime.</p>
+        <h2>You still write plain PHP</h2>
+        <p>Swoole is fast, but you pay for it in how you write code. Your app turns into a long-running server, requests share its memory, and a CPU-heavy handler blocks whichever worker it lands on. I wanted to keep the php-fpm model exactly as it is and do the scheduling underneath it.</p>
       </div>
       <div class="compare">
         <figure class="pane us">
           <div class="pane-head">BlitzVM <span>report.php, runs per request</span></div>
 <pre><span class="k">&lt;?php</span>
-<span class="c">// The same file you would deploy on php-fpm.</span>
+<span class="c">// same file you'd put on php-fpm</span>
 $report = build_report($_GET[<span class="g">'id'</span>]);
-<span class="c">// CPU-heavy, time-sliced every 10 ms</span>
+<span class="c">// heavy, gets paused every 10 ms</span>
 
 usleep(<span class="g">200000</span>);
-<span class="c">// frees the CPU slot while it waits</span>
+<span class="c">// gives up the CPU while it waits</span>
 
 header(<span class="g">'Content-Type: text/html'</span>);
 <span class="k">echo</span> render($report);
-<span class="c">// nothing survives the request</span></pre>
+<span class="c">// and it's all gone after this</span></pre>
         </figure>
         <figure class="pane">
           <div class="pane-head">Swoole <span>server.php, one process for all requests</span></div>
@@ -368,28 +368,28 @@ $server-&gt;start();</pre>
         </figure>
       </div>
       <div class="points">
-        <div><b>The php-fpm programming model</b>One file per request, superglobals, <code>echo</code>, <code>header()</code> and <code>exit</code>. Code written for php-fpm needs no server bootstrap and no request objects.</div>
-        <div><b>No coroutines to manage</b>No <code>go()</code>, channels or wait groups. Blocking calls are written as blocking calls, and the scheduler hands the CPU to other requests while one waits.</div>
-        <div><b>No state leaking between requests</b>Each request starts from a clean context, so there is nothing to reset between requests, unlike long-running adapters such as Laravel Octane.</div>
-        <div><b>No manual yielding</b>A slow loop does not need to be broken up or moved to a task worker. The runtime preempts it at the next safepoint.</div>
+        <div><b>Same model as php-fpm</b>One file per request. <code>$_GET</code>, <code>echo</code>, <code>header()</code> and <code>exit</code> work the way you'd expect. No bootstrap file, no request objects.</div>
+        <div><b>No coroutines</b>You don't write <code>go()</code>, channels or wait groups. A blocking call is just a blocking call, and the scheduler gives the CPU to someone else while it waits.</div>
+        <div><b>Nothing leaks between requests</b>Every request starts with a fresh context, so there's no state to reset afterwards. That reset step is exactly what makes Laravel Octane fiddly.</div>
+        <div><b>No yielding by hand</b>You don't have to chop a slow loop into pieces or push it off to a task worker. It gets paused at the next safepoint either way.</div>
       </div>
-      <p style="margin:22px 0 0;max-width:var(--measure);color:var(--muted);font-size:15px">The goal is for framework code such as Laravel to run unchanged, as it does under php-fpm. Classes and <code>include</code> are the language pieces still on the roadmap in section 06.</p>
+      <p style="margin:22px 0 0;max-width:var(--measure);color:var(--muted);font-size:15px">To be clear, Laravel doesn't run yet. It needs classes and <code>include</code>, which are next on the list in section 06. When it does run, it should run unchanged.</p>
     </section>
 
     <section id="why">
       <div class="sh">
         <span class="sn">04</span>
-        <h2>Why it is fast</h2>
-        <p>BlitzVM's own parser, interpreter, scheduler, isolation model and HTTP server make the design decisions below. For machine code it uses the Graal compiler as its JIT back end, much as many languages use LLVM. Each decision maps to a number in the benchmarks.</p>
+        <h2>Why it's fast</h2>
+        <p>Most of BlitzVM is my own code: the parser, the interpreter nodes, the scheduler, the isolation and the HTTP layer. For turning hot code into machine code I lean on the Graal compiler, the way plenty of languages lean on LLVM. These are the four things that actually move the numbers.</p>
       </div>
       <div class="reasons">
         <article class="reason">
           <span class="num">4.1</span>
           <div>
-            <h3>The interpreter specializes itself, then the JIT compiles it</h3>
-            <p>PHP source is parsed by a hand-written lexer and Pratt parser into a tree of self-specializing nodes. Each node rewrites itself to the types it actually sees. A <code>+</code> that has only seen integers becomes a single machine add with an overflow check, and moves to floating point only when a value overflows, as PHP 8 specifies.</p>
-            <p>Once a function is hot, the Graal compiler partially evaluates the interpreter together with the specialized tree and emits machine code. Call sites cache their target, so user functions are inlined into their callers. This is why recursive code, integer loops and code built from small helper functions run faster here than under PHP's own tracing JIT.</p>
-            <pre class="code"><span class="c">// Integer path: one add and an overflow branch.</span>
+            <h3>The interpreter rewrites itself, then Graal compiles it</h3>
+            <p>PHP goes through a hand-written lexer and a Pratt parser and comes out as a tree of nodes. Each node watches the types that flow through it and specializes. If a <code>+</code> has only ever seen integers, it ends up as one machine add plus an overflow check. If it ever does overflow, it switches to floats, which is what PHP 8 does anyway.</p>
+            <p>When a function gets hot, Graal compiles the interpreter and the specialized tree together into machine code (partial evaluation). Call sites remember what they call, so small functions get inlined into their callers. That's where the wins over PHP's tracing JIT come from: recursion, integer loops, and code split into lots of little helpers.</p>
+            <pre class="code"><span class="c">// the integer case: one add, one overflow branch</span>
 <span class="a">@Specialization</span>(rewriteOn = ArithmeticException.class)
 <span class="k">long</span> doLong(<span class="k">long</span> a, <span class="k">long</span> b) { <span class="k">return</span> Math.addExact(a, b); }
 
@@ -400,25 +400,25 @@ $server-&gt;start();</pre>
         <article class="reason">
           <span class="num">4.2</span>
           <div>
-            <h3>Preemption at guest safepoints, also inside compiled code</h3>
-            <p>A request needs one of N CPU slots to run. A ticker checks the slots every half quantum. When a request has used its 10 ms quantum and others are waiting, the scheduler queues an action on that request's thread. The action runs at the next guest safepoint and hands the slot to the next request in line.</p>
-            <p>The safepoint checks are compiled into the machine code at loop back-edges and calls, so preemption keeps working after a hot loop has been JIT-compiled. php-fpm cannot do this, because one process serves one request until it finishes. Swoole's default coroutine scheduler switches only at I/O.</p>
+            <h3>Preemption that keeps working after the JIT kicks in</h3>
+            <p>There are N CPU slots, and a request needs one to run. A ticker looks at the slots every 5 ms. If a request has had its 10 ms and someone is waiting, the scheduler queues an action on that request's thread. The action fires at the next safepoint and the slot goes to whoever is next in line.</p>
+            <p>Those safepoint checks are also in the compiled code, at loop back-edges and calls, so a hot loop can't get away from them. php-fpm can't do this at all, since each process serves one request to the end. Swoole, by default, only switches coroutines at I/O.</p>
           </div>
         </article>
         <article class="reason">
           <span class="num">4.3</span>
           <div>
-            <h3>Shared compiled code, private request state</h3>
-            <p>All requests share one engine, which holds the parsed trees and the compiled machine code. Each request gets a fresh context with its own globals, so requests share nothing, as under php-fpm, without re-parsing or re-compiling anything.</p>
-            <p>CPU time is charged per request. A runaway script is cancelled when it exceeds its budget and gets a PHP-style fatal error, while the process and every other request keep running.</p>
+            <h3>One engine, a fresh context per request</h3>
+            <p>All requests share one engine, which keeps the parsed trees and the machine code. Each request gets its own context with its own globals. So you get php-fpm's shared-nothing behaviour without parsing or compiling anything twice.</p>
+            <p>CPU time is counted per request as well. If a script blows through its budget it gets cancelled with a normal PHP fatal error, and the process (and everyone else) carries on.</p>
           </div>
         </article>
         <article class="reason">
           <span class="num">4.4</span>
           <div>
-            <h3>An epoll front end that never runs guest code</h3>
-            <p>HTTP is parsed by Netty on its native epoll transport. Event-loop threads only read and write sockets, and each request is handed to a worker that waits for a CPU slot. There is one process and one hop, where php-fpm needs nginx, FastCGI and a pool process.</p>
-            <p>Each connection answers pipelined requests in order from a small queue and stops reading while a request is in flight, which gives the server backpressure against clients that queue unbounded work.</p>
+            <h3>Netty does the HTTP and never runs PHP</h3>
+            <p>HTTP parsing is Netty on native epoll. The event-loop threads only touch sockets, and every request goes to a worker that waits for a CPU slot. It's one process and one hop. php-fpm needs nginx, FastCGI and a pool process to do the same job.</p>
+            <p>Pipelined requests on a connection are answered in order, and the connection stops reading while one is in flight. It's a cheap bit of backpressure against clients that try to queue up a pile of work.</p>
           </div>
         </article>
       </div>
@@ -428,8 +428,8 @@ $server-&gt;start();</pre>
     <section id="architecture">
       <div class="sh">
         <span class="sn">05</span>
-        <h2>How a request becomes machine code</h2>
-        <p>Everything inside the dashed boundary is BlitzVM. The language front end builds self-specializing trees on the Truffle node framework, and the Graal compiler turns hot trees into machine code. The request path around them, the scheduler and the isolation model, does not depend on PHP.</p>
+        <h2>How it fits together</h2>
+        <p>Everything inside the dashed line is BlitzVM. The PHP front end builds its trees on Truffle's node framework, and Graal compiles the hot ones. The bottom row, the scheduler and the per-request contexts, knows nothing about PHP. That's the reason the Node.js plan is realistic.</p>
       </div>
       <figure class="fig">
         <div class="diagram">
@@ -506,34 +506,34 @@ $server-&gt;start();</pre>
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 4</b>Compilation path (top) and request path (bottom). Highlighted components carry the scheduling and specialization work described in section 04.</figcaption>
+        <figcaption><b>Fig. 4</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
       </figure>
       <div class="notes">
-        <div><b>Parse once</b>The parsed tree is cached per file on the shared engine and reused by every request until the file changes.</div>
-        <div><b>Compile once</b>Compiled machine code belongs to the engine, so later requests to a hot page start out compiled.</div>
-        <div><b>Isolate every request</b>Globals, output buffer, headers and CPU budget live in the request's own context, which is discarded afterwards.</div>
+        <div><b>Parsed once</b>Each file's tree is cached on the shared engine until the file changes.</div>
+        <div><b>Compiled once</b>Machine code belongs to the engine, so the next request to a hot page is already compiled.</div>
+        <div><b>Thrown away after</b>Globals, the output buffer, headers and the CPU budget all live in the request's context, and the context is dropped when the request ends.</div>
       </div>
     </section>
 
     <section id="roadmap">
       <div class="sh">
         <span class="sn">06</span>
-        <h2>From PHP to Node.js-compatible environments</h2>
-        <p>The scheduler, the isolation model and the HTTP front end do not depend on PHP. PHP came first because its request model makes scheduling and isolation easy to measure against established servers.</p>
+        <h2>What's next</h2>
+        <p>None of the scheduling or isolation code is PHP-specific. I started with PHP because it's easy to measure: php-fpm and Swoole are well understood, and the request model is simple. Node.js-compatible environments are the bigger target.</p>
       </div>
       <div class="road">
-        <div><span class="tag on">working</span><div><h3>PHP 8 core</h3><p>Functions with defaults and by-reference arguments, copy-on-write arrays, PHP 8 type juggling and integer overflow, alternative syntax, templates, superglobals, headers and status codes, and 179 builtins. Output is checked against PHP 8.5 on a conformance suite.</p></div></div>
-        <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Running request contexts on Java virtual threads makes a sleeping or waiting request almost free. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>, against <span class="mono" id="vt-pool"></span> on a 64-thread pool.</p></div></div>
-        <div><span class="tag">next</span><div><h3>Classes, closures and include</h3><p>The rest of the PHP language surface needed to run real applications.</p></div></div>
-        <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Hot builtins such as <code>strlen</code>, <code>count</code> and <code>microtime</code> rewritten as nodes, so the JIT can inline them into the surrounding code.</p></div></div>
-        <div><span class="tag">planned</span><div><h3>Node.js-compatible environments</h3><p>JavaScript workloads on the same core: preemptive time slicing for event-loop code, per-request isolation and the shared compiled engine.</p></div></div>
+        <div><span class="tag on">working</span><div><h3>PHP 8 core</h3><p>Functions with defaults and by-reference args, copy-on-write arrays, PHP 8 type juggling and int overflow, alternative syntax, templates, superglobals, headers and status codes, and 179 builtins. I check the output against real PHP 8.5 with a conformance suite.</p></div></div>
+        <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Request contexts on Java virtual threads, so a request that's sleeping or waiting costs next to nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. On a 64-thread pool they take <span class="mono" id="vt-pool"></span>.</p></div></div>
+        <div><span class="tag">next</span><div><h3>Classes, closures and include</h3><p>What's missing before real apps, Laravel included, can run.</p></div></div>
+        <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Right now <code>strlen</code>, <code>count</code>, <code>microtime</code> and friends are plain Java calls, so the JIT can't see inside them. Turning the hot ones into nodes fixes that.</p></div></div>
+        <div><span class="tag">planned</span><div><h3>Node.js-compatible environments</h3><p>JavaScript on the same core. Event-loop code that hogs the CPU gets time-sliced like everything else, and each request gets its own context.</p></div></div>
       </div>
     </section>
 
     <section id="method">
       <div class="sh">
         <span class="sn">07</span>
-        <h2>Methodology</h2>
+        <h2>How I measured</h2>
       </div>
       <dl class="method">
         <dt>machine</dt><dd>8 cores, Linux 6.8, load generator and servers on the same host</dd>
@@ -550,35 +550,35 @@ $server-&gt;start();</pre>
     <section id="access" class="access">
       <div>
         <span class="sn">08</span>
-        <h2>Source available on request</h2>
-        <p>The repository is private while papers on the scheduling and isolation work are in preparation. Access is granted on request to reviewers, researchers and teams evaluating the work.</p>
+        <h2>Want to see the code?</h2>
+        <p>The repo is private for now, because I'm writing up the scheduling and isolation work as papers first. If you're reviewing, researching or evaluating this, ask and I'll give you access.</p>
       </div>
-      <div class="who">research and implementation<b>Avinash D'Silva</b></div>
+      <div class="who">built by<b>Avinash D'Silva</b></div>
     </section>
   </main>
 </div>
 
-<footer><div class="wrap">BlitzVM is an independent research project. PHP, GraalVM, Swoole, Netty and nginx are the names of their respective projects.</div></footer>
+<footer><div class="wrap">BlitzVM is an independent research project. PHP, GraalVM, Swoole, Netty and nginx belong to their respective projects.</div></footer>
 
 <script>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
   hero: {
-    title: "Compute, warm, against PHP's JIT",
-    unit: "runs per second, higher is better. php-fpm with the opcache tracing JIT on. Swoole disables PHP's JIT.",
+    title: "Compute vs PHP's JIT",
+    unit: "runs/sec, higher is better. php-fpm has opcache's tracing JIT switched on. Swoole can't use the JIT at all.",
     groups: [
-      { label: "tak(24, 16, 8), deep recursion", ms: { blitz: 8.2, fpm: 14.6, swoole: 36.9 } },
+      { label: "tak(24, 16, 8), lots of recursion", ms: { blitz: 8.2, fpm: 14.6, swoole: 36.9 } },
       { label: "collatz to 300,000, integer branches", ms: { blitz: 144.1, fpm: 237.8, swoole: 505.2 } },
-      { label: "pixel loop, small helper functions", ms: { blitz: 20.5, fpm: 27.3, swoole: 69.5 } }
+      { label: "pixel loop built from tiny helper functions", ms: { blitz: 20.5, fpm: 27.3, swoole: 69.5 } }
     ]
   },
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
   charts: [
     {
       fig: 2,
-      title: "Hello request during a 4 s CPU loop",
-      unit: "milliseconds until answered, lower is better",
-      caption: "One worker. Without preemption the hello request waits for the loop to finish.",
+      title: "Hello request while a 4 s loop runs",
+      unit: "ms until it's answered, lower is better",
+      caption: "One worker. Anything that can't preempt just has to wait for the loop.",
       ms: true,
       rows: [
         { who: "BlitzVM", us: true, v: 5 },
@@ -588,9 +588,9 @@ const DATA = {
     },
     {
       fig: 3,
-      title: "Throughput against php-fpm behind nginx",
-      unit: "requests per second, 4 workers, 32 connections, higher is better",
-      caption: "One process and one hop. php-fpm passes each request from nginx over FastCGI to a pool process and re-runs the script from opcache.",
+      title: "Requests per second vs php-fpm + nginx",
+      unit: "4 workers, 32 connections, higher is better",
+      caption: "A good part of this is just fewer hops. php-fpm goes from nginx over FastCGI to a pool process and starts the script from opcache every time.",
       groups: [
         { label: "hello.php", rows: [
           { who: "BlitzVM", us: true, v: 52132 },
@@ -648,7 +648,7 @@ function renderHero() {
   document.getElementById("hero-chart").innerHTML = `
     <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
     <div class="hgroups">${groups}</div>
-    <div class="bench-foot"><span>BlitzVM v0.1: <b>${Math.min(...ratios).toFixed(1)}× to ${Math.max(...ratios).toFixed(1)}×</b> PHP's JIT</span><a href="#benchmarks">more benchmarks below</a></div>`;
+    <div class="bench-foot"><span><b>${Math.min(...ratios).toFixed(1)}× to ${Math.max(...ratios).toFixed(1)}×</b> faster than PHP's JIT</span><a href="#benchmarks">more numbers below</a></div>`;
 }
 
 function renderTimeline() {
