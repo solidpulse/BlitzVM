@@ -9,6 +9,10 @@ $preempt = getenv('PREEMPT') === '1';
 
 function fib($n) { return $n < 2 ? $n : fib($n - 1) + fib($n - 2); }
 
+// Same kernels as www/compute.php, loaded once at start-up.
+$KERNELS_ONLY = true;
+require '/www/compute.php';
+
 $server = new Server('127.0.0.1', $port, SWOOLE_BASE);
 $server->set([
     'worker_num' => $workers,
@@ -50,6 +54,9 @@ $server->on('request', function ($req, $res) {
         case '/sleep.php':
             usleep((int)($q['ms'] ?? 500) * 1000);
             $res->end("slept\n");
+            return;
+        case '/compute.php':
+            $res->end(run_kernel($q['k'] ?? 'mandelbrot', (int)($q['n'] ?? 0)));
             return;
         case '/fib.php':
             $n = (int)($q['n'] ?? 25);
