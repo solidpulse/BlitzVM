@@ -76,22 +76,26 @@ code cache. php-fpm's 138 MB is five processes; Swoole's 26 MB is the whole serv
 
 ## Compute kernels (GraalVM 25, JIT verified on)
 
-`SCENARIO=compute bench/run.sh`, kernels in `www/compute.php`, 1 worker, 12 runs each,
-median of the last three. For php-truffle, the slower of two sessions.
+`SCENARIO=compute bench/run.sh fpm-jit truffle swoole`, kernels in `www/compute.php`,
+1 worker, 12 runs each, median of the last three, all warm. Swoole cannot use PHP's JIT:
+PHP disables it when an extension installs user opcode handlers, which Swoole does.
 
-| Kernel | php-truffle | php-fpm, tracing JIT | php-fpm, opcache | Swoole, default |
+| Kernel | php-truffle | php-fpm, tracing JIT | Swoole | php-truffle vs JIT |
 |---|---|---|---|---|
-| fib(27) | 3.8 ms | 4.3 ms | 7.3 ms | 8.8 ms |
-| mandelbrot 600 x 600 | 70.7 ms | **42.9 ms** | 183.9 ms | 240.7 ms |
-| spectral-norm n=300 | 64.4 ms | **48.9 ms** | 113.8 ms | 121.4 ms |
-| collatz to 300,000 | **144.1 ms** | 237.8 ms | 392.6 ms | 505.2 ms |
-| sieve to 1,000,000 | 260 to 960 ms | not run | 57 ms (CLI) | not run |
+| tak(24, 16, 8) | **8.2 ms** | 14.6 ms | 36.9 ms | 1.8x faster |
+| collatz to 300,000 | **144 ms** | 238 ms | 505 ms | 1.65x faster |
+| pixel loop, small helper functions | **20.5 ms** | 27.3 ms | 69.5 ms | 1.3x faster |
+| fib(27) | 2.4 to 3.8 ms | 4.3 to 4.6 ms | 8.8 ms | 1.1x to 1.9x, noisy |
+| gcd sum, n=600 | 16.0 ms | **11.7 ms** | 29.7 ms | 0.73x |
+| primes to 2,000,000 | 306 ms | **216 ms** | 739 ms | 0.71x |
+| mandelbrot 600 x 600 | 56 ms | **44 ms** | 234 ms | 0.79x |
+| spectral-norm n=300 | 64 ms | **48 ms** | 108 ms | 0.75x |
+| sieve to 1,000,000 | 260 to 960 ms | 57 ms (CLI, no JIT) | not run | much slower |
 
-php-truffle is 1.8 to 2.7 times faster than PHP with opcache and the JIT off, on every
-kernel except sieve. PHP's tracing JIT is faster on the float loops (mandelbrot,
-spectral-norm); php-truffle is faster on integer loops with branches (collatz) and about
-even on fib. Sieve is slow because large array writes go through the generic array path;
-that is the next performance item.
+php-truffle beats Swoole on every kernel except sieve. Against PHP's tracing JIT it wins on
+deep recursion, integer loops with branches and code made of small user functions, where
+Graal inlines across calls; the JIT wins on float loops and on loops dominated by `%`.
+Sieve is slow because large array writes take the generic array path.
 
 ## Architecture comparison
 

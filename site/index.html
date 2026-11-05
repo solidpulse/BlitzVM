@@ -192,10 +192,10 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 @media (max-width: 560px) { .reason { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
 
 /* Charts */
-.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .charts .wide { grid-column: 1 / -1; }
 @media (max-width: 900px) { .charts { grid-template-columns: minmax(0, 1fr); } }
-.groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 40px; }
+.groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 @media (max-width: 760px) { .groups { grid-template-columns: minmax(0, 1fr); } }
 .group { display: grid; gap: 12px; min-width: 0; }
 .group-label { font: 400 12px/1 var(--mono); color: var(--muted); }
@@ -211,7 +211,7 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .row.us .val { color: var(--amber); font-weight: 600; }
 @media (max-width: 480px) { .row { grid-template-columns: 6.8em minmax(0, 1fr) 5.6em; gap: 10px; font-size: 13px; } }
 
-/* Architecture (Fig. 5) */
+/* Architecture (Fig. 4) */
 .diagram { overflow-x: auto; }
 .diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .diagram .box { fill: var(--raised); stroke: var(--rule-strong); stroke-width: 1.2; }
@@ -388,7 +388,7 @@ $server-&gt;start();</pre>
           <div>
             <h3>The interpreter specializes itself, then the JIT compiles it</h3>
             <p>PHP source is parsed by a hand-written lexer and Pratt parser into a tree of self-specializing nodes. Each node rewrites itself to the types it actually sees. A <code>+</code> that has only seen integers becomes a single machine add with an overflow check, and moves to floating point only when a value overflows, as PHP 8 specifies.</p>
-            <p>Once a function is hot, the Graal compiler partially evaluates the interpreter together with the specialized tree and emits machine code. Call sites cache their target, so user functions are inlined into their callers. This is why loop-heavy PHP runs 1.8 to 2.7 times faster than PHP with opcache, and why integer-heavy loops also beat PHP's own tracing JIT.</p>
+            <p>Once a function is hot, the Graal compiler partially evaluates the interpreter together with the specialized tree and emits machine code. Call sites cache their target, so user functions are inlined into their callers. This is why recursive code, integer loops and code built from small helper functions run faster here than under PHP's own tracing JIT.</p>
             <pre class="code"><span class="c">// Integer path: one add and an overflow branch.</span>
 <span class="a">@Specialization</span>(rewriteOn = ArithmeticException.class)
 <span class="k">long</span> doLong(<span class="k">long</span> a, <span class="k">long</span> b) { <span class="k">return</span> Math.addExact(a, b); }
@@ -506,7 +506,7 @@ $server-&gt;start();</pre>
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 5</b>Compilation path (top) and request path (bottom). Highlighted components carry the scheduling and specialization work described in section 04.</figcaption>
+        <figcaption><b>Fig. 4</b>Compilation path (top) and request path (bottom). Highlighted components carry the scheduling and specialization work described in section 04.</figcaption>
       </figure>
       <div class="notes">
         <div><b>Parse once</b>The parsed tree is cached per file on the shared engine and reused by every request until the file changes.</div>
@@ -538,11 +538,11 @@ $server-&gt;start();</pre>
       <dl class="method">
         <dt>machine</dt><dd>8 cores, Linux 6.8, load generator and servers on the same host</dd>
         <dt>blitzvm</dt><dd>v0.1 on JDK 25 with the Graal compiler from GraalVM Community 25.5</dd>
-        <dt>php-fpm</dt><dd>PHP 8.5 with opcache, static pool, nginx in front. JIT off by default; Fig. 2 also runs it with <code>opcache.jit=tracing</code> set at process start</dd>
-        <dt>swoole</dt><dd>Swoole 6.2 on PHP 8.4, default configuration with <code>SWOOLE_HOOK_ALL</code></dd>
+        <dt>php-fpm</dt><dd>PHP 8.5 with opcache, static pool, nginx in front. Compute runs use <code>opcache.jit=tracing</code>, set at process start and confirmed with <code>opcache_get_status()</code></dd>
+        <dt>swoole</dt><dd>Swoole 6.2 on PHP 8.4, default configuration with <code>SWOOLE_HOOK_ALL</code>. PHP disables its JIT when Swoole is loaded</dd>
         <dt>load</dt><dd>Closed loop, 32 keep-alive connections over raw sockets, 15 s warm-up, 10 s measured</dd>
         <dt>workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM CPU slots), 1 for the latency scenario</dd>
-        <dt>compute</dt><dd>Time measured inside the script with <code>microtime</code>; 12 runs per workload, median of the last three; for BlitzVM the slower of two sessions</dd>
+        <dt>compute</dt><dd>Time measured inside the script with <code>microtime</code>; 12 runs per workload, one worker, median of the last three. Kernels in <code>www/compute.php</code></dd>
         <dt>latency</dt><dd>Hello requests every 300 ms while a 4 s CPU loop holds the only worker; load-generator start-up excluded</dd>
       </dl>
     </section>
@@ -564,32 +564,18 @@ $server-&gt;start();</pre>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
   hero: {
-    title: "Compute, warm",
-    unit: "runs per second, higher is better. php-fpm and Swoole in their default configuration (opcache on, JIT off).",
+    title: "Compute, warm, against PHP's JIT",
+    unit: "runs per second, higher is better. php-fpm with the opcache tracing JIT on. Swoole disables PHP's JIT.",
     groups: [
-      { label: "collatz, to 300,000", ms: { blitz: 144.1, fpm: 392.6, swoole: 505.2 } },
-      { label: "mandelbrot, 600 × 600", ms: { blitz: 70.7, fpm: 183.9, swoole: 240.7 } },
-      { label: "fib(27), recursive calls", ms: { blitz: 3.8, fpm: 7.3, swoole: 8.8 } },
-      { label: "spectral-norm, n = 300", ms: { blitz: 64.4, fpm: 113.8, swoole: 121.4 } }
+      { label: "tak(24, 16, 8), deep recursion", ms: { blitz: 8.2, fpm: 14.6, swoole: 36.9 } },
+      { label: "collatz to 300,000, integer branches", ms: { blitz: 144.1, fpm: 237.8, swoole: 505.2 } },
+      { label: "pixel loop, small helper functions", ms: { blitz: 20.5, fpm: 27.3, swoole: 69.5 } }
     ]
   },
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
   charts: [
     {
       fig: 2,
-      title: "Collatz, including PHP's tracing JIT",
-      unit: "milliseconds, lower is better",
-      caption: "Longest Collatz chain below 300,000: integer arithmetic and branches in a tight loop. Type-specialized integer nodes compile to machine arithmetic with overflow checks, ahead of PHP's own tracing JIT.",
-      ms: true,
-      rows: [
-        { who: "BlitzVM", us: true, v: 144.1 },
-        { who: "php-fpm", note: "opcache + tracing JIT", v: 237.8 },
-        { who: "php-fpm", note: "opcache", v: 392.6 },
-        { who: "Swoole", note: "default", v: 505.2 }
-      ]
-    },
-    {
-      fig: 3,
       title: "Hello request during a 4 s CPU loop",
       unit: "milliseconds until answered, lower is better",
       caption: "One worker. Without preemption the hello request waits for the loop to finish.",
@@ -601,8 +587,7 @@ const DATA = {
       ]
     },
     {
-      fig: 4,
-      wide: true,
+      fig: 3,
       title: "Throughput against php-fpm behind nginx",
       unit: "requests per second, 4 workers, 32 connections, higher is better",
       caption: "One process and one hop. php-fpm passes each request from nginx over FastCGI to a pool process and re-runs the script from opcache.",
@@ -651,19 +636,19 @@ function renderHero() {
   const groups = c.groups.map(g => {
     const rows = [
       { who: "BlitzVM", us: true, v: runs(g.ms.blitz) },
-      { who: "php-fpm", v: runs(g.ms.fpm) },
+      { who: "php-fpm", note: "tracing JIT", v: runs(g.ms.fpm) },
       { who: "Swoole", v: runs(g.ms.swoole) }
     ];
     const max = rows[0].v;
     return `<div class="hgroup"><span class="group-label">${g.label}</span><div class="rows">${rows.map(r => `<div class="row${r.us ? " us" : ""}">
-        <span class="who">${r.who}</span>
+        <span class="who">${r.who}${r.note ? `<small>${r.note}</small>` : ""}</span>
         <span class="bar"><i style="width:${Math.max(0.6, (r.v / max) * 100).toFixed(2)}%"></i></span>
         <span class="val">${fmtRuns(r.v)}/s</span></div>`).join("")}</div></div>`;
   }).join("");
   document.getElementById("hero-chart").innerHTML = `
     <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
     <div class="hgroups">${groups}</div>
-    <div class="bench-foot"><span>BlitzVM v0.1: <b>${Math.min(...ratios).toFixed(1)}× to ${Math.max(...ratios).toFixed(1)}×</b> php-fpm</span><a href="#benchmarks">more benchmarks below</a></div>`;
+    <div class="bench-foot"><span>BlitzVM v0.1: <b>${Math.min(...ratios).toFixed(1)}× to ${Math.max(...ratios).toFixed(1)}×</b> PHP's JIT</span><a href="#benchmarks">more benchmarks below</a></div>`;
 }
 
 function renderTimeline() {
