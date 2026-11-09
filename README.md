@@ -24,6 +24,26 @@ Build and execution steps:
 - `curl localhost:8080/__scheduler`: prints scheduler metrics (cpus, running, waiting, completed, preemptions, timeouts).
 - `scripts/demo.sh`: starts a 1-slot server and runs the hello world, CPU hog, sleep and infinite-loop scenarios with timings.
 
+## JavaScript front end
+
+`.js` files are Node-style request handlers that run on the same engine, scheduler and
+per-request isolation as PHP:
+
+```js
+const timers = require('node:timers/promises');
+module.exports = async (req, res) => {
+  await timers.setTimeout(20);          // blocks this request's thread, frees its CPU slot
+  res.end(`hello ${req.query.name}\n`);
+};
+```
+
+`bin/php-truffle script.js` runs a script with `console.log` output. The subset covers
+functions, arrows, `let`/`const`, numbers with JS formatting, strings, template literals,
+object literals, `if`/`while`/`for`, `Math`, `Number`/`String`/`parseInt`, `toFixed`,
+`performance.now`, `Date.now` and `await` on `node:timers/promises`. Arrays, classes and
+closures over local variables are not supported yet. `bench/node/server.js` runs the same
+handler files on real Node.js for comparison (see `docs/COMPARISON.md`).
+
 ## Architecture
 
 Packages reside under `dev.phpruntime`:
