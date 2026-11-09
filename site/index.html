@@ -552,7 +552,7 @@ $server-&gt;start();</pre>
         <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Request contexts on Java virtual threads, so a request that's sleeping or waiting costs next to nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. On a 64-thread pool they take <span class="mono" id="vt-pool"></span>.</p></div></div>
         <div><span class="tag">next</span><div><h3>Classes, closures and require</h3><p>What's missing before real apps, Laravel included, can run.</p></div></div>
         <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Right now <code>strlen</code>, <code>count</code>, <code>microtime</code> and friends are plain Java calls, so the JIT can't see inside them. Turning the hot ones into nodes fixes that.</p></div></div>
-        <div><span class="tag on">prototype</span><div><h3>Node.js-compatible environments</h3><p>A JavaScript front end on the same core already runs Node-style <code>(req, res)</code> handlers: functions, numbers, strings, templates, objects and <code>await</code> on timers. Fig. 4 is that front end. Arrays, classes and closures are next.</p></div></div>
+        <div><span class="tag">planned</span><div><h3>Node.js-compatible environments</h3><p>A small JavaScript front end already runs on the same core; Fig. 4 is that prototype. Work on the full Node.js front end starts once the PHP front end can render Laravel.</p></div></div>
       </div>
     </section>
 
@@ -646,8 +646,7 @@ const DATA = {
     },
     {
       fig: 3,
-      wide: true,
-      title: "Hello request while a 4 s loop runs",
+      title: "PHP: hello request while a 4 s loop runs",
       unit: "ms until it's answered, lower is better",
       caption: "One worker. Anything that can't preempt just has to wait for the loop.",
       ms: true,
@@ -659,9 +658,8 @@ const DATA = {
     },
     {
       fig: 4,
-      wide: true,
-      title: "JavaScript: hello request while a handler spins for 4 s",
-      unit: "ms until it's answered, 1 worker, lower is better. The same handler file on all three.",
+      title: "JavaScript: hello request while a 4 s loop runs",
+      unit: "ms until it's answered, 1 worker, lower is better. Same handler file on all three.",
       caption: "Bun and Node run JavaScript on one event loop, so a handler that hogs the CPU holds up every other request until it returns. BlitzVM's JavaScript front end runs on the same scheduler as PHP and pauses the loop.",
       ms: true,
       rows: [
