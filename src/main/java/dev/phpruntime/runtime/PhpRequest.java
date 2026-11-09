@@ -25,6 +25,9 @@ public final class PhpRequest {
     public final Map<String, String> post = new LinkedHashMap<>();
     public final Map<String, String> server = new LinkedHashMap<>();
 
+    /** True when serving HTTP (a JS module's exported handler is then called with req/res). */
+    public boolean http;
+
     public int status = 200;
     public final List<String[]> responseHeaders = new ArrayList<>();
 

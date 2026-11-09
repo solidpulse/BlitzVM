@@ -1,5 +1,6 @@
 package dev.phpruntime.host;
 
+import dev.phpruntime.js.JsLanguage;
 import dev.phpruntime.runtime.GuestScheduler;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.sched.Scheduler;
@@ -40,7 +41,7 @@ public final class PhpEngine implements AutoCloseable {
 
     public PhpEngine(Scheduler scheduler) {
         this.scheduler = scheduler;
-        this.engine = Engine.newBuilder("php")
+        this.engine = Engine.newBuilder("php", JsLanguage.ID)
                 .option("engine.WarnInterpreterOnly", "false")
                 .build();
     }
@@ -66,7 +67,8 @@ public final class PhpEngine implements AutoCloseable {
         Scheduler.Task task = scheduler == null ? null : scheduler.newTask(request.uri);
         request.scheduler = task == null ? GuestScheduler.NONE : task;
         request.install();
-        try (Context ctx = Context.newBuilder("php").engine(engine).out(out).err(err).build()) {
+        boolean js = JsLanguage.ID.equals(source.getLanguage());
+        try (Context ctx = Context.newBuilder(source.getLanguage()).engine(engine).out(out).err(err).build()) {
             if (task != null) {
                 task.bindContext(ctx);
                 task.acquire();
@@ -75,7 +77,7 @@ public final class PhpEngine implements AutoCloseable {
                 ctx.eval(source);
                 return request.status;
             } catch (PolyglotException e) {
-                return fail(request, out, task, e);
+                return fail(request, out, task, e, js);
             } finally {
                 if (task != null) {
                     task.release();
@@ -87,19 +89,23 @@ public final class PhpEngine implements AutoCloseable {
             return request.status;
         } catch (PolyglotException e) {
             // close() of a cancelled context rethrows the cancellation; report it only once
-            return request.status >= 500 ? request.status : fail(request, out, task, e);
+            return request.status >= 500 ? request.status : fail(request, out, task, e, js);
         } finally {
             PhpRequest.uninstall();
         }
     }
 
     /** Prints the failure the way php-cli does and turns it into an HTTP 500. */
-    private int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e) {
+    private int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e, boolean js) {
         SourceSection where = e.getSourceLocation();
         String file = where != null && where.getSource().getPath() != null ? where.getSource().getPath() : request.scriptFilename;
         int line = where != null ? where.getStartLine() : 0;
         String text;
-        if (task != null && task.timedOut()) {
+        if (js) {
+            text = task != null && task.timedOut()
+                    ? "Error: Maximum execution time of " + scheduler.maxExecutionMillis() + " ms exceeded"
+                    : "Uncaught " + e.getMessage() + (line > 0 ? "\n    at " + file + ":" + line : "");
+        } else if (task != null && task.timedOut()) {
             double secs = scheduler.maxExecutionMillis() / 1000.0;
             String shown = secs == Math.rint(secs) ? Long.toString((long) secs) : Double.toString(secs);
             text = "PHP Fatal error:  Maximum execution time of " + shown + " second" + (secs == 1 ? "" : "s") + " exceeded"
@@ -151,7 +157,8 @@ public final class PhpEngine implements AutoCloseable {
             return cached.source();
         }
         // A cached Source lets the shared engine reuse the parsed call target across contexts.
-        Source src = Source.newBuilder("php", abs.toFile()).cached(true).build();
+        String language = abs.toString().endsWith(".js") ? JsLanguage.ID : "php";
+        Source src = Source.newBuilder(language, abs.toFile()).cached(true).build();
         sources.put(abs, new CachedSource(modified, src));
         return src;
     }

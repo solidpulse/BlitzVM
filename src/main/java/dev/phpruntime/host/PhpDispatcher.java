@@ -67,7 +67,7 @@ public final class PhpDispatcher {
             if (!Files.isRegularFile(file)) {
                 return Response.text(404, "Not Found: " + path + "\n");
             }
-            if (!file.toString().endsWith(".php")) {
+            if (!isScript(file)) {
                 String name = file.getFileName().toString();
                 List<String[]> h = new ArrayList<>();
                 h.add(new String[]{"Content-Type", MIME.getOrDefault(name.substring(name.lastIndexOf('.') + 1), "application/octet-stream")});
@@ -89,8 +89,15 @@ public final class PhpDispatcher {
         }
     }
 
+    /** .php files run as PHP; .js files are Node-style request handlers (module.exports = (req, res) => ...). */
+    private static boolean isScript(Path file) {
+        String name = file.toString();
+        return name.endsWith(".php") || name.endsWith(".js");
+    }
+
     private PhpRequest buildRequest(Request req, Path file) {
         PhpRequest r = new PhpRequest();
+        r.http = true;
         r.method = req.method();
         r.queryString = req.rawQuery() == null ? "" : req.rawQuery();
         r.uri = req.rawPath() + (r.queryString.isEmpty() ? "" : "?" + r.queryString);
