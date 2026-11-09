@@ -113,6 +113,31 @@ php-fpm workers sit idle through each wait. Swoole overlaps the waits but runs t
 compute part without a JIT. php-truffle releases its CPU slot during the wait and runs
 the compute part compiled.
 
+## JavaScript front end vs Node.js 22
+
+The same handler files (`www/*.js`, Node-style `module.exports = (req, res) => ...`) run on
+BlitzVM's JavaScript front end and on real Node.js through `bench/node/server.js`.
+`SCENARIO=js bench/run.sh node truffle` and the compute kernels via `compute.js?k=...`.
+The JS front end is a subset (no arrays, classes or closures over locals yet); all 16
+conformance fixtures in `src/test/resources/js` match Node's output.
+
+| | Node.js 22 | BlitzVM JS |
+|---|---|---|
+| hello during a 4 s CPU loop, 1 worker | ~3.1 s (blocked) | **~0.3 s first, then 20 to 33 ms** |
+| collatz to 300,000, warm | 381 ms | **224 ms** |
+| primes to 2,000,000, warm | 168 ms | **145 ms** |
+| gcd sum, warm | 9.7 ms | **8.6 ms** |
+| mandelbrot 600 x 600, warm | **12.5 ms** | 15.4 ms |
+| fib(27), warm | **2.0 ms** | 3.7 ms |
+| tak(24, 16, 8), warm | **8.1 ms** | 16.4 ms |
+| pixel loop 800 x 800, warm | **3.8 ms** | 30.7 ms |
+| API-style request (await 20 ms, then pixels 300 x 300), 4 workers | **1,255 req/s** | 211 req/s |
+| hello.js, 4 workers | **27,958 req/s** | 15,160 req/s |
+
+Node blocks completely while a handler spins, as php-fpm does; BlitzVM keeps answering.
+V8 wins most compute and both throughput rows: its event loop makes waiting cheap and it
+inlines the pixel loop's small helpers far better than this front end does yet.
+
 ## Architecture comparison
 
 | | php-fpm | Swoole | php-truffle |
