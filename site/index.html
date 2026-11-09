@@ -413,7 +413,7 @@ $server-&gt;start();</pre>
           <span class="num">4.1</span>
           <div>
             <h3>The interpreter rewrites itself, then Graal compiles it</h3>
-            <p>PHP goes through a hand-written lexer and a Pratt parser and comes out as a tree of nodes. Each node watches the types that flow through it and specializes. If a <code>+</code> has only ever seen integers, it ends up as one machine add plus an overflow check. If it ever does overflow, it switches to floats, which is what PHP 8 does anyway.</p>
+            <p>PHP goes through a lexer and a Pratt parser and comes out as a tree of nodes. Each node watches the types that flow through it and specializes. If a <code>+</code> has only ever seen integers, it ends up as one machine add plus an overflow check. If it ever does overflow, it switches to floats, which is what PHP 8 does anyway.</p>
             <p>When a function gets hot, Graal compiles the interpreter and the specialized tree together into machine code (partial evaluation). Call sites remember what they call, so small functions get inlined into their callers. That's where the wins over PHP's tracing JIT come from: recursion, integer loops, and code split into lots of little helpers.</p>
             <pre class="code"><span class="c">// the integer case: one add, one overflow branch</span>
 <span class="a">@Specialization</span>(rewriteOn = ArithmeticException.class)
@@ -486,7 +486,7 @@ $server-&gt;start();</pre>
 
             <rect class="box" x="285" y="270" width="190" height="58" rx="6"/>
             <text class="t" x="380" y="295" text-anchor="middle">Lexer + Pratt parser</text>
-            <text class="ts" x="380" y="314" text-anchor="middle">hand-written</text>
+            <text class="ts" x="380" y="314" text-anchor="middle">PHP 8 syntax</text>
             <rect class="box" x="640" y="262" width="200" height="74" rx="6"/>
             <text class="t" x="740" y="290" text-anchor="middle">PHP language</text>
             <text class="ts" x="740" y="309" text-anchor="middle">semantics, 179 builtins</text>
