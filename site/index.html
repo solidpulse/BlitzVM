@@ -217,7 +217,7 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .row.us .val { color: var(--amber); font-weight: 600; }
 @media (max-width: 480px) { .row { grid-template-columns: 6.8em minmax(0, 1fr) 5.6em; gap: 10px; font-size: 13px; } }
 
-/* Architecture (Fig. 5) */
+/* Architecture (Fig. 4) */
 .diagram { overflow-x: auto; }
 .diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .diagram .box { fill: var(--raised); stroke: var(--rule-strong); stroke-width: 1.2; }
@@ -311,7 +311,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           <li class="own">epoll HTTP server</li>
         </ul>
       </div>
-      <div class="bench" id="hero-chart" aria-label="API-style request benchmark"></div>
+      <div class="bench" id="hero-chart" aria-label="Latency while a CPU-bound request runs"></div>
     </div>
 
   </div>
@@ -532,7 +532,7 @@ $server-&gt;start();</pre>
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 5</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
+        <figcaption><b>Fig. 4</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
       </figure>
       <div class="notes">
         <div><b>Parsed once</b>Each file's tree is cached on the shared engine until the file changes.</div>
@@ -552,7 +552,7 @@ $server-&gt;start();</pre>
         <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Request contexts on Java virtual threads, so a request that's sleeping or waiting costs next to nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. On a 64-thread pool they take <span class="mono" id="vt-pool"></span>.</p></div></div>
         <div><span class="tag">next</span><div><h3>Classes, closures and require</h3><p>What's missing before real apps, Laravel included, can run.</p></div></div>
         <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Right now <code>strlen</code>, <code>count</code>, <code>microtime</code> and friends are plain Java calls, so the JIT can't see inside them. Turning the hot ones into nodes fixes that.</p></div></div>
-        <div><span class="tag">planned</span><div><h3>Node.js- and Bun-compatible environments</h3><p>A small JavaScript front end already runs on the same core; Fig. 4 is that prototype. Work on full Node.js and Bun compatibility starts once the PHP front end can render Laravel.</p></div></div>
+        <div><span class="tag">planned</span><div><h3>Node.js- and Bun-compatible environments</h3><p>A small JavaScript front end already runs on the same core; BlitzVM-JS in the chart at the top is that prototype. Work on full Node.js and Bun compatibility starts once the PHP front end can render Laravel.</p></div></div>
       </div>
     </section>
 
@@ -611,16 +611,17 @@ $server-&gt;start();</pre>
 /* All benchmark numbers on the page come from this block. */
 const DATA = {
   hero: {
-    title: "An API-style request",
-    unit: "wait 20 ms on a backend, then do some real work. 4 workers each (Node and Bun in cluster mode), 32 connections, higher is better.",
-    summary: "PHP-BlitzVM: 1.5× PHP-Swoole, 2.2× php-fpm",
+    title: "A quick request while a slow one runs",
+    unit: "ms until a hello request is answered while a 4 s CPU loop holds the only worker. Lower is better.",
+    summary: "BlitzVM: 5 to 25 ms. The rest: over 3.4 s",
+    ms: true,
     rows: [
-      { who: "Bun", note: "1.4.4", v: 1408 },
-      { who: "Node.js", note: "22.14", v: 1255 },
-      { who: "PHP-BlitzVM", us: true, v: 293 },
-      { who: "BlitzVM-JS", us: true, v: 211 },
-      { who: "PHP-Swoole", note: "default", v: 193 },
-      { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
+      { who: "PHP-BlitzVM", us: true, v: 5 },
+      { who: "BlitzVM-JS", us: true, v: 25 },
+      { who: "Bun", note: "1.4.4", v: 3410 },
+      { who: "php-fpm", note: "opcache", v: 3450 },
+      { who: "PHP-Swoole", note: "default", v: 3480 },
+      { who: "Node.js", note: "22.14", v: 3780 }
     ]
   },
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
@@ -628,8 +629,20 @@ const DATA = {
     {
       fig: 2,
       wide: true,
+      title: "PHP: an API-style request",
+      unit: "wait 20 ms on a backend, then do some real work. Requests per second, 4 workers, 32 connections, higher is better.",
+      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits but can't JIT the work afterwards. BlitzVM gets both. php-fpm here has the tracing JIT on.",
+      rows: [
+        { who: "BlitzVM", us: true, v: 293 },
+        { who: "Swoole", note: "default", v: 193 },
+        { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
+      ]
+    },
+    {
+      fig: 3,
+      wide: true,
       perGroup: true,
-      title: "Compute vs PHP's JIT",
+      title: "PHP: compute vs PHP's JIT",
       unit: "ms per run, warm, lower is better. php-fpm has opcache's tracing JIT on. Swoole can't use the JIT at all.",
       caption: "This is the kind of code where Graal's inlining pays off: lots of recursion, integer branches, and loops made of tiny helper functions. 1.3× to 1.8× faster than PHP's own JIT here.",
       ms: true,
@@ -646,30 +659,6 @@ const DATA = {
           { who: "BlitzVM", us: true, v: 20.5 },
           { who: "php-fpm", note: "tracing JIT", v: 27.3 },
           { who: "Swoole", v: 69.5 } ] }
-      ]
-    },
-    {
-      fig: 3,
-      title: "PHP: hello request while a 4 s loop runs",
-      unit: "ms until it's answered, lower is better",
-      caption: "One worker. Anything that can't preempt just has to wait for the loop.",
-      ms: true,
-      rows: [
-        { who: "BlitzVM", us: true, v: 5 },
-        { who: "php-fpm", note: "opcache", v: 3450 },
-        { who: "Swoole", note: "default", v: 3480 }
-      ]
-    },
-    {
-      fig: 4,
-      title: "JavaScript: hello request while a 4 s loop runs",
-      unit: "ms until it's answered, 1 worker, lower is better. Same handler file on all three.",
-      caption: "Bun and Node run JavaScript on one event loop, so a handler that hogs the CPU holds up every other request until it returns. BlitzVM's JavaScript front end runs on the same scheduler as PHP and pauses the loop.",
-      ms: true,
-      rows: [
-        { who: "BlitzVM", note: "JavaScript front end", us: true, v: 25 },
-        { who: "Bun", note: "1.4.4", v: 3410 },
-        { who: "Node.js", note: "22.14", v: 3780 }
       ]
     }
   ],
@@ -703,7 +692,7 @@ function renderHero() {
   const max = Math.max(...c.rows.map(r => r.v));
   document.getElementById("hero-chart").innerHTML = `
     <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
-    <div class="rows">${rowsHtml(c.rows, max, false, " req/s")}</div>
+    <div class="rows">${rowsHtml(c.rows, max, c.ms, c.ms ? "" : " req/s")}</div>
     <div class="bench-foot"><span><b>${c.summary}</b></span><a href="#benchmarks">more numbers below</a></div>`;
 }
 
