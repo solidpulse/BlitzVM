@@ -123,7 +123,7 @@ conformance fixtures in `src/test/resources/js` match Node's output.
 
 | | Node.js 22 | BlitzVM JS |
 |---|---|---|
-| hello during a 4 s CPU loop, 1 worker | ~3.1 s (blocked) | **~0.3 s first, then 20 to 33 ms** |
+| hello during a 4 s CPU loop, 1 worker (server warmed first) | ~3.8 s (blocked) | **~25 ms first, then 10 to 13 ms** |
 | collatz to 300,000, warm | 381 ms | **224 ms** |
 | primes to 2,000,000, warm | 168 ms | **145 ms** |
 | gcd sum, warm | 9.7 ms | **8.6 ms** |
@@ -133,6 +133,10 @@ conformance fixtures in `src/test/resources/js` match Node's output.
 | pixel loop 800 x 800, warm | **3.8 ms** | 30.7 ms |
 | API-style request (await 20 ms, then pixels 300 x 300), 4 workers | **1,255 req/s** | 211 req/s |
 | hello.js, 4 workers | **27,958 req/s** | 15,160 req/s |
+
+Bun 1.4.4 (`bench/run.sh bun`, same server file) behaves the same way during the CPU loop:
+the first hello waited ~3.4 s. Bun is the fastest of the three on throughput (86,632 req/s
+on hello.js, 1,408 req/s on the API-style request).
 
 Node blocks completely while a handler spins, as php-fpm does; BlitzVM keeps answering.
 V8 wins most compute and both throughput rows: its event loop makes waiting cheap and it
