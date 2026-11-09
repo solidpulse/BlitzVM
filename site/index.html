@@ -612,9 +612,13 @@ $server-&gt;start();</pre>
 const DATA = {
   hero: {
     title: "An API-style request",
-    unit: "wait 20 ms on a backend, then do some real work. 4 workers, 32 connections, higher is better.",
+    unit: "wait 20 ms on a backend, then do some real work. 4 workers each (Node and Bun in cluster mode), 32 connections, higher is better.",
+    summary: "PHP-BlitzVM: 1.5× PHP-Swoole, 2.2× php-fpm",
     rows: [
+      { who: "Bun", note: "1.4.4", v: 1408 },
+      { who: "Node.js", note: "22.14", v: 1255 },
       { who: "PHP-BlitzVM", us: true, v: 293 },
+      { who: "BlitzVM-JS", us: true, v: 211 },
       { who: "PHP-Swoole", note: "default", v: 193 },
       { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
     ]
@@ -697,13 +701,10 @@ function renderCharts() {
 function renderHero() {
   const c = DATA.hero;
   const max = Math.max(...c.rows.map(r => r.v));
-  const us = c.rows.find(r => r.us).v;
-  const others = c.rows.filter(r => !r.us);
-  const vs = others.map(r => `${(us / r.v).toFixed(1)}× ${r.who}`).join(", ");
   document.getElementById("hero-chart").innerHTML = `
     <p class="bench-title">${c.title}</p><p class="bench-unit">${c.unit}</p>
     <div class="rows">${rowsHtml(c.rows, max, false, " req/s")}</div>
-    <div class="bench-foot"><span><b>${vs}</b></span><a href="#benchmarks">more numbers below</a></div>`;
+    <div class="bench-foot"><span><b>${c.summary}</b></span><a href="#benchmarks">more numbers below</a></div>`;
 }
 
 function renderTimeline() {
