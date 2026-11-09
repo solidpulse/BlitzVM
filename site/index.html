@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BlitzVM</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="BlitzVM is a research runtime for server-side languages with JIT compilation, per-request isolation and preemptive scheduling. PHP first, Node.js-compatible environments next.">
+<meta name="description" content="BlitzVM is a research runtime for server-side languages with JIT compilation, per-request isolation and preemptive scheduling. PHP first, Node.js- and Bun-compatible environments next.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -299,7 +299,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
   <div class="hero" id="overview">
     <div class="hero-grid">
       <div class="hero-copy">
-        <p class="eyebrow"><span>research project</span><span>PHP for now</span><span>Node.js-compatible later</span></p>
+        <p class="eyebrow"><span>research project</span><span>PHP for now</span><span>Node.js and Bun later</span></p>
         <h1>A <em>preemptive</em> runtime for <span style="white-space:nowrap">server-side</span> languages.</h1>
         <p class="lede">Every PHP shop hits this eventually: one heavy request ties up a worker and everyone queued behind it waits. BlitzVM compiles hot PHP to machine code, and once a request has had its 10 ms while others are waiting, it gets paused so the rest keep moving. Each request still starts with clean state, and the PHP you write is the same PHP you'd write for php-fpm.</p>
         <p class="byline">By <b>Avinash D'Silva</b></p>
@@ -545,14 +545,14 @@ $server-&gt;start();</pre>
       <div class="sh">
         <span class="sn">06</span>
         <h2>What's next</h2>
-        <p>None of the scheduling or isolation code is PHP-specific. I started with PHP because it's easy to measure: php-fpm and Swoole are well understood, and the request model is simple. Node.js-compatible environments are the bigger target.</p>
+        <p>None of the scheduling or isolation code is PHP-specific. I started with PHP because it's easy to measure: php-fpm and Swoole are well understood, and the request model is simple. Node.js- and Bun-compatible environments are the bigger target.</p>
       </div>
       <div class="road">
         <div><span class="tag on">working</span><div><h3>PHP 8 core</h3><p>Functions with defaults and by-reference args, copy-on-write arrays, PHP 8 type juggling and int overflow, alternative syntax, templates, superglobals, headers and status codes, and 179 builtins. I check the output against real PHP 8.5 with a conformance suite.</p></div></div>
         <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Request contexts on Java virtual threads, so a request that's sleeping or waiting costs next to nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. On a 64-thread pool they take <span class="mono" id="vt-pool"></span>.</p></div></div>
         <div><span class="tag">next</span><div><h3>Classes, closures and require</h3><p>What's missing before real apps, Laravel included, can run.</p></div></div>
         <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Right now <code>strlen</code>, <code>count</code>, <code>microtime</code> and friends are plain Java calls, so the JIT can't see inside them. Turning the hot ones into nodes fixes that.</p></div></div>
-        <div><span class="tag">planned</span><div><h3>Node.js-compatible environments</h3><p>A small JavaScript front end already runs on the same core; Fig. 4 is that prototype. Work on the full Node.js front end starts once the PHP front end can render Laravel.</p></div></div>
+        <div><span class="tag">planned</span><div><h3>Node.js- and Bun-compatible environments</h3><p>A small JavaScript front end already runs on the same core; Fig. 4 is that prototype. Work on full Node.js and Bun compatibility starts once the PHP front end can render Laravel.</p></div></div>
       </div>
     </section>
 
