@@ -39,6 +39,10 @@ start_node() { # $1 workers (node:cluster when > 1)
   PORT=18404 WORKERS="$1" node "$ROOT/bench/node/server.js" > "$RUN/node.log" 2>&1 &
   PIDS=$!; BASE=http://127.0.0.1:18404; wait_up "$BASE/hello.js"
 }
+start_bun() { # $1 workers; Bun runs the same Node server file
+  PORT=18405 WORKERS="$1" "${BUN:-bun}" "$ROOT/bench/node/server.js" > "$RUN/bun.log" 2>&1 &
+  PIDS=$!; BASE=http://127.0.0.1:18405; wait_up "$BASE/hello.js"
+}
 stop_all() {
   [[ -n "${PIDS:-}" ]] && kill $PIDS 2>/dev/null && wait $PIDS 2>/dev/null
   docker rm -f bench-nginx bench-swoole >/dev/null 2>&1
@@ -53,6 +57,7 @@ start() { # $1 target, $2 workers
     swoole) start_swoole "$2" 0 ;;
     swoole-preempt) start_swoole "$2" 1 ;;
     node) start_node "$2" ;;
+    bun) start_bun "$2" ;;
   esac
 }
 rss_mb() { # resident memory of the serving processes
@@ -127,6 +132,7 @@ js() { # $1 target (truffle or node): the JavaScript handlers in www/*.js
   stop_all
 
   start "$t" 1
+  $LOAD once "$BASE/hello.js" > /dev/null 2>&1   # warm: a running server has served hello before
   echo "== starvation: 1 worker, spin.js?s=4 running, then hello.js every 300ms"
   $LOAD once "$BASE/spin.js?s=4" > "$RUN/spin.out" 2>&1 &
   local spin=$!
