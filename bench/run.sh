@@ -35,6 +35,10 @@ start_swoole() { # $1 workers, $2 preempt 0|1
     -v "$ROOT/bench/swoole/server.php:/app/server.php:ro" -v "$ROOT/www:/www:ro" phpswoole/swoole:latest php /app/server.php >/dev/null
   BASE=http://127.0.0.1:18403; wait_up "$BASE/hello.php"
 }
+start_node() { # $1 workers (node:cluster when > 1)
+  PORT=18404 WORKERS="$1" node "$ROOT/bench/node/server.js" > "$RUN/node.log" 2>&1 &
+  PIDS=$!; BASE=http://127.0.0.1:18404; wait_up "$BASE/hello.js"
+}
 stop_all() {
   [[ -n "${PIDS:-}" ]] && kill $PIDS 2>/dev/null && wait $PIDS 2>/dev/null
   docker rm -f bench-nginx bench-swoole >/dev/null 2>&1
@@ -48,6 +52,7 @@ start() { # $1 target, $2 workers
     fpm-jit) start_fpm "$2" tracing ;;
     swoole) start_swoole "$2" 0 ;;
     swoole-preempt) start_swoole "$2" 1 ;;
+    node) start_node "$2" ;;
   esac
 }
 rss_mb() { # resident memory of the serving processes
@@ -111,8 +116,28 @@ mixed() { # $1 target: wait on a backend for 20 ms, then compute; 4 workers, 32 
   stop_all
 }
 
+js() { # $1 target (truffle or node): the JavaScript handlers in www/*.js
+  local t="$1"
+  echo "################ $t js"
+  start "$t" "$THROUGHPUT_WORKERS"
+  echo "== throughput: compute.js?k=api&n=300 (await 20 ms timer + pixel loop), $THROUGHPUT_WORKERS workers, 32 connections"
+  $LOAD load "$BASE/compute.js?k=api&n=300" 32 "$LOAD_SECONDS"
+  echo "== throughput: hello.js"
+  $LOAD load "$BASE/hello.js" 32 "$LOAD_SECONDS"
+  stop_all
+
+  start "$t" 1
+  echo "== starvation: 1 worker, spin.js?s=4 running, then hello.js every 300ms"
+  $LOAD once "$BASE/spin.js?s=4" > "$RUN/spin.out" 2>&1 &
+  local spin=$!
+  sleep 0.5
+  $LOAD probe "$BASE/hello.js" 4 300
+  wait $spin; echo "   spin: $(cat "$RUN/spin.out")"
+  stop_all
+}
+
 trap stop_all EXIT
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
-for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute or mixed
+for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed or js
