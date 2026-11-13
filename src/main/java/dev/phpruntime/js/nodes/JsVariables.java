@@ -158,8 +158,11 @@ public final class JsVariables {
 
     /**
      * {@code target = value}; also used for declarations and compound assignment.
-     * Remembers whether the value has always been an int or a double and then moves it
-     * without boxing.
+     * Remembers what the value has been and moves it without boxing. The kinds only
+     * widen: INT becomes DOUBLE the first time a double shows up (from then on ints are
+     * stored as doubles), and only a non-number makes it OBJECT. A variable that holds
+     * both ints and doubles, like the result of {@code a * t / 8}, is common in JS
+     * and must not end up boxed.
      */
     public static final class Assign extends JsNode {
         private static final int UNKNOWN = 0;
@@ -182,17 +185,15 @@ public final class JsVariables {
                 case INT -> {
                     try {
                         target.writeInt(frame, value.executeInt(frame));
-                        return;
                     } catch (UnexpectedResultException e) {
-                        generalize(frame, e.getResult());
+                        widen(frame, e.getResult());
                     }
                 }
                 case DOUBLE -> {
                     try {
                         target.writeDouble(frame, value.executeDouble(frame));
-                        return;
                     } catch (UnexpectedResultException e) {
-                        generalize(frame, e.getResult());
+                        widen(frame, e.getResult());
                     }
                 }
                 case OBJECT -> target.write(frame, value.executeGeneric(frame));
@@ -200,23 +201,39 @@ public final class JsVariables {
             }
         }
 
-        private void generalize(VirtualFrame frame, Object v) {
+        private void widen(VirtualFrame frame, Object v) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
-            kind = OBJECT;
-            target.write(frame, v);
+            kind = join(kind, v);
+            store(frame, v);
+        }
+
+        private static int join(int kind, Object v) {
+            if (kind == OBJECT || !(v instanceof Integer || v instanceof Double)) {
+                return OBJECT;
+            }
+            if (v instanceof Double || kind == DOUBLE) {
+                return DOUBLE;
+            }
+            return INT;
+        }
+
+        private void store(VirtualFrame frame, Object v) {
+            if (kind == DOUBLE && v instanceof Integer i) {
+                target.writeDouble(frame, i);
+            } else {
+                target.write(frame, v);
+            }
         }
 
         @Override
         public Object executeGeneric(VirtualFrame frame) {
             Object v = value.executeGeneric(frame);
-            if (kind == UNKNOWN) {
+            int k = join(kind, v);
+            if (k != kind) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                kind = v instanceof Integer ? INT : v instanceof Double ? DOUBLE : OBJECT;
-            } else if ((kind == INT && !(v instanceof Integer)) || (kind == DOUBLE && !(v instanceof Double))) {
-                CompilerDirectives.transferToInterpreterAndInvalidate();
-                kind = OBJECT;
+                kind = k;
             }
-            target.write(frame, v);
+            store(frame, v);
             return v;
         }
     }

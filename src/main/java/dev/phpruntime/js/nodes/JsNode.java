@@ -30,8 +30,16 @@ public abstract class JsNode extends Node {
         return JsTypesGen.expectInteger(executeGeneric(frame));
     }
 
+    /** An int result widens to double here, the same as the type system's implicit cast. */
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
-        return JsTypesGen.expectDouble(executeGeneric(frame));
+        Object v = executeGeneric(frame);
+        if (v instanceof Double d) {
+            return d;
+        }
+        if (v instanceof Integer i) {
+            return i;
+        }
+        throw new UnexpectedResultException(v);
     }
 
     public boolean executeBoolean(VirtualFrame frame) throws UnexpectedResultException {
