@@ -20,15 +20,17 @@ public final class JsFunctionRootNode extends RootNode {
 
     @Child private JsNode body;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
+    @CompilationFinal(dimensions = 1) private final JsVariables.SlotKind[] paramKinds;
     private final String name;
     private final Source source;
     private final int line;
 
     public JsFunctionRootNode(JsLanguage language, FrameDescriptor fd, JsNode body, int[] paramSlots,
-                              String name, Source source, int line) {
+                              JsVariables.SlotKind[] paramKinds, String name, Source source, int line) {
         super(language, fd);
         this.body = body;
         this.paramSlots = paramSlots;
+        this.paramKinds = paramKinds;
         this.name = name;
         this.source = source;
         this.line = line;
@@ -42,8 +44,13 @@ public final class JsFunctionRootNode extends RootNode {
         for (int i = 0; i < paramSlots.length; i++) {
             Object v = i + 2 < args.length ? args[i + 2] : Undefined.INSTANCE;
             if (v instanceof Integer n) {
-                frame.setInt(paramSlots[i], n);
+                if (paramKinds[i].holdsDoubles()) {
+                    frame.setDouble(paramSlots[i], n);
+                } else {
+                    frame.setInt(paramSlots[i], n);
+                }
             } else if (v instanceof Double d) {
+                paramKinds[i].sawDouble();
                 frame.setDouble(paramSlots[i], d);
             } else {
                 frame.setObject(paramSlots[i], v);

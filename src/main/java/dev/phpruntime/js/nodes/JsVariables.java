@@ -1,6 +1,8 @@
 package dev.phpruntime.js.nodes;
 
+import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.CompilerDirectives;
+import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.frame.MaterializedFrame;
@@ -18,6 +20,29 @@ import dev.phpruntime.js.runtime.JsOps;
 public final class JsVariables {
 
     private JsVariables() {
+    }
+
+    /**
+     * Shared by every node that reads or writes one variable (and by parameter binding).
+     * Until the variable first holds a double, ints are stored as ints. After that, every
+     * int written to it is stored as a double, so a variable like {@code let zr = 0.0;
+     * ... zr = t;} keeps one representation instead of changing tag on every iteration.
+     * The decision is an Assumption, so all compiled code that relied on it is thrown
+     * away together.
+     */
+    public static final class SlotKind {
+        private final Assumption noDoubles = Truffle.getRuntime().createAssumption("variable never held a double");
+
+        public boolean holdsDoubles() {
+            return !noDoubles.isValid();
+        }
+
+        public void sawDouble() {
+            if (noDoubles.isValid()) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                noDoubles.invalidate();
+            }
+        }
     }
 
     /** Something that can be assigned to. */
@@ -44,10 +69,12 @@ public final class JsVariables {
     abstract static class SlotTarget extends Target {
         protected final int slot;
         protected final String name;
+        protected final SlotKind kind;
 
-        SlotTarget(int slot, String name) {
+        SlotTarget(int slot, String name, SlotKind kind) {
             this.slot = slot;
             this.name = name;
+            this.kind = kind;
         }
 
         protected abstract Frame frameOf(VirtualFrame frame);
@@ -92,30 +119,34 @@ public final class JsVariables {
 
         @Override
         public void write(VirtualFrame frame, Object value) {
-            Frame f = frameOf(frame);
             if (value instanceof Integer i) {
-                f.setInt(slot, i);
+                writeInt(frame, i);
             } else if (value instanceof Double d) {
-                f.setDouble(slot, d);
+                writeDouble(frame, d);
             } else {
-                f.setObject(slot, value);
+                frameOf(frame).setObject(slot, value);
             }
         }
 
         @Override
         public void writeInt(VirtualFrame frame, int value) {
-            frameOf(frame).setInt(slot, value);
+            if (kind.holdsDoubles()) {
+                frameOf(frame).setDouble(slot, value);
+            } else {
+                frameOf(frame).setInt(slot, value);
+            }
         }
 
         @Override
         public void writeDouble(VirtualFrame frame, double value) {
+            kind.sawDouble();
             frameOf(frame).setDouble(slot, value);
         }
     }
 
     public static final class Local extends SlotTarget {
-        public Local(int slot, String name) {
-            super(slot, name);
+        public Local(int slot, String name, SlotKind kind) {
+            super(slot, name, kind);
         }
 
         @Override
@@ -125,8 +156,8 @@ public final class JsVariables {
     }
 
     public static final class Module extends SlotTarget {
-        public Module(int slot, String name) {
-            super(slot, name);
+        public Module(int slot, String name, SlotKind kind) {
+            super(slot, name, kind);
         }
 
         @Override

@@ -44,6 +44,7 @@ public final class JsParser {
         final FrameDescriptor.Builder frame = FrameDescriptor.newBuilder();
         final Map<String, Integer> slots = new HashMap<>();
         final List<JsNode> hoisted = new ArrayList<>();
+        final Map<Integer, JsVariables.SlotKind> kinds = new HashMap<>();
 
         Scope(Scope parent, boolean module) {
             this.parent = parent;
@@ -52,6 +53,15 @@ public final class JsParser {
 
         int declare(String name) {
             return slots.computeIfAbsent(name, n -> frame.addSlot(FrameSlotKind.Object, n, null));
+        }
+
+        JsVariables.SlotKind kind(int slot) {
+            return kinds.computeIfAbsent(slot, s -> new JsVariables.SlotKind());
+        }
+
+        JsVariables.Local local(String name) {
+            int slot = declare(name);
+            return new JsVariables.Local(slot, name, kind(slot));
         }
     }
 
@@ -250,7 +260,7 @@ public final class JsParser {
     }
 
     private JsVariables.Target declareTarget(String name) {
-        return new JsVariables.Local(scope.declare(name), name);
+        return scope.local(name);
     }
 
     private JsNode forStatement() {
@@ -304,8 +314,10 @@ public final class JsParser {
         Scope outer = scope;
         scope = new Scope(outer, false);
         int[] paramSlots = new int[params.size()];
+        JsVariables.SlotKind[] paramKinds = new JsVariables.SlotKind[params.size()];
         for (int i = 0; i < params.size(); i++) {
             paramSlots[i] = scope.declare(params.get(i));
+            paramKinds[i] = scope.kind(paramSlots[i]);
         }
         JsNode body;
         if (expressionBody) {
@@ -323,7 +335,7 @@ public final class JsParser {
             expect("}");
             body = block(scope, list);
         }
-        JsFunctionRootNode root = new JsFunctionRootNode(language, scope.frame.build(), body, paramSlots, name, source, line);
+        JsFunctionRootNode root = new JsFunctionRootNode(language, scope.frame.build(), body, paramSlots, paramKinds, name, source, line);
         scope = outer;
         return at(new JsCalls.FunctionLiteral(root, name, outer.module), line);
     }
@@ -673,18 +685,15 @@ public final class JsParser {
 
     /** Local slot of the current function, or a top-level binding in the module frame. */
     private JsVariables.Target resolve(String name, int line) {
-        Integer slot = scope.slots.get(name);
-        if (slot != null) {
-            return new JsVariables.Local(slot, name);
-        }
-        if (scope.module) {
-            return new JsVariables.Local(scope.declare(name), name);
+        if (scope.slots.containsKey(name) || scope.module) {
+            return scope.local(name);
         }
         for (Scope s = scope.parent; s != null && !s.module; s = s.parent) {
             if (s.slots.containsKey(name)) {
                 throw new JsParseError("Closures over local variables are not supported yet ('" + name + "')", line);
             }
         }
-        return new JsVariables.Module(moduleScope.declare(name), name);
+        int slot = moduleScope.declare(name);
+        return new JsVariables.Module(slot, name, moduleScope.kind(slot));
     }
 }
