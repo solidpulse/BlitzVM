@@ -101,6 +101,18 @@ scenario() { # $1 target
   stop_all
 }
 
+latency() { # $1 target: only the starvation test from scenario(), 1 worker
+  local t="$1"
+  echo "################ $t latency"
+  start "$t" 1
+  echo "== starvation: 1 worker, spin.php?s=4 running, then hello every 300ms"
+  $LOAD once "$BASE/spin.php?s=4" > "$RUN/spin.out" 2>&1 &
+  local spin=$!
+  sleep 0.5
+  $LOAD probe "$BASE/hello.php" 4 300
+  wait $spin; echo "   spin: $(cat "$RUN/spin.out")"
+  stop_all
+}
 compute() { # $1 target: CPU-bound kernels on 1 worker, warm timings
   local t="$1"
   echo "################ $t compute"
