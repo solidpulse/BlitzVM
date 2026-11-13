@@ -5,13 +5,16 @@ import com.oracle.truffle.api.dsl.Fallback;
 import com.oracle.truffle.api.dsl.NodeChild;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import com.oracle.truffle.api.profiles.CountingConditionProfile;
 import dev.phpruntime.js.runtime.JsOps;
 
 /**
  * Operators. Integer specializations keep exact int arithmetic while every result is
  * an integer JavaScript would also produce; overflow, inexact division and -0 move to
- * the double specialization, which is JavaScript's own number semantics.
+ * the double specialization, which is JavaScript's own number semantics. The double
+ * specialization replaces the int one, so a node that has seen a double always
+ * produces doubles: one result type is what lets Graal keep the value unboxed.
  */
 public final class JsOperators {
 
@@ -33,7 +36,7 @@ public final class JsOperators {
             return Math.addExact(a, b);
         }
 
-        @Specialization
+        @Specialization(replaces = "doInt")
         protected double doDouble(double a, double b) {
             return a + b;
         }
@@ -56,7 +59,7 @@ public final class JsOperators {
             return Math.subtractExact(a, b);
         }
 
-        @Specialization
+        @Specialization(replaces = "doInt")
         protected double doDouble(double a, double b) {
             return a - b;
         }
@@ -73,7 +76,7 @@ public final class JsOperators {
             return Math.multiplyExact(a, b);
         }
 
-        @Specialization
+        @Specialization(replaces = "doInt")
         protected double doDouble(double a, double b) {
             return a * b;
         }
@@ -94,7 +97,7 @@ public final class JsOperators {
             return a / b;
         }
 
-        @Specialization
+        @Specialization(replaces = "doInt")
         protected double doDouble(double a, double b) {
             return a / b;
         }
@@ -115,7 +118,7 @@ public final class JsOperators {
             return a % b;
         }
 
-        @Specialization
+        @Specialization(replaces = "doInt")
         protected double doDouble(double a, double b) {
             return a % b;
         }
@@ -137,7 +140,7 @@ public final class JsOperators {
             return -a;
         }
 
-        @Specialization
+        @Specialization(replaces = "doInt")
         protected double doDouble(double a) {
             return -a;
         }
@@ -316,6 +319,8 @@ public final class JsOperators {
         @Child private JsNode whenTrue;
         @Child private JsNode whenFalse;
         private final CountingConditionProfile profile = CountingConditionProfile.create();
+        private final ValueKind trueKind = new ValueKind();
+        private final ValueKind falseKind = new ValueKind();
 
         public Conditional(JsNode condition, JsNode whenTrue, JsNode whenFalse) {
             this.condition = condition;
@@ -326,9 +331,25 @@ public final class JsOperators {
         @Override
         public Object executeGeneric(VirtualFrame frame) {
             if (profile.profile(condition.executeCondition(frame))) {
-                return whenTrue.executeGeneric(frame);
+                return trueKind.execute(frame, whenTrue);
             }
-            return whenFalse.executeGeneric(frame);
+            return falseKind.execute(frame, whenFalse);
+        }
+
+        @Override
+        public int executeInt(VirtualFrame frame) throws UnexpectedResultException {
+            if (profile.profile(condition.executeCondition(frame))) {
+                return whenTrue.executeInt(frame);
+            }
+            return whenFalse.executeInt(frame);
+        }
+
+        @Override
+        public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
+            if (profile.profile(condition.executeCondition(frame))) {
+                return whenTrue.executeDouble(frame);
+            }
+            return whenFalse.executeDouble(frame);
         }
     }
 
@@ -342,6 +363,25 @@ public final class JsOperators {
         @Override
         public Object executeGeneric(VirtualFrame frame) {
             return value;
+        }
+
+        @Override
+        public int executeInt(VirtualFrame frame) throws UnexpectedResultException {
+            if (value instanceof Integer i) {
+                return i;
+            }
+            throw new UnexpectedResultException(value);
+        }
+
+        @Override
+        public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
+            if (value instanceof Double d) {
+                return d;
+            }
+            if (value instanceof Integer i) {
+                return i;
+            }
+            throw new UnexpectedResultException(value);
         }
     }
 }

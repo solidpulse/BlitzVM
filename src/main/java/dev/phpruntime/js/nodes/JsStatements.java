@@ -108,6 +108,7 @@ public final class JsStatements {
 
     public static final class Return extends JsNode {
         @Child private JsNode value;
+        private final ValueKind kind = new ValueKind();
 
         public Return(JsNode value) {
             this.value = value;
@@ -115,7 +116,7 @@ public final class JsStatements {
 
         @Override
         public Object executeGeneric(VirtualFrame frame) {
-            throw new JsControl.Return(value == null ? Undefined.INSTANCE : value.executeGeneric(frame));
+            throw new JsControl.Return(value == null ? Undefined.INSTANCE : kind.execute(frame, value));
         }
     }
 
