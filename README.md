@@ -4,48 +4,29 @@
 
 Site: https://blitzvm.returnzero.win/ · By Avinash D'Silva · v0.1 research preview
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/latency-dark.svg">
+  <img alt="Hello request answered while a 4 s CPU loop holds the only worker: PHP on BlitzVM 5 ms, JavaScript on BlitzVM 25 ms, Bun 3,410 ms, php-fpm 3,450 ms, Swoole 3,480 ms, Node.js 3,780 ms" src="docs/img/latency-light.svg" width="760">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/api-dark.svg">
+  <img alt="PHP API-style request: BlitzVM 293 req/s, Swoole 193 req/s, php-fpm 136 req/s" src="docs/img/api-light.svg" width="760">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/compute-dark.svg">
+  <img alt="PHP compute vs PHP JIT: tak 8.2 vs 14.6 ms, collatz 144 vs 238 ms, pixel loop 20.5 vs 27.3 ms" src="docs/img/compute-light.svg" width="760">
+</picture>
+
 Every backend hits this eventually: one heavy request ties up a php-fpm worker, or the whole
 event loop in Node and Bun, and everyone queued behind it waits. BlitzVM JIT-compiles hot
 code and preemptively schedules requests in short time slices. Each request still starts
 with clean state, and you write the same plain PHP or JavaScript handler you would write
 today.
 
-## At a glance
-
-**A quick request while a slow one runs.** One worker, a 4 s CPU loop, then a hello request.
-Time until the hello request is answered (lower is better):
-
-| Runtime | Answered after |
-|---|---|
-| **PHP on BlitzVM** | **5 ms** |
-| **JavaScript on BlitzVM** | **25 ms** |
-| Bun 1.4.4 | 3,410 ms |
-| php-fpm (opcache) | 3,450 ms |
-| Swoole (default) | 3,480 ms |
-| Node.js 22.14 | 3,780 ms |
-
-**PHP: an API-style request.** Each request waits 20 ms on a pretend backend call, then runs
-real work (a pixel loop on 300 × 300). 4 workers, 32 connections:
-
-| Runtime | Requests per second |
-|---|---|
-| **BlitzVM** | **293** |
-| Swoole (default) | 193 |
-| php-fpm (nginx + tracing JIT) | 136 |
-
-php-fpm's workers sit idle during each wait. Swoole overlaps the waits but can't JIT the work
-afterwards. BlitzVM gets both.
-
-**PHP: compute against PHP's own JIT.** Warm, milliseconds per run, lower is better. php-fpm
-has opcache's tracing JIT on (verified with `opcache_get_status()`); Swoole can't use the JIT.
-
-| Workload | BlitzVM | php-fpm + tracing JIT | Swoole |
-|---|---|---|---|
-| tak(24, 16, 8), lots of recursion | **8.2 ms** | 14.6 ms | 36.9 ms |
-| collatz to 300,000, integer branches | **144 ms** | 238 ms | 505 ms |
-| pixel loop built from tiny helper functions | **20.5 ms** | 27.3 ms | 69.5 ms |
-
-The full comparison, including the workloads where the other runtimes win, is in
+How the numbers were taken is under [Benchmarks](#benchmarks); the full comparison,
+including the workloads where the other runtimes win, is in
 [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Why it's fast
