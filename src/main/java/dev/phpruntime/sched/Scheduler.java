@@ -43,6 +43,9 @@ public final class Scheduler implements AutoCloseable {
     private final AtomicLong preemptions = new AtomicLong();
     private final AtomicLong completed = new AtomicLong();
     private final AtomicLong timeouts = new AtomicLong();
+    private final AtomicLong heldNanos = new AtomicLong();
+    private final AtomicLong waitNanos = new AtomicLong();
+    private final AtomicLong grants = new AtomicLong();
 
     public Scheduler(int cpus, long quantumMillis, long maxExecutionMillis) {
         this.cpus = cpus;
@@ -75,7 +78,9 @@ public final class Scheduler implements AutoCloseable {
 
     public String stats() {
         return "cpus=" + cpus + " running=" + running.size() + " waiting=" + slots.getQueueLength()
-                + " completed=" + completed.get() + " preemptions=" + preemptions.get() + " timeouts=" + timeouts.get();
+                + " completed=" + completed.get() + " preemptions=" + preemptions.get() + " timeouts=" + timeouts.get()
+                + " grants=" + grants.get() + " heldMs=" + TimeUnit.NANOSECONDS.toMillis(heldNanos.get())
+                + " slotWaitMs=" + TimeUnit.NANOSECONDS.toMillis(waitNanos.get());
     }
 
     public long maxExecutionMillis() {
@@ -109,7 +114,9 @@ public final class Scheduler implements AutoCloseable {
 
         /** Host side: wait for a CPU slot before entering guest code. */
         public void acquire() throws InterruptedException {
+            long t0 = System.nanoTime();
             slots.acquire();
+            waitNanos.addAndGet(System.nanoTime() - t0);
             onSlotAcquired();
         }
 
@@ -128,13 +135,16 @@ public final class Scheduler implements AutoCloseable {
         }
 
         private void onSlotAcquired() {
+            grants.incrementAndGet();
             sliceStart = System.nanoTime();
             running.add(this);
         }
 
         private void onSlotReleased() {
             running.remove(this);
-            usedNanos += System.nanoTime() - sliceStart;
+            long held = System.nanoTime() - sliceStart;
+            usedNanos += held;
+            heldNanos.addAndGet(held);
             slots.release();
         }
 
@@ -186,7 +196,9 @@ public final class Scheduler implements AutoCloseable {
             try {
                 TruffleSafepoint.setBlockedThreadInterruptible(location, InterruptibleRunnable::run, op);
             } finally {
+                long t0 = System.nanoTime();
                 TruffleSafepoint.setBlockedThreadInterruptible(location, Semaphore::acquire, slots);
+                waitNanos.addAndGet(System.nanoTime() - t0);
                 onSlotAcquired();
             }
         }
