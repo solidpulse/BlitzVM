@@ -116,6 +116,14 @@ h1 em { font-style: italic; font-weight: 400; color: var(--amber); }
 .components li.own { color: var(--ink); border-color: var(--amber-dim); }
 .components li.own::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-right: 8px; vertical-align: 1px; }
 
+/* Results strip under the hero */
+.keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; margin-top: 48px; padding-top: 26px; border-top: 1px solid var(--rule); }
+.key { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.key .big { font: 500 clamp(36px, 4.4vw, 50px)/0.95 var(--sans); font-stretch: 90%; letter-spacing: -0.035em; color: var(--amber); font-variant-numeric: tabular-nums; }
+.key .what { font: 600 15.5px/1.35 var(--sans); color: var(--ink); text-wrap: balance; }
+.key .how { font: 400 12px/1.55 var(--mono); color: var(--muted); }
+@media (max-width: 760px) { .keys { grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 36px; } }
+
 /* Sections */
 section { padding-block: 64px 8px; }
 .sh { display: grid; gap: 12px; margin-bottom: 30px; }
@@ -217,7 +225,23 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .row.us .val { color: var(--amber); font-weight: 600; }
 @media (max-width: 480px) { .row { grid-template-columns: 6.8em minmax(0, 1fr) 5.6em; gap: 10px; font-size: 13px; } }
 
-/* Architecture (Fig. 4) */
+/* Speed-up chart (times faster than PHP's own JIT) */
+.speed { display: grid; gap: 16px; }
+.srow, .sscale { display: grid; grid-template-columns: 17em minmax(0, 1fr) 4.4em; gap: 18px; align-items: center; }
+.srow .k { min-width: 0; color: var(--ink); font-size: 14.5px; line-height: 1.3; }
+.srow .k small { display: block; margin-top: 3px; font: 400 11.5px/1.45 var(--mono); color: var(--muted); }
+.strack { position: relative; height: 14px; background: var(--raised); border-radius: 4px; }
+.strack i { position: absolute; inset: 0 auto 0 0; background: var(--amber); border-radius: 4px; }
+.strack .one { position: absolute; top: -5px; bottom: -5px; width: 0; border-left: 1px dashed var(--soft); }
+.srow .x { font: 600 15px/1 var(--mono); color: var(--amber); text-align: right; font-variant-numeric: tabular-nums; }
+.sscale .ticks { border-top: 0; }
+@media (max-width: 640px) {
+  .srow, .sscale { grid-template-columns: minmax(0, 1fr) 3.8em; gap: 8px 12px; }
+  .srow .k { grid-column: 1 / -1; }
+  .sscale > :first-child { display: none; }
+}
+
+/* Architecture (Fig. 5) */
 .diagram { overflow-x: auto; }
 .diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .diagram .box { fill: var(--raised); stroke: var(--rule-strong); stroke-width: 1.2; }
@@ -314,6 +338,12 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
       <div class="bench" id="hero-chart" aria-label="Latency while a CPU-bound request runs"></div>
     </div>
 
+    <div class="keys" aria-label="Results">
+      <div class="key"><span class="big">2.5×</span><span class="what">faster than PHP's own tracing JIT</span><span class="how">collatz 91 ms vs 229 ms. 1.2× to 2.5× across six kernels, fig. 3</span></div>
+      <div class="key"><span class="big">4×</span><span class="what">php-fpm's throughput on API-style requests</span><span class="how">523 vs 131 req/s, and 1.4× Swoole with a third of its p99, fig. 2</span></div>
+      <div class="key"><span class="big">1.8×</span><span class="what">faster than Node.js on integer loops</span><span class="how">collatz in JavaScript, 179 ms vs 316 ms on V8, fig. 4</span></div>
+    </div>
+
   </div>
 </div>
 
@@ -406,14 +436,14 @@ $server-&gt;start();</pre>
       <div class="sh">
         <span class="sn">04</span>
         <h2>Why it's fast</h2>
-        <p>Most of BlitzVM is custom code: the parser, the interpreter nodes, the scheduler, the isolation and the HTTP layer. For turning hot code into machine code I lean on the Graal compiler, the way plenty of languages lean on LLVM. These are the four things that actually move the numbers.</p>
+        <p>Most of BlitzVM is custom code: the parser, the interpreter nodes, the scheduler, the isolation and the HTTP layer. For turning hot code into machine code I lean on the Graal compiler, the way plenty of languages lean on LLVM. These are the five things that actually move the numbers.</p>
       </div>
       <div class="reasons">
         <article class="reason">
           <span class="num">4.1</span>
           <div>
             <h3>The interpreter rewrites itself, then Graal compiles it</h3>
-            <p>PHP goes through a lexer and a Pratt parser and comes out as a tree of nodes. Each node watches the types that flow through it and specializes. If a <code>+</code> has only ever seen integers, it ends up as one machine add plus an overflow check. If it ever does overflow, it switches to floats, which is what PHP 8 does anyway.</p>
+            <p>PHP goes through a lexer and a Pratt parser and comes out as a tree of nodes. Each node watches the types that flow through it and specializes. If a <code>+</code> has only ever seen integers, it ends up as one machine add plus an overflow check. If a sum does overflow, that one result becomes a float, the way PHP 8 does it, and the next sum of two ints is an int again.</p>
             <p>When a function gets hot, Graal compiles the interpreter and the specialized tree together into machine code (partial evaluation). Call sites remember what they call, so small functions get inlined into their callers. That's where the wins over PHP's tracing JIT come from: recursion, integer loops, and code split into lots of little helpers.</p>
             <pre class="code"><span class="c">// the integer case: one add, one overflow branch</span>
 <span class="a">@Specialization</span>(rewriteOn = ArithmeticException.class)
@@ -426,13 +456,21 @@ $server-&gt;start();</pre>
         <article class="reason">
           <span class="num">4.2</span>
           <div>
+            <h3>Numbers stay machine numbers</h3>
+            <p>A local variable that only ever holds ints lives in a 64-bit integer slot of the frame, and one that only holds floats lives in a double slot. A hot loop then runs in registers instead of allocating an object for every value it touches. Before this, <code>mandelbrot</code> allocated around 48 GB of short-lived floats in ten seconds.</p>
+            <p>The slot's type tag is PHP's type, so <code>var_dump</code> and <code>is_int</code> see exactly what PHP would show. A variable that holds both kinds, like the result of <code>$a * $t / 8</code>, keeps one boxed value that every read shares. The conformance suite checks these cases against PHP 8.5, including results that depend on what the same code ran before.</p>
+          </div>
+        </article>
+        <article class="reason">
+          <span class="num">4.3</span>
+          <div>
             <h3>Preemption that keeps working after the JIT kicks in</h3>
             <p>There are N CPU slots, and a request needs one to run. A ticker looks at the slots every 5 ms. If a request has had its 10 ms and someone is waiting, the scheduler queues an action on that request's thread. The action fires at the next safepoint and the slot goes to whoever is next in line.</p>
             <p>Those safepoint checks are also in the compiled code, at loop back-edges and calls, so a hot loop can't get away from them. php-fpm can't do this at all, since each process serves one request to the end. Swoole, by default, only switches coroutines at I/O.</p>
           </div>
         </article>
         <article class="reason">
-          <span class="num">4.3</span>
+          <span class="num">4.4</span>
           <div>
             <h3>One engine, a fresh context per request</h3>
             <p>All requests share one engine, which keeps the parsed trees and the machine code. Each request gets its own context with its own globals. So you get php-fpm's shared-nothing behaviour without parsing or compiling anything twice.</p>
@@ -440,7 +478,7 @@ $server-&gt;start();</pre>
           </div>
         </article>
         <article class="reason">
-          <span class="num">4.4</span>
+          <span class="num">4.5</span>
           <div>
             <h3>Netty does the HTTP and never runs PHP</h3>
             <p>HTTP parsing is Netty on native epoll. The event-loop threads only touch sockets, and every request goes to a worker that waits for a CPU slot. It's one process and one hop. php-fpm needs nginx, FastCGI and a pool process to do the same job.</p>
@@ -532,7 +570,7 @@ $server-&gt;start();</pre>
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 4</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
+        <figcaption><b>Fig. 5</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
       </figure>
       <div class="notes">
         <div><b>Parsed once</b>Each file's tree is cached on the shared engine until the file changes.</div>
@@ -562,6 +600,7 @@ $server-&gt;start();</pre>
         <h2>How I measured</h2>
       </div>
       <dl class="method">
+        <dt>date</dt><dd>Compute, API and JavaScript numbers re-measured on 13 November 2026</dd>
         <dt>machine</dt><dd>8 cores, Linux 6.8, load generator and servers on the same host</dd>
         <dt>blitzvm</dt><dd>v0.1 on JDK 25 with the Graal compiler from GraalVM Community 25.5</dd>
         <dt>php-fpm</dt><dd>PHP 8.5 with opcache, static pool, nginx in front. Compute runs use <code>opcache.jit=tracing</code>, set at process start and confirmed with <code>opcache_get_status()</code></dd>
@@ -570,6 +609,7 @@ $server-&gt;start();</pre>
         <dt>workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM CPU slots), 1 for the latency scenario</dd>
         <dt>compute</dt><dd>Time measured inside the script with <code>microtime</code>; 12 runs per workload, one worker, median of the last three. Kernels in <code>www/compute.php</code></dd>
         <dt>api request</dt><dd><code>compute.php?k=api</code>: <code>usleep(20000)</code>, then the pixel loop on 300 × 300; 15 s warm-up, 10 s measured</dd>
+        <dt>js compute</dt><dd>The kernels ported to JavaScript (<code>www/compute.js</code>), one process per runtime, run back to back on BlitzVM, Node.js 22.14 and Bun 1.4.4; best of five rounds after warm-up</dd>
         <dt>javascript</dt><dd>The same handler file (<code>www/spin.js</code>, <code>www/hello.js</code>) on BlitzVM, Bun 1.4.4 and Node.js 22.14; each server answers one hello request before the test starts</dd>
         <dt>latency</dt><dd>Hello requests every 300 ms while a 4 s CPU loop holds the only worker; load-generator start-up excluded</dd>
       </dl>
@@ -631,34 +671,45 @@ const DATA = {
       wide: true,
       title: "PHP: an API-style request",
       unit: "wait 20 ms on a backend, then do some real work. Requests per second, 4 workers, 32 connections, higher is better.",
-      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits but can't JIT the work afterwards. BlitzVM gets both. php-fpm here has the tracing JIT on.",
+      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits but can't JIT the work afterwards. BlitzVM does both, and its p99 is 73 ms against Swoole's 237 ms. php-fpm here has the tracing JIT on.",
       rows: [
-        { who: "BlitzVM", us: true, v: 293 },
-        { who: "Swoole", note: "default", v: 193 },
-        { who: "php-fpm", note: "nginx + tracing JIT", v: 136 }
+        { who: "BlitzVM", us: true, v: 523 },
+        { who: "Swoole", note: "default", v: 373 },
+        { who: "php-fpm", note: "nginx + tracing JIT", v: 131 }
       ]
     },
     {
+      speedup: true,
       fig: 3,
+      title: "PHP: how much faster than PHP's own JIT",
+      unit: "times faster than php-fpm with opcache's tracing JIT, warm, one worker. The dashed line is the JIT itself.",
+      caption: "Recursion, integer branches, float loops and code made of small helper functions. Graal inlines across the calls and the variables stay in registers. Swoole can't use PHP's JIT at all, so it runs 2.7× to 8.4× behind BlitzVM on these.",
+      rows: [
+        { k: "collatz to 300,000", us: 91.2, jit: 228.5, swoole: 477.9 },
+        { k: "pixel loop, tiny helper functions", us: 10.8, jit: 25.6, swoole: 64.7 },
+        { k: "mandelbrot 600 × 600", us: 27.2, jit: 46.1, swoole: 229.8 },
+        { k: "tak(24, 16, 8)", us: 8.6, jit: 14.4, swoole: 35.0 },
+        { k: "gcd sum, n = 600", us: 9.1, jit: 10.7, swoole: 27.1 },
+        { k: "spectral-norm, n = 300", us: 41.4, jit: 48.8, swoole: 111.0 }
+      ]
+    },
+    {
+      fig: 4,
       wide: true,
       perGroup: true,
-      title: "PHP: compute vs PHP's JIT",
-      unit: "ms per run, warm, lower is better. php-fpm has opcache's tracing JIT on. Swoole can't use the JIT at all.",
-      caption: "This is the kind of code where Graal's inlining pays off: lots of recursion, integer branches, and loops made of tiny helper functions. 1.3× to 1.8× faster than PHP's own JIT here.",
+      title: "JavaScript: compute vs Node.js and Bun",
+      unit: "ms per run, warm, lower is better. The same .js file on each runtime.",
+      caption: "The JavaScript front end is a prototype that shares BlitzVM's core with PHP. On integer-heavy loops it is already ahead of V8 and JavaScriptCore.",
       ms: true,
       groups: [
-        { label: "tak(24, 16, 8)", rows: [
-          { who: "BlitzVM", us: true, v: 8.2 },
-          { who: "php-fpm", note: "tracing JIT", v: 14.6 },
-          { who: "Swoole", v: 36.9 } ] },
         { label: "collatz to 300,000", rows: [
-          { who: "BlitzVM", us: true, v: 144.1 },
-          { who: "php-fpm", note: "tracing JIT", v: 237.8 },
-          { who: "Swoole", v: 505.2 } ] },
-        { label: "pixel loop, tiny helper functions", rows: [
-          { who: "BlitzVM", us: true, v: 20.5 },
-          { who: "php-fpm", note: "tracing JIT", v: 27.3 },
-          { who: "Swoole", v: 69.5 } ] }
+          { who: "BlitzVM-JS", us: true, v: 179.3 },
+          { who: "Node.js", note: "22.14, V8", v: 315.9 },
+          { who: "Bun", note: "1.4.4, JavaScriptCore", v: 426.7 } ] },
+        { label: "primes to 2,000,000", rows: [
+          { who: "BlitzVM-JS", us: true, v: 128.1 },
+          { who: "Bun", note: "1.4.4, JavaScriptCore", v: 133.8 },
+          { who: "Node.js", note: "22.14, V8", v: 149.3 } ] }
       ]
     }
   ],
@@ -678,6 +729,7 @@ function rowsHtml(rows, max, ms, suffix = "") {
 
 function renderCharts() {
   document.getElementById("charts").innerHTML = DATA.charts.map(c => {
+    if (c.speedup) return speedupHtml(c);
     const all = (c.groups ? c.groups.flatMap(g => g.rows) : c.rows).map(r => r.v);
     const max = Math.max(...all);
     const body = c.groups
@@ -685,6 +737,22 @@ function renderCharts() {
       : `<div class="rows">${rowsHtml(c.rows, max, c.ms)}</div>`;
     return `<figure class="fig${c.wide ? " wide" : ""}"><h3>${c.title}</h3><p class="unit">${c.unit}</p>${body}<figcaption><b>Fig. ${c.fig}</b>${c.caption}</figcaption></figure>`;
   }).join("");
+}
+
+function speedupHtml(c) {
+  const rows = c.rows.map(r => ({ ...r, x: r.jit / r.us }));
+  const top = Math.ceil(Math.max(...rows.map(r => r.x)) * 2) / 2;  // round the scale up to a half
+  const pct = x => (x / top) * 100;
+  const ms = v => (v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString("en-US")) + " ms";
+  const ticks = [];
+  for (let t = 0; t <= top; t += 0.5) ticks.push(t);
+  const body = rows.map(r => `<div class="srow">
+      <span class="k">${r.k}<small>${ms(r.us)} vs ${ms(r.jit)} on the JIT · Swoole ${ms(r.swoole)}</small></span>
+      <span class="strack"><i style="width:${pct(r.x).toFixed(2)}%"></i><span class="one" style="left:${pct(1).toFixed(2)}%"></span></span>
+      <span class="x">${r.x.toFixed(1)}×</span></div>`).join("");
+  const scale = `<div class="sscale"><span></span><div class="ticks">${ticks.filter(t => Number.isInteger(t)).map(t =>
+      `<span style="left:${pct(t).toFixed(2)}%">${t === 1 ? "1× = JIT" : t + "×"}</span>`).join("")}</div><span></span></div>`;
+  return `<figure class="fig wide"><h3>${c.title}</h3><p class="unit">${c.unit}</p><div class="speed">${body}${scale}</div><figcaption><b>Fig. ${c.fig}</b>${c.caption}</figcaption></figure>`;
 }
 
 function renderHero() {
