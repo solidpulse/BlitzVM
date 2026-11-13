@@ -11,12 +11,17 @@ Site: https://blitzvm.returnzero.win/ · By Avinash D'Silva · v0.1 research pre
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/api-dark.svg">
-  <img alt="PHP API-style request: BlitzVM 293 req/s, Swoole 193 req/s, php-fpm 136 req/s" src="docs/img/api-light.svg" width="760">
+  <img alt="PHP API-style request: BlitzVM 523 req/s, Swoole 373 req/s, php-fpm with the tracing JIT 131 req/s" src="docs/img/api-light.svg" width="760">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/compute-dark.svg">
-  <img alt="PHP compute vs PHP JIT: tak 8.2 vs 14.6 ms, collatz 144 vs 238 ms, pixel loop 20.5 vs 27.3 ms" src="docs/img/compute-light.svg" width="760">
+  <img alt="Times faster than PHP's tracing JIT: collatz 2.5x, pixel loop 2.4x, mandelbrot 1.7x, tak 1.7x, gcd 1.2x, spectral-norm 1.2x" src="docs/img/compute-light.svg" width="760">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/js-dark.svg">
+  <img alt="JavaScript compute: collatz BlitzVM-JS 179 ms, Node.js 316 ms, Bun 427 ms; primes BlitzVM-JS 128 ms, Bun 134 ms, Node.js 149 ms" src="docs/img/js-light.svg" width="760">
 </picture>
 
 Every backend hits this eventually: one heavy request ties up a php-fpm worker, or the whole
@@ -38,8 +43,8 @@ compiler, the way plenty of languages use LLVM.
 **The interpreter rewrites itself, then Graal compiles it.** Source goes through a lexer
 and a Pratt parser and comes out as a tree of Truffle nodes. Each node watches the types
 flowing through it and specializes. A `+` that has only ever seen integers becomes one
-machine add plus an overflow check, and switches to floats if it ever overflows, which is
-what PHP 8 does anyway. When a function gets hot, Graal compiles the interpreter and the
+machine add plus an overflow check. A sum that overflows becomes a float, as in PHP 8, and
+the next sum of two ints is an int again. When a function gets hot, Graal compiles the interpreter and the
 specialized tree together into machine code (partial evaluation). Call sites remember what
 they call, so small functions get inlined into their callers. That is where the wins over
 PHP's tracing JIT come from: recursion, integer loops, and code split into lots of helpers.
@@ -52,6 +57,14 @@ long doLong(long a, long b) { return Math.addExact(a, b); }
 @Specialization
 double doDouble(double a, double b) { return a + b; }
 ```
+
+**Numbers stay machine numbers.** A local variable that only ever holds ints lives in a
+64-bit integer slot of the frame, and one that only holds floats lives in a double slot, so
+a hot loop runs in registers instead of allocating an object for every value it touches.
+Before this, `mandelbrot` allocated around 48 GB of short-lived floats in ten seconds. The
+slot's type tag is PHP's type, so `var_dump` and `is_int` see exactly what PHP would show.
+A variable that holds both kinds, like the result of `$a * $t / 8`, keeps one boxed value
+that every read shares.
 
 **Preemption that keeps working after the JIT kicks in.** There are N CPU slots, and a
 request needs one to run. A ticker checks the slots every 5 ms. If a request has had its
@@ -131,7 +144,7 @@ Packages under `dev.phpruntime`:
 | Package | What it does |
 |---|---|
 | `parser` | PHP lexer (HTML and code modes, string interpolation) and a recursive-descent parser with Pratt precedence for expressions. Function locals get frame slots at parse time. |
-| `nodes` | PHP AST nodes. Truffle DSL specializations with `long` fast paths that overflow to `double`; `LoopNode` for OSR and safepoint polls; call sites cache a `DirectCallNode` so Graal can inline. |
+| `nodes` | PHP AST nodes. Truffle DSL specializations with `long` fast paths that overflow to `double`; locals in typed `long`/`double` frame slots; `LoopNode` for OSR and safepoint polls; call sites cache a `DirectCallNode` so Graal can inline. |
 | `runtime` | Values and helpers: copy-on-write ordered arrays, PHP 8 type juggling, float formatting that matches `zend_gcvt`. |
 | `builtins` | 179 PHP functions across strings, arrays, math, output, types, date/time, `sleep`/`usleep`, `header()`. |
 | `js` | The JavaScript front end: lexer, parser, nodes with int/double specialization and typed frame slots, Node-style globals. |
@@ -220,13 +233,16 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
 | Swoole | 6.2 on PHP 8.4, default configuration, `SWOOLE_HOOK_ALL`; PHP disables its JIT when Swoole is loaded |
 | Node.js / Bun | 22.14 / 1.4.4, running the same handler files via `bench/node/server.js` |
 | Load | 32 keep-alive connections, 15 s warm-up, 10 s measured |
+| Compute | 1 worker, 12 runs per kernel, median of the last three |
+| JS compute | `www/compute.js` in one process per runtime, run back to back, best of five rounds |
+| Date | Compute, API and JavaScript numbers re-measured on 13 November 2026 |
 | Workers | 4 for throughput, 1 for the latency scenarios |
 
 ## Testing
 
-`mvn test` runs 50 tests:
+`mvn test` runs 53 tests:
 
-- `ConformanceTest`: 32 PHP scripts whose expected output came from real PHP 8.5, matched
+- `ConformanceTest`: 35 PHP scripts whose expected output came from real PHP 8.5, matched
   byte for byte.
 - `JsConformanceTest`: 16 JavaScript scripts whose expected output came from real Node.js.
 - `SchedulerTest`: a busy loop and a sleeping request must not starve a hello request on a
@@ -255,7 +271,7 @@ UTF-8 bytes while `substr` works on characters.
 | prototype | JavaScript front end (BlitzVM-JS in the tables above) |
 | next | Classes, closures and `require`, so real apps and Laravel can run |
 | next | Hot builtins (`strlen`, `count`, `microtime`) as nodes the JIT can inline |
-| next | Profile the request path: under the API-style load BlitzVM reaches only about a quarter of what its own compute speed allows |
+| next | Fast paths for large array writes |
 | planned | Node.js- and Bun-compatible environments |
 
 ## References
