@@ -8,18 +8,19 @@ import dev.phpruntime.runtime.PhpArith;
 @NodeInfo(shortName = "%")
 public abstract class ModNode extends BinaryNode {
 
-    @Specialization(guards = {"b != 0", "isSafeDivisor(b)"})
+    /**
+     * x % -1 is always 0 in PHP, and testing for it here, not in a second guard, also
+     * keeps PHP_INT_MIN % -1 from overflowing. The two-guard form made GraalVM 25.5's
+     * compiler fail ("input ValuePhi is not alive") on a loop like gcd's once the
+     * operands were unboxed longs, which left the function interpreted.
+     */
+    @Specialization(guards = "b != 0")
     protected long doLong(long a, long b) {
-        return a % b;
+        return b == -1 ? 0 : a % b;
     }
 
     @Fallback
     protected Object doGeneric(Object a, Object b) {
         return PhpArith.mod(a, b);
-    }
-
-    /** b == -1 is excluded so Long.MIN_VALUE / -1 cannot overflow on the fast path. */
-    protected static boolean isSafeDivisor(long b) {
-        return b != -1;
     }
 }
