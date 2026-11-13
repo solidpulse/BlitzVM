@@ -24,6 +24,16 @@ public abstract class EqualNode extends BinaryNode {
     }
 
     @Specialization
+    protected boolean doLongDouble(long a, double b) {
+        return (a == b) != negate;
+    }
+
+    @Specialization
+    protected boolean doDoubleLong(double a, long b) {
+        return (a == b) != negate;
+    }
+
+    @Specialization
     protected boolean doBoolean(boolean a, boolean b) {
         return (a == b) != negate;
     }

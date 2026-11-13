@@ -142,7 +142,11 @@ public final class PhpArith {
     public static Object negate(Object v) {
         Object n = PhpOps.toNumber(v);
         if (n instanceof Long l) {
-            return l == Long.MIN_VALUE ? -(double) l : -l;
+            // Not a ?: here: Java would promote both arms to double and return a float.
+            if (l == Long.MIN_VALUE) {
+                return -(double) l;
+            }
+            return -l;
         }
         return -(Double) n;
     }

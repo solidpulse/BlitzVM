@@ -28,6 +28,16 @@ public abstract class CompareNode extends BinaryNode {
         return result(a < b ? -1 : (a > b ? 1 : 0));
     }
 
+    @Specialization
+    protected Object doLongDouble(long a, double b) {
+        return doDouble(a, b);
+    }
+
+    @Specialization
+    protected Object doDoubleLong(double a, long b) {
+        return doDouble(a, b);
+    }
+
     @Fallback
     protected Object doGeneric(Object a, Object b) {
         return result(PhpOps.compare(a, b));
