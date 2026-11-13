@@ -537,8 +537,12 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             int[] slotArray = slots.stream().mapToInt(Integer::intValue).toArray();
+            VarKind[] kindArray = new VarKind[slotArray.length];
+            for (int i = 0; i < slotArray.length; i++) {
+                kindArray[i] = scope.kind(slotArray[i]);
+            }
             PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), source, nameTok.line(), name, slotArray,
-                    defaults.toArray(new PhpNode[0]), body);
+                    kindArray, defaults.toArray(new PhpNode[0]), body);
             functions.add(new PhpFunction(name, root.getCallTarget()));
         } finally {
             scope = outer;
@@ -745,7 +749,13 @@ public final class Parser {
                 }
                 if (compound != null) {
                     next();
-                    return new CompoundAssignNode(target, compound, binary(4)).at(line);
+                    PhpNode value = binary(4);
+                    if (target instanceof LocalVarNode local && arithmetic(compound) != null) {
+                        // $x += v is $x = $x + v for a plain variable, and that way it gets the
+                        // typed operator nodes and an unboxed assignment.
+                        return new AssignNode(target, makeBinary(arithmetic(compound), local.copyForRead(), value).at(line)).at(line);
+                    }
+                    return new CompoundAssignNode(target, compound, value).at(line);
                 }
                 if (t.text().equals("++") || t.text().equals("--")) {
                     next();
@@ -754,6 +764,18 @@ public final class Parser {
             }
         }
         return e;
+    }
+
+    /** The binary operator for a compound assignment that has a typed operator node. */
+    private static String arithmetic(PhpArith.Op op) {
+        return switch (op) {
+            case ADD -> "+";
+            case SUB -> "-";
+            case MUL -> "*";
+            case DIV -> "/";
+            case MOD -> "%";
+            default -> null;
+        };
     }
 
     private static PhpArith.Op compoundOp(String op) {

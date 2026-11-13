@@ -5,6 +5,7 @@ import com.oracle.truffle.api.frame.FrameSlotKind;
 import dev.phpruntime.nodes.var.GlobalVarNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
+import dev.phpruntime.nodes.var.VarKind;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +24,7 @@ final class Scope {
     private final boolean global;
     private final FrameDescriptor.Builder frame = FrameDescriptor.newBuilder();
     private final Map<String, Integer> slots = new HashMap<>();
+    private final Map<Integer, VarKind> kinds = new HashMap<>();
     private final Set<String> imported = new HashSet<>();
 
     Scope(boolean global) {
@@ -33,7 +35,12 @@ final class Scope {
         if (global || SUPERGLOBALS.contains(name) || imported.contains(name)) {
             return new GlobalVarNode(name);
         }
-        return new LocalVarNode(slot(name), name);
+        int slot = slot(name);
+        return new LocalVarNode(slot, name, kind(slot));
+    }
+
+    VarKind kind(int slot) {
+        return kinds.computeIfAbsent(slot, s -> new VarKind());
     }
 
     int slot(String name) {

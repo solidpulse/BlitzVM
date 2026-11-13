@@ -20,6 +20,15 @@ public abstract class LValueNode extends PhpNode {
 
     public abstract void write(VirtualFrame frame, Object[] keys, Object value);
 
+    /** Typed writes; variables store these unboxed, everything else boxes. */
+    public void writeLong(VirtualFrame frame, Object[] keys, long value) {
+        write(frame, keys, value);
+    }
+
+    public void writeDouble(VirtualFrame frame, Object[] keys, double value) {
+        write(frame, keys, value);
+    }
+
     public abstract void unset(VirtualFrame frame, Object[] keys);
 
     /** Name used in diagnostics, e.g. "$x". */

@@ -22,6 +22,22 @@ public final class IncDecNode extends PhpNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (target instanceof LocalVarNode local) {
+            // Unboxed fast paths for a number held in a variable.
+            if (local.holdsLong(frame)) {
+                long l = local.getLong(frame);
+                if (l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
+                    long u = increment ? l + 1 : l - 1;
+                    local.writeLong(frame, LValueNode.NO_KEYS, u);
+                    return prefix ? u : l;
+                }
+            } else if (local.holdsDouble(frame)) {
+                double d = local.getDouble(frame);
+                double u = increment ? d + 1 : d - 1;
+                local.writeDouble(frame, LValueNode.NO_KEYS, u);
+                return prefix ? u : d;
+            }
+        }
         Object[] keys = target.evalKeys(frame);
         Object old = target.read(frame, keys);
         Object updated;

@@ -7,6 +7,7 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpLanguage;
+import dev.phpruntime.nodes.var.VarKind;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 
@@ -19,15 +20,17 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     private final String name;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
+    @CompilationFinal(dimensions = 1) private final VarKind[] paramKinds;
     @Children private final PhpNode[] defaults;
     private final int requiredArgs;
     @Child private PhpNode body;
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
-                               int[] paramSlots, PhpNode[] defaults, PhpNode body) {
+                               int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, PhpNode body) {
         super(language, fd, source, line);
         this.name = name;
         this.paramSlots = paramSlots;
+        this.paramKinds = paramKinds;
         this.defaults = defaults;
         this.body = body;
         int required = 0;
@@ -49,7 +52,13 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         }
         for (int i = 0; i < paramSlots.length; i++) {
             Object v = i < args.length ? args[i] : defaults[i].execute(frame);
-            frame.setObject(paramSlots[i], v);
+            if (v instanceof Long l && !paramKinds[i].longBoxed()) {
+                frame.setLong(paramSlots[i], l);
+            } else if (v instanceof Double d && !paramKinds[i].doubleBoxed()) {
+                frame.setDouble(paramSlots[i], d);
+            } else {
+                frame.setObject(paramSlots[i], v);
+            }
         }
         try {
             body.executeVoid(frame);

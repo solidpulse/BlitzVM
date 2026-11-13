@@ -29,12 +29,26 @@ public abstract class PhpNode extends Node {
         execute(frame);
     }
 
+    /*
+     * Typed execution for nodes without a DSL specialization. These check the type
+     * directly instead of using PhpTypesGen.expectX, which deoptimizes before throwing.
+     * A caller that sees the exception changes its own state, so the deopt would be
+     * wasted, and with a value that alternates between types it would repeat forever.
+     */
     public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
-        return PhpTypesGen.expectLong(execute(frame));
+        Object v = execute(frame);
+        if (v instanceof Long l) {
+            return l;
+        }
+        throw new UnexpectedResultException(v);
     }
 
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
-        return PhpTypesGen.expectDouble(execute(frame));
+        Object v = execute(frame);
+        if (v instanceof Double d) {
+            return d;
+        }
+        throw new UnexpectedResultException(v);
     }
 
     public boolean executeBoolean(VirtualFrame frame) throws UnexpectedResultException {
