@@ -1,33 +1,205 @@
-# php-truffle
+# BlitzVM
 
-php-truffle is a PHP 8 subset interpreter written in Java on the Truffle framework, with an HTTP front end and a preemptive scheduler. Inspired by abertschi/graalphp (https://github.com/abertschi/graalphp), which used the Eclipse PDT parser and Truffle 20.2. This project is a fresh implementation: hand-written lexer and Pratt parser, Truffle 25.5 APIs (FrameDescriptor.Builder, ContextPolicy.SHARED, TruffleSafepoint, ThreadLocalAction).
+**A preemptive runtime for server-side languages.** PHP today, with a JavaScript front end in prototype.
 
-## Quick Start
+Site: https://blitzvm.returnzero.win/ · By Avinash D'Silva · v0.1 research preview
+
+Every backend hits this eventually: one heavy request ties up a php-fpm worker, or the whole
+event loop in Node and Bun, and everyone queued behind it waits. BlitzVM JIT-compiles hot
+code and preemptively schedules requests in short time slices. Each request still starts
+with clean state, and you write the same plain PHP or JavaScript handler you would write
+today.
+
+## At a glance
+
+**A quick request while a slow one runs.** One worker, a 4 s CPU loop, then a hello request.
+Time until the hello request is answered (lower is better):
+
+| Runtime | Answered after |
+|---|---|
+| **PHP on BlitzVM** | **5 ms** |
+| **JavaScript on BlitzVM** | **25 ms** |
+| Bun 1.4.4 | 3,410 ms |
+| php-fpm (opcache) | 3,450 ms |
+| Swoole (default) | 3,480 ms |
+| Node.js 22.14 | 3,780 ms |
+
+**PHP: an API-style request.** Each request waits 20 ms on a pretend backend call, then runs
+real work (a pixel loop on 300 × 300). 4 workers, 32 connections:
+
+| Runtime | Requests per second |
+|---|---|
+| **BlitzVM** | **293** |
+| Swoole (default) | 193 |
+| php-fpm (nginx + tracing JIT) | 136 |
+
+php-fpm's workers sit idle during each wait. Swoole overlaps the waits but can't JIT the work
+afterwards. BlitzVM gets both.
+
+**PHP: compute against PHP's own JIT.** Warm, milliseconds per run, lower is better. php-fpm
+has opcache's tracing JIT on (verified with `opcache_get_status()`); Swoole can't use the JIT.
+
+| Workload | BlitzVM | php-fpm + tracing JIT | Swoole |
+|---|---|---|---|
+| tak(24, 16, 8), lots of recursion | **8.2 ms** | 14.6 ms | 36.9 ms |
+| collatz to 300,000, integer branches | **144 ms** | 238 ms | 505 ms |
+| pixel loop built from tiny helper functions | **20.5 ms** | 27.3 ms | 69.5 ms |
+
+The full comparison, including the workloads where the other runtimes win, is in
+[docs/COMPARISON.md](docs/COMPARISON.md).
+
+## Why it's fast
+
+Most of BlitzVM is custom code: the parsers, the interpreter nodes, the scheduler, the
+isolation and the HTTP layer. For turning hot code into machine code it uses the Graal
+compiler, the way plenty of languages use LLVM.
+
+**The interpreter rewrites itself, then Graal compiles it.** Source goes through a lexer
+and a Pratt parser and comes out as a tree of Truffle nodes. Each node watches the types
+flowing through it and specializes. A `+` that has only ever seen integers becomes one
+machine add plus an overflow check, and switches to floats if it ever overflows, which is
+what PHP 8 does anyway. When a function gets hot, Graal compiles the interpreter and the
+specialized tree together into machine code (partial evaluation). Call sites remember what
+they call, so small functions get inlined into their callers. That is where the wins over
+PHP's tracing JIT come from: recursion, integer loops, and code split into lots of helpers.
+
+```java
+// the integer case: one add, one overflow branch
+@Specialization(rewriteOn = ArithmeticException.class)
+long doLong(long a, long b) { return Math.addExact(a, b); }
+
+@Specialization
+double doDouble(double a, double b) { return a + b; }
+```
+
+**Preemption that keeps working after the JIT kicks in.** There are N CPU slots, and a
+request needs one to run. A ticker checks the slots every 5 ms. If a request has had its
+10 ms and someone is waiting, the scheduler queues an action on that request's thread. The
+action fires at the next safepoint and the slot goes to whoever is next in line. The
+safepoint checks are compiled into the machine code at loop back-edges and calls, so a hot
+loop can't get away from them.
+
+**One engine, a fresh context per request.** All requests share one engine, which keeps the
+parsed trees and the machine code. Each request gets its own context with its own globals,
+so you get php-fpm's shared-nothing behaviour without parsing or compiling anything twice.
+CPU time is counted per request; a script that blows through its budget is cancelled with
+a normal PHP fatal error, and the process (and everyone else) carries on.
+
+**Netty does the HTTP and never runs guest code.** Netty on native epoll parses HTTP; the
+event-loop threads only touch sockets and every request goes to a worker that waits for a
+CPU slot. One process, one hop. Pipelined requests are answered in order, and a connection
+stops reading while one of its requests is in flight, which is a cheap form of backpressure.
+
+## You still write plain PHP
+
+Swoole is fast, but you pay for it in how you write code: the app becomes a long-running
+server, requests share its memory, and a CPU-heavy handler blocks whichever worker it lands
+on. BlitzVM keeps the php-fpm model and does the scheduling underneath it.
+
+```php
+<?php
+// report.php: the same file you'd put on php-fpm
+$report = build_report($_GET['id']);   // heavy, gets paused every 10 ms
+usleep(200000);                         // gives up the CPU while it waits
+header('Content-Type: text/html');
+echo render($report);                   // and it's all gone after this
+```
+
+- **Same model as php-fpm.** One file per request; `$_GET`, `echo`, `header()` and `exit`
+  work as expected. No bootstrap file, no request objects.
+- **No coroutines.** No `go()`, channels or wait groups. A blocking call is just a blocking
+  call, and the scheduler gives the CPU to someone else while it waits.
+- **Nothing leaks between requests.** Every request starts with a fresh context, so there
+  is no state to reset afterwards, which is what makes Laravel Octane fiddly.
+- **No yielding by hand.** A slow loop doesn't need to be split up or moved to a task
+  worker.
+
+**What about Swoole's preemptive mode?** Swoole has one
+(`'enable_preemptive_scheduler' => true`), and it answers the hello request about as fast
+as BlitzVM does. Turning it on means a coroutine can be paused in the middle of any loop
+while every coroutine in the worker shares the app's globals and statics. It's a big gun,
+always pointed at your feet: miss one lock and you get a bug that only shows up under load
+and never on your laptop. BlitzVM requests work like classic php-fpm: they don't share
+anything, so there's nothing for them to race on.
+
+Laravel doesn't run yet. It needs classes and `require`, which are next on the list.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph BlitzVM
+        direction LR
+        HTTP[Netty HTTP front end<br/>native epoll] --> SCHED[Scheduler<br/>N slots, 10 ms quantum]
+        SCHED --> CTX[Request contexts<br/>one per request]
+        CTX --> LANG[PHP / JS language<br/>semantics, builtins]
+        LANG -- uses --> PARSER[Lexer + Pratt parser]
+        LANG -- builds --> AST[Specializing AST<br/>typed fast paths]
+        AST -- rewrites --> AST
+        SCHED -. preempts at safepoints .-> AST
+    end
+    CLIENTS[HTTP clients] --> HTTP
+    PARSER -- parses --> SRC[PHP / JS source]
+    GRAAL[Graal compiler<br/>JIT back end] -- compiles --> AST
+    TRUFFLE[Truffle<br/>node framework] -- executes --> AST
+    LANG -- implements --> TRUFFLE
+```
+
+Packages under `dev.phpruntime`:
+
+| Package | What it does |
+|---|---|
+| `parser` | PHP lexer (HTML and code modes, string interpolation) and a recursive-descent parser with Pratt precedence for expressions. Function locals get frame slots at parse time. |
+| `nodes` | PHP AST nodes. Truffle DSL specializations with `long` fast paths that overflow to `double`; `LoopNode` for OSR and safepoint polls; call sites cache a `DirectCallNode` so Graal can inline. |
+| `runtime` | Values and helpers: copy-on-write ordered arrays, PHP 8 type juggling, float formatting that matches `zend_gcvt`. |
+| `builtins` | 179 PHP functions across strings, arrays, math, output, types, date/time, `sleep`/`usleep`, `header()`. |
+| `js` | The JavaScript front end: lexer, parser, nodes with int/double specialization and typed frame slots, Node-style globals. |
+| `sched` | The preemptive scheduler. |
+| `host` | One shared polyglot engine, a context per request, the URL dispatcher, the Netty and JDK HTTP servers, and the CLI. |
+
+## Preemptive scheduling in detail
+
+- N CPU slots are a fair `java.util.concurrent.Semaphore`; a request must hold a slot to run
+  guest code.
+- A ticker thread runs every `quantum / 2`. If a running request has used more than its
+  quantum and others are waiting, it calls `Env.submitThreadLocal` with a
+  `ThreadLocalAction` targeting that request's thread.
+- Truffle runs the action at the guest's next safepoint: loop back-edges and function entry.
+  In compiled code the poll is part of Graal's safepoint mechanism and costs close to
+  nothing.
+- Inside the action the request releases its slot and re-acquires it, which puts it at the
+  tail of the fair queue: round robin.
+- `sleep`/`usleep` and JavaScript `await` on timers release the slot while blocked, like a
+  goroutine parking on a syscall.
+- Per-request CPU time (time holding a slot) is tracked. Past `--max-exec-ms` the context is
+  cancelled with `Context.close(true)` and the response is a 500 with
+  `PHP Fatal error:  Maximum execution time of N seconds exceeded`.
+
+The closest relatives are Go's asynchronous preemption and BEAM's reduction counting.
+php-fpm uses one OS process per request and has no time slicing.
+
+## Quick start
+
+The command-line tool is still called `php-truffle`.
 
 ```bash
 mvn package
-scripts/get-graalvm.sh
-bin/php-truffle script.php
+scripts/get-graalvm.sh            # GraalVM Community 25.5 (JDK 25) into ./.graalvm, enables the Graal JIT
+bin/php-truffle script.php        # run a PHP script
+bin/php-truffle script.js         # run a JavaScript script
 bin/php-truffle serve --port 8080 --cpus 1 --quantum-ms 10 --max-exec-ms 5000 www
 curl 'localhost:8080/?name=World'
-curl localhost:8080/__scheduler
-scripts/demo.sh        # the preemption demo end to end
+curl localhost:8080/__scheduler   # cpus, running, waiting, completed, preemptions, timeouts
+scripts/demo.sh                   # the preemption demo end to end
 ```
 
-Build and execution steps:
+Requires JDK 21+ to build. Without GraalVM the same AST runs interpreter-only on any JDK.
+`bin/php-truffle` prefers `./.graalvm/current` over `JAVA_HOME` (override with
+`PHP_TRUFFLE_JAVA_HOME`).
 
-- `mvn package`: compiles and packages the runtime into a JAR with runtime dependencies in `target/lib`. Requires JDK 21+.
-- `scripts/get-graalvm.sh` (optional): downloads GraalVM Community 25.5 (JDK 25) into `./.graalvm` and links it as `./.graalvm/current`; it pairs with Truffle 25.5 and enables the Graal JIT. `bin/php-truffle` prefers it over `JAVA_HOME` (set `PHP_TRUFFLE_JAVA_HOME` to override).
-- `bin/php-truffle script.php`: runs a PHP script in CLI mode and streams output to standard output and standard error.
-- `bin/php-truffle serve --port 8080 --cpus 1 --quantum-ms 10 --max-exec-ms 5000 www`: starts the HTTP server on port 8080, serving directory `www` with 1 CPU execution slot, a 10 ms time-slice quantum, and a 5000 ms per-request execution budget.
-- `curl 'localhost:8080/?name=World'`: executes `www/index.php` and returns the generated HTTP response.
-- `curl localhost:8080/__scheduler`: prints scheduler metrics (cpus, running, waiting, completed, preemptions, timeouts).
-- `scripts/demo.sh`: starts a 1-slot server and runs the hello world, CPU hog, sleep and infinite-loop scenarios with timings.
+## JavaScript front end (prototype)
 
-## JavaScript front end
-
-`.js` files are Node-style request handlers that run on the same engine, scheduler and
-per-request isolation as PHP:
+`.js` files are Node-style request handlers on the same engine, scheduler and isolation:
 
 ```js
 const timers = require('node:timers/promises');
@@ -37,162 +209,101 @@ module.exports = async (req, res) => {
 };
 ```
 
-`bin/php-truffle script.js` runs a script with `console.log` output. The subset covers
-functions, arrows, `let`/`const`, numbers with JS formatting, strings, template literals,
-object literals, `if`/`while`/`for`, `Math`, `Number`/`String`/`parseInt`, `toFixed`,
-`performance.now`, `Date.now` and `await` on `node:timers/promises`. Arrays, classes and
-closures over local variables are not supported yet. `bench/node/server.js` runs the same
-handler files on real Node.js for comparison (see `docs/COMPARISON.md`).
+It covers functions, arrows, `let`/`const`, numbers with JavaScript's formatting, strings,
+template literals, object literals, `if`/`while`/`for`, `Math`, `Number`/`String`/`parseInt`,
+`toFixed`, `performance.now`, `Date.now` and `await` on `node:timers/promises`. Arrays,
+classes and closures over local variables are not supported yet. Work on full Node.js and
+Bun compatibility starts once the PHP front end can render Laravel.
 
-## Architecture
+## Benchmarks
 
-Packages reside under `dev.phpruntime`:
+`bench/run.sh` starts each server, drives it with `bench/LoadGen.java` (closed loop, raw
+keep-alive sockets) and prints the results.
 
-### parser
-`Lexer` alternates between HTML mode and code mode for `<?php`, `<?=`, and `?>`. It supports string interpolation for `"$a"`, `"$a[k]"`, and `"{$expr}"`. `Parser` uses recursive descent for statements and Pratt precedence climbing for expressions, emitting Truffle nodes directly like SimpleLanguage. `Scope` performs compile-time variable allocation: function locals get frame slots; top-level variables, `global` imports and superglobals use the context's global table.
+```bash
+bench/run.sh                                   # all PHP targets, all scenarios
+bench/run.sh truffle fpm swoole                # selected targets
+SCENARIO=compute bench/run.sh fpm-jit truffle swoole
+SCENARIO=mixed   bench/run.sh fpm-jit truffle swoole
+SCENARIO=js      bench/run.sh truffle node bun
+```
 
-### nodes
-AST nodes execute guest code. Arithmetic and comparison operations use Truffle DSL specializations with a `long` fast path with `rewriteOn = ArithmeticException.class` to `double`, mirroring PHP int overflow to float, with generic fallbacks for numeric strings and mixed operands. Loops use Truffle `LoopNode`, providing on-stack replacement (OSR) and safepoint polls on back edges. `CallNode` resolves on first execution and caches a `DirectCallNode` (inlinable by Graal) or a builtin. Control flow (`break N`, `continue N`, `return`, `exit`) uses `ControlFlowException`.
+Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole-preempt`,
+`node`, `bun`. Needs php-fpm 8.5 on the host, Docker (nginx, Swoole), Node.js and Bun.
 
-### runtime
-Core values and execution helpers. `PhpArray` provides an ordered hash map, PHP key normalisation, and copy-on-write value semantics via `share()` and `forWrite()`. `PhpOps` implements PHP 8 type juggling, loose and strict comparison, and float formatting matching `zend_gcvt` with precision 14 for `echo` and 17 for `var_dump`. `PhpArith` implements fallback arithmetic routines.
-
-### builtins
-Contains about 175 functions across strings, arrays, math, output (`var_dump`, `print_r`, `printf`), type checking, date and time, `sleep`/`usleep`, `header()`, and `http_response_code()`.
-
-### sched
-Contains `Scheduler`, which coordinates fair multi-tenant request execution and time slicing across guest threads. Its implementation is detailed in the Preemptive Scheduling section.
-
-### host
-Process hosting and HTTP integration. `PhpEngine` maintains one shared polyglot `Engine` so parsed ASTs and compiled code are reused across requests, and allocates one `Context` per request, which gives PHP's shared-nothing request model. `PhpDispatcher` maps URLs to files under the document root and populates `$_GET`, `$_POST`, `$_SERVER`, and `$_REQUEST`. `NettyPhpServer` (default) is a Netty 4.2 front end on native epoll: event-loop threads only parse and write HTTP, PHP runs on worker threads, and each connection answers pipelined requests in order. `PhpHttpServer` is the older JDK `HttpServer` front end, kept behind `--http jdk` for comparison. `Main` provides the command-line interface.
-
-## Preemptive Scheduling
-
-The scheduler allocates CPU time across concurrent HTTP requests:
-
-- N CPU slots = a fair `java.util.concurrent.Semaphore`. A request must hold a slot to run guest code.
-- A ticker thread runs every `quantum / 2`. If a running request has used more than its quantum and other requests are waiting for a slot, the ticker calls `TruffleLanguage.Env.submitThreadLocal` with a `ThreadLocalAction` targeting that request's thread.
-- Truffle executes the action at the guest's next safepoint: loop back-edges (`LoopNode`, `foreach`) and function entry (`PhpFunctionRootNode` polls `TruffleSafepoint`). In compiled code the poll is part of Graal's safepoint mechanism, so preemption points cost close to nothing.
-- Inside the action the request releases its slot and re-acquires it, which puts it at the tail of the fair queue: round-robin.
-- Waiting uses `TruffleSafepoint.setBlockedThreadInterruptible` so other safepoint actions (such as cancellation) can still run.
-- `sleep`/`usleep` release the slot while blocked, like a goroutine parking on a syscall.
-- `max_execution_time`: per-request CPU time (time while holding a slot) is tracked; when it exceeds `--max-exec-ms` the context is cancelled with `Context.close(true)` and the response is a 500 with `"PHP Fatal error:  Maximum execution time of N seconds exceeded"`.
-- This is similar to Go's asynchronous preemption.
-- This is similar to BEAM reduction counting.
-- php-fpm instead uses one OS process per request and has no time slicing.
-
-## Measured Results
-
-Setup: 1 CPU slot, 10 ms quantum. The scheduling results below were taken on Temurin 21 (interpreter only); preemption behaves the same with the Graal JIT, see `docs/COMPARISON.md`.
-
-- While `spin.php` held the only slot for 4 s, three hello-world requests completed in 19 ms, 8 ms and 8 ms; scheduler reported preemptions=3; `spin.php` still completed its 4 s of work.
-- `forever.php` (`while (true) {}`) was cancelled at the 5 s budget with HTTP 500.
-- `fib(27)` recursive:
-  - `php-cli` 8.5: about 9 ms.
-  - `php-truffle` on GraalVM: about 11 ms after warm-up (first run 295 ms).
-  - `php-truffle` on stock Temurin 21 without the Graal JIT: about 116 ms after warm-up.
-
-See `docs/COMPARISON.md` for a side-by-side benchmark against php-fpm and Swoole (`bench/run.sh`).
+| | Setup |
+|---|---|
+| Machine | 8 cores, Linux 6.8, load generator and servers on the same host |
+| BlitzVM | v0.1 on JDK 25 with the Graal compiler from GraalVM Community 25.5 |
+| php-fpm | PHP 8.5, opcache, static pool, nginx in front; JIT runs set `opcache.jit=tracing` at process start |
+| Swoole | 6.2 on PHP 8.4, default configuration, `SWOOLE_HOOK_ALL`; PHP disables its JIT when Swoole is loaded |
+| Node.js / Bun | 22.14 / 1.4.4, running the same handler files via `bench/node/server.js` |
+| Load | 32 keep-alive connections, 15 s warm-up, 10 s measured |
+| Workers | 4 for throughput, 1 for the latency scenarios |
 
 ## Testing
 
-`mvn test` runs two test suites:
+`mvn test` runs 50 tests:
 
-- `ConformanceTest`: 32 PHP scripts in `src/test/resources/php` whose expected `.out` files were produced by real php 8.5; all pass byte for byte.
-- `SchedulerTest`: a busy loop and a sleeping request must not starve a hello-world request on a single slot; the busy loop must hit max execution time.
+- `ConformanceTest`: 32 PHP scripts whose expected output came from real PHP 8.5, matched
+  byte for byte.
+- `JsConformanceTest`: 16 JavaScript scripts whose expected output came from real Node.js.
+- `SchedulerTest`: a busy loop and a sleeping request must not starve a hello request on a
+  single slot, and the busy loop must hit its time budget.
 
-## Supported Subset
+## PHP support
 
-- `echo`/`print`
-- Inline HTML and `<?= ?>`
-- Alternative syntax (`if`/`endif`, `foreach`/`endforeach`, `while`/`endwhile`, `for`/`endfor`, `switch`/`endswitch`)
-- `int`, `float`, `string`, `bool`, `null`, `array`
-- All arithmetic, string, comparison, logical, bitwise and assignment operators including `??=`, `++`/`--`
-- `if`/`elseif`/`else`, `while`, `do-while`, `for`, `foreach` with keys, `switch`, `break N`/`continue N`
-- Functions with defaults and recursion
-- `global`
-- `isset`/`unset`/`empty`
-- Casts
-- Superglobals
-- `header()`, `http_response_code()`
+Supported: `echo`/`print`, inline HTML and `<?= ?>`, alternative syntax, `int`/`float`/
+`string`/`bool`/`null`/`array`, all arithmetic, string, comparison, logical, bitwise and
+assignment operators including `??=` and `++`/`--`, `if`/`elseif`/`else`, `while`,
+`do-while`, `for`, `foreach` with keys, `switch`, `break N`/`continue N`, functions with
+defaults and recursion, `global`, `isset`/`unset`/`empty`, casts, superglobals, `header()`,
+`http_response_code()`.
 
-## Not Supported
+Not yet: classes and objects, closures, references (`&` is parsed but treated as by-value),
+static variables, `include`/`require`, heredoc/nowdoc, exceptions, generators, `preg_*`,
+sessions and cookies. Strings are Java strings rather than byte strings, so `strlen` counts
+UTF-8 bytes while `substr` works on characters.
 
-- Classes and objects
-- Closures
-- References (`&`) are accepted syntactically, treated as by-value
-- Static variables
-- `include`/`require`
-- Heredoc/nowdoc
-- Exceptions/`try`-`catch`
-- Generators
-- Regex (`preg_*`)
-- Sessions and cookies output
-- Strings are Java Strings (UTF-16) rather than byte strings, so `strlen` is computed on UTF-8 bytes, while `substr` works on characters
+## Roadmap
 
-## Project Layout
+| State | Item |
+|---|---|
+| working | PHP 8 core, checked against PHP 8.5 with a conformance suite |
+| prototype | Request contexts on Java virtual threads: 2,000 requests that each sleep 200 ms finish in 0.38 s, against 6.4 s on a 64-thread pool |
+| prototype | JavaScript front end (BlitzVM-JS in the tables above) |
+| next | Classes, closures and `require`, so real apps and Laravel can run |
+| next | Hot builtins (`strlen`, `count`, `microtime`) as nodes the JIT can inline |
+| next | Profile the request path: under the API-style load BlitzVM reaches only about a quarter of what its own compute speed allows |
+| planned | Node.js- and Bun-compatible environments |
+
+## References
+
+- T. Würthinger et al. Self-Optimizing AST Interpreters. DLS 2012.
+- T. Würthinger et al. One VM to Rule Them All. Onward! 2013.
+- T. Würthinger et al. Practical Partial Evaluation for High-Performance Dynamic Language Runtimes. PLDI 2017.
+- A. Bertschi. [graalphp: a PHP implementation built on GraalVM](https://github.com/abertschi/graalphp). Undergraduate thesis, ETH Zurich, 2020. Showed that PHP on Truffle could work.
+- [Truffle language implementation framework](https://www.graalvm.org/latest/graalvm-as-a-platform/language-implementation-framework/)
+- V. R. Pratt. Top Down Operator Precedence. POPL 1973.
+- [JEP 444: Virtual Threads](https://openjdk.org/jeps/444) and [JEP 491: Synchronize Virtual Threads without Pinning](https://openjdk.org/jeps/491)
+- [Netty](https://netty.io), [PHP RFC: JIT](https://wiki.php.net/rfc/jit), [Swoole](https://github.com/swoole/swoole-src)
+
+## Project layout
 
 ```
-php-runtime/
-├── bin/
-│   └── php-truffle
-├── pom.xml
-├── scripts/
-│   ├── demo.sh
-│   └── get-graalvm.sh
-├── src/
-│   ├── main/
-│   │   └── java/dev/phpruntime/
-│   │       ├── PhpContext.java
-│   │       ├── PhpFileDetector.java
-│   │       ├── PhpLanguage.java
-│   │       ├── builtins/
-│   │       │   ├── ArrayFunctions.java
-│   │       │   ├── Builtins.java
-│   │       │   ├── CoreFunctions.java
-│   │       │   ├── MathFunctions.java
-│   │       │   ├── OutputFunctions.java
-│   │       │   └── StringFunctions.java
-│   │       ├── host/
-│   │       │   ├── Main.java
-│   │       │   ├── PhpEngine.java
-│   │       │   └── PhpHttpServer.java
-│   │       ├── nodes/
-│   │       │   ├── ControlFlow.java
-│   │       │   ├── PhpFunctionRootNode.java
-│   │       │   ├── PhpMainRootNode.java
-│   │       │   ├── PhpNode.java
-│   │       │   ├── PhpRootNode.java
-│   │       │   ├── call/
-│   │       │   ├── expr/
-│   │       │   ├── stmt/
-│   │       │   └── var/
-│   │       ├── parser/
-│   │       │   ├── Lexer.java
-│   │       │   ├── Parser.java
-│   │       │   ├── PhpParseError.java
-│   │       │   ├── Scope.java
-│   │       │   └── Token.java
-│   │       ├── runtime/
-│   │       │   ├── GuestScheduler.java
-│   │       │   ├── PhpArith.java
-│   │       │   ├── PhpArray.java
-│   │       │   ├── PhpError.java
-│   │       │   ├── PhpFunction.java
-│   │       │   ├── PhpNull.java
-│   │       │   ├── PhpOps.java
-│   │       │   └── PhpRequest.java
-│   │       └── sched/
-│   │           └── Scheduler.java
-│   └── test/
-│       ├── java/dev/phpruntime/
-│       │   ├── ConformanceTest.java
-│       │   └── SchedulerTest.java
-│       └── resources/php/
-└── www/
-    ├── fib.php
-    ├── forever.php
-    ├── index.php
-    ├── sleep.php
-    └── spin.php
+bin/php-truffle          launcher (prefers ./.graalvm/current)
+scripts/                 get-graalvm.sh, demo.sh
+src/main/java/dev/phpruntime/
+  parser/ nodes/ runtime/ builtins/   PHP front end
+  js/                                 JavaScript front end
+  sched/                              preemptive scheduler
+  host/                               engine, dispatcher, Netty and JDK servers, CLI
+src/test/                PHP and JS conformance fixtures, scheduler tests
+www/                     demo and benchmark scripts (.php and .js)
+bench/                   run.sh, LoadGen.java, php-fpm/nginx, Swoole and Node/Bun servers
+docs/                    COMPARISON.md and raw results
+site/index.html          the project page
 ```
+
+The source is private while papers on the scheduling and isolation work are in
+preparation; access is available on request.
