@@ -82,20 +82,24 @@ PHP disables it when an extension installs user opcode handlers, which Swoole do
 
 | Kernel | php-truffle | php-fpm, tracing JIT | Swoole | php-truffle vs JIT |
 |---|---|---|---|---|
-| tak(24, 16, 8) | **8.2 ms** | 14.6 ms | 36.9 ms | 1.8x faster |
-| collatz to 300,000 | **144 ms** | 238 ms | 505 ms | 1.65x faster |
-| pixel loop, small helper functions | **20.5 ms** | 27.3 ms | 69.5 ms | 1.3x faster |
-| fib(27) | 2.4 to 3.8 ms | 4.3 to 4.6 ms | 8.8 ms | 1.1x to 1.9x, noisy |
-| gcd sum, n=600 | 16.0 ms | **11.7 ms** | 29.7 ms | 0.73x |
-| primes to 2,000,000 | 306 ms | **216 ms** | 739 ms | 0.71x |
-| mandelbrot 600 x 600 | 56 ms | **44 ms** | 234 ms | 0.79x |
-| spectral-norm n=300 | 64 ms | **48 ms** | 108 ms | 0.75x |
+| tak(24, 16, 8) | **8.6 ms** | 14.4 ms | 35.0 ms | 1.7x faster |
+| collatz to 300,000 | **91 ms** | 229 ms | 478 ms | 2.5x faster |
+| pixel loop 800 x 800, small helper functions | **10.8 ms** | 25.6 ms | 64.7 ms | 2.4x faster |
+| fib(27) | **2.5 ms** | 2.9 ms | 8.6 ms | 1.2x faster, noisy |
+| gcd sum, n=600 | **9.1 ms** | 10.7 ms | 27.1 ms | 1.2x faster |
+| mandelbrot 600 x 600 | **27.2 ms** | 46.1 ms | 230 ms | 1.7x faster |
+| spectral-norm n=300 | **41.4 ms** | 48.8 ms | 111 ms | 1.2x faster |
+| primes to 2,000,000 | 216 ms | 211 ms | 694 ms | even |
 | sieve to 1,000,000 | 260 to 960 ms | 57 ms (CLI, no JIT) | not run | much slower |
 
-php-truffle beats Swoole on every kernel except sieve. Against PHP's tracing JIT it wins on
-deep recursion, integer loops with branches and code made of small user functions, where
-Graal inlines across calls; the JIT wins on float loops and on loops dominated by `%`.
-Sieve is slow because large array writes take the generic array path.
+Measured 2026-11-13, after local variables were made unboxed (commit 38eee7f). Before
+that, every local was a boxed object and php-truffle lost gcd, primes, mandelbrot and
+spectral-norm to the JIT (0.71x to 0.79x). The same fix found and removed two
+correctness bugs where an int result came back as a float (commit 880c474).
+
+php-truffle now beats Swoole on every kernel except sieve, and PHP's tracing JIT on every
+kernel except primes (even) and sieve. Sieve is slow because large array writes take the
+generic array path; arrays are next.
 
 ## API-style requests: a backend wait, then compute
 
@@ -105,9 +109,13 @@ database or HTTP call) and then the pixel loop on 300 x 300. 4 workers, 32 conne
 
 | | req/s | p50 | p99 |
 |---|---|---|---|
-| php-fpm, tracing JIT | 136 | 234 ms | 281 ms |
-| Swoole | 193 | 141 ms | 478 ms |
-| php-truffle | 293 to 325 | 81 to 96 ms | 214 to 229 ms |
+| php-fpm, tracing JIT | 131 | 242 ms | 274 ms |
+| Swoole | 373 | 69 ms | 237 ms |
+| php-truffle | **523** | 62 ms | 73 ms |
+
+Before the unboxed locals, php-truffle measured 293 to 325 req/s. Swoole measured 193 in
+that earlier session and 373 in this one with nothing changed on its side, so only
+compare numbers taken in the same session.
 
 php-fpm workers sit idle through each wait. Swoole overlaps the waits but runs the
 compute part without a JIT. php-truffle releases its CPU slot during the wait and runs
