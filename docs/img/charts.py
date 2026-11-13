@@ -111,14 +111,14 @@ def ms(v):
     return f"{v:.1f} ms" if v < 10 else f"{round(v):,} ms"
 
 
-chart("compute", "PHP: how much faster than PHP's own JIT",
+chart("compute", "PHP-BlitzVM: how much faster than PHP's own JIT",
       "times faster than php-fpm with the tracing JIT, warm, one worker. Higher is better.",
       [(None, [(k, f"{ms(us)} vs {ms(jit)} on the JIT, Swoole {ms(sw)}", jit / us, True) for k, us, jit, sw in KERNELS])],
       "x", "1.2x to 2.5x faster than PHP's JIT; 2.7x to 8.4x faster than Swoole",
       ref=(1.0, "1x = PHP's JIT"), top=3.0)
 
-chart("js", "JavaScript: compute vs Node.js and Bun",
-      "ms per run, warm, the same .js file on each runtime. Lower is better.",
+chart("js", "BlitzVM-JS vs Node.js and Bun: time to run a CPU-heavy loop",
+      "ms for one run of a number-crunching function, no I/O, warm. Lower is better.",
       [("collatz to 300,000", [
           ("BlitzVM-JS", None, 179.3, True), ("Node.js", "22.14, V8", 315.9, False), ("Bun", "1.4.4, JavaScriptCore", 426.7, False)]),
        ("primes to 2,000,000", [

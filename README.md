@@ -16,12 +16,12 @@ Site: https://blitzvm.returnzero.win/ · By Avinash D'Silva · v0.1 research pre
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/compute-dark.svg">
-  <img alt="Times faster than PHP's tracing JIT: collatz 2.5x, pixel loop 2.4x, mandelbrot 1.7x, tak 1.7x, gcd 1.2x, spectral-norm 1.2x" src="docs/img/compute-light.svg" width="760">
+  <img alt="PHP-BlitzVM, times faster than PHP's tracing JIT: collatz 2.5x, pixel loop 2.4x, mandelbrot 1.7x, tak 1.7x, gcd 1.2x, spectral-norm 1.2x" src="docs/img/compute-light.svg" width="760">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/js-dark.svg">
-  <img alt="JavaScript compute: collatz BlitzVM-JS 179 ms, Node.js 316 ms, Bun 427 ms; primes BlitzVM-JS 128 ms, Bun 134 ms, Node.js 149 ms" src="docs/img/js-light.svg" width="760">
+  <img alt="BlitzVM-JS vs Node.js and Bun, time to run a CPU-heavy loop: collatz BlitzVM-JS 179 ms, Node.js 316 ms, Bun 427 ms; primes BlitzVM-JS 128 ms, Bun 134 ms, Node.js 149 ms" src="docs/img/js-light.svg" width="760">
 </picture>
 
 Every backend hits this eventually: one heavy request ties up a php-fpm worker, or the whole

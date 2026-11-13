@@ -681,7 +681,7 @@ const DATA = {
     {
       speedup: true,
       fig: 3,
-      title: "PHP: how much faster than PHP's own JIT",
+      title: "PHP-BlitzVM: how much faster than PHP's own JIT",
       unit: "times faster than php-fpm with opcache's tracing JIT, warm, one worker. The dashed line is the JIT itself.",
       caption: "Recursion, integer branches, float loops and code made of small helper functions. Graal inlines across the calls and the variables stay in registers. Swoole can't use PHP's JIT at all, so it runs 2.7× to 8.4× behind BlitzVM on these.",
       rows: [
@@ -697,8 +697,8 @@ const DATA = {
       fig: 4,
       wide: true,
       perGroup: true,
-      title: "JavaScript: compute vs Node.js and Bun",
-      unit: "ms per run, warm, lower is better. The same .js file on each runtime.",
+      title: "BlitzVM-JS vs Node.js and Bun: time to run a CPU-heavy loop",
+      unit: "milliseconds for one run of a number-crunching function, no I/O, warm, lower is better. The same .js file on each runtime.",
       caption: "The JavaScript front end is a prototype that shares BlitzVM's core with PHP. On integer-heavy loops it is already ahead of V8 and JavaScriptCore.",
       ms: true,
       groups: [
