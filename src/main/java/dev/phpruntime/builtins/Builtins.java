@@ -30,6 +30,7 @@ public final class Builtins {
         HashFunctions.register();
         DateFunctions.register();
         CtypeFunctions.register();
+        SerializeFunctions.register();
     }
 
     private Builtins() {
