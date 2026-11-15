@@ -125,7 +125,7 @@ public final class PhpContext {
     @TruffleBoundary
     public void declareFunction(PhpFunction fn) {
         if (Builtins.lookup(fn.name()) != null || functions.putIfAbsent(fn.name().toLowerCase(), fn) != null) {
-            throw new dev.phpruntime.runtime.PhpError("Cannot redeclare function " + fn.name() + "()");
+            throw PhpError.fatal("Cannot redeclare function " + fn.name() + "()");
         }
         int id = language.functionId(fn.name());
         if (id >= functionsById.length) {
@@ -144,12 +144,36 @@ public final class PhpContext {
 
     public PhpClass classById(int id) {
         PhpClass[] table = classesById;
-        return id < table.length ? table[id] : null;
+        if (id < table.length) {
+            PhpClass cls = table[id];
+            if (cls != null) {
+                return cls;
+            }
+        }
+        if (language.builtinClassTemplateById(id) != null) {
+            return resolveBuiltinById(id);
+        }
+        return null;
+    }
+
+    @TruffleBoundary
+    private PhpClass resolveBuiltinById(int id) {
+        PhpClassTemplate tpl = language.builtinClassTemplateById(id);
+        return tpl == null ? null : lookupClass(tpl.lowerName());
     }
 
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
-        return classes.get(name.toLowerCase());
+        String lower = name.toLowerCase();
+        PhpClass existing = classes.get(lower);
+        if (existing != null) {
+            return existing;
+        }
+        PhpClassTemplate builtin = language.builtinClassTemplate(lower);
+        if (builtin != null) {
+            return declareClassInternal(builtin, true);
+        }
+        return null;
     }
 
     @TruffleBoundary
@@ -167,10 +191,15 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpClass declareClass(PhpClassTemplate template) {
+        return declareClassInternal(template, false);
+    }
+
+    @TruffleBoundary
+    private PhpClass declareClassInternal(PhpClassTemplate template, boolean isBuiltin) {
         String lower = template.lowerName();
-        if (classes.containsKey(lower)) {
+        if (classes.containsKey(lower) || (!isBuiltin && language.builtinClassTemplate(lower) != null)) {
             String kind = template.isInterface() ? "interface" : "class";
-            throw new PhpError("Cannot declare " + kind + " " + template.name() + ", because the name is already in use");
+            throw PhpError.fatal("Cannot declare " + kind + " " + template.name() + ", because the name is already in use");
         }
         PhpClass parent = null;
         if (template.parentName() != null) {
@@ -180,10 +209,10 @@ public final class PhpContext {
                 throw new PhpError(kind + " \"" + template.parentName() + "\" not found");
             }
             if (!template.isInterface() && parent.isInterface()) {
-                throw new PhpError(template.name() + " cannot extend interface " + parent.name());
+                throw PhpError.fatal(template.name() + " cannot extend interface " + parent.name());
             }
             if (!template.isInterface() && parent.isFinal()) {
-                throw new PhpError("Class " + template.name() + " cannot extend final class " + parent.name());
+                throw PhpError.fatal("Class " + template.name() + " cannot extend final class " + parent.name());
             }
         }
         List<PhpClass> ifaces = new ArrayList<>(template.interfaceNames().size());
@@ -193,9 +222,21 @@ public final class PhpContext {
                 throw new PhpError("Interface \"" + ifaceName + "\" not found");
             }
             if (!iface.isInterface()) {
-                throw new PhpError(template.name() + " cannot implement " + iface.name() + " - it is not an interface");
+                throw PhpError.fatal(template.name() + " cannot implement " + iface.name() + " - it is not an interface");
+            }
+            if (!isBuiltin && !template.isInterface() && "throwable".equals(iface.template().lowerName())
+                    && !dev.phpruntime.runtime.PhpExceptions.isThrowable(this, parent)) {
+                throw PhpError.fatal("Class " + template.name() + " cannot implement interface Throwable, extend Exception or Error instead");
             }
             ifaces.add(iface);
+        }
+        if (!isBuiltin && parent != null) {
+            for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
+                PhpClass.MethodEntry inherited = parent.lookupMethod(m.lowerName());
+                if (inherited != null && inherited.isFinal()) {
+                    throw PhpError.fatal("Cannot override final method " + inherited.declaringClass().name() + "::" + inherited.name() + "()");
+                }
+            }
         }
         PhpClass cls = new PhpClass(language, template, parent, ifaces);
         classes.put(lower, cls);

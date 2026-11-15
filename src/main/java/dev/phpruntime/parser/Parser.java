@@ -761,7 +761,7 @@ public final class Parser {
                 PhpNode body = blockUntil("}");
                 PhpFunctionRootNode root = new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
-                        currentClass, mName, scope.thisSlot(), scope.calledClassSlot(),
+                        currentClass, mName, isStatic, scope.thisSlot(), scope.calledClassSlot(),
                         params.slots(), params.kinds(), params.defaults(), body);
                 callTarget = root.getCallTarget();
             }

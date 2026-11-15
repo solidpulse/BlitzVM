@@ -33,9 +33,16 @@ public final class NewNode extends PhpNode {
         }
         PhpObject obj = new PhpObject(cls, PhpContext.get(this).nextObjectId());
         cls.populateDefaults(obj);
+        if (cls.isThrowable()) {
+            dev.phpruntime.runtime.PhpExceptions.initNewThrowable(obj, this);
+        }
         PhpClass.MethodEntry ctor = cls.constructMethod();
         if (ctor != null) {
-            dispatch.call(ctor.callTarget(), evalArgs(frame, obj, cls));
+            try {
+                dispatch.call(ctor.callTarget(), evalArgs(frame, obj, cls));
+            } catch (PhpError e) {
+                throw e.at(this);
+            }
         } else {
             discardArgs(frame);
         }

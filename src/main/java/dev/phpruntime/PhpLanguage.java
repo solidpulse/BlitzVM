@@ -7,6 +7,7 @@ import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
+import dev.phpruntime.runtime.PhpExceptions;
 
 import java.io.IOException;
 import java.util.List;
@@ -45,9 +46,50 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     private final AtomicLong nextHierarchyId = new AtomicLong(1);
     private final PhpClassTemplate stdClassTemplate = new PhpClassTemplate(
             0L, "stdClass", false, false, false, false, null, List.of(), List.of(), List.of(), Map.of());
+    private volatile Map<String, PhpClassTemplate> builtinClassTemplates;
+    private volatile String[] builtinClassNamesById;
+
+    private Map<String, PhpClassTemplate> ensureBuiltinTemplates() {
+        Map<String, PhpClassTemplate> m = builtinClassTemplates;
+        if (m == null) {
+            synchronized (this) {
+                m = builtinClassTemplates;
+                if (m == null) {
+                    m = PhpExceptions.buildTemplates(this);
+                    int max = -1;
+                    for (String lower : m.keySet()) {
+                        int id = classId(lower);
+                        if (id > max) {
+                            max = id;
+                        }
+                    }
+                    String[] arr = new String[max + 1];
+                    for (String lower : m.keySet()) {
+                        arr[classId(lower)] = lower;
+                    }
+                    builtinClassNamesById = arr;
+                    builtinClassTemplates = m;
+                }
+            }
+        }
+        return m;
+    }
 
     public PhpClassTemplate stdClassTemplate() {
         return stdClassTemplate;
+    }
+
+    public PhpClassTemplate builtinClassTemplate(String lowerName) {
+        return ensureBuiltinTemplates().get(lowerName);
+    }
+
+    public PhpClassTemplate builtinClassTemplateById(int id) {
+        ensureBuiltinTemplates();
+        String[] names = builtinClassNamesById;
+        if (id >= 0 && id < names.length && names[id] != null) {
+            return builtinClassTemplates.get(names[id]);
+        }
+        return null;
     }
 
     private record CachedSource(long modified, Source source) {

@@ -1,0 +1,31 @@
+Throwable interface: yes
+Exception | exists=1 parent=false throwable=1 exc=1 err=0 logic=0 runtime=0 type=0 arith=0 compile=0
+ErrorException | exists=1 parent='Exception' throwable=1 exc=1 err=0 logic=0 runtime=0 type=0 arith=0 compile=0
+LogicException | exists=1 parent='Exception' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+BadFunctionCallException | exists=1 parent='LogicException' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+BadMethodCallException | exists=1 parent='BadFunctionCallException' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+DomainException | exists=1 parent='LogicException' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+InvalidArgumentException | exists=1 parent='LogicException' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+LengthException | exists=1 parent='LogicException' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+OutOfRangeException | exists=1 parent='LogicException' throwable=1 exc=1 err=0 logic=1 runtime=0 type=0 arith=0 compile=0
+RuntimeException | exists=1 parent='Exception' throwable=1 exc=1 err=0 logic=0 runtime=1 type=0 arith=0 compile=0
+OutOfBoundsException | exists=1 parent='RuntimeException' throwable=1 exc=1 err=0 logic=0 runtime=1 type=0 arith=0 compile=0
+OverflowException | exists=1 parent='RuntimeException' throwable=1 exc=1 err=0 logic=0 runtime=1 type=0 arith=0 compile=0
+RangeException | exists=1 parent='RuntimeException' throwable=1 exc=1 err=0 logic=0 runtime=1 type=0 arith=0 compile=0
+UnderflowException | exists=1 parent='RuntimeException' throwable=1 exc=1 err=0 logic=0 runtime=1 type=0 arith=0 compile=0
+UnexpectedValueException | exists=1 parent='RuntimeException' throwable=1 exc=1 err=0 logic=0 runtime=1 type=0 arith=0 compile=0
+JsonException | exists=1 parent='Exception' throwable=1 exc=1 err=0 logic=0 runtime=0 type=0 arith=0 compile=0
+Error | exists=1 parent=false throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=0 compile=0
+TypeError | exists=1 parent='Error' throwable=1 exc=0 err=1 logic=0 runtime=0 type=1 arith=0 compile=0
+ArgumentCountError | exists=1 parent='TypeError' throwable=1 exc=0 err=1 logic=0 runtime=0 type=1 arith=0 compile=0
+ValueError | exists=1 parent='Error' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=0 compile=0
+ArithmeticError | exists=1 parent='Error' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=1 compile=0
+DivisionByZeroError | exists=1 parent='ArithmeticError' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=1 compile=0
+AssertionError | exists=1 parent='Error' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=0 compile=0
+CompileError | exists=1 parent='Error' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=0 compile=1
+ParseError | exists=1 parent='CompileError' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=0 compile=1
+UnhandledMatchError | exists=1 parent='Error' throwable=1 exc=0 err=1 logic=0 runtime=0 type=0 arith=0 compile=0
+bool(true)
+bool(true)
+string(9) "Exception"
+bool(true)

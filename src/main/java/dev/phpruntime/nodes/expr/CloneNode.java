@@ -32,7 +32,11 @@ public final class CloneNode extends PhpNode {
         PhpObject copy = shallowCopy(PhpContext.get(this), obj);
         PhpClass.MethodEntry cloneMethod = obj.phpClass().cloneMethod();
         if (cloneMethod != null && cloneMethod.callTarget() != null) {
-            dispatch.call(cloneMethod.callTarget(), new Object[]{copy, obj.phpClass()});
+            try {
+                dispatch.call(cloneMethod.callTarget(), new Object[]{copy, obj.phpClass()});
+            } catch (PhpError e) {
+                throw e.at(this);
+            }
         }
         return copy;
     }

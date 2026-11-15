@@ -72,7 +72,11 @@ public final class StaticMethodCallNode extends PhpNode {
                             + "() cannot be called statically",
                     this);
         }
-        return dispatch.call(entry.callTarget(), evalArgs(frame, thisArg, calledArg));
+        try {
+            return dispatch.call(entry.callTarget(), evalArgs(frame, thisArg, calledArg));
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
     }
 
     @ExplodeLoop

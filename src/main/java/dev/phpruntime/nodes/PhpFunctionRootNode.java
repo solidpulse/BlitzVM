@@ -20,6 +20,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     private final String declaringClass;
     private final String name;
+    private final boolean isStatic;
     private final int thisSlot;
     private final int calledClassSlot;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
@@ -30,15 +31,16 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, PhpNode body) {
-        this(language, fd, source, line, null, name, -1, -1, paramSlots, paramKinds, defaults, body);
+        this(language, fd, source, line, null, name, false, -1, -1, paramSlots, paramKinds, defaults, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
-                               String declaringClass, String name, int thisSlot, int calledClassSlot,
+                               String declaringClass, String name, boolean isStatic, int thisSlot, int calledClassSlot,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, PhpNode body) {
         super(language, fd, source, line);
         this.declaringClass = declaringClass;
         this.name = name;
+        this.isStatic = isStatic;
         this.thisSlot = thisSlot;
         this.calledClassSlot = calledClassSlot;
         this.paramSlots = paramSlots;
@@ -56,6 +58,18 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     public String declaringClass() {
         return declaringClass;
+    }
+
+    public String rawFunctionName() {
+        return name;
+    }
+
+    public boolean isMethod() {
+        return thisSlot >= 0;
+    }
+
+    public boolean isStaticMethod() {
+        return isStatic;
     }
 
     @Override
@@ -90,11 +104,21 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         }
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private PhpError tooFewArguments(int passed) {
         String exactly = requiredArgs == paramSlots.length ? "exactly" : "at least";
         String qualified = declaringClass == null ? name : declaringClass + "::" + name;
+        dev.phpruntime.runtime.PhpBacktrace.LazyTrace trace = dev.phpruntime.runtime.PhpBacktrace.capture(this, false);
+        dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames = trace.frames();
+        String passedWhere = "";
+        if (frames.length > 0 && frames[0].file() != null && !frames[0].file().isEmpty() && frames[0].line() > 0) {
+            passedWhere = " in " + frames[0].file() + " on line " + frames[0].line();
+        }
+        String declFile = source() != null && source().getPath() != null ? source().getPath() : "";
+        int declLine = getSourceSection() != null ? getSourceSection().getStartLine() : 0;
         return new PhpError(PhpError.ARGUMENT_COUNT, "Too few arguments to function " + qualified + "(), " + passed
-                + " passed and " + exactly + " " + requiredArgs + " expected", body);
+                + " passed" + passedWhere + " and " + exactly + " " + requiredArgs + " expected",
+                declFile, declLine, this).withTrace(trace);
     }
 
     @Override
