@@ -38,6 +38,8 @@ public final class Builtins {
         OutputBufferFunctions.register();
         PointerFunctions.register();
         StreamFunctions.register();
+        PasswordFunctions.register();
+        ZlibFunctions.register();
     }
 
     private Builtins() {
