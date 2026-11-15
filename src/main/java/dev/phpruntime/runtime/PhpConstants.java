@@ -62,6 +62,16 @@ public final class PhpConstants {
             Map.entry("ENT_XML1", 16L),
             Map.entry("ENT_XHTML", 32L),
             Map.entry("ENT_HTML5", 48L),
+            Map.entry("PHP_URL_SCHEME", 0L),
+            Map.entry("PHP_URL_HOST", 1L),
+            Map.entry("PHP_URL_PORT", 2L),
+            Map.entry("PHP_URL_USER", 3L),
+            Map.entry("PHP_URL_PASS", 4L),
+            Map.entry("PHP_URL_PATH", 5L),
+            Map.entry("PHP_URL_QUERY", 6L),
+            Map.entry("PHP_URL_FRAGMENT", 7L),
+            Map.entry("PHP_QUERY_RFC1738", 1L),
+            Map.entry("PHP_QUERY_RFC3986", 2L),
             Map.entry("PHP_ROUND_HALF_UP", 1L));
 
     private PhpConstants() {

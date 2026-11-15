@@ -26,6 +26,7 @@ public final class Builtins {
         ArrayFunctions.register();
         MathFunctions.register();
         FileFunctions.register();
+        UrlFunctions.register();
     }
 
     private Builtins() {

@@ -193,9 +193,6 @@ final class StringFunctions {
         Builtins.def("htmlentities", 1, 4, (ctx, a) -> htmlspecialchars(s(a, 0)));
         Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(a, 0).replaceAll("<[^>]*>", ""));
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
-        Builtins.def("urlencode", 1, 1, (ctx, a) -> java.net.URLEncoder.encode(s(a, 0), StandardCharsets.UTF_8));
-        Builtins.def("rawurlencode", 1, 1, (ctx, a) -> java.net.URLEncoder.encode(s(a, 0), StandardCharsets.UTF_8).replace("+", "%20"));
-        Builtins.def("urldecode", 1, 1, (ctx, a) -> java.net.URLDecoder.decode(s(a, 0), StandardCharsets.UTF_8));
         Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(s(a, 0).getBytes(StandardCharsets.UTF_8)));
         Builtins.def("base64_decode", 1, 2, (ctx, a) -> new String(java.util.Base64.getDecoder().decode(s(a, 0)), StandardCharsets.UTF_8));
         Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(s(a, 0).getBytes(StandardCharsets.UTF_8)));
