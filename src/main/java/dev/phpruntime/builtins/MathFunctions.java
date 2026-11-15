@@ -42,7 +42,7 @@ final class MathFunctions {
                 throw new PhpError(PhpError.DIVISION_BY_ZERO, "Division by zero", null);
             }
             if (x == Long.MIN_VALUE && y == -1) {
-                throw new PhpError("Division of PHP_INT_MIN by -1 is not an integer");
+                throw new PhpError(PhpError.ARITHMETIC_ERROR, "Division of PHP_INT_MIN by -1 is not an integer", null);
             }
             return x / y;
         });
@@ -72,22 +72,27 @@ final class MathFunctions {
             long v = parseBase(PhpOps.toStr(a[0]).toLowerCase(), (int) PhpOps.toLong(a[1]));
             return Long.toString(v, (int) PhpOps.toLong(a[2]));
         });
-        Builtins.def("rand", 0, 2, MathFunctions::random);
-        Builtins.def("mt_rand", 0, 2, MathFunctions::random);
-        Builtins.def("random_int", 2, 2, MathFunctions::random);
+        Builtins.def("rand", 0, 2, (ctx, a) -> random(a, false));
+        Builtins.def("mt_rand", 0, 2, (ctx, a) -> random(a, false));
+        Builtins.def("random_int", 2, 2, (ctx, a) -> random(a, true));
         Builtins.def("mt_getrandmax", 0, 0, (ctx, a) -> 2147483647L);
         Builtins.def("getrandmax", 0, 0, (ctx, a) -> 2147483647L);
         Builtins.def("lcg_value", 0, 0, (ctx, a) -> ThreadLocalRandom.current().nextDouble());
     }
 
-    private static Object random(dev.phpruntime.PhpContext ctx, Object[] a) {
+    private static Object random(Object[] a, boolean strictOrder) {
         if (a.length < 2) {
             return (long) ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
         }
         long lo = PhpOps.toLong(a[0]);
         long hi = PhpOps.toLong(a[1]);
         if (hi < lo) {
-            throw new PhpError("Argument #2 ($max) must be greater than or equal to argument #1 ($min)");
+            if (strictOrder) {
+                throw new PhpError(PhpError.VALUE_ERROR, "random_int(): Argument #1 ($min) must be less than or equal to argument #2 ($max)", null);
+            }
+            long tmp = lo;
+            lo = hi;
+            hi = tmp;
         }
         return lo + ThreadLocalRandom.current().nextLong(hi - lo + 1);
     }
@@ -97,11 +102,11 @@ final class MathFunctions {
         List<Object> values;
         if (a.length == 1) {
             if (!(a[0] instanceof PhpArray arr)) {
-                throw new PhpError((sign > 0 ? "max" : "min") + "(): Argument #1 ($value) must be of type array, " + PhpOps.typeName(a[0]) + " given");
+                throw new PhpError(PhpError.TYPE_ERROR, (sign > 0 ? "max" : "min") + "(): Argument #1 ($value) must be of type array, " + PhpOps.typeName(a[0]) + " given", null);
             }
             values = arr.values();
             if (values.isEmpty()) {
-                throw new PhpError((sign > 0 ? "max" : "min") + "(): Argument #1 ($value) must contain at least one element");
+                throw new PhpError(PhpError.VALUE_ERROR, (sign > 0 ? "max" : "min") + "(): Argument #1 ($value) must contain at least one element", null);
             }
         } else {
             values = List.of(a);

@@ -23,7 +23,12 @@ public final class IndexReadNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         Object t = target.execute(frame);
         Object k = key.execute(frame);
-        Object v = index(t, k);
+        Object v;
+        try {
+            v = index(t, k);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
         if (v == null) {
             warn(k);
             return PhpNull.INSTANCE;

@@ -51,7 +51,11 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
-        return readPath(base.read(frame, baseKeys(keys)), arrayKeys(keys));
+        try {
+            return readPath(base.read(frame, baseKeys(keys)), arrayKeys(keys));
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
     }
 
     @TruffleBoundary
@@ -72,7 +76,11 @@ public final class IndexLValueNode extends LValueNode {
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         Object[] bk = baseKeys(keys);
         Object root = base.read(frame, bk);
-        base.write(frame, bk, writePath(root, arrayKeys(keys), value));
+        try {
+            base.write(frame, bk, writePath(root, arrayKeys(keys), value));
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
     }
 
     @TruffleBoundary
@@ -118,8 +126,12 @@ public final class IndexLValueNode extends LValueNode {
         if (!(root instanceof PhpArray)) {
             return;
         }
-        Object result = unsetPath((PhpArray) root, arrayKeys(keys));
-        base.write(frame, bk, result);
+        try {
+            Object result = unsetPath((PhpArray) root, arrayKeys(keys));
+            base.write(frame, bk, result);
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
     }
 
     @TruffleBoundary

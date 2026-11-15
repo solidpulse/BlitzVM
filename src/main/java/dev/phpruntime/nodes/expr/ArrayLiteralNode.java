@@ -27,7 +27,11 @@ public final class ArrayLiteralNode extends PhpNode {
             if (k == null) {
                 a.append(v);
             } else {
-                a.put(k, v);
+                try {
+                    a.put(k, v);
+                } catch (dev.phpruntime.runtime.PhpError e) {
+                    throw e.at(this);
+                }
             }
         }
         return a;

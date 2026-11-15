@@ -18,6 +18,10 @@ public abstract class ConcatNode extends BinaryNode {
     @Fallback
     @TruffleBoundary
     protected String doGeneric(Object a, Object b) {
-        return PhpOps.toStr(a).concat(PhpOps.toStr(b));
+        try {
+            return PhpOps.toStr(a).concat(PhpOps.toStr(b));
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }

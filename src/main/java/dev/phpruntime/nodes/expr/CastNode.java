@@ -33,7 +33,13 @@ public final class CastNode extends PhpNode {
         return switch (kind) {
             case INT -> PhpOps.toLong(v);
             case FLOAT -> PhpOps.toDouble(v);
-            case STRING -> PhpOps.toStr(v);
+            case STRING -> {
+                try {
+                    yield PhpOps.toStr(v);
+                } catch (dev.phpruntime.runtime.PhpError e) {
+                    throw e.at(this);
+                }
+            }
             case BOOL -> PhpOps.toBool(v);
             case ARRAY -> toArray(v);
             case OBJECT -> toObject(PhpContext.get(this), v);

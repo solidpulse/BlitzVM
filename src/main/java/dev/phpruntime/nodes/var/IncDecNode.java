@@ -44,7 +44,11 @@ public final class IncDecNode extends PhpNode {
         if (old instanceof Long l && l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
             updated = increment ? l + 1 : l - 1;
         } else {
-            updated = slow(old);
+            try {
+                updated = slow(old);
+            } catch (dev.phpruntime.runtime.PhpError e) {
+                throw e.at(this);
+            }
         }
         target.write(frame, keys, updated);
         return prefix ? updated : (old == null ? PhpNull.INSTANCE : old);

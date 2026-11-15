@@ -80,7 +80,8 @@ public final class PhpArray implements TruffleObject {
         if (key == PhpNull.INSTANCE) {
             return "";
         }
-        throw new PhpError("Illegal offset type");
+        String typeDesc = key instanceof PhpObject o ? o.phpClass().name() : PhpOps.typeName(key);
+        throw new PhpError(PhpError.TYPE_ERROR, "Cannot access offset of type " + typeDesc + " on array", null);
     }
 
     private static boolean isCanonicalInt(String s) {

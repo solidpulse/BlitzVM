@@ -29,7 +29,7 @@ final class FileFunctions {
 
     static String dirname(String path, long levels) {
         if (levels < 1) {
-            throw new PhpError("dirname(): Argument #2 ($levels) must be greater than or equal to 1");
+            throw new PhpError(PhpError.VALUE_ERROR, "dirname(): Argument #2 ($levels) must be greater than or equal to 1", null);
         }
         if (path.isEmpty()) {
             return "";

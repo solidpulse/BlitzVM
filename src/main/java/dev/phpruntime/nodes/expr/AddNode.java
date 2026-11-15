@@ -49,6 +49,10 @@ public abstract class AddNode extends BinaryNode {
 
     @Fallback
     protected Object doGeneric(Object a, Object b) {
-        return PhpArith.add(a, b);
+        try {
+            return PhpArith.add(a, b);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }

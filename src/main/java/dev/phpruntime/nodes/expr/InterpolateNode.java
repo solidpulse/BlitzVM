@@ -22,7 +22,11 @@ public final class InterpolateNode extends PhpNode {
         for (int i = 0; i < parts.length; i++) {
             values[i] = parts[i].execute(frame);
         }
-        return join(values);
+        try {
+            return join(values);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 
     @TruffleBoundary

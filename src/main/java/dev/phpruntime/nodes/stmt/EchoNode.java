@@ -21,7 +21,15 @@ public final class EchoNode extends PhpNode {
         PhpContext ctx = PhpContext.get(this);
         for (PhpNode v : values) {
             Object o = v.execute(frame);
-            ctx.echo(o instanceof String s ? s : PhpOps.toStr(o));
+            if (o instanceof String s) {
+                ctx.echo(s);
+            } else {
+                try {
+                    ctx.echo(PhpOps.toStr(o));
+                } catch (dev.phpruntime.runtime.PhpError e) {
+                    throw e.at(this);
+                }
+            }
         }
         return null;
     }

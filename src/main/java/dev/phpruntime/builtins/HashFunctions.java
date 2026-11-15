@@ -57,17 +57,17 @@ final class HashFunctions {
             String algo = PhpOps.toStr(a[0]).toLowerCase();
             Algo spec = ALGOS.get(algo);
             if (spec == null || spec.javaName() == null) {
-                throw new PhpError("hash_hmac(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm");
+                throw new PhpError(PhpError.VALUE_ERROR, "hash_hmac(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm", null);
             }
             byte[] mac = hmac(algo, spec, bytes(PhpOps.toStr(a[2])), bytes(PhpOps.toStr(a[1])));
             return output(mac, a.length > 3 && PhpOps.toBool(a[3]));
         });
         Builtins.def("hash_equals", 2, 2, (ctx, a) -> {
             if (!(a[0] instanceof String known)) {
-                throw new PhpError("hash_equals(): Argument #1 ($known_string) must be of type string, " + PhpOps.typeName(a[0]) + " given");
+                throw new PhpError(PhpError.TYPE_ERROR, "hash_equals(): Argument #1 ($known_string) must be of type string, " + PhpOps.typeName(a[0]) + " given", null);
             }
             if (!(a[1] instanceof String user)) {
-                throw new PhpError("hash_equals(): Argument #2 ($user_string) must be of type string, " + PhpOps.typeName(a[1]) + " given");
+                throw new PhpError(PhpError.TYPE_ERROR, "hash_equals(): Argument #2 ($user_string) must be of type string, " + PhpOps.typeName(a[1]) + " given", null);
             }
             return MessageDigest.isEqual(bytes(known), bytes(user));
         });
@@ -115,7 +115,7 @@ final class HashFunctions {
     static byte[] digest(String algo, byte[] data, String fn) {
         Algo spec = ALGOS.get(algo);
         if (spec == null) {
-            throw new PhpError(fn + "(): Argument #1 ($algo) must be a valid hashing algorithm");
+            throw new PhpError(PhpError.VALUE_ERROR, fn + "(): Argument #1 ($algo) must be a valid hashing algorithm", null);
         }
         if (spec.javaName() == null) {
             Checksum c = algo.equals("crc32b") ? new CRC32() : new CRC32C();
@@ -126,7 +126,7 @@ final class HashFunctions {
         try {
             return MessageDigest.getInstance(spec.javaName()).digest(data);
         } catch (NoSuchAlgorithmException e) {
-            throw new PhpError(fn + "(): Argument #1 ($algo) must be a valid hashing algorithm");
+            throw new PhpError(PhpError.VALUE_ERROR, fn + "(): Argument #1 ($algo) must be a valid hashing algorithm", null);
         }
     }
 

@@ -27,7 +27,7 @@ final class ArrayFunctions {
         if (a[i] instanceof PhpArray x) {
             return x;
         }
-        throw new PhpError(fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeName(a[i]) + " given");
+        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeName(a[i]) + " given", null);
     }
 
     /** Writable copy of a by-reference array argument; undefined becomes an empty array. */
@@ -38,7 +38,7 @@ final class ArrayFunctions {
         if (a[0] == PhpNull.INSTANCE) {
             return new PhpArray();
         }
-        throw new PhpError("Argument #1 ($array) must be of type array, " + PhpOps.typeName(a[0]) + " given");
+        throw new PhpError(PhpError.TYPE_ERROR, "Argument #1 ($array) must be of type array, " + PhpOps.typeName(a[0]) + " given", null);
     }
 
     static void register() {
@@ -52,7 +52,7 @@ final class ArrayFunctions {
     private static void inspection() {
         Builtins.def("count", 1, 2, (ctx, a) -> {
             if (!(a[0] instanceof PhpArray x)) {
-                throw new PhpError("count(): Argument #1 ($value) must be of type Countable|array, " + PhpOps.typeName(a[0]) + " given");
+                throw new PhpError(PhpError.TYPE_ERROR, "count(): Argument #1 ($value) must be of type Countable|array, " + PhpOps.typeName(a[0]) + " given", null);
             }
             return a.length > 1 && PhpOps.toLong(a[1]) == 1 ? countRecursive(x) : (long) x.size();
         });
@@ -118,7 +118,7 @@ final class ArrayFunctions {
             List<Object> keys = arr(a, 0, "array_combine").values();
             List<Object> values = arr(a, 1, "array_combine").values();
             if (keys.size() != values.size()) {
-                throw new PhpError("array_combine(): Argument #1 ($keys) and argument #2 ($values) must have the same number of elements");
+                throw new PhpError(PhpError.VALUE_ERROR, "array_combine(): Argument #1 ($keys) and argument #2 ($values) must have the same number of elements", null);
             }
             PhpArray out = new PhpArray();
             for (int i = 0; i < keys.size(); i++) {
@@ -201,7 +201,7 @@ final class ArrayFunctions {
         Builtins.def("array_chunk", 2, 3, (ctx, a) -> {
             int size = (int) PhpOps.toLong(a[1]);
             if (size < 1) {
-                throw new PhpError("array_chunk(): Argument #2 ($length) must be greater than 0");
+                throw new PhpError(PhpError.VALUE_ERROR, "array_chunk(): Argument #2 ($length) must be greater than 0", null);
             }
             boolean preserve = a.length > 2 && PhpOps.toBool(a[2]);
             PhpArray out = new PhpArray();
@@ -365,7 +365,7 @@ final class ArrayFunctions {
             double t = PhpOps.toDouble(to);
             double step = Math.abs(PhpOps.toDouble(stepObj));
             if (step == 0) {
-                throw new PhpError("range(): Argument #3 ($step) cannot be 0");
+                throw new PhpError(PhpError.VALUE_ERROR, "range(): Argument #3 ($step) cannot be 0", null);
             }
             long n = (long) Math.floor(Math.abs(t - f) / step + 1e-9);
             for (long i = 0; i <= n; i++) {

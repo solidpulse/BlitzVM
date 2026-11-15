@@ -34,7 +34,12 @@ public final class CompoundAssignNode extends PhpNode {
         if (current == null) {
             current = PhpNull.INSTANCE;
         }
-        Object result = applyFast(current, value.execute(frame));
+        Object result;
+        try {
+            result = applyFast(current, value.execute(frame));
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
         target.write(frame, keys, result);
         return result;
     }

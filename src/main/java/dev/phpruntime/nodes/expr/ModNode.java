@@ -21,6 +21,10 @@ public abstract class ModNode extends BinaryNode {
 
     @Fallback
     protected Object doGeneric(Object a, Object b) {
-        return PhpArith.mod(a, b);
+        try {
+            return PhpArith.mod(a, b);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }
