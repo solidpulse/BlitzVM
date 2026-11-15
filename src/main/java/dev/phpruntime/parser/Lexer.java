@@ -238,6 +238,20 @@ public final class Lexer {
         while (pos < src.length() && src.charAt(pos) != '"') {
             char ch = src.charAt(pos);
             if (ch == '\\' && pos + 1 < src.length()) {
+                if (isByteEscape()) {
+                    appendByteEscapes(lit);
+                    continue;
+                }
+                if (src.startsWith("u{", pos + 1) && src.indexOf('}', pos + 3) > pos + 3) {
+                    int close = src.indexOf('}', pos + 3);
+                    try {
+                        lit.appendCodePoint(Integer.parseInt(src.substring(pos + 3, close), 16));
+                        pos = close + 1;
+                        continue;
+                    } catch (IllegalArgumentException e) {
+                        throw new PhpParseError("Invalid UTF-8 codepoint escape sequence", line);
+                    }
+                }
                 pos += 2;
                 appendEscape(src.charAt(pos - 1), lit);
                 continue;
@@ -307,6 +321,54 @@ public final class Lexer {
         throw new PhpParseError("Unterminated {$...} in string", line);
     }
 
+    /** At a backslash: is this an octal (\\101) or hex (\\x41) escape, which PHP turns into a byte? */
+    private boolean isByteEscape() {
+        char e = pos + 1 < src.length() ? src.charAt(pos + 1) : 0;
+        if (e >= '0' && e <= '7') {
+            // a lone \\0 is still the NUL byte, which this also produces
+            return true;
+        }
+        return e == 'x' && pos + 2 < src.length() && Character.digit(src.charAt(pos + 2), 16) >= 0;
+    }
+
+    /**
+     * Decodes a run of consecutive octal and hex escapes into bytes. Strings are Java strings
+     * for now, so a run that is valid UTF-8 (such as "\\xC2\\xA0") becomes those characters and
+     * anything else becomes one char per byte.
+     */
+    private void appendByteEscapes(StringBuilder lit) {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        while (pos < src.length() && src.charAt(pos) == '\\' && isByteEscape()) {
+            int i = pos + 1;
+            int value;
+            if (src.charAt(i) == 'x') {
+                int end = i + 1;
+                while (end < src.length() && end < i + 3 && Character.digit(src.charAt(end), 16) >= 0) {
+                    end++;
+                }
+                value = Integer.parseInt(src.substring(i + 1, end), 16);
+                pos = end;
+            } else {
+                int end = i;
+                while (end < src.length() && end < i + 3 && src.charAt(end) >= '0' && src.charAt(end) <= '7') {
+                    end++;
+                }
+                value = Integer.parseInt(src.substring(i, end), 8) & 0xFF;
+                pos = end;
+            }
+            bytes.write(value);
+        }
+        byte[] b = bytes.toByteArray();
+        java.nio.charset.CharsetDecoder utf8 = java.nio.charset.StandardCharsets.UTF_8.newDecoder();
+        try {
+            lit.append(utf8.decode(java.nio.ByteBuffer.wrap(b)));
+        } catch (java.nio.charset.CharacterCodingException e) {
+            for (byte x : b) {
+                lit.append((char) (x & 0xFF));
+            }
+        }
+    }
+
     private static void appendEscape(char e, StringBuilder sb) {
         switch (e) {
             case 'n' -> sb.append('\n');
@@ -315,7 +377,6 @@ public final class Lexer {
             case 'v' -> sb.append('\u000B');
             case 'e' -> sb.append('\u001B');
             case 'f' -> sb.append('\f');
-            case '0' -> sb.append('\0');
             case '\\' -> sb.append('\\');
             case '$' -> sb.append('$');
             case '"' -> sb.append('"');
