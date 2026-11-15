@@ -31,7 +31,6 @@ public final class CallNode extends PhpNode {
     /** For each argument, the lvalue it came from (for by-reference builtins), else null. */
     @Children private final LValueNode[] refTargets;
 
-    @CompilationFinal private RootCallTarget cachedTarget;
     @Child private DirectCallNode callNode;
     @Child private IndirectCallNode indirectCall;
     @CompilationFinal private Builtins.Def builtin;
@@ -60,11 +59,14 @@ public final class CallNode extends PhpNode {
             throw new PhpError("Call to undefined function " + name + "()", this);
         }
         RootCallTarget target = fn.callTarget();
-        if (target == cachedTarget) {
-            return callNode.call(evalArgs(frame));
+        // Read each child once: another request may be installing it concurrently.
+        DirectCallNode direct = callNode;
+        if (direct != null && direct.getCallTarget() == target) {
+            return direct.call(evalArgs(frame));
         }
-        if (indirectCall != null) {
-            return indirectCall.call(target, evalArgs(frame));
+        IndirectCallNode indirect = indirectCall;
+        if (indirect != null) {
+            return indirect.call(target, evalArgs(frame));
         }
         return callDynamic(frame, fn);
     }
@@ -97,12 +99,11 @@ public final class CallNode extends PhpNode {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
-            if (cachedTarget == null) {
-                cachedTarget = target;
+            if (callNode == null) {
                 callNode = insert(DirectCallNode.create(target));
                 return true;
             }
-            if (cachedTarget == target) {
+            if (callNode.getCallTarget() == target) {
                 return true;
             }
             if (indirectCall == null) {

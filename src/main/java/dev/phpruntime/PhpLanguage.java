@@ -36,6 +36,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     private final ConcurrentHashMap<String, CachedSource> sources = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> functionIds = new ConcurrentHashMap<>();
+    private final AtomicInteger nextFunctionId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> methodIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextMethodId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> classIds = new ConcurrentHashMap<>();
@@ -63,7 +64,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
      * finds the current context's function with one array load instead of a map lookup.
      */
     public int functionId(String name) {
-        return functionIds.computeIfAbsent(name.toLowerCase(), n -> functionIds.size());
+        return functionIds.computeIfAbsent(name.toLowerCase(), n -> nextFunctionId.getAndIncrement());
     }
 
     public int methodId(String name) {
