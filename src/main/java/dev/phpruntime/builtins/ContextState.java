@@ -19,6 +19,9 @@ final class ContextState {
     ZoneId timezone = DateFunctions.UTC;
     String timezoneName = "UTC";
 
+    /** mysqli: per-object state keyed by object id, the last connect error and the report mode. */
+    MysqliFunctions.State mysqli;
+
     private ContextState() {
     }
 
