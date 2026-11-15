@@ -146,7 +146,7 @@ Packages under `dev.phpruntime`:
 | `parser` | PHP lexer (HTML and code modes, string interpolation) and a recursive-descent parser with Pratt precedence for expressions. Function locals get frame slots at parse time. |
 | `nodes` | PHP AST nodes. Truffle DSL specializations with `long` fast paths that overflow to `double`; locals in typed `long`/`double` frame slots; `LoopNode` for OSR and safepoint polls; call sites cache a `DirectCallNode` so Graal can inline. |
 | `runtime` | Values and helpers: copy-on-write ordered arrays, PHP 8 type juggling, float formatting that matches `zend_gcvt`. |
-| `builtins` | 273 PHP functions across strings, arrays, URLs, hashing, math, output, types, classes, constants, files, serialize, date/time, `sleep`/`usleep`, `header()`. |
+| `builtins` | 479 PHP functions across strings, arrays, PCRE, JSON, mysqli, streams, output buffering, cookies/HTTP, hashing, bcrypt, zlib, URLs, math, date/time, serialize, `sleep`/`usleep`. |
 | `js` | The JavaScript front end: lexer, parser, nodes with int/double specialization and typed frame slots, Node-style globals. |
 | `sched` | The preemptive scheduler. |
 | `host` | One shared polyglot engine, a context per request, the URL dispatcher, the Netty and JDK HTTP servers, and the CLI. |
@@ -163,8 +163,8 @@ Packages under `dev.phpruntime`:
   nothing.
 - Inside the action the request releases its slot and re-acquires it, which puts it at the
   tail of the fair queue: round robin.
-- `sleep`/`usleep` and JavaScript `await` on timers release the slot while blocked, like a
-  goroutine parking on a syscall.
+- `sleep`/`usleep`, `mysqli` queries and JavaScript `await` on timers release the slot while
+  blocked, like a goroutine parking on a syscall.
 - Per-request CPU time (time holding a slot) is tracked. Past `--max-exec-ms` the context is
   cancelled with `Context.close(true)` and the response is a 500 with
   `PHP Fatal error:  Maximum execution time of N seconds exceeded`.
@@ -240,9 +240,9 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
 
 ## Testing
 
-`mvn test` runs 100 tests:
+`mvn test` runs 152 tests (plus 8 live MariaDB tests in `MysqliConformanceTest` when `BLITZ_MYSQL_HOST` is set):
 
-- `ConformanceTest`: 61 PHP scripts whose expected output came from real PHP 8.5, matched
+- `ConformanceTest`: 99 PHP scripts whose expected output came from real PHP 8.5, matched
   byte for byte.
 - `JsConformanceTest`: 16 JavaScript scripts whose expected output came from real Node.js.
 - `SchedulerTest`: a busy loop and a sleeping request must not starve a hello request on a
@@ -251,23 +251,35 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
   and that constants and conditional functions don't leak between requests.
 - `ClassObjectsTest`: declaration and runtime errors for classes, property visibility, and
   that classes and static properties don't leak between requests.
+- `ClosuresCallablesTest`: non-callable errors, isolation of static locals and shutdown
+  handlers, and a 16-thread concurrent `ContextPolicy.SHARED` stress test.
+- `ExceptionsTest`: uncaught exception formatting (including `Next` chains), non-catchable
+  fatals and scheduler timeouts, `debug_print_backtrace`, and concurrent `try`/`catch`.
+- `HttpFunctionsTest`: `setcookie`, `header_remove`, `headers_list`, `headers_sent` and
+  `$_GET`/`$_POST`/`$_COOKIE` query and cookie parsing.
 
 ## PHP support
 
 Supported: `echo`/`print`, inline HTML and `<?= ?>`, alternative syntax, `int`/`float`/
-`string`/`bool`/`null`/`array`, all arithmetic, string, comparison, logical, bitwise and
-assignment operators including `??=` and `++`/`--`, `if`/`elseif`/`else`, `while`,
+`string`/`bool`/`null`/`array`/`resource`, all arithmetic, string, comparison, logical, bitwise
+and assignment operators including `??=` and `++`/`--`, `if`/`elseif`/`else`, `while`,
 `do-while`, `for`, `foreach` with keys, `switch`, `break N`/`continue N`, functions with
-defaults and recursion, `global`, `isset`/`unset`/`empty`, casts, superglobals, `header()`,
-`http_response_code()`, `include`/`require` and their `_once` forms, `define`/`const` and
-magic constants, functions declared conditionally inside `if` blocks, and classes:
-inheritance, interfaces, abstract classes, static properties and methods, class constants,
-`self`/`parent`/`static`, magic methods, `clone`, anonymous classes and `?->`.
+defaults, variadics (`...$args`) and recursion, `func_get_args`, `static` local variables,
+`global`, `isset`/`unset`/`empty`, casts, superglobals (`$_GET`, `$_POST`, `$_COOKIE`,
+`$_REQUEST`, `$_SERVER`), `header()`, `setcookie()`, `http_response_code()`, output buffering
+(`ob_*`), `include`/`require` and their `_once` forms, `define`/`const` and magic constants,
+functions declared conditionally inside `if` blocks, closures (`use ($x)` and `use (&$x)`),
+arrow functions (`fn`), first-class callables (`strlen(...)`), `spl_autoload_register`,
+classes (inheritance, interfaces, abstract classes, static properties and methods, class
+constants, `self`/`parent`/`static`, magic methods, `clone`, anonymous classes and `?->`),
+exceptions (`try`/`catch`/`finally`, `throw` expressions, full `Throwable`/`Exception`/`Error`
+hierarchy, catchable engine `Error`s, `debug_backtrace`), `preg_*`, `json_*`, `mysqli_*`,
+streams and file handles, `password_hash`, and `gz*`.
 
-Not yet: closures, references (`&` is parsed but treated as by-value),
-static variables, `include` inside a function (it runs in global scope), heredoc/nowdoc, exceptions, generators, `preg_*`,
-sessions and cookies. Strings are Java strings rather than byte strings, so `strlen` counts
-UTF-8 bytes while `substr` works on characters.
+Not yet: general references (`&$param`, `$a = &$b`, `foreach ... as &$v`), `include` inside a
+function (it runs in global scope), heredoc/nowdoc, namespaces, generators, `match`, `goto`,
+and sessions. Strings are Java strings rather than byte strings, so `strlen` counts UTF-8
+bytes while `substr` works on characters.
 
 ## Roadmap
 
@@ -278,7 +290,8 @@ UTF-8 bytes while `substr` works on characters.
 | prototype | JavaScript front end (BlitzVM-JS in the tables above) |
 | working | `include`/`require`, runtime constants, conditional function declarations |
 | working | Classes, interfaces, static members, magic methods, anonymous classes |
-| next | Closures, exceptions and references, so real apps, WordPress and Laravel can run |
+| working | Closures, callables, static locals, exceptions, `preg_*`, `json_*`, `mysqli_*`, `ob_*`, streams |
+| next | General references, dynamic scope, byte strings, namespaces and SPL interfaces so WordPress and Laravel can run |
 | next | Hot builtins (`strlen`, `count`, `microtime`) as nodes the JIT can inline |
 | next | Fast paths for large array writes |
 | planned | Node.js- and Bun-compatible environments |
