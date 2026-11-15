@@ -18,6 +18,20 @@ public final class VarKind {
 
     private final Assumption noInts = Truffle.getRuntime().createAssumption("variable never held an int");
     private final Assumption noFloats = Truffle.getRuntime().createAssumption("variable never held a float");
+    private final Assumption notCell = Truffle.getRuntime().createAssumption("variable is not a reference cell");
+
+    /** True if this local is stored indirectly through a {@code PhpReference} cell. */
+    public boolean isCell() {
+        return !notCell.isValid();
+    }
+
+    /** Marks this variable as stored through a {@code PhpReference} cell (parse time). */
+    public void markCell() {
+        if (notCell.isValid()) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            notCell.invalidate();
+        }
+    }
 
     /** True once the variable has held both: its numbers are then stored boxed. */
     public boolean mixed() {

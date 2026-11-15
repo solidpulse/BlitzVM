@@ -15,6 +15,10 @@ public final class GlobalVarNode extends LValueNode {
         this.name = name;
     }
 
+    public String name() {
+        return name;
+    }
+
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
         return PhpContext.get(this).readGlobal(name);

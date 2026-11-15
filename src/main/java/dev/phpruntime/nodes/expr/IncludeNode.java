@@ -119,4 +119,57 @@ public final class IncludeNode extends PhpNode {
             return false;
         }
     }
+
+    /** Attempts {@code include_once} relative to the entry script or cwd without warnings (for {@code spl_autoload}). */
+    @TruffleBoundary
+    public static boolean tryIncludeOnce(PhpContext ctx, String path) {
+        TruffleLanguage.Env env = ctx.env();
+        TruffleFile resolved = resolveStatic(env, ctx.request().scriptFilename, path);
+        if (resolved == null) {
+            return false;
+        }
+        TruffleFile canonical;
+        try {
+            canonical = resolved.getCanonicalFile();
+        } catch (IOException e) {
+            canonical = resolved.getAbsoluteFile().normalize();
+        }
+        String key = canonical.getPath();
+        if (ctx.isIncluded(key)) {
+            return true;
+        }
+        ctx.markIncluded(key);
+        try {
+            Source source = ctx.language().loadSource(canonical);
+            CallTarget target = env.parsePublic(source);
+            target.call(INCLUDED_ARGS);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static TruffleFile resolveStatic(TruffleLanguage.Env env, String scriptFilename, String path) {
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+        try {
+            if (scriptFilename != null && !scriptFilename.isEmpty()) {
+                TruffleFile parent = env.getPublicTruffleFile(scriptFilename).getParent();
+                if (parent != null) {
+                    TruffleFile inDir = parent.resolve(path);
+                    if (isRegularFile(inDir)) {
+                        return inDir;
+                    }
+                }
+            }
+            TruffleFile inCwd = env.getCurrentWorkingDirectory().resolve(path);
+            if (isRegularFile(inCwd)) {
+                return inCwd;
+            }
+        } catch (SecurityException | IllegalArgumentException ignored) {
+            return null;
+        }
+        return null;
+    }
 }

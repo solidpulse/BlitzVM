@@ -90,7 +90,12 @@ public final class ClassRefNode extends PhpNode {
 
     public PhpClass resolveOrNull(VirtualFrame frame) {
         return switch (kind) {
-            case NAMED, SELF -> PhpContext.get(this).classById(classId);
+            case NAMED -> {
+                PhpContext ctx = PhpContext.get(this);
+                PhpClass c = ctx.classById(classId);
+                yield c != null ? c : ctx.lookupOrAutoloadClass(name);
+            }
+            case SELF -> PhpContext.get(this).classById(classId);
             case PARENT -> {
                 PhpClass cur = PhpContext.get(this).classById(classId);
                 yield cur == null ? null : cur.parent();
@@ -102,7 +107,7 @@ public final class ClassRefNode extends PhpNode {
                     yield o.phpClass();
                 }
                 String clsName = PhpOps.toStr(v);
-                PhpClass c = PhpContext.get(this).lookupClass(clsName);
+                PhpClass c = PhpContext.get(this).lookupOrAutoloadClass(clsName);
                 if (c == null && !clsName.isEmpty()) {
                     // Preserve name in error if resolve() throws.
                     yield throwMissing(clsName);
@@ -128,8 +133,11 @@ public final class ClassRefNode extends PhpNode {
         throw new PhpError("Class \"" + clsName + "\" not found", this);
     }
 
-    /** Same as {@link #resolveOrNull} but returns null for dynamic missing class names (for instanceof). */
+    /** Same as {@link #resolveOrNull} but returns null for missing class names without autoloading (for instanceof). */
     public PhpClass resolveForInstanceof(VirtualFrame frame) {
+        if (kind == Kind.NAMED) {
+            return PhpContext.get(this).classById(classId);
+        }
         if (kind == Kind.DYNAMIC) {
             Object v = expr.execute(frame);
             if (v instanceof PhpObject o) {

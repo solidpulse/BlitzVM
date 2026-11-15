@@ -5,24 +5,35 @@ import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.builtins.Builtins;
+import dev.phpruntime.nodes.ControlFlow;
+import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClassTemplate;
+import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpConstants;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpObject;
+import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpRequest;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -47,6 +58,19 @@ public final class PhpContext {
     private long nextObjectId = 1;
     private long nextAnonymousId = 1;
     private final PhpClass stdClass;
+    private final PhpClass closureClass;
+    private record ShutdownEntry(Object callable, Object[] args) {
+    }
+
+    private record ErrorHandlerEntry(Object callable, long errorLevels) {
+    }
+
+    private final List<Object> autoloaders = new ArrayList<>();
+    private final Set<String> autoloadingInProgress = new HashSet<>();
+    private final List<ShutdownEntry> shutdownFunctions = new ArrayList<>();
+    private final Deque<ErrorHandlerEntry> errorHandlers = new ArrayDeque<>();
+    private final IdentityHashMap<Object, Map<String, PhpReference>> staticLocals = new IdentityHashMap<>();
+    private boolean inErrorHandler;
     private final StringBuilder output = new StringBuilder();
     private final PrintStream err;
     private PhpRequest request;
@@ -58,10 +82,19 @@ public final class PhpContext {
         this.env = env;
         this.err = new PrintStream(env.err(), true, StandardCharsets.UTF_8);
         this.stdClass = declareClass(language.stdClassTemplate());
+        this.closureClass = declareClass(language.closureTemplate());
     }
 
     public PhpClass stdClass() {
         return stdClass;
+    }
+
+    public PhpClass closureClass() {
+        return closureClass;
+    }
+
+    public PhpObject newClosure(PhpClosure closure) {
+        return new PhpObject(closureClass, nextObjectId(), closure);
     }
 
     public static PhpContext get(Node node) {
@@ -96,18 +129,52 @@ public final class PhpContext {
 
     @TruffleBoundary
     public Object readGlobal(String name) {
-        return globals.get(name);
+        Object v = globals.get(name);
+        return v instanceof PhpReference ref ? ref.value : v;
     }
 
     @TruffleBoundary
     public void writeGlobal(String name, Object value) {
-        globals.put(name, value);
+        Object cur = globals.get(name);
+        if (cur instanceof PhpReference ref) {
+            ref.value = value;
+        } else {
+            globals.put(name, value);
+        }
     }
 
     @TruffleBoundary
     public boolean hasGlobal(String name) {
-        Object v = globals.get(name);
+        Object v = readGlobal(name);
         return v != null && v != PhpNull.INSTANCE;
+    }
+
+    @TruffleBoundary
+    public PhpReference globalRef(String name) {
+        Object cur = globals.get(name);
+        if (cur instanceof PhpReference ref) {
+            return ref;
+        }
+        PhpReference ref = new PhpReference(cur == null ? PhpNull.INSTANCE : cur);
+        globals.put(name, ref);
+        return ref;
+    }
+
+    @TruffleBoundary
+    public PhpReference getStaticLocal(Object ownerKey, String name) {
+        Map<String, PhpReference> map = staticLocals.get(ownerKey);
+        return map == null ? null : map.get(name);
+    }
+
+    @TruffleBoundary
+    public PhpReference initStaticLocal(Object ownerKey, String name, Object initialValue) {
+        Map<String, PhpReference> map = staticLocals.computeIfAbsent(ownerKey, k -> new HashMap<>());
+        PhpReference ref = map.get(name);
+        if (ref == null) {
+            ref = new PhpReference(initialValue);
+            map.put(name, ref);
+        }
+        return ref;
     }
 
     @TruffleBoundary
@@ -153,6 +220,78 @@ public final class PhpContext {
     }
 
     @TruffleBoundary
+    public PhpClass lookupOrAutoloadClass(String name) {
+        String lower = name.toLowerCase();
+        PhpClass cls = classes.get(lower);
+        if (cls != null || autoloaders.isEmpty() || !autoloadingInProgress.add(lower)) {
+            return cls;
+        }
+        try {
+            for (Object cbVal : List.copyOf(autoloaders)) {
+                PhpCallable cb = PhpCallable.resolveOrNull(this, cbVal);
+                if (cb != null) {
+                    cb.call(this, null, null, name);
+                    cls = classes.get(lower);
+                    if (cls != null) {
+                        return cls;
+                    }
+                }
+            }
+            return null;
+        } finally {
+            autoloadingInProgress.remove(lower);
+        }
+    }
+
+    @TruffleBoundary
+    public boolean registerAutoload(Object callable, boolean prepend) {
+        for (Object existing : autoloaders) {
+            if (sameCallback(existing, callable)) {
+                return true;
+            }
+        }
+        if (prepend) {
+            autoloaders.add(0, callable);
+        } else {
+            autoloaders.add(callable);
+        }
+        return true;
+    }
+
+    @TruffleBoundary
+    public boolean unregisterAutoload(Object callable) {
+        for (int i = 0; i < autoloaders.size(); i++) {
+            if (sameCallback(autoloaders.get(i), callable)) {
+                autoloaders.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @TruffleBoundary
+    public PhpArray autoloadFunctions() {
+        PhpArray out = new PhpArray();
+        for (Object cb : autoloaders) {
+            out.append(PhpOps.copyOnAssign(cb));
+        }
+        return out;
+    }
+
+    private static boolean sameCallback(Object a, Object b) {
+        if (a == b) {
+            return true;
+        }
+        if (a instanceof String sa && b instanceof String sb) {
+            return sa.equalsIgnoreCase(sb);
+        }
+        if (a instanceof PhpArray aa && b instanceof PhpArray ab) {
+            return PhpOps.strictEquals(aa, ab);
+        }
+        return Objects.equals(a, b);
+    }
+
+    @TruffleBoundary
     public boolean canHoistClass(PhpClassTemplate template) {
         if (template.parentName() != null && lookupClass(template.parentName()) == null) {
             return false;
@@ -174,7 +313,7 @@ public final class PhpContext {
         }
         PhpClass parent = null;
         if (template.parentName() != null) {
-            parent = lookupClass(template.parentName());
+            parent = lookupOrAutoloadClass(template.parentName());
             if (parent == null) {
                 String kind = template.isInterface() ? "Interface" : "Class";
                 throw new PhpError(kind + " \"" + template.parentName() + "\" not found");
@@ -188,7 +327,7 @@ public final class PhpContext {
         }
         List<PhpClass> ifaces = new ArrayList<>(template.interfaceNames().size());
         for (String ifaceName : template.interfaceNames()) {
-            PhpClass iface = lookupClass(ifaceName);
+            PhpClass iface = lookupOrAutoloadClass(ifaceName);
             if (iface == null) {
                 throw new PhpError("Interface \"" + ifaceName + "\" not found");
             }
@@ -290,8 +429,59 @@ public final class PhpContext {
     }
 
     @TruffleBoundary
+    public void registerShutdownFunction(Object callable, Object[] args) {
+        shutdownFunctions.add(new ShutdownEntry(callable, args));
+    }
+
+    @TruffleBoundary
+    public void runShutdownFunctions() {
+        for (int i = 0; i < shutdownFunctions.size(); i++) {
+            ShutdownEntry entry = shutdownFunctions.get(i);
+            PhpCallable cb = PhpCallable.resolveOrNull(this, entry.callable());
+            if (cb != null) {
+                try {
+                    cb.call(this, null, null, entry.args());
+                } catch (ControlFlow.Exit e) {
+                    break;
+                }
+            }
+        }
+    }
+
+    @TruffleBoundary
+    public Object setErrorHandler(Object callable, long errorLevels) {
+        ErrorHandlerEntry prev = errorHandlers.peek();
+        errorHandlers.push(new ErrorHandlerEntry(callable, errorLevels));
+        return prev == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(prev.callable());
+    }
+
+    @TruffleBoundary
+    public boolean restoreErrorHandler() {
+        if (!errorHandlers.isEmpty()) {
+            errorHandlers.pop();
+        }
+        return true;
+    }
+
+    @TruffleBoundary
     public void warning(String message, int line) {
         String file = request().scriptFilename;
+        ErrorHandlerEntry handler = errorHandlers.peek();
+        if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
+                && (handler.errorLevels() & 2L) != 0) {
+            PhpCallable cb = PhpCallable.resolveOrNull(this, handler.callable());
+            if (cb != null) {
+                inErrorHandler = true;
+                try {
+                    Object handled = cb.call(this, null, null, 2L, message, file, (long) line);
+                    if (!Boolean.FALSE.equals(handled)) {
+                        return;
+                    }
+                } finally {
+                    inErrorHandler = false;
+                }
+            }
+        }
         err.println("PHP Warning:  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
     }
 }

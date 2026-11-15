@@ -26,12 +26,16 @@ public final class NewNode extends PhpNode {
     @Override
     public Object execute(VirtualFrame frame) {
         PhpClass cls = classRef.resolve(frame);
+        PhpContext ctx = PhpContext.get(this);
+        if (cls == ctx.closureClass()) {
+            throw new PhpError("Instantiation of Closure is not allowed", this);
+        }
         if (cls.isInterface() || cls.isAbstract()) {
             throw new PhpError(
                     "Cannot instantiate " + (cls.isInterface() ? "interface " : "abstract class ") + cls.name(),
                     this);
         }
-        PhpObject obj = new PhpObject(cls, PhpContext.get(this).nextObjectId());
+        PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
         cls.populateDefaults(obj);
         PhpClass.MethodEntry ctor = cls.constructMethod();
         if (ctor != null) {

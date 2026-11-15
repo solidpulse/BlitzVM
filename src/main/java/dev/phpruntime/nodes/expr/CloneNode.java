@@ -39,7 +39,10 @@ public final class CloneNode extends PhpNode {
 
     @TruffleBoundary
     private static PhpObject shallowCopy(PhpContext ctx, PhpObject src) {
-        PhpObject copy = new PhpObject(src.phpClass(), ctx.nextObjectId());
+        PhpObject copy = new PhpObject(
+                src.phpClass(),
+                ctx.nextObjectId(),
+                src.closure() != null ? src.closure().copy() : null);
         Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(src);
         DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();

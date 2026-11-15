@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.call;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.Truffle;
@@ -20,16 +19,17 @@ import dev.phpruntime.runtime.PhpOps;
  */
 public final class DispatchCallNode extends Node {
 
-    @CompilationFinal private RootCallTarget cachedTarget;
     @Child private DirectCallNode directCall;
     @Child private IndirectCallNode indirectCall;
 
     public Object call(RootCallTarget target, Object[] args) {
-        if (target == cachedTarget) {
-            return directCall.call(args);
+        DirectCallNode direct = directCall;
+        if (direct != null && direct.getCallTarget() == target) {
+            return direct.call(args);
         }
-        if (indirectCall != null) {
-            return indirectCall.call(target, args);
+        IndirectCallNode indirect = indirectCall;
+        if (indirect != null) {
+            return indirect.call(target, args);
         }
         return callDynamic(target, args);
     }
@@ -47,12 +47,11 @@ public final class DispatchCallNode extends Node {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
-            if (cachedTarget == null) {
-                cachedTarget = target;
+            if (directCall == null) {
                 directCall = insert(DirectCallNode.create(target));
                 return true;
             }
-            if (cachedTarget == target) {
+            if (directCall.getCallTarget() == target) {
                 return true;
             }
             if (indirectCall == null) {

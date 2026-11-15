@@ -5,8 +5,10 @@ import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.nodes.PhpMainRootNode;
+import dev.phpruntime.nodes.call.ClosureInvokeRootNode;
 import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
+import dev.phpruntime.runtime.Visibility;
 
 import java.io.IOException;
 import java.util.List;
@@ -36,18 +38,40 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     private final ConcurrentHashMap<String, CachedSource> sources = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> functionIds = new ConcurrentHashMap<>();
+    private final AtomicInteger nextFunctionId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> methodIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextMethodId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> classIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextClassId = new AtomicInteger();
-    private final AtomicLong nextTemplateId = new AtomicLong(1);
+    private final AtomicLong nextTemplateId = new AtomicLong(2);
     private final ConcurrentHashMap<List<PhpClassTemplate>, Long> hierarchyIds = new ConcurrentHashMap<>();
     private final AtomicLong nextHierarchyId = new AtomicLong(1);
     private final PhpClassTemplate stdClassTemplate = new PhpClassTemplate(
             0L, "stdClass", false, false, false, false, null, List.of(), List.of(), List.of(), Map.of());
+    private volatile PhpClassTemplate closureTemplate;
 
     public PhpClassTemplate stdClassTemplate() {
         return stdClassTemplate;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public PhpClassTemplate closureTemplate() {
+        PhpClassTemplate tpl = closureTemplate;
+        if (tpl == null) {
+            synchronized (this) {
+                tpl = closureTemplate;
+                if (tpl == null) {
+                    PhpClassTemplate.MethodDecl invokeDecl = new PhpClassTemplate.MethodDecl(
+                            "__invoke", "__invoke", methodId("__invoke"), Visibility.PUBLIC,
+                            false, false, false, new ClosureInvokeRootNode(this).getCallTarget());
+                    tpl = new PhpClassTemplate(
+                            1L, "Closure", false, false, true, false, null,
+                            List.of(), List.of(), List.of(), Map.of("__invoke", invokeDecl));
+                    closureTemplate = tpl;
+                }
+            }
+        }
+        return tpl;
     }
 
     private record CachedSource(long modified, Source source) {
@@ -63,7 +87,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
      * finds the current context's function with one array load instead of a map lookup.
      */
     public int functionId(String name) {
-        return functionIds.computeIfAbsent(name.toLowerCase(), n -> functionIds.size());
+        return functionIds.computeIfAbsent(name.toLowerCase(), n -> nextFunctionId.getAndIncrement());
     }
 
     public int methodId(String name) {

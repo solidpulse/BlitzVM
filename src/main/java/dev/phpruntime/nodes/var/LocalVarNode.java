@@ -2,6 +2,8 @@ package dev.phpruntime.nodes.var;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
+import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpReference;
 
 /**
  * A function-local variable stored in a Truffle frame slot. Ints and floats are stored
@@ -45,6 +47,10 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
+        if (kind.isCell()) {
+            PhpReference ref = (PhpReference) frame.getObject(slot);
+            return ref == null ? null : ref.value;
+        }
         if (frame.isLong(slot)) {
             return frame.getLong(slot);
         }
@@ -52,6 +58,15 @@ public final class LocalVarNode extends LValueNode {
             return frame.getDouble(slot);
         }
         return frame.getObject(slot);
+    }
+
+    public PhpReference readOrCreateCell(VirtualFrame frame) {
+        PhpReference ref = (PhpReference) frame.getObject(slot);
+        if (ref == null) {
+            ref = new PhpReference(PhpNull.INSTANCE);
+            frame.setObject(slot, ref);
+        }
+        return ref;
     }
 
     @Override
@@ -62,6 +77,13 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
+        if (kind.isCell()) {
+            PhpReference ref = (PhpReference) frame.getObject(slot);
+            if (ref != null && ref.value instanceof Long l) {
+                return l;
+            }
+            throw new UnexpectedResultException(execute(frame));
+        }
         if (frame.isLong(slot)) {
             return frame.getLong(slot);
         }
@@ -73,6 +95,13 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
+        if (kind.isCell()) {
+            PhpReference ref = (PhpReference) frame.getObject(slot);
+            if (ref != null && ref.value instanceof Double d) {
+                return d;
+            }
+            throw new UnexpectedResultException(execute(frame));
+        }
         if (frame.isDouble(slot)) {
             return frame.getDouble(slot);
         }
@@ -84,6 +113,10 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
+        if (kind.isCell()) {
+            writeCell(frame, value);
+            return;
+        }
         if (value instanceof Long l) {
             writeLong(frame, keys, l);
         } else if (value instanceof Double d) {
@@ -95,6 +128,10 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public void writeLong(VirtualFrame frame, Object[] keys, long value) {
+        if (kind.isCell()) {
+            writeCell(frame, value);
+            return;
+        }
         if (kind.longBoxed()) {
             frame.setObject(slot, value);
         } else {
@@ -104,10 +141,23 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public void writeDouble(VirtualFrame frame, Object[] keys, double value) {
+        if (kind.isCell()) {
+            writeCell(frame, value);
+            return;
+        }
         if (kind.doubleBoxed()) {
             frame.setObject(slot, value);
         } else {
             frame.setDouble(slot, value);
+        }
+    }
+
+    private void writeCell(VirtualFrame frame, Object value) {
+        PhpReference ref = (PhpReference) frame.getObject(slot);
+        if (ref == null) {
+            frame.setObject(slot, new PhpReference(value));
+        } else {
+            ref.value = value;
         }
     }
 

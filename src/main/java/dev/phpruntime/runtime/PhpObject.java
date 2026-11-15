@@ -20,11 +20,17 @@ public final class PhpObject extends DynamicObject {
 
     private final PhpClass phpClass;
     private final long id;
+    private final PhpClosure closure;
 
     public PhpObject(PhpClass phpClass, long id) {
+        this(phpClass, id, null);
+    }
+
+    public PhpObject(PhpClass phpClass, long id, PhpClosure closure) {
         super(phpClass.template().rootShape());
         this.phpClass = phpClass;
         this.id = id;
+        this.closure = closure;
     }
 
     public PhpClass phpClass() {
@@ -33,6 +39,10 @@ public final class PhpObject extends DynamicObject {
 
     public long id() {
         return id;
+    }
+
+    public PhpClosure closure() {
+        return closure;
     }
 
     @Override

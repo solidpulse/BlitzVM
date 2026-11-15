@@ -109,8 +109,12 @@ public final class PhpMainRootNode extends PhpRootNode {
 
     @TruffleBoundary
     private static void finish(PhpContext ctx, PhpRequest request) {
-        ctx.flush();
-        request.scheduler.detach();
+        try {
+            ctx.runShutdownFunctions();
+        } finally {
+            ctx.flush();
+            request.scheduler.detach();
+        }
     }
 
     private static PhpArray toArray(Map<String, String> m) {
