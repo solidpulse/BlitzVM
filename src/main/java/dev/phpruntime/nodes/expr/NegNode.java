@@ -21,6 +21,10 @@ public abstract class NegNode extends PhpNode {
 
     @Fallback
     protected Object doGeneric(Object a) {
-        return PhpArith.negate(a);
+        try {
+            return PhpArith.negate(a);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }

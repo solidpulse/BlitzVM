@@ -23,6 +23,7 @@ final class JsonFunctions {
     static final long PARTIAL_OUTPUT_ON_ERROR = 512;
     static final long PRESERVE_ZERO_FRACTION = 1024;
     static final long UNESCAPED_LINE_TERMINATORS = 2048;
+    static final long THROW_ON_ERROR = 4194304;
     static final long OBJECT_AS_ARRAY = 1;
     static final long BIGINT_AS_STRING = 2;
 
@@ -70,6 +71,16 @@ final class JsonFunctions {
         }
         Encoder e = new Encoder(flags, depth);
         e.value(a[0], 0);
+        if ((flags & THROW_ON_ERROR) != 0) {
+            if (e.error != ERROR_NONE) {
+                if ((flags & PARTIAL_OUTPUT_ON_ERROR) != 0) {
+                    ctx.request().jsonLastError = e.error;
+                    return e.sb.toString();
+                }
+                throw jsonException(ctx, "json_encode", e.error);
+            }
+            return e.sb.toString();
+        }
         ctx.request().jsonLastError = e.error;
         if (e.error != ERROR_NONE && (flags & PARTIAL_OUTPUT_ON_ERROR) == 0) {
             return false;
@@ -225,11 +236,27 @@ final class JsonFunctions {
                 throw new Fail(ERROR_SYNTAX);
             }
         } catch (Fail f) {
+            if ((flags & THROW_ON_ERROR) != 0) {
+                throw jsonException(ctx, "json_decode", f.code);
+            }
             ctx.request().jsonLastError = f.code;
             return PhpNull.INSTANCE;
         }
-        ctx.request().jsonLastError = ERROR_NONE;
+        if ((flags & THROW_ON_ERROR) == 0) {
+            ctx.request().jsonLastError = ERROR_NONE;
+        }
         return result;
+    }
+
+    private static dev.phpruntime.runtime.PhpException jsonException(PhpContext ctx, String fn, int code) {
+        com.oracle.truffle.api.nodes.Node site = ctx.currentBuiltinCallSite();
+        String file = dev.phpruntime.runtime.PhpBacktrace.sourcePath(site);
+        int line = dev.phpruntime.runtime.PhpBacktrace.sourceLine(site);
+        dev.phpruntime.runtime.PhpBacktrace.LazyTrace trace =
+                dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(site, fn);
+        dev.phpruntime.runtime.PhpObject obj = dev.phpruntime.runtime.PhpExceptions.createBuiltinThrowable(
+                ctx, "JsonException", message(code), code, file, line, trace);
+        return new dev.phpruntime.runtime.PhpException(obj, site);
     }
 
     private static final class Fail extends RuntimeException {

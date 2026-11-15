@@ -28,6 +28,8 @@ final class CallableFunctions {
         def("register_shutdown_function", 1, -1, CallableFunctions::registerShutdownFunction);
         def("set_error_handler", 1, 2, CallableFunctions::setErrorHandler);
         def("restore_error_handler", 0, 0, (ctx, a) -> ctx.restoreErrorHandler());
+        def("set_exception_handler", 1, 1, CallableFunctions::setExceptionHandler);
+        def("restore_exception_handler", 0, 0, (ctx, a) -> ctx.restoreExceptionHandler());
     }
 
     private static Object callUserFunc(PhpContext ctx, Object[] a) {
@@ -76,5 +78,13 @@ final class CallableFunctions {
         }
         long levels = a.length > 1 ? PhpOps.toLong(a[1]) : 32767L;
         return ctx.setErrorHandler(cb, levels);
+    }
+
+    private static Object setExceptionHandler(PhpContext ctx, Object[] a) {
+        Object cb = a[0] == PhpNull.INSTANCE ? PhpNull.INSTANCE : PhpOps.copyOnAssign(a[0]);
+        if (cb != PhpNull.INSTANCE) {
+            PhpCallable.resolve(ctx, cb, null);
+        }
+        return ctx.setExceptionHandler(cb);
     }
 }

@@ -53,7 +53,11 @@ public final class MethodCallNode extends PhpNode {
             throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
-        return dispatch.call(entry.callTarget(), evalArgs(frame, thisArg, cls));
+        try {
+            return dispatch.call(entry.callTarget(), evalArgs(frame, thisArg, cls));
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
     }
 
     @ExplodeLoop

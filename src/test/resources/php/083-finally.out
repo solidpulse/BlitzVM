@@ -1,0 +1,9 @@
+try1, finally1, try2, catch2:boom, finally2
+inner-try, inner-finally, outer-catch:pass, outer-finally
+returnFromTry=10 trace=eval-return->in-finally
+returnFromCatch=from-catch trace=catch-ret->finally-after-catch-ret
+from-finally | suppressed-by-finally
+loop1: body:0 fin:0 fin:1 body:2 fin:2 fin:3
+nested: 0.0 if(0.0) if(0.1) of(0) 1.0 if(1.0) if(1.1) of(1)
+linked: RuntimeException:replacement -> InvalidArgumentException:original
+chain3: OverflowException:top -> LogicException:middle -> DomainException:first

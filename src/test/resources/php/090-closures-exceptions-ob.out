@@ -1,0 +1,8 @@
+10
+closure caught: neg:-3 code=10
+ok
+arrow caught: arrow-null
+map caught: stop-at-2 cleaned=yes
+HELLO BUFFERED WORLD
+bool(true)
+custom-eh: LogicException: unhandled-to-handler

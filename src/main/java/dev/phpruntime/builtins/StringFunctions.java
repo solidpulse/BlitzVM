@@ -69,7 +69,7 @@ final class StringFunctions {
         Builtins.def("str_repeat", 2, 2, (ctx, a) -> {
             long n = l(a, 1);
             if (n < 0) {
-                throw new PhpError("str_repeat(): Argument #2 ($times) must be greater than or equal to 0");
+                throw new PhpError(PhpError.VALUE_ERROR, "str_repeat(): Argument #2 ($times) must be greater than or equal to 0", null);
             }
             return s(a, 0).repeat((int) n);
         });
@@ -134,7 +134,7 @@ final class StringFunctions {
         Builtins.def("explode", 2, 3, (ctx, a) -> {
             String sep = s(a, 0);
             if (sep.isEmpty()) {
-                throw new PhpError("explode(): Argument #1 ($separator) cannot be empty");
+                throw new PhpError(PhpError.VALUE_ERROR, "explode(): Argument #1 ($separator) must not be empty", null);
             }
             String str = s(a, 1);
             long limit = a.length > 2 ? l(a, 2) : Long.MAX_VALUE;
@@ -372,7 +372,7 @@ final class StringFunctions {
             arr = y;
             glue = s(a, 0);
         } else {
-            throw new PhpError("implode(): Argument #2 ($array) must be of type ?array, " + PhpOps.typeName(a[1]) + " given");
+            throw new PhpError(PhpError.TYPE_ERROR, "implode(): Argument #2 ($array) must be of type ?array, " + PhpOps.typeName(a[1]) + " given", null);
         }
         StringBuilder sb = new StringBuilder();
         boolean first = true;
@@ -493,12 +493,16 @@ final class StringFunctions {
                 }
             }
             if (i >= fmt.length()) {
-                throw new PhpError("Missing format specifier at end of string");
+                int needed = (argnum > 0 ? argnum : argIndex) + 1;
+                if (needed > a.length) {
+                    throw new PhpError(PhpError.ARGUMENT_COUNT, needed + " arguments are required, " + a.length + " given", null);
+                }
+                throw new PhpError(PhpError.VALUE_ERROR, "Missing format specifier at end of string", null);
             }
             char spec = fmt.charAt(i++);
             int idx = argnum > 0 ? argnum : argIndex++;
             if (idx >= a.length) {
-                throw new PhpError((idx + 1) + " arguments are required, " + a.length + " given");
+                throw new PhpError(PhpError.ARGUMENT_COUNT, (idx + 1) + " arguments are required, " + a.length + " given", null);
             }
             Object arg = a[idx];
             String body = switch (spec) {
@@ -526,7 +530,7 @@ final class StringFunctions {
                 case 'o' -> Long.toOctalString(PhpOps.toLong(arg));
                 case 'b' -> Long.toBinaryString(PhpOps.toLong(arg));
                 case 'c' -> String.valueOf((char) PhpOps.toLong(arg));
-                default -> throw new PhpError("Unknown format specifier \"" + spec + "\"");
+                default -> throw new PhpError(PhpError.VALUE_ERROR, "Unknown format specifier " + '"' + spec + '"', null);
             };
             if (body.length() < width) {
                 String padding = String.valueOf(pad).repeat(width - body.length());
@@ -554,7 +558,7 @@ final class StringFunctions {
                 return strtrChars(s(a, 0), s(a, 1), s(a, 2));
             }
             if (!(a[1] instanceof PhpArray map)) {
-                throw new PhpError("strtr(): Argument #2 ($from) must be of type array, string given");
+                throw new PhpError(PhpError.TYPE_ERROR, "strtr(): Argument #2 ($from) must be of type array, " + PhpOps.typeName(a[1]) + " given", null);
             }
             return strtrPairs(ctx, s(a, 0), map);
         });
@@ -570,7 +574,7 @@ final class StringFunctions {
                 case ">=", "ge" -> c >= 0;
                 case "==", "eq" -> c == 0;
                 case "!=", "<>", "ne" -> c != 0;
-                default -> throw new PhpError("version_compare(): Argument #3 ($operator) must be a valid comparison operator");
+                default -> throw new PhpError(PhpError.VALUE_ERROR, "version_compare(): Argument #3 ($operator) must be a valid comparison operator", null);
             };
         });
         Builtins.def("stripslashes", 1, 1, (ctx, a) -> stripslashes(s(a, 0)));
@@ -612,7 +616,7 @@ final class StringFunctions {
             String str = s(a, 0);
             String chars = s(a, 1);
             if (chars.isEmpty()) {
-                throw new PhpError("strpbrk(): Argument #2 ($characters) must be a non-empty string");
+                throw new PhpError(PhpError.VALUE_ERROR, "strpbrk(): Argument #2 ($characters) must be a non-empty string", null);
             }
             for (int i = 0; i < str.length(); i++) {
                 if (chars.indexOf(str.charAt(i)) >= 0) {
@@ -630,7 +634,7 @@ final class StringFunctions {
             long len = a.length > 1 ? l(a, 1) : 76;
             String end = a.length > 2 ? s(a, 2) : "\r\n";
             if (len < 1) {
-                throw new PhpError("chunk_split(): Argument #2 ($length) must be greater than 0");
+                throw new PhpError(PhpError.VALUE_ERROR, "chunk_split(): Argument #2 ($length) must be greater than 0", null);
             }
             if (len >= str.length()) {
                 return str + end;
@@ -680,13 +684,13 @@ final class StringFunctions {
             if (len == 0) {
                 return 0L;
             }
-            throw new PhpError("substr_compare(): Argument #4 ($length) must be greater than or equal to 0");
+            throw new PhpError(PhpError.VALUE_ERROR, "substr_compare(): Argument #4 ($length) must be greater than or equal to 0", null);
         }
         if (offset < 0) {
             offset = Math.max(0, hay.length() + offset);
         }
         if (offset > hay.length()) {
-            throw new PhpError("substr_compare(): Argument #3 ($offset) must be contained in argument #1 ($main_str)");
+            throw new PhpError(PhpError.VALUE_ERROR, "substr_compare(): Argument #3 ($offset) must be contained in argument #1 ($haystack)", null);
         }
         String s1 = hay.substring((int) offset);
         long cmpLen = lenDefault ? Math.max(needle.length(), s1.length()) : len;

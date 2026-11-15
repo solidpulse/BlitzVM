@@ -44,6 +44,10 @@ public abstract class MulNode extends BinaryNode {
 
     @Fallback
     protected Object doGeneric(Object a, Object b) {
-        return PhpArith.mul(a, b);
+        try {
+            return PhpArith.mul(a, b);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }

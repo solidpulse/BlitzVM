@@ -18,6 +18,10 @@ public final class UnaryNode extends PhpNode {
     @Override
     public Object execute(VirtualFrame frame) {
         Object v = operand.execute(frame);
-        return bitNot ? ~PhpOps.toLong(v) : PhpOps.toNumber(v);
+        try {
+            return bitNot ? ~PhpOps.toLong(v) : PhpOps.toNumber(v);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }

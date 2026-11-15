@@ -38,7 +38,11 @@ public abstract class DivNode extends BinaryNode {
     /** Division by zero (an error in PHP 8), and non-numbers. */
     @Fallback
     protected Object doGeneric(Object a, Object b) {
-        return PhpArith.div(a, b);
+        try {
+            return PhpArith.div(a, b);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 
     /** Exact and not PHP_INT_MIN / -1, the one int division that overflows. */

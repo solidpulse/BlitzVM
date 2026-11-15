@@ -130,12 +130,17 @@ final class MysqliFunctions {
             "error_list", "field_count", "host_info", "info", "insert_id", "server_info", "server_version",
             "sqlstate", "protocol_version", "thread_id", "warning_count"};
 
-    private static final PhpClassTemplate MYSQLI_TEMPLATE = new PhpClassTemplate(-10L, "mysqli", false, false, false, false,
-            null, List.of(), linkProps(), List.of(), Map.of());
+    private static final List<PhpClassTemplate.PropertyDecl> RESULT_PROPS = List.of(
+            prop("current_field", 0L), prop("field_count", 0L), prop("lengths", PhpNull.INSTANCE),
+            prop("num_rows", 0L), prop("type", 0L));
 
-    private static final PhpClassTemplate RESULT_TEMPLATE = new PhpClassTemplate(-11L, "mysqli_result", false, false, false,
-            false, null, List.of(), List.of(prop("current_field", 0L), prop("field_count", 0L), prop("lengths", PhpNull.INSTANCE),
-            prop("num_rows", 0L), prop("type", 0L)), List.of(), Map.of());
+    private static PhpClassTemplate mysqliTemplate(PhpContext ctx) {
+        return ctx.language().mysqliTemplate(linkProps());
+    }
+
+    private static PhpClassTemplate resultTemplate(PhpContext ctx) {
+        return ctx.language().mysqliResultTemplate(RESULT_PROPS);
+    }
 
     private static List<PhpClassTemplate.PropertyDecl> linkProps() {
         List<PhpClassTemplate.PropertyDecl> props = new ArrayList<>();
@@ -212,8 +217,8 @@ final class MysqliFunctions {
 
     // ------------------------------------------------------------------ argument helpers
 
-    private static PhpObject linkObject(Object v, String fn) {
-        if (v instanceof PhpObject o && o.phpClass().template() == MYSQLI_TEMPLATE) {
+    private static PhpObject linkObject(PhpContext ctx, Object v, String fn) {
+        if (v instanceof PhpObject o && o.phpClass().template() == mysqliTemplate(ctx)) {
             return o;
         }
         throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($mysql) must be of type mysqli, "
@@ -221,7 +226,7 @@ final class MysqliFunctions {
     }
 
     private static Link link(PhpContext ctx, Object v, String fn) {
-        PhpObject o = linkObject(v, fn);
+        PhpObject o = linkObject(ctx, v, fn);
         Link l = state(ctx).links.get(o.id());
         if (l == null || l.closed) {
             throw new PhpError(l == null ? "mysqli object is not fully initialized" : "mysqli object is already closed");
@@ -239,7 +244,7 @@ final class MysqliFunctions {
     }
 
     private static Result result(PhpContext ctx, Object v, String fn) {
-        if (!(v instanceof PhpObject o) || o.phpClass().template() != RESULT_TEMPLATE) {
+        if (!(v instanceof PhpObject o) || o.phpClass().template() != resultTemplate(ctx)) {
             throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($result) must be of type mysqli_result, "
                     + PhpOps.typeName(v) + " given", null);
         }
@@ -330,8 +335,14 @@ final class MysqliFunctions {
             return;
         }
         if ((mode & REPORT_STRICT) != 0) {
-            // TODO(exceptions): throw a catchable mysqli_sql_exception once exceptions exist.
-            throw new PhpError("mysqli_sql_exception", msg, null);
+            com.oracle.truffle.api.nodes.Node site = ctx.currentBuiltinCallSite();
+            String file = dev.phpruntime.runtime.PhpBacktrace.sourcePath(site);
+            int line = dev.phpruntime.runtime.PhpBacktrace.sourceLine(site);
+            dev.phpruntime.runtime.PhpBacktrace.LazyTrace trace =
+                    dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(site, fn);
+            PhpObject exObj = dev.phpruntime.runtime.PhpExceptions.createBuiltinThrowable(
+                    ctx, "mysqli_sql_exception", msg, code, file, line, trace);
+            throw new dev.phpruntime.runtime.PhpException(exObj, site);
         }
         ctx.warning(fn + "(): (" + sqlstate + "/" + code + "): " + msg, 0);
     }
@@ -543,7 +554,7 @@ final class MysqliFunctions {
     // ------------------------------------------------------------------ connect
 
     private static PhpObject init(PhpContext ctx) {
-        PhpObject obj = newObject(ctx, MYSQLI_TEMPLATE);
+        PhpObject obj = newObject(ctx, mysqliTemplate(ctx));
         Link link = new Link();
         state(ctx).links.put(obj.id(), link);
         set(obj, "client_info", CLIENT_INFO);
@@ -552,7 +563,7 @@ final class MysqliFunctions {
     }
 
     private static Object realConnect(PhpContext ctx, Object[] a) {
-        PhpObject obj = linkObject(a[0], "mysqli_real_connect");
+        PhpObject obj = linkObject(ctx, a[0], "mysqli_real_connect");
         State st = state(ctx);
         Link link = st.links.get(obj.id());
         if (link == null) {
@@ -673,7 +684,7 @@ final class MysqliFunctions {
     }
 
     private static Object query(PhpContext ctx, Object[] a) {
-        PhpObject obj = linkObject(a[0], "mysqli_query");
+        PhpObject obj = linkObject(ctx, a[0], "mysqli_query");
         Link l = connected(ctx, obj, "mysqli_query");
         String sql = PhpOps.toStr(a[1]);
         if (sql.isEmpty()) {
@@ -704,7 +715,7 @@ final class MysqliFunctions {
                 l.affectedRows = r.rows.size();
                 l.insertId = 0;
                 l.fieldCount = r.fields.size();
-                PhpObject ro = newObject(ctx, RESULT_TEMPLATE);
+                PhpObject ro = newObject(ctx, resultTemplate(ctx));
                 state(ctx).results.put(ro.id(), r);
                 syncResult(ro, r);
                 sync(ctx, obj, l);

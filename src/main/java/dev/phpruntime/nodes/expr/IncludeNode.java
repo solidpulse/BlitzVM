@@ -22,8 +22,6 @@ public final class IncludeNode extends PhpNode {
 
     public enum Kind { INCLUDE, INCLUDE_ONCE, REQUIRE, REQUIRE_ONCE }
 
-    private static final Object[] INCLUDED_ARGS = {Boolean.TRUE};
-
     private final Kind kind;
     @Child private PhpNode pathExpr;
     @Child private IndirectCallNode callNode = Truffle.getRuntime().createIndirectCallNode();
@@ -33,13 +31,20 @@ public final class IncludeNode extends PhpNode {
         this.pathExpr = pathExpr;
     }
 
+    public Kind kind() {
+        return kind;
+    }
+
+    private record PreparedInclude(CallTarget target, String canonicalPath) {
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
         String path = PhpOps.toStr(pathExpr.execute(frame));
         // TODO(dynamic-scope): PHP runs includes inside functions in the caller's local scope; we run in global scope.
         Object prepared = prepare(path);
-        if (prepared instanceof CallTarget target) {
-            return callNode.call(target, INCLUDED_ARGS);
+        if (prepared instanceof PreparedInclude inc) {
+            return callNode.call(inc.target(), new Object[]{inc.canonicalPath()});
         }
         return prepared;
     }
@@ -70,7 +75,13 @@ public final class IncludeNode extends PhpNode {
         } catch (IOException e) {
             return missing(ctx, path);
         }
-        return env.parsePublic(source);
+        try {
+            return new PreparedInclude(env.parsePublic(source), key);
+        } catch (dev.phpruntime.parser.PhpParseError pe) {
+            String msg = pe.getMessage();
+            throw new PhpError(PhpError.PARSE_ERROR, msg != null ? msg : "syntax error",
+                    source.getPath() != null ? source.getPath() : key, pe.line(), this);
+        }
     }
 
     private Object missing(PhpContext ctx, String path) {
@@ -142,7 +153,7 @@ public final class IncludeNode extends PhpNode {
         try {
             Source source = ctx.language().loadSource(canonical);
             CallTarget target = env.parsePublic(source);
-            target.call(INCLUDED_ARGS);
+            target.call(new Object[]{key});
             return true;
         } catch (IOException e) {
             return false;

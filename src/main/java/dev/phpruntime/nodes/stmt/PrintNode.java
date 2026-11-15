@@ -21,7 +21,11 @@ public final class PrintNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         Object v = value == null ? null : value.execute(frame);
         if (v != null && !(exit && v instanceof Long)) {
-            PhpContext.get(this).echo(PhpOps.toStr(v));
+            try {
+                PhpContext.get(this).echo(PhpOps.toStr(v));
+            } catch (dev.phpruntime.runtime.PhpError e) {
+                throw e.at(this);
+            }
         }
         if (exit) {
             throw new ControlFlow.Exit();

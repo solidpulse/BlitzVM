@@ -69,7 +69,8 @@ final class CtypeFunctions {
             }
             String enc = PhpOps.toStr(a[0]);
             if (!knownEncoding(enc)) {
-                throw new PhpError("mb_internal_encoding(): Argument #1 ($encoding) must be a valid encoding, \"" + enc + "\" given");
+                char q = '"';
+                throw new PhpError(PhpError.VALUE_ERROR, "mb_internal_encoding(): Argument #1 ($encoding) must be a valid encoding, " + q + enc + q + " given", null);
             }
             return true;
         });
@@ -77,7 +78,7 @@ final class CtypeFunctions {
         Builtins.def("mb_ord", 1, 2, (ctx, a) -> {
             String s = PhpOps.toStr(a[0]);
             if (s.isEmpty()) {
-                throw new PhpError("mb_ord(): Argument #1 ($string) must not be empty");
+                throw new PhpError(PhpError.VALUE_ERROR, "mb_ord(): Argument #1 ($string) must not be empty", null);
             }
             return (long) s.codePointAt(0);
         });

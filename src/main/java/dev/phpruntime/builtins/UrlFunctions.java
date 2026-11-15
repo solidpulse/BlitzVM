@@ -25,7 +25,7 @@ final class UrlFunctions {
         Builtins.def("parse_url", 1, 2, (ctx, a) -> parseUrl(PhpOps.toStr(a[0]), a.length > 1 ? PhpOps.toLong(a[1]) : -1));
         Builtins.def("http_build_query", 1, 4, (ctx, a) -> {
             if (!(a[0] instanceof PhpArray data)) {
-                throw new PhpError("http_build_query(): Argument #1 ($data) must be of type array, " + PhpOps.typeName(a[0]) + " given");
+                throw new PhpError(PhpError.TYPE_ERROR, "http_build_query(): Argument #1 ($data) must be of type array, " + PhpOps.typeName(a[0]) + " given", null);
             }
             String prefix = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpOps.toStr(a[1]) : "";
             String sep = a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toStr(a[2]) : "&";
@@ -112,7 +112,7 @@ final class UrlFunctions {
             case 5 -> u.path;
             case 6 -> u.query;
             case 7 -> u.fragment;
-            default -> throw new PhpError("parse_url(): Argument #2 ($component) must be a valid URL component identifier, " + component + " given");
+            default -> throw new PhpError(PhpError.VALUE_ERROR, "parse_url(): Argument #2 ($component) must be a valid URL component identifier, " + component + " given", null);
         };
         return v == null ? PhpNull.INSTANCE : v;
     }

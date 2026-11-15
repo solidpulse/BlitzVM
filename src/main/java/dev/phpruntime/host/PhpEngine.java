@@ -117,8 +117,14 @@ public final class PhpEngine implements AutoCloseable {
         } else if (e.isCancelled()) {
             text = "PHP Fatal error:  Execution cancelled";
         } else if (e.isGuestException()) {
-            text = "PHP Fatal error:  Uncaught " + e.getMessage() + " in " + file + ":" + line + "\n" + phpStackTrace(e)
-                    + "  thrown in " + file + " on line " + line;
+            String msg = e.getMessage();
+            if (msg != null && msg.startsWith("PHP Fatal error:  Uncaught ")) {
+                text = msg;
+            } else {
+                char lf = 10;
+                text = "PHP Fatal error:  Uncaught " + msg + " in " + file + ":" + line + lf + phpStackTrace(e)
+                        + "  thrown in " + file + " on line " + line;
+            }
         } else {
             text = "PHP Fatal error:  Internal error: " + e.getMessage();
         }

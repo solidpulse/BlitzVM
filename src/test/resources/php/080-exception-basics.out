@@ -1,0 +1,43 @@
+string(15) "something broke"
+int(42)
+string(24) "080-exception-basics.php"
+int(7)
+NULL
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+string(5) "outer"
+int(99)
+bool(true)
+Exception: something broke in 080-exception-basics.php:7
+Stack trace:
+#0 {main}
+
+Next RuntimeException: outer in 080-exception-basics.php:13
+Stack trace:
+#0 {main}
+---
+string(4) "warn"
+int(3)
+int(2)
+string(11) "virtual.php"
+int(77)
+bool(true)
+int(1)
+string(24) "080-exception-basics.php"
+int(23)
+string(7) "db down"
+int(503)
+string(18) "mysql:priv:db down"
+string(24) "080-exception-basics.php"
+int(44)
+#0 080-exception-basics.php(47): makeAppEx()
+#1 {main}
+string(0) ""
+int(0)
+string(24) "080-exception-basics.php"
+int(57)
+bool(true)

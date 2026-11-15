@@ -21,6 +21,10 @@ public final class ArithNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         Object a = left.execute(frame);
         Object b = right.execute(frame);
-        return PhpArith.apply(op, a, b);
+        try {
+            return PhpArith.apply(op, a, b);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
     }
 }

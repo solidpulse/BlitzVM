@@ -22,9 +22,8 @@ final class OutputBufferFunctions {
         Builtins.def("ob_start", 0, 3, (ctx, a) -> {
             OutputBuffer buf = new OutputBuffer();
             if (a.length > 0 && a[0] != PhpNull.INSTANCE) {
-                // TODO(callables): call the handler on flush and clean once a shared callable
-                // helper exists; for now the text passes through unchanged.
-                buf.handler = a[0];
+                dev.phpruntime.runtime.PhpCallable.resolve(ctx, a[0], null);
+                buf.handler = PhpOps.copyOnAssign(a[0]);
                 buf.handlerName = handlerName(a[0]);
             }
             ctx.outputBuffers().add(buf);
@@ -41,24 +40,36 @@ final class OutputBufferFunctions {
         Builtins.def("ob_get_level", 0, 0, (ctx, a) -> (long) ctx.outputBuffers().size());
         Builtins.def("ob_get_clean", 0, 0, (ctx, a) -> {
             OutputBuffer top = pop(ctx);
-            return top == null ? false : top.text.toString();
+            if (top == null) {
+                return false;
+            }
+            String raw = top.text.toString();
+            ctx.applyObHandler(top, raw, 10L);
+            return raw;
         });
         Builtins.def("ob_get_flush", 0, 0, (ctx, a) -> {
             OutputBuffer top = pop(ctx);
             if (top == null) {
                 return false;
             }
-            String text = top.text.toString();
-            ctx.echo(text);
-            return text;
+            String raw = top.text.toString();
+            ctx.echo(ctx.applyObHandler(top, raw, 9L));
+            return raw;
         });
-        Builtins.def("ob_end_clean", 0, 0, (ctx, a) -> pop(ctx) != null);
+        Builtins.def("ob_end_clean", 0, 0, (ctx, a) -> {
+            OutputBuffer top = pop(ctx);
+            if (top == null) {
+                return false;
+            }
+            ctx.applyObHandler(top, top.text.toString(), 10L);
+            return true;
+        });
         Builtins.def("ob_end_flush", 0, 0, (ctx, a) -> {
             OutputBuffer top = pop(ctx);
             if (top == null) {
                 return false;
             }
-            ctx.echo(top.text.toString());
+            ctx.echo(ctx.applyObHandler(top, top.text.toString(), 9L));
             return true;
         });
         Builtins.def("ob_clean", 0, 0, (ctx, a) -> {
@@ -66,6 +77,7 @@ final class OutputBufferFunctions {
             if (top == null) {
                 return false;
             }
+            ctx.applyObHandler(top, top.text.toString(), 2L);
             top.text.setLength(0);
             return true;
         });
@@ -79,7 +91,8 @@ final class OutputBufferFunctions {
             top.text.setLength(0);
             // Write into the level below (or the response) without touching this level.
             stack.remove(stack.size() - 1);
-            ctx.echo(text);
+            String transformed = ctx.applyObHandler(top, text, 4L);
+            ctx.echo(transformed);
             stack.add(top);
             return true;
         });

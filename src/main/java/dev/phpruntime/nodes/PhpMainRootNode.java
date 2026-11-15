@@ -43,15 +43,15 @@ public final class PhpMainRootNode extends PhpRootNode {
         boolean isEntry = frame.getArguments().length == 0;
         PhpContext ctx = PhpContext.get(this);
         PhpRequest request = ctx.request();
-        if (isEntry) {
-            start(ctx, request);
-        }
-        declareFunctions(ctx);
-        if (hoistedClassesSlot >= 0) {
-            frame.setObject(hoistedClassesSlot, hoistClasses(ctx));
-        }
         Object result = 1L;
         try {
+            if (isEntry) {
+                start(ctx, request);
+            }
+            declareFunctions(ctx);
+            if (hoistedClassesSlot >= 0) {
+                frame.setObject(hoistedClassesSlot, hoistClasses(ctx));
+            }
             body.executeVoid(frame);
         } catch (ControlFlow.Return r) {
             result = r.value;
@@ -59,6 +59,26 @@ public final class PhpMainRootNode extends PhpRootNode {
             if (!isEntry) {
                 throw e;
             }
+        } catch (dev.phpruntime.runtime.PhpException ex) {
+            if (isEntry) {
+                if (ctx.handleUncaughtException(ex.exceptionObject())) {
+                    return PhpNull.INSTANCE;
+                }
+                ex.formattedUncaught();
+            }
+            throw ex;
+        } catch (dev.phpruntime.runtime.PhpError err) {
+            if (isEntry && err.isCatchable()) {
+                dev.phpruntime.runtime.PhpObject errObj = err.toPhpObject(ctx, this);
+                if (ctx.handleUncaughtException(errObj)) {
+                    return PhpNull.INSTANCE;
+                }
+                dev.phpruntime.runtime.PhpException wrapped =
+                        new dev.phpruntime.runtime.PhpException(errObj, err.getLocation());
+                wrapped.formattedUncaught();
+                throw wrapped;
+            }
+            throw err;
         } finally {
             if (isEntry) {
                 finish(ctx, request);

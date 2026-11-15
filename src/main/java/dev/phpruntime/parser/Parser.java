@@ -337,6 +337,10 @@ public final class Parser {
                 case "abstract", "final", "class", "interface" -> {
                     return classDeclaration(topLevel, line);
                 }
+                case "try" -> {
+                    next();
+                    return tryStatement(line);
+                }
                 case "declare" -> {
                     // declare(strict_types=1); is accepted and ignored.
                     next();
@@ -581,6 +585,47 @@ public final class Parser {
                 inits.toArray(new PhpNode[0])).at(line);
     }
 
+    private PhpNode tryStatement(int line) {
+        expectOp("{");
+        PhpNode tryBlock = blockUntil("}");
+        List<TryCatchNode.CatchClause> catches = new ArrayList<>();
+        while (acceptKeyword("catch")) {
+            expectOp("(");
+            List<Integer> ids = new ArrayList<>();
+            List<Boolean> matchAll = new ArrayList<>();
+            do {
+                String typeName = expectIdent().text();
+                String lower = typeName.toLowerCase();
+                ids.add(language.classId(lower));
+                matchAll.add("throwable".equals(lower));
+            } while (acceptOp("|"));
+            LValueNode varTarget = null;
+            if (peek().kind() == Kind.VARIABLE) {
+                Token vt = next();
+                varTarget = scope.variable(vt.text());
+                varTarget.at(vt.line());
+            }
+            expectOp(")");
+            expectOp("{");
+            PhpNode catchBody = blockUntil("}");
+            int[] idArr = ids.stream().mapToInt(Integer::intValue).toArray();
+            boolean[] allArr = new boolean[matchAll.size()];
+            for (int i = 0; i < matchAll.size(); i++) {
+                allArr[i] = matchAll.get(i);
+            }
+            catches.add(new TryCatchNode.CatchClause(idArr, allArr, varTarget, catchBody));
+        }
+        PhpNode finallyBlock = null;
+        if (acceptKeyword("finally")) {
+            expectOp("{");
+            finallyBlock = blockUntil("}");
+        }
+        if (catches.isEmpty() && finallyBlock == null) {
+            throw error("Cannot use try without catch or finally");
+        }
+        return new TryCatchNode(tryBlock, catches.toArray(new TryCatchNode.CatchClause[0]), finallyBlock).at(line);
+    }
+
     private PhpNode constStatement(int line) {
         List<String> names = new ArrayList<>();
         List<PhpNode> values = new ArrayList<>();
@@ -732,7 +777,7 @@ public final class Parser {
         }
         PhpFunctionRootNode root = new PhpFunctionRootNode(
                 language, scope.build(), source, line,
-                currentClass, fnName, scope.thisSlot(), scope.calledClassSlot(), scope.closureObjSlot(),
+                currentClass, fnName, !bindThis, scope.thisSlot(), scope.calledClassSlot(), scope.closureObjSlot(),
                 captureSlots, captureKinds, byRef, params.slots(), params.kinds(), params.defaults(), params.variadic(), body);
         return new ClosureNode(root.getCallTarget(), bindThis,
                 outer.thisSlot(), outer.calledClassSlot(), outerReads, warn, byRef).at(line);
@@ -876,7 +921,7 @@ public final class Parser {
                 PhpNode body = blockUntil("}");
                 PhpFunctionRootNode root = new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
-                        currentClass, mName, scope.thisSlot(), scope.calledClassSlot(),
+                        currentClass, mName, isStatic, scope.thisSlot(), scope.calledClassSlot(),
                         params.slots(), params.kinds(), params.defaults(), params.variadic(), body);
                 callTarget = root.getCallTarget();
             }
@@ -1069,6 +1114,10 @@ public final class Parser {
             if (kw.equals("clone")) {
                 next();
                 return new CloneNode(binary(UNARY_POWER)).at(line);
+            }
+            if (kw.equals("throw")) {
+                next();
+                return new ThrowNode(expression()).at(line);
             }
             IncludeNode.Kind inc = includeKind(kw);
             if (inc != null) {

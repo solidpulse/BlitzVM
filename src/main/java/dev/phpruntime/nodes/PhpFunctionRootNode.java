@@ -25,6 +25,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     private final String declaringClass;
     private final String name;
+    private final boolean isStatic;
     private final int thisSlot;
     private final int calledClassSlot;
     private final int closureObjSlot;
@@ -40,24 +41,26 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
-        this(language, fd, source, line, null, name, -1, -1, -1, new int[0], new VarKind[0], new boolean[0],
+        this(language, fd, source, line, null, name, false, -1, -1, -1, new int[0], new VarKind[0], new boolean[0],
                 paramSlots, paramKinds, defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
-                               String declaringClass, String name, int thisSlot, int calledClassSlot,
+                               String declaringClass, String name, boolean isStatic, int thisSlot, int calledClassSlot,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
-        this(language, fd, source, line, declaringClass, name, thisSlot, calledClassSlot, -1,
+        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1,
                 new int[0], new VarKind[0], new boolean[0], paramSlots, paramKinds, defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
-                               String declaringClass, String name, int thisSlot, int calledClassSlot, int closureObjSlot,
+                               String declaringClass, String name, boolean isStatic,
+                               int thisSlot, int calledClassSlot, int closureObjSlot,
                                int[] captureSlots, VarKind[] captureKinds, boolean[] captureByRef,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
         super(language, fd, source, line);
         this.declaringClass = declaringClass;
         this.name = name;
+        this.isStatic = isStatic;
         this.thisSlot = thisSlot;
         this.calledClassSlot = calledClassSlot;
         this.closureObjSlot = closureObjSlot;
@@ -88,6 +91,22 @@ public final class PhpFunctionRootNode extends PhpRootNode {
             return 3;
         }
         return thisSlot >= 0 ? 2 : 0;
+    }
+
+    public String rawFunctionName() {
+        return name;
+    }
+
+    public boolean isMethod() {
+        return thisSlot >= 0 && closureObjSlot < 0;
+    }
+
+    public boolean isClosure() {
+        return closureObjSlot >= 0;
+    }
+
+    public boolean isStaticMethod() {
+        return isStatic;
     }
 
     @Override
@@ -150,11 +169,21 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         }
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private PhpError tooFewArguments(int passed) {
         String exactly = requiredArgs == paramSlots.length ? "exactly" : "at least";
         String qualified = declaringClass == null ? name : declaringClass + "::" + name;
+        dev.phpruntime.runtime.PhpBacktrace.LazyTrace trace = dev.phpruntime.runtime.PhpBacktrace.capture(this, false);
+        dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames = trace.frames();
+        String passedWhere = "";
+        if (frames.length > 0 && frames[0].file() != null && !frames[0].file().isEmpty() && frames[0].line() > 0) {
+            passedWhere = " in " + frames[0].file() + " on line " + frames[0].line();
+        }
+        String declFile = source() != null && source().getPath() != null ? source().getPath() : "";
+        int declLine = getSourceSection() != null ? getSourceSection().getStartLine() : 0;
         return new PhpError(PhpError.ARGUMENT_COUNT, "Too few arguments to function " + qualified + "(), " + passed
-                + " passed and " + exactly + " " + requiredArgs + " expected", body);
+                + " passed" + passedWhere + " and " + exactly + " " + requiredArgs + " expected",
+                declFile, declLine, this).withTrace(trace);
     }
 
     @Override

@@ -69,7 +69,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v != null) {
-                return v;
+                return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
         }
         return readFallback(obj, name, storageKey == null, true);
@@ -85,7 +85,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v != null) {
-                return v;
+                return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
         }
         return readFallback(obj, name, storageKey == null, false);

@@ -22,7 +22,7 @@ import java.util.Set;
 public final class PhpClass {
 
     public record MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
-                              boolean isStatic, RootCallTarget callTarget) {
+                              boolean isStatic, boolean isFinal, RootCallTarget callTarget) {
     }
 
     public static final class StaticSlot {
@@ -72,10 +72,15 @@ public final class PhpClass {
     private MethodEntry toStringMethod;
     private MethodEntry cloneMethod;
 
+    private final boolean isThrowable;
+
     public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent, List<PhpClass> interfaces) {
         this.template = template;
         this.parent = parent;
         this.interfaces = List.copyOf(interfaces);
+        this.isThrowable = (parent != null && parent.isThrowable)
+                || "exception".equals(template.lowerName())
+                || "error".equals(template.lowerName());
 
         List<PhpClassTemplate> chain = new ArrayList<>();
         for (PhpClass c = this; c != null; c = c.parent) {
@@ -96,7 +101,7 @@ public final class PhpClass {
             System.arraycopy(parent.methodsById, 0, this.methodsById, 0, parent.methodsById.length);
         }
         for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
-            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.callTarget());
+            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(), m.callTarget());
             this.methods.put(m.lowerName(), entry);
             this.methodsById[m.methodId()] = entry;
         }
@@ -194,6 +199,10 @@ public final class PhpClass {
 
     public boolean isFinal() {
         return template.isFinal();
+    }
+
+    public boolean isThrowable() {
+        return isThrowable;
     }
 
     public MethodEntry methodById(int id) {
@@ -388,18 +397,30 @@ public final class PhpClass {
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
                 if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
-                    out.add(Map.entry(prop, get.execute(obj, k, PhpNull.INSTANCE)));
+                    Object pv = get.execute(obj, k, PhpNull.INSTANCE);
+                    if (pv instanceof PhpBacktrace.LazyTrace lt) {
+                        pv = lt.toPhpArray();
+                    }
+                    out.add(Map.entry(prop, pv));
                 }
                 continue;
             }
             InstanceProp p = cls.findVisibleProp(k);
             if (p != null && p.visibility() == Visibility.PROTECTED) {
                 if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
-                    out.add(Map.entry(k, get.execute(obj, k, PhpNull.INSTANCE)));
+                    Object pv = get.execute(obj, k, PhpNull.INSTANCE);
+                    if (pv instanceof PhpBacktrace.LazyTrace lt) {
+                        pv = lt.toPhpArray();
+                    }
+                    out.add(Map.entry(k, pv));
                 }
                 continue;
             }
-            out.add(Map.entry(k, get.execute(obj, k, PhpNull.INSTANCE)));
+            Object pv = get.execute(obj, k, PhpNull.INSTANCE);
+            if (pv instanceof PhpBacktrace.LazyTrace lt) {
+                pv = lt.toPhpArray();
+            }
+            out.add(Map.entry(k, pv));
         }
         return out;
     }

@@ -1,0 +1,10 @@
+caught1: from-include:alpha code=88
+#0 087-across-boundaries.php(14): includedThrower()
+#1 087-across-boundaries.php(10): Service->runInstance()
+#2 087-across-boundaries.php(20): Service::runStatic()
+#3 {main}
+ok:first | foreach-fin:a | skip:b | foreach-fin:b | for:0 | for-fin:0 | for-fin:1 | foreach-fin:c | caught:kaboom@c
+include top caught: top-of-include in throw_helper.php:9
+#0 087-across-boundaries.php(70): include()
+#1 {main}
+parse error caught: ParseError in syntax_err.php:3

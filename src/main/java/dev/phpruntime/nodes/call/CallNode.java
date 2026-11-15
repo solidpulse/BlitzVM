@@ -147,12 +147,21 @@ public final class CallNode extends PhpNode {
         return result;
     }
 
+    public String functionName() {
+        return name;
+    }
+
     @TruffleBoundary
     private Object invoke(Builtins.Def def, Object[] values) {
+        PhpContext ctx = PhpContext.get(this);
+        com.oracle.truffle.api.nodes.Node prev = ctx.currentBuiltinCallSite();
+        ctx.setCurrentBuiltinCallSite(this);
         try {
-            return def.impl().call(PhpContext.get(this), values);
+            return def.impl().call(ctx, values);
         } catch (PhpError e) {
-            throw e.at(this);
+            throw e.withTrace(dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(this, def.name())).at(this);
+        } finally {
+            ctx.setCurrentBuiltinCallSite(prev);
         }
     }
 
@@ -163,7 +172,11 @@ public final class CallNode extends PhpNode {
     public static void checkArity(Builtins.Def def, int n, com.oracle.truffle.api.nodes.Node location) {
         if (n < def.minArgs() || (def.maxArgs() >= 0 && n > def.maxArgs())) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError(PhpError.ARGUMENT_COUNT, def.name() + "() expects " + arity(def, n) + ", " + n + " given", location);
+            PhpError err = new PhpError(PhpError.ARGUMENT_COUNT, def.name() + "() expects " + arity(def, n) + ", " + n + " given", location);
+            if (location != null) {
+                err.withTrace(dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(location, def.name()));
+            }
+            throw err;
         }
     }
 

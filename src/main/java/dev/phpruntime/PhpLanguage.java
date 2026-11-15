@@ -8,6 +8,7 @@ import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.nodes.call.ClosureInvokeRootNode;
 import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
+import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.Visibility;
 
 import java.io.IOException;
@@ -49,9 +50,72 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     private final PhpClassTemplate stdClassTemplate = new PhpClassTemplate(
             0L, "stdClass", false, false, false, false, null, List.of(), List.of(), List.of(), Map.of());
     private volatile PhpClassTemplate closureTemplate;
+    private volatile PhpClassTemplate mysqliTemplate;
+    private volatile PhpClassTemplate mysqliResultTemplate;
+    private volatile Map<String, PhpClassTemplate> builtinClassTemplates;
+    private volatile String[] builtinClassNamesById;
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private Map<String, PhpClassTemplate> ensureBuiltinTemplates() {
+        Map<String, PhpClassTemplate> m = builtinClassTemplates;
+        if (m == null) {
+            synchronized (this) {
+                m = builtinClassTemplates;
+                if (m == null) {
+                    m = PhpExceptions.buildTemplates(this);
+                    int max = -1;
+                    for (String lower : m.keySet()) {
+                        int id = classId(lower);
+                        if (id > max) {
+                            max = id;
+                        }
+                    }
+                    String[] arr = new String[max + 1];
+                    for (String lower : m.keySet()) {
+                        arr[classId(lower)] = lower;
+                    }
+                    builtinClassNamesById = arr;
+                    builtinClassTemplates = m;
+                }
+            }
+        }
+        return m;
+    }
 
     public PhpClassTemplate stdClassTemplate() {
         return stdClassTemplate;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public PhpClassTemplate mysqliTemplate(List<PhpClassTemplate.PropertyDecl> props) {
+        PhpClassTemplate tpl = mysqliTemplate;
+        if (tpl == null) {
+            synchronized (this) {
+                tpl = mysqliTemplate;
+                if (tpl == null) {
+                    tpl = new PhpClassTemplate(nextTemplateId(), "mysqli", false, false, false, false,
+                            null, List.of(), props, List.of(), Map.of());
+                    mysqliTemplate = tpl;
+                }
+            }
+        }
+        return tpl;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public PhpClassTemplate mysqliResultTemplate(List<PhpClassTemplate.PropertyDecl> props) {
+        PhpClassTemplate tpl = mysqliResultTemplate;
+        if (tpl == null) {
+            synchronized (this) {
+                tpl = mysqliResultTemplate;
+                if (tpl == null) {
+                    tpl = new PhpClassTemplate(nextTemplateId(), "mysqli_result", false, false, false, false,
+                            null, List.of(), props, List.of(), Map.of());
+                    mysqliResultTemplate = tpl;
+                }
+            }
+        }
+        return tpl;
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
@@ -72,6 +136,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
             }
         }
         return tpl;
+    }
+
+    public PhpClassTemplate builtinClassTemplate(String lowerName) {
+        return ensureBuiltinTemplates().get(lowerName);
+    }
+
+    public PhpClassTemplate builtinClassTemplateById(int id) {
+        String[] names = builtinClassNamesById;
+        if (names == null) {
+            ensureBuiltinTemplates();
+            names = builtinClassNamesById;
+        }
+        if (id >= 0 && id < names.length && names[id] != null) {
+            return builtinClassTemplates.get(names[id]);
+        }
+        return null;
     }
 
     private record CachedSource(long modified, Source source) {
@@ -121,6 +201,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     @Override
     protected PhpContext createContext(Env env) {
+        ensureBuiltinTemplates();
         return new PhpContext(this, env);
     }
 

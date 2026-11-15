@@ -1,0 +1,15 @@
+0 => none
+1 => CustomA:a
+2 => Logic:d
+3 => Logic:l
+4 => Union:CustomB:b
+5 => Error:TypeError:t
+matched union without variable
+retryable: 30 msg=slow down
+inner caught: 12
+outer caught same: yes RangeException
+bad throw => Error: Can only throw objects
+bad throw => Error: Can only throw objects
+bad throw => Error: Can only throw objects
+bad throw => Error: Can only throw objects
+bad throw => Error: Cannot throw objects that do not implement Throwable

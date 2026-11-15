@@ -103,7 +103,11 @@ final class OutputFunctions {
                 sb.append(" ".repeat(indent + 2));
                 appendVarDumpObjectKey(sb, obj.phpClass(), k);
                 sb.append("=>\n");
-                varDump(sb, get.execute(obj, k, PhpNull.INSTANCE), indent + 2, seen);
+                Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
+                    propVal = lt.toPhpArray();
+                }
+                varDump(sb, propVal, indent + 2, seen);
             }
             sb.append(" ".repeat(indent)).append("}\n");
             seen.remove(obj);
@@ -143,7 +147,11 @@ final class OutputFunctions {
                 sb.append(" ".repeat(indent + 4)).append('[');
                 appendPrintRObjectKey(sb, obj.phpClass(), k);
                 sb.append("] => ");
-                printR(sb, get.execute(obj, k, PhpNull.INSTANCE), indent + 8, seen);
+                Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
+                    propVal = lt.toPhpArray();
+                }
+                printR(sb, propVal, indent + 8, seen);
                 sb.append('\n');
             }
             sb.append(" ".repeat(indent)).append(")\n");
@@ -203,6 +211,9 @@ final class OutputFunctions {
                 String k = (String) rawKey;
                 String prop = plainPropertyName(k);
                 Object val = get.execute(obj, k, PhpNull.INSTANCE);
+                if (val instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
+                    val = lt.toPhpArray();
+                }
                 sb.append(" ".repeat(indent + 3))
                         .append('\'').append(prop.replace("\\", "\\\\").replace("'", "\\'")).append('\'')
                         .append(" => ");
