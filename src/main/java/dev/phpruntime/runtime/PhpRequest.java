@@ -31,6 +31,9 @@ public final class PhpRequest {
     public int status = 200;
     public final List<String[]> responseHeaders = new ArrayList<>();
 
+    /** json_last_error() for this request. */
+    public int jsonLastError;
+
     /** Scheduler hooks for this request; a no-op scheduler when run outside the server. */
     public GuestScheduler scheduler = GuestScheduler.NONE;
 

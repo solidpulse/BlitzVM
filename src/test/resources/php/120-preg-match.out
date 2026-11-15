@@ -1,0 +1,232 @@
+simple: int(1)
+array (
+  0 => 'bbb',
+)
+no match: int(0)
+array (
+)
+groups: int(1)
+array (
+  0 => '555-1234',
+  1 => '555',
+  2 => '1234',
+)
+middle unmatched: int(1)
+array (
+  0 => 'ac',
+  1 => 'a',
+  2 => '',
+  3 => 'c',
+)
+trailing unmatched: int(1)
+array (
+  0 => 'ac',
+  1 => 'a',
+  2 => '',
+  3 => 'c',
+)
+unmatched as null: int(1)
+array (
+  0 => 'ac',
+  1 => 'a',
+  2 => NULL,
+  3 => 'c',
+  4 => NULL,
+)
+offset capture: int(1)
+array (
+  0 => 
+  array (
+    0 => 'ac',
+    1 => 2,
+  ),
+  1 => 
+  array (
+    0 => 'a',
+    1 => 2,
+  ),
+  2 => 
+  array (
+    0 => '',
+    1 => -1,
+  ),
+  3 => 
+  array (
+    0 => 'c',
+    1 => 3,
+  ),
+)
+named: int(1)
+array (
+  0 => '2026-11-15',
+  'year' => '2026',
+  1 => '2026',
+  'month' => '11',
+  2 => '11',
+  'day' => '15',
+  3 => '15',
+)
+named underscore: int(1)
+array (
+  0 => 'Ada ',
+  'first_name' => 'Ada',
+  1 => 'Ada',
+)
+offset arg: int(1)
+array (
+  0 => '2',
+)
+negative offset: int(1)
+array (
+  0 => '3',
+)
+offset caret: int(0)
+array (
+)
+lookbehind across offset: int(1)
+array (
+  0 => 'b',
+)
+case insensitive: int(1)
+array (
+  0 => 'hello',
+)
+dotall: int(1)
+array (
+  0 => 'a
+b',
+)
+no dotall: int(0)
+array (
+)
+multiline: int(3)
+array (
+  0 => 
+  array (
+    0 => 'one',
+    1 => 'two',
+    2 => 'three',
+  ),
+)
+dollar before final newline: int(1)
+array (
+  0 => 'abc',
+)
+dollar end only: int(0)
+array (
+)
+anchored: int(0)
+array (
+)
+anchored at offset: int(1)
+array (
+  0 => 'b',
+)
+hash delimiter: int(1)
+array (
+  0 => '/path/to',
+  1 => 'to',
+)
+brace delimiters: int(1)
+array (
+  0 => 'abc',
+  1 => 'b',
+)
+bracket delimiters: int(1)
+array (
+  0 => 'a[b',
+)
+paren delimiters with nesting: int(1)
+array (
+  0 => 'abc',
+  1 => 'b',
+)
+escaped delimiter: int(1)
+array (
+  0 => 'a/b',
+)
+without matches arg: int(1)
+NULL
+empty match: int(1)
+array (
+  0 => '',
+)
+alternation groups: int(1)
+array (
+  0 => 'dog',
+  1 => '',
+  2 => 'dog',
+)
+backref: int(1)
+array (
+  0 => 'll',
+  1 => 'l',
+)
+named backref: int(1)
+array (
+  0 => '"hi"',
+  'q' => '"',
+  1 => '"',
+)
+k backref: int(1)
+array (
+  0 => '\'x\'',
+  'q' => '\'',
+  1 => '\'',
+)
+g backref: int(1)
+array (
+  0 => 'abba',
+  1 => 'a',
+  2 => 'b',
+)
+utf8 offsets: int(1)
+array (
+  0 => 
+  array (
+    0 => 'öb',
+    1 => 1,
+  ),
+  1 => 
+  array (
+    0 => 'ö',
+    1 => 1,
+  ),
+  2 => 
+  array (
+    0 => 'b',
+    1 => 3,
+  ),
+)
+utf8 offset arg: int(1)
+array (
+  0 => 
+  array (
+    0 => 'b',
+    1 => 4,
+  ),
+)
+possessive: int(1)
+array (
+  0 => 'aaab',
+)
+possessive fail: int(0)
+array (
+)
+atomic: int(1)
+array (
+  0 => 'aab',
+)
+literal braces: int(1)
+array (
+  0 => '{name}',
+  1 => 'name',
+)
+brace not quantifier: int(1)
+array (
+  0 => 'a{,2}',
+)
+quantifier: int(1)
+array (
+  0 => 'aaa',
+)

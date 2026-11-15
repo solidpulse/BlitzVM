@@ -1,10 +1,8 @@
 package dev.phpruntime.builtins;
 
 import dev.phpruntime.runtime.PhpArray;
-import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
-import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 
 import java.math.BigDecimal;
@@ -16,7 +14,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
-/** String functions, sprintf, number_format and json_encode. */
+/** String functions, sprintf and number_format. */
 final class StringFunctions {
 
     private static final String DEFAULT_TRIM = " \t\n\r\0\u000B";
@@ -204,11 +202,6 @@ final class StringFunctions {
             java.util.zip.CRC32 c = new java.util.zip.CRC32();
             c.update(s(a, 0).getBytes(StandardCharsets.UTF_8));
             return c.getValue();
-        });
-        Builtins.def("json_encode", 1, 3, (ctx, a) -> {
-            StringBuilder sb = new StringBuilder();
-            json(sb, a[0], a.length > 1 ? l(a, 1) : 0, 0);
-            return sb.toString();
         });
     }
 
@@ -537,92 +530,6 @@ final class StringFunctions {
             out.append(body);
         }
         return out.toString();
-    }
-
-    // ------------------------------------------------------------------ json
-
-    private static final long PRETTY = 128;
-    private static final long UNESCAPED_SLASHES = 64;
-    private static final long UNESCAPED_UNICODE = 256;
-
-    private static void json(StringBuilder sb, Object v, long flags, int depth) {
-        if (v == PhpNull.INSTANCE) {
-            sb.append("null");
-        } else if (v instanceof Boolean b) {
-            sb.append(b);
-        } else if (v instanceof Long l) {
-            sb.append(l);
-        } else if (v instanceof Double d) {
-            String f = PhpOps.formatDouble(d, 17);
-            sb.append(f);
-            if (d == Math.rint(d) && !f.contains("E") && !f.contains(".")) {
-                sb.append(".0");
-            }
-        } else if (v instanceof String s) {
-            jsonString(sb, s, flags);
-        } else if (v instanceof PhpArray arr) {
-            jsonContainer(sb, arr.entries(), arr.isList(), flags, depth);
-        } else if (v instanceof PhpObject obj) {
-            jsonContainer(sb, PhpClass.visibleEntries(null, obj, null), false, flags, depth);
-        } else {
-            sb.append("null");
-        }
-    }
-
-    private static void jsonContainer(StringBuilder sb, Iterable<Map.Entry<Object, Object>> entries,
-                                      boolean list, long flags, int depth) {
-        boolean pretty = (flags & PRETTY) != 0;
-        var it = entries.iterator();
-        if (!it.hasNext()) {
-            sb.append(list ? "[]" : "{}");
-            return;
-        }
-        sb.append(list ? '[' : '{');
-        boolean first = true;
-        while (it.hasNext()) {
-            Map.Entry<Object, Object> e = it.next();
-            if (!first) {
-                sb.append(',');
-            }
-            first = false;
-            if (pretty) {
-                sb.append('\n').append("    ".repeat(depth + 1));
-            }
-            if (!list) {
-                jsonString(sb, PhpOps.toStr(e.getKey()), flags);
-                sb.append(pretty ? ": " : ":");
-            }
-            json(sb, e.getValue(), flags, depth + 1);
-        }
-        if (pretty) {
-            sb.append('\n').append("    ".repeat(depth));
-        }
-        sb.append(list ? ']' : '}');
-    }
-
-    private static void jsonString(StringBuilder sb, String s, long flags) {
-        sb.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '/' -> sb.append((flags & UNESCAPED_SLASHES) != 0 ? "/" : "\\/");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                default -> {
-                    if (c < 0x20 || (c > 0x7e && (flags & UNESCAPED_UNICODE) == 0)) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        sb.append('"');
     }
 
     // ------------------------------------------------------------------ more
