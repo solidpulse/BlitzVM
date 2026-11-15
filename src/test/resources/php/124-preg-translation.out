@@ -1,0 +1,90 @@
+underscore names: 1 {"0":"Ada Lovelace x","first_name":"Ada","1":"Ada","last_name":"Lovelace","2":"Lovelace","mid_dle":"x","3":"x"}
+name backref: 1 {"0":"\"hi\"","q_1":"\"","1":"\"","2":"hi"}
+k braces: 1 {"0":"xx","a_b":"x","1":"x"}
+g name: 1 {"0":"yy","a_b":"y","1":"y"}
+alpha: 1 ["abc"]
+digit/space: 1 ["12  Q"]
+negated posix: 1 ["ab"]
+word/punct/xdigit: 1 ["a_b!ff"]
+alnum lower: 1 ["A1 bc"]
+ungreedy U: 1 ["<a>"]
+ungreedy U lazy flips: 1 ["<a><b>"]
+extended x: 1 ["10 - 20","10","20"]
+x keeps class spaces: 1 [" x"]
+x escaped space: 1 ["a b"]
+inline i: 1 ["aB"]
+inline i group: 1 ["aBc"]
+inline -i: 1 ["Ab"]
+u case: 1 ["\u00e9"]
+u word: 1 ["h\u00e9llo"]
+no u word: 1 ["hello"]
+S X J ignored: 1 ["a"]
+n no auto capture: 1 {"0":"ab","x":"b","1":"b"}
+hex: 1 ["ABC"]
+octal: 0 []
+h: 1 ["a\tb"]
+N: 1 ["abc"]
+R: 1 ["a\r\nb"]
+Q E: 1 [".*?!"]
+Q E in class: 1 ["]]-"]
+A z Z: 1 ["ab"]
+Z before newline: 1 ["ab"]
+comment group: 1 ["ab"]
+fail verb: 1 ["b"]
+utf verb: 1 ["\u00e9"]
+unicode property: 1 ["\u00c9cole"]
+property negated: 1 ["12"]
+script property: 1 ["\u6f22\u5b57"]
+pL short: 1 ["ab"]
+p caret: 1 ["12"]
+zs: 1 [" "]
+leading bracket: 1 ["]a]"]
+negated leading bracket: 1 ["xyz"]
+literal open bracket: 1 ["[a["]
+ampersands: 1 ["&&ab"]
+dash at class end: 1 ["a-b.c"]
+dash at end: 1 ["a-a"]
+backspace in class: 1 ["\b"]
+caret not first: 1 ["^a"]
+dollar in class: 1 ["$x"]
+lone brace: 1 ["a{"]
+brace word: 1 ["{name}"]
+closing brace: 1 ["}"]
+brace comma: 1 ["xxx"]
+conditional group set: 1 ["<tag>","<"]
+conditional group unset: 1 ["tag"]
+conditional mismatch: 0 []
+conditional else: 1 ["&#x27;","x"]
+conditional else 2: 1 ["&#39;"]
+conditional named: 1 {"0":"(x)","open":"(","1":"("}
+conditional lookahead: 1 ["<!-- c -->"]
+conditional lookahead 2: 1 ["<b>"]
+conditional lookbehind: 1 ["1024x768","1024","768"]
+branch reset: 1 ["var:preset|duotone|blue-red","blue-red"]
+branch reset 2: 1 ["var(--wp--preset--duotone--dark)","dark"]
+branch reset then group: 1 ["bc","b","c"]
+block open: 1 {"0":"<!-- wp:paragraph {\"align\":\"center\"} -->","closer":"","1":"","namespace":"","2":"","name":"paragraph","3":"paragraph","attrs":"{\"align\":\"center\"} ","4":"{\"align\":\"center\"} "}
+block void: 1 {"0":"<!-- wp:core\/image {\"id\":5} \/-->","closer":"","1":"","namespace":"core\/","2":"core\/","name":"image","3":"image","attrs":"{\"id\":5} ","4":"{\"id\":5} ","void":"\/","5":"\/"}
+block closer: 1 {"0":"<!-- \/wp:paragraph -->","closer":"\/","1":"\/","namespace":"","2":"","name":"paragraph","3":"paragraph"}
+block no attrs: 1 {"0":"<!-- wp:separator \/-->","closer":"","1":"","namespace":"","2":"","name":"separator","3":"separator","attrs":"","4":"","void":"\/","5":"\/"}
+shortcodes: 4 [["[gallery ids=\"1,2\"]","","gallery"," ids=\"1,2\"","","",""],["[caption id=\"c1\"]Text[\/caption]","","caption"," id=\"c1\"","","Text",""],["[[gallery]]","[","gallery","","","","]"],["[gallery\/]","","gallery","","\/","",""]]
+shortcode atts: 5 [["ids=\"1,2\" ","ids","1,2"],["size='large' ","","","size","large"],["link=file ","","","","","link","file"],["\"pos\" ","","","","","","","pos"],["flag","","","","","","","","","flag"]]
+array (
+  0 => 'a ',
+  1 => '<b>',
+  2 => 'x',
+  3 => '</b>',
+  4 => ' ',
+  5 => '<!-- c - d -->',
+  6 => ' e',
+)
+array (
+  0 => 'x ',
+  1 => '[gallery ids="1"]',
+  2 => ' ',
+  3 => '<i>',
+  4 => 'y',
+  5 => '</i>',
+)
+kses attrs: 3 [["href=\"\/x\"","href","\/x"],["target='_blank'","target","","_blank"],["rel=nofollow","rel","","","nofollow"]]
+media tag backref: 1 {"0":"<video src=\"a.mp4\"><\/video>","tag":"video","1":"video"}

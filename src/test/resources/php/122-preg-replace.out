@@ -1,0 +1,42 @@
+string(11) "world hello"
+string(11) "world hello"
+string(7) "world1 "
+string(10) "[|a] [b|a]"
+string(3) "a\b"
+string(4) "a$1b"
+string(3) "a$b"
+string(5) "a${1b"
+string(3) "a\b"
+string(4) "axxb"
+string(2) "ab"
+string(4) "bbaa"
+string(4) "bbbb"
+int(4)
+string(4) "aaaa"
+int(0)
+string(7) "-a-b-c-"
+string(11) "> one
+> two"
+string(2) "cc"
+string(1) "1"
+string(3) "XXc"
+array(3) {
+  ["x"]=>
+  string(2) "a#"
+  ["y"]=>
+  string(3) "b##"
+  [3]=>
+  string(4) "none"
+}
+int(3)
+string(13) "lots of space"
+string(16) "<named> <groups>"
+string(11) "cafe crème"
+string(16) "Hello-World-2026"
+string(4) "a
+
+b"
+string(3) "abc"
+string(16) "hello world 2026"
+string(3) "a
+b"
