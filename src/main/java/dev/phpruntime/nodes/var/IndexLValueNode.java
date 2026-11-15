@@ -28,19 +28,30 @@ public final class IndexLValueNode extends LValueNode {
         this.keyNodes = keyNodes;
     }
 
+    private record PackedKeys(Object[] baseKeys, Object[] arrayKeys) {}
+
+    private static Object[] baseKeys(Object[] keys) {
+        return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.baseKeys : NO_KEYS;
+    }
+
+    private static Object[] arrayKeys(Object[] keys) {
+        return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.arrayKeys : keys;
+    }
+
     @Override
     @ExplodeLoop
     public Object[] evalKeys(VirtualFrame frame) {
+        Object[] baseKeys = base.evalKeys(frame);
         Object[] keys = new Object[keyNodes.length];
         for (int i = 0; i < keyNodes.length; i++) {
             keys[i] = keyNodes[i] == null ? APPEND : keyNodes[i].execute(frame);
         }
-        return keys;
+        return baseKeys == NO_KEYS ? keys : new Object[]{new PackedKeys(baseKeys, keys)};
     }
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
-        return readPath(base.read(frame, NO_KEYS), keys);
+        return readPath(base.read(frame, baseKeys(keys)), arrayKeys(keys));
     }
 
     @TruffleBoundary
@@ -59,8 +70,9 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
-        Object root = base.read(frame, NO_KEYS);
-        base.write(frame, NO_KEYS, writePath(root, keys, value));
+        Object[] bk = baseKeys(keys);
+        Object root = base.read(frame, bk);
+        base.write(frame, bk, writePath(root, arrayKeys(keys), value));
     }
 
     @TruffleBoundary
@@ -101,12 +113,13 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
-        Object root = base.read(frame, NO_KEYS);
+        Object[] bk = baseKeys(keys);
+        Object root = base.read(frame, bk);
         if (!(root instanceof PhpArray)) {
             return;
         }
-        Object result = unsetPath((PhpArray) root, keys);
-        base.write(frame, NO_KEYS, result);
+        Object result = unsetPath((PhpArray) root, arrayKeys(keys));
+        base.write(frame, bk, result);
     }
 
     @TruffleBoundary
@@ -131,7 +144,7 @@ public final class IndexLValueNode extends LValueNode {
         Object[] keys = evalKeys(frame);
         Object v = read(frame, keys);
         if (v == null) {
-            warnMissing(keys);
+            warnMissing(arrayKeys(keys));
             return PhpNull.INSTANCE;
         }
         return v;

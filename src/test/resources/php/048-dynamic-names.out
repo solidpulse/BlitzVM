@@ -1,0 +1,16 @@
+SubMaker:4
+SubMaker,Maker,Maker
+4
+ok
+12|20
+submaker|12|SubMaker:hi
+SubMaker:var|SubMaker:expr
+NULL
+NULL
+NULL
+NULL
+int(0)
+int(4)
+int(180)
+NULL
+int(1)

@@ -18,7 +18,10 @@ import dev.phpruntime.runtime.PhpNull;
  */
 public final class PhpFunctionRootNode extends PhpRootNode {
 
+    private final String declaringClass;
     private final String name;
+    private final int thisSlot;
+    private final int calledClassSlot;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
     @CompilationFinal(dimensions = 1) private final VarKind[] paramKinds;
     @Children private final PhpNode[] defaults;
@@ -27,8 +30,17 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, PhpNode body) {
+        this(language, fd, source, line, null, name, -1, -1, paramSlots, paramKinds, defaults, body);
+    }
+
+    public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
+                               String declaringClass, String name, int thisSlot, int calledClassSlot,
+                               int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, PhpNode body) {
         super(language, fd, source, line);
+        this.declaringClass = declaringClass;
         this.name = name;
+        this.thisSlot = thisSlot;
+        this.calledClassSlot = calledClassSlot;
         this.paramSlots = paramSlots;
         this.paramKinds = paramKinds;
         this.defaults = defaults;
@@ -42,16 +54,26 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         this.requiredArgs = required;
     }
 
+    public String declaringClass() {
+        return declaringClass;
+    }
+
     @Override
     @ExplodeLoop
     public Object execute(VirtualFrame frame) {
         TruffleSafepoint.poll(this);
         Object[] args = frame.getArguments();
-        if (args.length < requiredArgs) {
-            throw tooFewArguments(args.length);
+        int offset = thisSlot >= 0 ? 2 : 0;
+        int passed = args.length - offset;
+        if (passed < requiredArgs) {
+            throw tooFewArguments(passed);
+        }
+        if (thisSlot >= 0) {
+            frame.setObject(thisSlot, args[0]);
+            frame.setObject(calledClassSlot, args[1]);
         }
         for (int i = 0; i < paramSlots.length; i++) {
-            Object v = i < args.length ? args[i] : defaults[i].execute(frame);
+            Object v = i < passed ? args[offset + i] : defaults[i].execute(frame);
             if (v instanceof Long l && !paramKinds[i].longBoxed()) {
                 frame.setLong(paramSlots[i], l);
             } else if (v instanceof Double d && !paramKinds[i].doubleBoxed()) {
@@ -70,13 +92,14 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     private PhpError tooFewArguments(int passed) {
         String exactly = requiredArgs == paramSlots.length ? "exactly" : "at least";
-        return new PhpError(PhpError.ARGUMENT_COUNT, "Too few arguments to function " + name + "(), " + passed
+        String qualified = declaringClass == null ? name : declaringClass + "::" + name;
+        return new PhpError(PhpError.ARGUMENT_COUNT, "Too few arguments to function " + qualified + "(), " + passed
                 + " passed and " + exactly + " " + requiredArgs + " expected", body);
     }
 
     @Override
     public String getName() {
-        return name;
+        return declaringClass == null ? name : declaringClass + "::" + name;
     }
 
     @Override

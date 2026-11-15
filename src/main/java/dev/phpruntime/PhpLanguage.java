@@ -6,9 +6,14 @@ import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.parser.Parser;
+import dev.phpruntime.runtime.PhpClassTemplate;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Truffle entry point. {@link #parse} turns PHP source into a tree of self-specialising
@@ -31,6 +36,19 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     private final ConcurrentHashMap<String, CachedSource> sources = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> functionIds = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Integer> methodIds = new ConcurrentHashMap<>();
+    private final AtomicInteger nextMethodId = new AtomicInteger();
+    private final ConcurrentHashMap<String, Integer> classIds = new ConcurrentHashMap<>();
+    private final AtomicInteger nextClassId = new AtomicInteger();
+    private final AtomicLong nextTemplateId = new AtomicLong(1);
+    private final ConcurrentHashMap<List<PhpClassTemplate>, Long> hierarchyIds = new ConcurrentHashMap<>();
+    private final AtomicLong nextHierarchyId = new AtomicLong(1);
+    private final PhpClassTemplate stdClassTemplate = new PhpClassTemplate(
+            0L, "stdClass", false, false, false, false, null, List.of(), List.of(), List.of(), Map.of());
+
+    public PhpClassTemplate stdClassTemplate() {
+        return stdClassTemplate;
+    }
 
     private record CachedSource(long modified, Source source) {
     }
@@ -46,6 +64,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
      */
     public int functionId(String name) {
         return functionIds.computeIfAbsent(name.toLowerCase(), n -> functionIds.size());
+    }
+
+    public int methodId(String name) {
+        return methodIds.computeIfAbsent(name.toLowerCase(), k -> nextMethodId.getAndIncrement());
+    }
+
+    public int classId(String name) {
+        return classIds.computeIfAbsent(name.toLowerCase(), k -> nextClassId.getAndIncrement());
+    }
+
+    public long nextTemplateId() {
+        return nextTemplateId.getAndIncrement();
+    }
+
+    public long hierarchyId(List<PhpClassTemplate> chain) {
+        return hierarchyIds.computeIfAbsent(chain, k -> nextHierarchyId.getAndIncrement());
     }
 
     /** Loads a cached Source keyed by canonical path and modification time. */

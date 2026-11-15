@@ -8,6 +8,7 @@ import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpRequest;
@@ -24,11 +25,16 @@ public final class PhpMainRootNode extends PhpRootNode {
 
     @Child private PhpNode body;
     private final List<PhpFunction> functions;
+    private final List<PhpClassTemplate> topLevelClasses;
+    private final int hoistedClassesSlot;
 
-    public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body, List<PhpFunction> functions) {
+    public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body,
+                           List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses, int hoistedClassesSlot) {
         super(language, fd, source, 1);
         this.body = body;
         this.functions = functions;
+        this.topLevelClasses = topLevelClasses;
+        this.hoistedClassesSlot = hoistedClassesSlot;
     }
 
     @Override
@@ -40,6 +46,9 @@ public final class PhpMainRootNode extends PhpRootNode {
             start(ctx, request);
         }
         declareFunctions(ctx);
+        if (hoistedClassesSlot >= 0) {
+            frame.setObject(hoistedClassesSlot, hoistClasses(ctx));
+        }
         Object result = 1L;
         try {
             body.executeVoid(frame);
@@ -83,6 +92,19 @@ public final class PhpMainRootNode extends PhpRootNode {
         for (PhpFunction fn : functions) {
             ctx.declareFunction(fn);
         }
+    }
+
+    @TruffleBoundary
+    private boolean[] hoistClasses(PhpContext ctx) {
+        boolean[] hoisted = new boolean[topLevelClasses.size()];
+        for (int i = 0; i < topLevelClasses.size(); i++) {
+            PhpClassTemplate t = topLevelClasses.get(i);
+            if (ctx.canHoistClass(t)) {
+                ctx.declareClass(t);
+                hoisted[i] = true;
+            }
+        }
+        return hoisted;
     }
 
     @TruffleBoundary

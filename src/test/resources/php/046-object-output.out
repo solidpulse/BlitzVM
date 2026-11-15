@@ -1,0 +1,82 @@
+object(Blank)#1 (0) {
+}
+Blank Object
+(
+)
+\Blank::__set_state(array(
+))
+object(OuterChild)#2 (7) {
+  ["pub"]=>
+  string(1) "p"
+  ["prot":protected]=>
+  string(1) "r"
+  ["priv":"OuterParent":private]=>
+  string(2) "s1"
+  ["priv":"OuterChild":private]=>
+  string(2) "s2"
+  ["nested"]=>
+  object(Inner)#3 (2) {
+    ["n"]=>
+    int(7)
+    ["note":protected]=>
+    string(2) "hi"
+  }
+  ["arr"]=>
+  array(1) {
+    ["a"]=>
+    int(1)
+  }
+  ["extra"]=>
+  bool(true)
+}
+OuterChild Object
+(
+    [pub] => p
+    [prot:protected] => r
+    [priv:OuterParent:private] => s1
+    [priv:OuterChild:private] => s2
+    [nested] => Inner Object
+        (
+            [n] => 7
+            [note:protected] => hi
+        )
+
+    [arr] => Array
+        (
+            [a] => 1
+        )
+
+    [extra] => 1
+)
+\OuterChild::__set_state(array(
+   'pub' => 'p',
+   'prot' => 'r',
+   'priv' => 's1',
+   'priv' => 's2',
+   'nested' => 
+  \Inner::__set_state(array(
+     'n' => 7,
+     'note' => 'hi',
+  )),
+   'arr' => 
+  array (
+    'a' => 1,
+  ),
+   'extra' => true,
+))
+Array
+(
+    [item] => Inner Object
+        (
+            [n] => 7
+            [note:protected] => hi
+        )
+
+)
+array (
+  'item' => 
+  \Inner::__set_state(array(
+     'n' => 7,
+     'note' => 'hi',
+  )),
+)

@@ -1,0 +1,67 @@
+values: 5,42
+handle: 77
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(false)
+dyn: hello
+bool(true)
+bool(false)
+coalesce: fallback
+inc: 5,7,7,6
+bool(false)
+items: 10,20,30
+bool(true)
+bool(false)
+string(6) "object"
+string(3) "Box"
+string(3) "Box"
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+ids differ: bool(true)
+bool(true)
+bool(true)
+outside vars:
+Array
+(
+    [value] => 77
+    [items] => Array
+        (
+            [nums] => Array
+                (
+                    [0] => 10
+                    [1] => 20
+                    [2] => 30
+                )
+
+        )
+
+    [counter] => 6
+)
+inside vars:
+Array
+(
+    [value] => 77
+    [items] => Array
+        (
+            [nums] => Array
+                (
+                    [0] => 10
+                    [1] => 20
+                    [2] => 30
+                )
+
+        )
+
+    [prot] => secret
+    [priv] => hidden
+    [counter] => 6
+)

@@ -1,0 +1,36 @@
+2|1.0|42|fixed
+BaseCfg|BaseCfg|SubCfg|NotLoadedYet
+Array
+(
+    [0] => BaseCfg
+    [1] => BaseCfg
+    [2] => base
+    [3] => base
+    [4] => priv
+    [5] => BaseCfg
+    [6] => BaseCfg::info
+)
+Array
+(
+    [0] => BaseCfg
+    [1] => SubCfg
+    [2] => base
+    [3] => sub
+    [4] => priv
+    [5] => BaseCfg
+    [6] => BaseCfg::info
+)
+Array
+(
+    [0] => SubCfg
+    [1] => BaseCfg
+    [2] => SubCfg
+    [3] => base
+    [4] => sub
+    [5] => prot
+    [6] => fixed
+    [7] => 1.0
+    [8] => 42
+    [9] => SubCfg
+    [10] => SubCfg::subInfo
+)

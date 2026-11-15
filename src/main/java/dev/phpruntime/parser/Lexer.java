@@ -15,7 +15,7 @@ public final class Lexer {
 
     // Longest operators first so that maximal munch works with a simple prefix scan.
     private static final String[] OPS = {
-        "<=>", "===", "!==", "**=", "...", "<<=", ">>=", "??=",
+        "<=>", "===", "!==", "**=", "...", "<<=", ">>=", "??=", "?->",
         "==", "!=", "<>", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/=",
         ".=", "%=", "->", "=>", "::", "<<", ">>", "??", "**", "|=", "&=", "^=",
         "+", "-", "*", "/", "%", "=", "<", ">", "!", ".", "(", ")", "[", "]", "{", "}",
@@ -98,6 +98,11 @@ public final class Lexer {
                 line++;
             }
             inCode = false;
+            return;
+        }
+        if (src.startsWith("#[", pos)) {
+            out.add(new Token(Kind.OP, "#[", pos, line));
+            pos += 2;
             return;
         }
         if (c == '#' || src.startsWith("//", pos)) {

@@ -73,7 +73,8 @@ final class CoreFunctions {
             case "null" -> "NULL";
             default -> PhpOps.typeName(a[0]);
         });
-        Builtins.def("get_debug_type", 1, 1, (ctx, a) -> PhpOps.typeName(a[0]));
+        Builtins.def("get_debug_type", 1, 1, (ctx, a) ->
+                a[0] instanceof dev.phpruntime.runtime.PhpObject o ? o.phpClass().name() : PhpOps.typeName(a[0]));
         Builtins.def("intval", 1, 2, (ctx, a) -> {
             if (a.length > 1 && a[0] instanceof String s) {
                 try {

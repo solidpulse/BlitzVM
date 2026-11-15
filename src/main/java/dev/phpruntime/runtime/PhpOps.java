@@ -1,10 +1,12 @@
 package dev.phpruntime.runtime;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.object.DynamicObject;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -236,6 +238,17 @@ public final class PhpOps {
         if (v instanceof PhpArray) {
             return "Array";
         }
+        if (v instanceof PhpObject o) {
+            PhpClass.MethodEntry ts = o.phpClass().toStringMethod();
+            if (ts != null && ts.callTarget() != null) {
+                Object res = ts.callTarget().call(o, o.phpClass());
+                if (!(res instanceof String s)) {
+                    throw new PhpError(o.phpClass().name() + "::__toString() must return a string value");
+                }
+                return s;
+            }
+            throw new PhpError("Object of class " + o.phpClass().name() + " could not be converted to string");
+        }
         return String.valueOf(v);
     }
 
@@ -297,12 +310,46 @@ public final class PhpOps {
 
     @TruffleBoundary
     public static boolean looseEquals(Object a, Object b) {
+        return looseEquals(a, b, null);
+    }
+
+    private static boolean looseEquals(Object a, Object b, Map<PhpObject, PhpObject> seen) {
         if (a instanceof PhpArray x && b instanceof PhpArray y) {
             if (x.size() != y.size()) {
                 return false;
             }
             for (Map.Entry<Object, Object> e : x.entries()) {
-                if (!y.containsKey(e.getKey()) || !looseEquals(e.getValue(), y.get(e.getKey()))) {
+                if (!y.containsKey(e.getKey()) || !looseEquals(e.getValue(), y.get(e.getKey()), seen)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (a instanceof PhpObject x && b instanceof PhpObject y) {
+            if (x == y) {
+                return true;
+            }
+            if (x.phpClass() != y.phpClass()) {
+                return false;
+            }
+            if (seen == null) {
+                seen = new IdentityHashMap<>();
+            } else if (seen.get(x) == y) {
+                return true;
+            }
+            seen.put(x, y);
+            Object[] xKeys = DynamicObject.GetKeyArrayNode.getUncached().execute(x);
+            Object[] yKeys = DynamicObject.GetKeyArrayNode.getUncached().execute(y);
+            if (xKeys.length != yKeys.length) {
+                return false;
+            }
+            DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+            DynamicObject.ContainsKeyNode contains = DynamicObject.ContainsKeyNode.getUncached();
+            for (Object k : xKeys) {
+                if (!contains.execute(y, k)) {
+                    return false;
+                }
+                if (!looseEquals(get.execute(x, k, null), get.execute(y, k, null), seen)) {
                     return false;
                 }
             }
@@ -350,6 +397,18 @@ public final class PhpOps {
         if (b instanceof PhpArray) {
             return -1;
         }
+        if (a instanceof PhpObject o) {
+            if (b instanceof String s && o.phpClass().toStringMethod() != null) {
+                return compare(toStr(o), s);
+            }
+            return 1;
+        }
+        if (b instanceof PhpObject o) {
+            if (a instanceof String s && o.phpClass().toStringMethod() != null) {
+                return compare(s, toStr(o));
+            }
+            return -1;
+        }
         return 0;
     }
 
@@ -371,6 +430,9 @@ public final class PhpOps {
         }
         if (v instanceof PhpArray) {
             return "array";
+        }
+        if (v instanceof PhpObject) {
+            return "object";
         }
         if (v == PhpNull.INSTANCE) {
             return "null";

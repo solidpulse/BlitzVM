@@ -1,8 +1,10 @@
 package dev.phpruntime.builtins;
 
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 
 import java.math.BigDecimal;
@@ -561,35 +563,43 @@ final class StringFunctions {
         } else if (v instanceof String s) {
             jsonString(sb, s, flags);
         } else if (v instanceof PhpArray arr) {
-            boolean list = arr.isList();
-            boolean pretty = (flags & PRETTY) != 0;
-            if (arr.size() == 0) {
-                sb.append(list ? "[]" : "{}");
-                return;
-            }
-            sb.append(list ? '[' : '{');
-            boolean first = true;
-            for (Map.Entry<Object, Object> e : arr.entries()) {
-                if (!first) {
-                    sb.append(',');
-                }
-                first = false;
-                if (pretty) {
-                    sb.append('\n').append("    ".repeat(depth + 1));
-                }
-                if (!list) {
-                    jsonString(sb, PhpOps.toStr(e.getKey()), flags);
-                    sb.append(pretty ? ": " : ":");
-                }
-                json(sb, e.getValue(), flags, depth + 1);
-            }
-            if (pretty) {
-                sb.append('\n').append("    ".repeat(depth));
-            }
-            sb.append(list ? ']' : '}');
+            jsonContainer(sb, arr.entries(), arr.isList(), flags, depth);
+        } else if (v instanceof PhpObject obj) {
+            jsonContainer(sb, PhpClass.visibleEntries(null, obj, null), false, flags, depth);
         } else {
             sb.append("null");
         }
+    }
+
+    private static void jsonContainer(StringBuilder sb, Iterable<Map.Entry<Object, Object>> entries,
+                                      boolean list, long flags, int depth) {
+        boolean pretty = (flags & PRETTY) != 0;
+        var it = entries.iterator();
+        if (!it.hasNext()) {
+            sb.append(list ? "[]" : "{}");
+            return;
+        }
+        sb.append(list ? '[' : '{');
+        boolean first = true;
+        while (it.hasNext()) {
+            Map.Entry<Object, Object> e = it.next();
+            if (!first) {
+                sb.append(',');
+            }
+            first = false;
+            if (pretty) {
+                sb.append('\n').append("    ".repeat(depth + 1));
+            }
+            if (!list) {
+                jsonString(sb, PhpOps.toStr(e.getKey()), flags);
+                sb.append(pretty ? ": " : ":");
+            }
+            json(sb, e.getValue(), flags, depth + 1);
+        }
+        if (pretty) {
+            sb.append('\n').append("    ".repeat(depth));
+        }
+        sb.append(list ? ']' : '}');
     }
 
     private static void jsonString(StringBuilder sb, String s, long flags) {

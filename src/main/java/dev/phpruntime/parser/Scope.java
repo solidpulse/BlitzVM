@@ -26,9 +26,34 @@ final class Scope {
     private final Map<String, Integer> slots = new HashMap<>();
     private final Map<Integer, VarKind> kinds = new HashMap<>();
     private final Set<String> imported = new HashSet<>();
+    private final int thisSlot;
+    private final int calledClassSlot;
 
     Scope(boolean global) {
+        this(global, false);
+    }
+
+    private Scope(boolean global, boolean method) {
         this.global = global;
+        if (method) {
+            this.thisSlot = slot("this");
+            this.calledClassSlot = slot("@calledClass");
+        } else {
+            this.thisSlot = -1;
+            this.calledClassSlot = -1;
+        }
+    }
+
+    static Scope forMethod() {
+        return new Scope(false, true);
+    }
+
+    int thisSlot() {
+        return thisSlot;
+    }
+
+    int calledClassSlot() {
+        return calledClassSlot;
     }
 
     LValueNode variable(String name) {

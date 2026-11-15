@@ -21,6 +21,7 @@ public final class Builtins {
 
     static {
         CoreFunctions.register();
+        ClassFunctions.register();
         OutputFunctions.register();
         StringFunctions.register();
         ArrayFunctions.register();

@@ -1,0 +1,23 @@
+canine
+canine:woof
+canine:woof!
+woof|...
+Animal/Dog
+animal-secret|dog-secret
+Dog,Animal,Animal
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+string(6) "Animal"
+string(6) "Animal"
+bool(false)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(false)

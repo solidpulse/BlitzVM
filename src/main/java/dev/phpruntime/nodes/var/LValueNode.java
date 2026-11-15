@@ -18,6 +18,17 @@ public abstract class LValueNode extends PhpNode {
     /** Current value, or Java {@code null} if undefined. */
     public abstract Object read(VirtualFrame frame, Object[] keys);
 
+    /** Returns whether this lvalue is set (non-null) for {@code isset}. */
+    public boolean isSet(VirtualFrame frame, Object[] keys) {
+        Object v = read(frame, keys);
+        return v != null && v != dev.phpruntime.runtime.PhpNull.INSTANCE;
+    }
+
+    /** Reads this lvalue for {@code ??}; may check {@code __isset} before {@code __get}. */
+    public Object readIfSet(VirtualFrame frame, Object[] keys) {
+        return read(frame, keys);
+    }
+
     public abstract void write(VirtualFrame frame, Object[] keys, Object value);
 
     /** Typed writes; variables store these unboxed, everything else boxes. */

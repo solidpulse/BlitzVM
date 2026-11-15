@@ -1,0 +1,32 @@
+pub|changed
+a,b|a,b,c
+100|2|200
+bool(true)
+bool(true)
+bool(true)
+int(1)
+string(2) "hi"
+int(42)
+bool(true)
+string(8) "stdClass"
+string(1) "0"
+int(10)
+string(1) "a"
+int(20)
+outside foreach:
+pub=pub
+inside foreach:
+Array
+(
+    [pub] => pub
+    [prot] => prot
+    [priv] => priv
+)
+{"k":"v"}
+{}
+{"0":10,"a":20}
+{"pub":"pub","tags":["a","b"],"sharedLeaf":{"n":100},"ownedLeaf":{"n":2}}
+{
+    "x": 1,
+    "y": "hi"
+}

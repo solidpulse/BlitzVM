@@ -1,0 +1,21 @@
+10
+intercepted:hidden
+8
+bool(true)
+bool(false)
+10|-1
+bool(false)
+call:foo(1,two)
+Bag::callStatic:bar(3,4)
+SubBag::callStatic:baz(5)
+Bag(1)
+str=Bag(1)|Bag(1)
+string(6) "Bag(1)"
+bool(true)
+bool(false)
+int(6)
+string(6) "BAG(1)"
+orig log: get:a,get:secret,set:x=5,get:x,set:x=8,get:x,isset:a,isset:missing,isset:a,get:a,isset:missing,unset:a,isset:a
+clone log: get:a,get:secret,set:x=5,get:x,set:x=8,get:x,isset:a,isset:missing,isset:a,get:a,isset:missing,unset:a,isset:a,cloned,set:y=99
+bool(false)
+bool(true)

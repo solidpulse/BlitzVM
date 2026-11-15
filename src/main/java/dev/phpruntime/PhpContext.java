@@ -5,7 +5,10 @@ import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.builtins.Builtins;
+import dev.phpruntime.runtime.PhpClass;
+import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpConstants;
+import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpRequest;
@@ -14,8 +17,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -34,8 +40,13 @@ public final class PhpContext {
     private final Map<String, Object> globals = new HashMap<>();
     private final Map<String, PhpFunction> functions = new HashMap<>();
     private PhpFunction[] functionsById = new PhpFunction[256];
+    private final Map<String, PhpClass> classes = new HashMap<>();
+    private PhpClass[] classesById = new PhpClass[128];
     private final Map<String, Object> constants = new HashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
+    private long nextObjectId = 1;
+    private long nextAnonymousId = 1;
+    private final PhpClass stdClass;
     private final StringBuilder output = new StringBuilder();
     private final PrintStream err;
     private PhpRequest request;
@@ -44,6 +55,11 @@ public final class PhpContext {
         this.language = language;
         this.env = env;
         this.err = new PrintStream(env.err(), true, StandardCharsets.UTF_8);
+        this.stdClass = declareClass(language.stdClassTemplate());
+    }
+
+    public PhpClass stdClass() {
+        return stdClass;
     }
 
     public static PhpContext get(Node node) {
@@ -114,6 +130,82 @@ public final class PhpContext {
         return id < table.length ? table[id] : null;
     }
 
+    // ------------------------------------------------------------ classes
+
+    public PhpClass classById(int id) {
+        PhpClass[] table = classesById;
+        return id < table.length ? table[id] : null;
+    }
+
+    @TruffleBoundary
+    public PhpClass lookupClass(String name) {
+        return classes.get(name.toLowerCase());
+    }
+
+    @TruffleBoundary
+    public boolean canHoistClass(PhpClassTemplate template) {
+        if (template.parentName() != null && lookupClass(template.parentName()) == null) {
+            return false;
+        }
+        for (String iface : template.interfaceNames()) {
+            if (lookupClass(iface) == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @TruffleBoundary
+    public PhpClass declareClass(PhpClassTemplate template) {
+        String lower = template.lowerName();
+        if (classes.containsKey(lower)) {
+            String kind = template.isInterface() ? "interface" : "class";
+            throw new PhpError("Cannot declare " + kind + " " + template.name() + ", because the name is already in use");
+        }
+        PhpClass parent = null;
+        if (template.parentName() != null) {
+            parent = lookupClass(template.parentName());
+            if (parent == null) {
+                String kind = template.isInterface() ? "Interface" : "Class";
+                throw new PhpError(kind + " \"" + template.parentName() + "\" not found");
+            }
+            if (!template.isInterface() && parent.isInterface()) {
+                throw new PhpError(template.name() + " cannot extend interface " + parent.name());
+            }
+            if (!template.isInterface() && parent.isFinal()) {
+                throw new PhpError("Class " + template.name() + " cannot extend final class " + parent.name());
+            }
+        }
+        List<PhpClass> ifaces = new ArrayList<>(template.interfaceNames().size());
+        for (String ifaceName : template.interfaceNames()) {
+            PhpClass iface = lookupClass(ifaceName);
+            if (iface == null) {
+                throw new PhpError("Interface \"" + ifaceName + "\" not found");
+            }
+            if (!iface.isInterface()) {
+                throw new PhpError(template.name() + " cannot implement " + iface.name() + " - it is not an interface");
+            }
+            ifaces.add(iface);
+        }
+        PhpClass cls = new PhpClass(language, template, parent, ifaces);
+        classes.put(lower, cls);
+        int id = language.classId(lower);
+        if (id >= classesById.length) {
+            classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
+        }
+        classesById[id] = cls;
+        cls.initStaticProperties();
+        return cls;
+    }
+
+    public long nextObjectId() {
+        return nextObjectId++;
+    }
+
+    public long nextAnonymousId() {
+        return nextAnonymousId++;
+    }
+
     // ------------------------------------------------------------ constants
 
     @TruffleBoundary
@@ -128,11 +220,21 @@ public final class PhpContext {
 
     @TruffleBoundary
     public boolean hasConstant(String name) {
+        int sep = name.indexOf("::");
+        if (sep > 0) {
+            PhpClass cls = lookupClass(name.substring(0, sep));
+            return cls != null && cls.lookupConstant(name.substring(sep + 2)) != null;
+        }
         return PhpConstants.lookupBuiltin(name) != null || constants.containsKey(name);
     }
 
     @TruffleBoundary
     public Object readConstant(String name) {
+        int sep = name.indexOf("::");
+        if (sep > 0) {
+            PhpClass cls = lookupClass(name.substring(0, sep));
+            return cls == null ? null : cls.lookupConstant(name.substring(sep + 2));
+        }
         Object builtin = PhpConstants.lookupBuiltin(name);
         if (builtin != null) {
             return builtin;

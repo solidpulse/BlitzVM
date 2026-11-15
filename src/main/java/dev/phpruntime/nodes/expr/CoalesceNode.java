@@ -20,7 +20,7 @@ public final class CoalesceNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         Object v;
         if (left instanceof LValueNode lv) {
-            v = lv.read(frame, lv.evalKeys(frame));
+            v = lv.readIfSet(frame, lv.evalKeys(frame));
         } else {
             v = left.execute(frame);
         }

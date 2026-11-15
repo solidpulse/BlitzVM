@@ -1,23 +1,32 @@
 package dev.phpruntime.parser;
 
+import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpLanguage;
+import dev.phpruntime.nodes.PhpExprRootNode;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.call.CallNode;
+import dev.phpruntime.nodes.call.MethodCallNode;
+import dev.phpruntime.nodes.call.StaticMethodCallNode;
 import dev.phpruntime.nodes.expr.*;
 import dev.phpruntime.nodes.stmt.*;
 import dev.phpruntime.nodes.var.*;
 import dev.phpruntime.parser.Token.Kind;
 import dev.phpruntime.runtime.PhpArith;
+import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpConstants;
+import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.Visibility;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Recursive-descent parser for statements with a Pratt (precedence climbing) parser
@@ -30,12 +39,15 @@ public final class Parser {
     private final Source source;
     private final List<Token> tokens;
     private final List<PhpFunction> functions;
+    private final List<PhpClassTemplate> topLevelClasses;
     private Scope scope;
     private String currentFunction;
+    private String currentClass;
+    private int hoistedClassesSlot = -1;
     private int pos;
 
     public Parser(PhpLanguage language, Source source) {
-        this(language, source, lex(source), new Scope(true), new ArrayList<>(), "");
+        this(language, source, lex(source), new Scope(true), new ArrayList<>(), new ArrayList<>(), "", null);
     }
 
     private static List<Token> lex(Source source) {
@@ -47,13 +59,16 @@ public final class Parser {
     }
 
     private Parser(PhpLanguage language, Source source, List<Token> tokens, Scope scope,
-                   List<PhpFunction> functions, String currentFunction) {
+                   List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses,
+                   String currentFunction, String currentClass) {
         this.language = language;
         this.source = source;
         this.tokens = tokens;
         this.scope = scope;
         this.functions = functions;
+        this.topLevelClasses = topLevelClasses;
         this.currentFunction = currentFunction;
+        this.currentClass = currentClass;
     }
 
     public PhpMainRootNode parseMain() {
@@ -65,10 +80,22 @@ public final class Parser {
                     stmts.add(s);
                 }
             }
-            return new PhpMainRootNode(language, scope.build(), source, block(stmts), functions);
+            return new PhpMainRootNode(language, scope.build(), source, block(stmts),
+                    functions, topLevelClasses, hoistedClassesSlot);
         } catch (PhpParseError e) {
             throw e.withSource(source);
         }
+    }
+
+    private int hoistedClassesSlot() {
+        if (hoistedClassesSlot < 0) {
+            hoistedClassesSlot = scope.slot("@hoistedClasses");
+        }
+        return hoistedClassesSlot;
+    }
+
+    private String currentClassLower() {
+        return currentClass == null ? null : currentClass.toLowerCase();
     }
 
     // =================================================================== tokens
@@ -114,6 +141,31 @@ public final class Parser {
         }
     }
 
+    private Token expectIdent() {
+        Token t = peek();
+        if (t.kind() != Kind.IDENT) {
+            throw error("syntax error, unexpected " + describe(t) + ", expecting identifier");
+        }
+        return next();
+    }
+
+    private void skipAttributes() {
+        while (acceptOp("#[")) {
+            int depth = 1;
+            while (depth > 0) {
+                Token tok = next();
+                if (tok.kind() == Kind.EOF) {
+                    throw error("syntax error, unexpected end of file in attribute");
+                }
+                if (tok.isOp("[") || tok.isOp("#[")) {
+                    depth++;
+                } else if (tok.isOp("]")) {
+                    depth--;
+                }
+            }
+        }
+    }
+
     /** A statement ends with ';' or a closing tag; end of file is also accepted. */
     private void endStatement() {
         if (acceptOp(";")) {
@@ -147,7 +199,11 @@ public final class Parser {
     }
 
     private PhpNode statement(boolean topLevel) {
+        skipAttributes();
         Token t = peek();
+        if (t.kind() == Kind.EOF) {
+            return null;
+        }
         int line = t.line();
         switch (t.kind()) {
             case INLINE_HTML -> {
@@ -270,6 +326,9 @@ public final class Parser {
                     expectOp(")");
                     endStatement();
                     return new UnsetNode(targets.toArray(new LValueNode[0])).at(line);
+                }
+                case "abstract", "final", "class", "interface" -> {
+                    return classDeclaration(topLevel, line);
                 }
                 case "declare" -> {
                     // declare(strict_types=1); is accepted and ignored.
@@ -504,43 +563,53 @@ public final class Parser {
         return new DefineConstantNode(names.toArray(new String[0]), values.toArray(new PhpNode[0])).at(line);
     }
 
+    private record ParsedParams(int[] slots, VarKind[] kinds, PhpNode[] defaults) {}
+
+    private ParsedParams parseParams() {
+        expectOp("(");
+        List<Integer> slots = new ArrayList<>();
+        List<PhpNode> defaults = new ArrayList<>();
+        while (!acceptOp(")")) {
+            skipAttributes();
+            skipType();
+            acceptOp("&");
+            acceptOp("...");
+            Token v = next();
+            if (v.kind() != Kind.VARIABLE) {
+                throw new PhpParseError("syntax error, expected parameter variable", v.line());
+            }
+            slots.add(scope.slot(v.text()));
+            defaults.add(acceptOp("=") ? expression() : null);
+            if (!peek().isOp(")")) {
+                expectOp(",");
+            }
+        }
+        int[] slotArray = slots.stream().mapToInt(Integer::intValue).toArray();
+        VarKind[] kindArray = new VarKind[slotArray.length];
+        for (int i = 0; i < slotArray.length; i++) {
+            kindArray[i] = scope.kind(slotArray[i]);
+        }
+        return new ParsedParams(slotArray, kindArray, defaults.toArray(new PhpNode[0]));
+    }
+
     private PhpNode functionDeclaration(boolean topLevel, int line) {
         Token nameTok = next();
         String name = nameTok.text();
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerClass = currentClass;
         scope = new Scope(false);
         currentFunction = name;
+        currentClass = null;
         try {
-            expectOp("(");
-            List<Integer> slots = new ArrayList<>();
-            List<PhpNode> defaults = new ArrayList<>();
-            while (!acceptOp(")")) {
-                skipType();
-                acceptOp("&");
-                acceptOp("...");
-                Token v = next();
-                if (v.kind() != Kind.VARIABLE) {
-                    throw new PhpParseError("syntax error, expected parameter variable", v.line());
-                }
-                slots.add(scope.slot(v.text()));
-                defaults.add(acceptOp("=") ? expression() : null);
-                if (!peek().isOp(")")) {
-                    expectOp(",");
-                }
-            }
+            ParsedParams params = parseParams();
             if (acceptOp(":")) {
                 skipType();
             }
             expectOp("{");
             PhpNode body = blockUntil("}");
-            int[] slotArray = slots.stream().mapToInt(Integer::intValue).toArray();
-            VarKind[] kindArray = new VarKind[slotArray.length];
-            for (int i = 0; i < slotArray.length; i++) {
-                kindArray[i] = scope.kind(slotArray[i]);
-            }
-            PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), source, nameTok.line(), name, slotArray,
-                    kindArray, defaults.toArray(new PhpNode[0]), body);
+            PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), source, nameTok.line(), name,
+                    params.slots(), params.kinds(), params.defaults(), body);
             PhpFunction fn = new PhpFunction(name, root.getCallTarget());
             if (topLevel) {
                 functions.add(fn);
@@ -550,6 +619,157 @@ public final class Parser {
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentClass = outerClass;
+        }
+    }
+
+    private PhpNode classDeclaration(boolean topLevel, int line) {
+        boolean isAbstract = false;
+        boolean isFinal = false;
+        boolean mods = true;
+        while (mods && peek().kind() == Kind.IDENT) {
+            switch (peek().text().toLowerCase()) {
+                case "abstract" -> { next(); isAbstract = true; }
+                case "final" -> { next(); isFinal = true; }
+                case "readonly" -> next();
+                default -> mods = false;
+            }
+        }
+        boolean isInterface = acceptKeyword("interface");
+        if (!isInterface) {
+            expectKeyword("class");
+        }
+        String name = expectIdent().text();
+        PhpClassTemplate template = parseClassTemplate(
+                language.nextTemplateId(), name, isInterface, isAbstract, isFinal, false);
+        if (topLevel) {
+            int idx = topLevelClasses.size();
+            topLevelClasses.add(template);
+            return new DeclareClassNode(template, hoistedClassesSlot(), idx).at(line);
+        }
+        return new DeclareClassNode(template, -1, -1).at(line);
+    }
+
+    private PhpClassTemplate parseClassTemplate(long templateId, String name, boolean isInterface,
+                                                  boolean isAbstract, boolean isFinal, boolean isAnonymous) {
+        String parentName = null;
+        List<String> interfaceNames = new ArrayList<>();
+        if (acceptKeyword("extends")) {
+            if (isInterface) {
+                do {
+                    interfaceNames.add(expectIdent().text());
+                } while (acceptOp(","));
+            } else {
+                parentName = expectIdent().text();
+            }
+        }
+        if (!isInterface && acceptKeyword("implements")) {
+            do {
+                interfaceNames.add(expectIdent().text());
+            } while (acceptOp(","));
+        }
+        expectOp("{");
+        List<PhpClassTemplate.PropertyDecl> properties = new ArrayList<>();
+        List<PhpClassTemplate.ConstantDecl> constants = new ArrayList<>();
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        String outerClass = currentClass;
+        currentClass = name;
+        try {
+            while (!acceptOp("}")) {
+                if (peek().kind() == Kind.EOF) {
+                    throw error("syntax error, unexpected end of file in class " + name);
+                }
+                skipAttributes();
+                if (acceptOp("}")) {
+                    break;
+                }
+                Visibility vis = Visibility.PUBLIC;
+                boolean isStatic = false;
+                boolean mAbstract = false;
+                boolean mFinal = false;
+                boolean parsingMods = true;
+                while (parsingMods && peek().kind() == Kind.IDENT) {
+                    switch (peek().text().toLowerCase()) {
+                        case "public", "var" -> { next(); vis = Visibility.PUBLIC; }
+                        case "protected" -> { next(); vis = Visibility.PROTECTED; }
+                        case "private" -> { next(); vis = Visibility.PRIVATE; }
+                        case "static" -> { next(); isStatic = true; }
+                        case "abstract" -> { next(); mAbstract = true; }
+                        case "final" -> { next(); mFinal = true; }
+                        case "readonly" -> next();
+                        default -> parsingMods = false;
+                    }
+                }
+                if (acceptKeyword("const")) {
+                    do {
+                        String constName = expectIdent().text();
+                        expectOp("=");
+                        PhpNode expr = expression();
+                        Object constVal = expr instanceof ConstNode c ? c.value() : null;
+                        RootCallTarget valTarget = expr instanceof ConstNode ? null
+                                : new PhpExprRootNode(language, source, expr).getCallTarget();
+                        constants.add(new PhpClassTemplate.ConstantDecl(constName, vis, mFinal, constVal, valTarget));
+                    } while (acceptOp(","));
+                    expectOp(";");
+                } else if (acceptKeyword("function")) {
+                    PhpClassTemplate.MethodDecl m = parseMethod(vis, isStatic, isInterface || mAbstract, mFinal);
+                    methods.put(m.lowerName(), m);
+                } else {
+                    skipType();
+                    do {
+                        Token propTok = next();
+                        if (propTok.kind() != Kind.VARIABLE) {
+                            throw new PhpParseError("syntax error, expected property variable", propTok.line());
+                        }
+                        PhpNode expr = acceptOp("=") ? expression() : null;
+                        Object constVal = expr == null ? PhpNull.INSTANCE
+                                : (expr instanceof ConstNode c ? c.value() : null);
+                        RootCallTarget valTarget = expr == null || expr instanceof ConstNode ? null
+                                : new PhpExprRootNode(language, source, expr).getCallTarget();
+                        properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, constVal, valTarget));
+                    } while (acceptOp(","));
+                    expectOp(";");
+                }
+            }
+        } finally {
+            currentClass = outerClass;
+        }
+        return new PhpClassTemplate(
+                templateId, name, isInterface, isAbstract, isFinal, isAnonymous,
+                parentName, interfaceNames, properties, constants, methods);
+    }
+
+    private PhpClassTemplate.MethodDecl parseMethod(Visibility vis, boolean isStatic, boolean isAbstract, boolean isFinal) {
+        Token nameTok = expectIdent();
+        String mName = nameTok.text();
+        String lower = mName.toLowerCase();
+        Scope outerScope = scope;
+        String outerFunction = currentFunction;
+        scope = Scope.forMethod();
+        currentFunction = mName;
+        try {
+            ParsedParams params = parseParams();
+            if (acceptOp(":")) {
+                skipType();
+            }
+            RootCallTarget callTarget;
+            if (isAbstract) {
+                expectOp(";");
+                callTarget = null;
+            } else {
+                expectOp("{");
+                PhpNode body = blockUntil("}");
+                PhpFunctionRootNode root = new PhpFunctionRootNode(
+                        language, scope.build(), source, nameTok.line(),
+                        currentClass, mName, scope.thisSlot(), scope.calledClassSlot(),
+                        params.slots(), params.kinds(), params.defaults(), body);
+                callTarget = root.getCallTarget();
+            }
+            return new PhpClassTemplate.MethodDecl(
+                    mName, lower, language.methodId(mName), vis, isStatic, isAbstract, isFinal, callTarget);
+        } finally {
+            scope = outerScope;
+            currentFunction = outerFunction;
         }
     }
 
@@ -557,11 +777,13 @@ public final class Parser {
     private void skipType() {
         acceptOp("?");
         while (peek().kind() == Kind.IDENT && (peek(1).kind() == Kind.VARIABLE || peek(1).isOp("|")
-                || peek(1).isOp("&") || peek(1).isOp("...") || peek(1).isOp("{") || peek(1).isOp(")"))) {
+                || peek(1).isOp("&") || peek(1).isOp("...") || peek(1).isOp("{") || peek(1).isOp(")")
+                || peek(1).isOp(";"))) {
             next();
             if (!acceptOp("|")) {
                 break;
             }
+            acceptOp("?");
         }
     }
 
@@ -586,6 +808,7 @@ public final class Parser {
                 case "or" -> 1;
                 case "xor" -> 2;
                 case "and" -> 3;
+                case "instanceof" -> 20;
                 default -> 0;
             };
         }
@@ -624,6 +847,11 @@ public final class Parser {
             next();
             int line = op.line();
             String text = op.kind() == Kind.IDENT ? op.text().toLowerCase() : op.text();
+            if (text.equals("instanceof")) {
+                ClassRefNode rightRef = parseClassRef(true);
+                left = new InstanceofNode(left, rightRef).at(line);
+                continue;
+            }
             if (text.equals("?")) {
                 PhpNode whenTrue = peek().isOp(":") ? null : binary(0);
                 expectOp(":");
@@ -723,6 +951,10 @@ public final class Parser {
                 next();
                 return new PrintNode(binary(4), false).at(line);
             }
+            if (kw.equals("clone")) {
+                next();
+                return new CloneNode(binary(UNARY_POWER)).at(line);
+            }
             IncludeNode.Kind inc = includeKind(kw);
             if (inc != null) {
                 next();
@@ -752,6 +984,7 @@ public final class Parser {
             case "string" -> CastNode.Kind.STRING;
             case "bool", "boolean" -> CastNode.Kind.BOOL;
             case "array" -> CastNode.Kind.ARRAY;
+            case "object" -> CastNode.Kind.OBJECT;
             default -> null;
         };
     }
@@ -822,29 +1055,164 @@ public final class Parser {
     private PhpNode postfixOnly() {
         Token t = peek();
         int line = t.line();
+        PhpNode e;
         if (t.kind() == Kind.VARIABLE) {
             next();
             LValueNode var = scope.variable(t.text());
             var.at(line);
-            List<PhpNode> keys = new ArrayList<>();
-            while (peek().isOp("[")) {
-                next();
-                keys.add(peek().isOp("]") ? null : expression());
-                expectOp("]");
-            }
-            if (keys.isEmpty()) {
-                return var;
-            }
-            return new IndexLValueNode(var, keys.toArray(new PhpNode[0])).at(line);
+            e = var;
+        } else {
+            e = primary();
         }
-        PhpNode e = primary();
-        while (peek().isOp("[")) {
-            next();
-            PhpNode key = expression();
-            expectOp("]");
-            e = new IndexReadNode(e, key).at(line);
+        boolean nullsafeChain = false;
+        while (true) {
+            if (acceptOp("[")) {
+                if (e instanceof LValueNode lv) {
+                    List<PhpNode> keys = new ArrayList<>();
+                    keys.add(peek().isOp("]") ? null : expression());
+                    expectOp("]");
+                    while (peek().isOp("[")) {
+                        next();
+                        keys.add(peek().isOp("]") ? null : expression());
+                        expectOp("]");
+                    }
+                    e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                } else {
+                    PhpNode key = expression();
+                    expectOp("]");
+                    e = new IndexReadNode(e, key).at(line);
+                }
+            } else if (acceptOp("?->")) {
+                nullsafeChain = true;
+                e = parseMemberAccess(e, line, true);
+            } else if (acceptOp("->")) {
+                e = parseMemberAccess(e, line, nullsafeChain);
+            } else if (acceptOp("::")) {
+                e = parseStaticMember(ClassRefNode.dynamic(e), line);
+            } else {
+                break;
+            }
         }
         return e;
+    }
+
+    private PhpNode parseMemberAccess(PhpNode target, int line, boolean nullsafe) {
+        PhpNode nodeTarget = nullsafe ? null : target;
+        PhpNode access;
+        if (peek().kind() == Kind.IDENT) {
+            String member = next().text();
+            if (acceptOp("(")) {
+                access = new MethodCallNode(nodeTarget, member, language.methodId(member), null, parseCallArgs()).at(line);
+            } else {
+                access = new PropertyLValueNode(nodeTarget, member, null, currentClassLower()).at(line);
+            }
+        } else if (peek().kind() == Kind.VARIABLE) {
+            Token vt = next();
+            PhpNode nameExpr = scope.variable(vt.text()).at(vt.line());
+            if (acceptOp("(")) {
+                access = new MethodCallNode(nodeTarget, null, -1, nameExpr, parseCallArgs()).at(line);
+            } else {
+                access = new PropertyLValueNode(nodeTarget, null, nameExpr, currentClassLower()).at(line);
+            }
+        } else if (acceptOp("{")) {
+            PhpNode nameExpr = expression();
+            expectOp("}");
+            if (acceptOp("(")) {
+                access = new MethodCallNode(nodeTarget, null, -1, nameExpr, parseCallArgs()).at(line);
+            } else {
+                access = new PropertyLValueNode(nodeTarget, null, nameExpr, currentClassLower()).at(line);
+            }
+        } else {
+            throw error("syntax error, unexpected " + describe(peek())
+                    + (nullsafe ? " after \"?->\"" : " after \"->\""));
+        }
+        if (!nullsafe) {
+            return access;
+        }
+        if (access instanceof MethodCallNode mc) {
+            return new NullsafeMemberNode(target, mc).at(line);
+        }
+        return new NullsafeMemberNode(target, (PropertyLValueNode) access).at(line);
+    }
+
+    private PhpNode parseStaticMember(ClassRefNode classRef, int line) {
+        if (peek().kind() == Kind.IDENT) {
+            String member = next().text();
+            if (acceptOp("(")) {
+                return new StaticMethodCallNode(classRef, member, language.methodId(member), null,
+                        scope.thisSlot(), scope.calledClassSlot(), parseCallArgs()).at(line);
+            }
+            return new ClassConstNode(classRef, member).at(line);
+        }
+        if (peek().kind() == Kind.VARIABLE) {
+            Token vt = next();
+            if (acceptOp("(")) {
+                PhpNode nameExpr = scope.variable(vt.text()).at(vt.line());
+                return new StaticMethodCallNode(classRef, null, -1, nameExpr,
+                        scope.thisSlot(), scope.calledClassSlot(), parseCallArgs()).at(line);
+            }
+            return new StaticPropertyLValueNode(classRef, vt.text(), null, currentClassLower()).at(line);
+        }
+        if (acceptOp("{")) {
+            PhpNode nameExpr = expression();
+            expectOp("}");
+            expectOp("(");
+            return new StaticMethodCallNode(classRef, null, -1, nameExpr,
+                    scope.thisSlot(), scope.calledClassSlot(), parseCallArgs()).at(line);
+        }
+        throw error("syntax error, unexpected " + describe(peek()) + " after \"::\"");
+    }
+
+    private PhpNode[] parseCallArgs() {
+        List<PhpNode> args = new ArrayList<>();
+        while (!acceptOp(")")) {
+            args.add(expression());
+            if (!peek().isOp(")")) {
+                expectOp(",");
+            }
+        }
+        return args.toArray(new PhpNode[0]);
+    }
+
+    private ClassRefNode makeClassRefFromName(String name) {
+        String lower = name.toLowerCase();
+        String cur = currentClass != null ? currentClass : "<global>";
+        return switch (lower) {
+            case "self" -> ClassRefNode.self(cur, language.classId(cur));
+            case "parent" -> ClassRefNode.parent(cur, language.classId(cur));
+            case "static" -> ClassRefNode.staticRef(scope.calledClassSlot());
+            default -> ClassRefNode.named(name, language.classId(name));
+        };
+    }
+
+    private ClassRefNode parseClassRef(boolean allowDynamic) {
+        Token t = peek();
+        if (t.kind() == Kind.IDENT) {
+            next();
+            return makeClassRefFromName(t.text());
+        }
+        if (t.kind() == Kind.VARIABLE) {
+            return ClassRefNode.dynamic(postfixOnly());
+        }
+        if (allowDynamic && t.isOp("(")) {
+            return ClassRefNode.dynamic(primary());
+        }
+        throw error("syntax error, unexpected " + describe(t) + ", expecting class name");
+    }
+
+    private PhpNode parseNew(int line) {
+        skipAttributes();
+        if (acceptKeyword("class")) {
+            PhpNode[] args = acceptOp("(") ? parseCallArgs() : new PhpNode[0];
+            long tid = language.nextTemplateId();
+            String anonName = "class@anonymous\0" + magicFile() + ":" + line + "$" + tid;
+            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, true);
+            ClassRefNode ref = ClassRefNode.anonymous(tpl, language.classId(anonName));
+            return new NewNode(ref, args).at(line);
+        }
+        ClassRefNode ref = parseClassRef(false);
+        PhpNode[] args = acceptOp("(") ? parseCallArgs() : new PhpNode[0];
+        return new NewNode(ref, args).at(line);
     }
 
     private static LValueNode lvalueOrNull(PhpNode n) {
@@ -902,6 +1270,13 @@ public final class Parser {
         int line = t.line();
         String name = t.text();
         String lower = name.toLowerCase();
+        if (lower.equals("new")) {
+            return parseNew(line);
+        }
+        if (peek().isOp("::")) {
+            next();
+            return parseStaticMember(makeClassRefFromName(name), line);
+        }
         switch (lower) {
             case "true" -> {
                 return new ConstNode(true).at(line);
@@ -924,7 +1299,16 @@ public final class Parser {
             case "__function__" -> {
                 return new ConstNode(currentFunction).at(line);
             }
-            case "__class__", "__method__", "__namespace__" -> {
+            case "__class__" -> {
+                return new ConstNode(currentClass != null ? currentClass : "").at(line);
+            }
+            case "__method__" -> {
+                String m = currentClass != null && !currentFunction.isEmpty()
+                        ? currentClass + "::" + currentFunction
+                        : currentFunction;
+                return new ConstNode(m).at(line);
+            }
+            case "__namespace__" -> {
                 return new ConstNode("").at(line);
             }
             case "array" -> {
@@ -1028,7 +1412,7 @@ public final class Parser {
                 continue;
             }
             List<Token> sub = Lexer.tokenizeCode(part.value());
-            Parser p = new Parser(language, source, sub, scope, functions, currentFunction);
+            Parser p = new Parser(language, source, sub, scope, functions, topLevelClasses, currentFunction, currentClass);
             PhpNode e = p.expression();
             if (p.peek().kind() != Kind.EOF) {
                 throw new PhpParseError("syntax error in string interpolation", t.line());
