@@ -1,0 +1,17 @@
+num_fields: 11
+name='ID' orgname='ID' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=20 charsetnr=63 flags=49699 type=8 decimals=0 
+name='post_title' orgname='post_title' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=262140 charsetnr=224 flags=4113 type=252 decimals=0 
+name='post_name' orgname='post_name' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=800 charsetnr=224 flags=16393 type=253 decimals=0 
+name='post_date' orgname='post_date' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=19 charsetnr=63 flags=129 type=12 decimals=0 
+name='menu_order' orgname='menu_order' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=11 charsetnr=63 flags=49157 type=3 decimals=0 
+name='price' orgname='price' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=10 charsetnr=63 flags=0 type=246 decimals=2 
+name='raw' orgname='raw' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=16 charsetnr=63 flags=128 type=253 decimals=0 
+name='blobby' orgname='blobby' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=4294967295 charsetnr=63 flags=144 type=252 decimals=0 
+name='alias_id' orgname='ID' table='f' orgtable='t_fields' def='' db='blitz' catalog='def' max_length=0 length=20 charsetnr=63 flags=49699 type=8 decimals=0 
+name='expr' orgname='' table='' orgtable='' def='' db='' catalog='def' max_length=0 length=3 charsetnr=63 flags=32897 type=3 decimals=0 
+name='nothing' orgname='' table='' orgtable='' def='' db='' catalog='def' max_length=0 length=0 charsetnr=63 flags=32896 type=6 decimals=0 
+bool(false)
+string(13) "mysqli_result"
+string(6) "mysqli"
+bool(true)
+bool(true)

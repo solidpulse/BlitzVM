@@ -1,0 +1,22 @@
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+insert 1 rows 1
+insert 2 rows 1
+insert 3 rows 1
+insert 4 rows 1
+int(4)
+int(4)
+siteurl => http://example.test
+blogname => Blitz
+active_plugins => a:0:{}
+date_format => F j, Y
+option_name wp_options 252
+bool(true)
+string(7) "utf8mb4"
+bool(true)
+bool(true)

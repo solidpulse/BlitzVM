@@ -1,0 +1,19 @@
+string(7) "utf8mb4"
+bool(true)
+string(7) "utf8mb4"
+string(46) "it\'s a \"quote\" \\ back\nline\rret\Zend\0nul"
+bool(true)
+bool(true)
+bool(true)
+string(2) "38"
+string(2) "38"
+array(3) {
+  ["v"]=>
+  string(28) "emoji 😀 and ü and 漢字"
+  ["bytes"]=>
+  string(2) "28"
+  ["chars"]=>
+  string(2) "20"
+}
+string(0) ""
+string(5) "plain"
