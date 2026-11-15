@@ -1,6 +1,8 @@
 package dev.phpruntime.builtins;
 
+import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
@@ -46,6 +48,7 @@ final class ArrayFunctions {
         construction();
         mutation();
         sorting();
+        callbacks();
         setOperations();
     }
 
@@ -582,5 +585,154 @@ final class ArrayFunctions {
         }
         a[0] = out;
         return removed;
+    }
+
+    private static void callbacks() {
+        Builtins.def("array_map", 2, -1, ArrayFunctions::arrayMap);
+        Builtins.def("array_filter", 1, 3, ArrayFunctions::arrayFilter);
+        Builtins.def("array_reduce", 2, 3, ArrayFunctions::arrayReduce);
+        Builtins.defRef("array_walk", 2, 3, REF_FIRST, ArrayFunctions::arrayWalk);
+        Builtins.defRef("usort", 2, 2, REF_FIRST, (ctx, a) -> callbackSort(ctx, a, false, false));
+        Builtins.defRef("uasort", 2, 2, REF_FIRST, (ctx, a) -> callbackSort(ctx, a, true, false));
+        Builtins.defRef("uksort", 2, 2, REF_FIRST, (ctx, a) -> callbackSort(ctx, a, true, true));
+        Builtins.def("array_find", 2, 2, (ctx, a) -> findEntry(ctx, a, "array_find", false));
+        Builtins.def("array_find_key", 2, 2, (ctx, a) -> findEntry(ctx, a, "array_find_key", true));
+        Builtins.def("array_any", 2, 2, (ctx, a) -> anyOrAll(ctx, a, true));
+        Builtins.def("array_all", 2, 2, (ctx, a) -> anyOrAll(ctx, a, false));
+    }
+
+    private static PhpArray arrayMap(PhpContext ctx, Object[] a) {
+        PhpCallable cb = a[0] == PhpNull.INSTANCE ? null : PhpCallable.resolve(ctx, a[0], null);
+        if (a.length == 2) {
+            PhpArray src = arr(a, 1, "array_map");
+            PhpArray out = new PhpArray();
+            for (Map.Entry<Object, Object> e : src.entries()) {
+                Object val = cb == null ? PhpOps.copyOnAssign(e.getValue()) : cb.call(ctx, null, null, e.getValue());
+                out.put(e.getKey(), val);
+            }
+            return out;
+        }
+        int numArrays = a.length - 1;
+        List<List<Object>> lists = new ArrayList<>(numArrays);
+        int maxLen = 0;
+        for (int i = 0; i < numArrays; i++) {
+            List<Object> vals = arr(a, i + 1, "array_map").values();
+            lists.add(vals);
+            if (vals.size() > maxLen) {
+                maxLen = vals.size();
+            }
+        }
+        PhpArray out = new PhpArray();
+        for (int idx = 0; idx < maxLen; idx++) {
+            Object[] callArgs = new Object[numArrays];
+            for (int j = 0; j < numArrays; j++) {
+                List<Object> list = lists.get(j);
+                callArgs[j] = idx < list.size() ? list.get(idx) : PhpNull.INSTANCE;
+            }
+            if (cb == null) {
+                PhpArray row = new PhpArray();
+                for (Object v : callArgs) {
+                    row.append(PhpOps.copyOnAssign(v));
+                }
+                out.append(row);
+            } else {
+                out.append(cb.call(ctx, null, null, callArgs));
+            }
+        }
+        return out;
+    }
+
+    private static PhpArray arrayFilter(PhpContext ctx, Object[] a) {
+        PhpArray src = arr(a, 0, "array_filter");
+        PhpCallable cb = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpCallable.resolve(ctx, a[1], null) : null;
+        long mode = a.length > 2 ? PhpOps.toLong(a[2]) : 0L;
+        PhpArray out = new PhpArray();
+        for (Map.Entry<Object, Object> e : src.entries()) {
+            boolean keep;
+            if (cb == null) {
+                keep = PhpOps.toBool(e.getValue());
+            } else if (mode == 2L) { // ARRAY_FILTER_USE_KEY
+                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getKey()));
+            } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
+                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
+            } else {
+                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue()));
+            }
+            if (keep) {
+                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            }
+        }
+        return out;
+    }
+
+    private static Object arrayReduce(PhpContext ctx, Object[] a) {
+        PhpArray src = arr(a, 0, "array_reduce");
+        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        Object acc = a.length > 2 ? PhpOps.copyOnAssign(a[2]) : PhpNull.INSTANCE;
+        for (Object v : src.values()) {
+            acc = cb.call(ctx, null, null, acc, v);
+        }
+        return acc;
+    }
+
+    private static Object arrayWalk(PhpContext ctx, Object[] a) {
+        PhpArray src = arr(a, 0, "array_walk");
+        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        boolean hasExtra = a.length > 2;
+        for (Map.Entry<Object, Object> e : src.entries()) {
+            if (hasExtra) {
+                cb.call(ctx, null, null, e.getValue(), e.getKey(), a[2]);
+            } else {
+                cb.call(ctx, null, null, e.getValue(), e.getKey());
+            }
+        }
+        return true;
+    }
+
+    private static Object callbackSort(PhpContext ctx, Object[] a, boolean keepKeys, boolean byKey) {
+        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        List<Map.Entry<Object, Object>> entries = new ArrayList<>(writable(a).entries());
+        entries.sort((e1, e2) -> {
+            Object res = byKey
+                    ? cb.call(ctx, null, null, e1.getKey(), e2.getKey())
+                    : cb.call(ctx, null, null, e1.getValue(), e2.getValue());
+            return PhpOps.compare(res, 0L);
+        });
+        if (keepKeys) {
+            a[0] = fromEntries(entries, true);
+        } else {
+            PhpArray out = new PhpArray();
+            for (Map.Entry<Object, Object> e : entries) {
+                out.append(PhpOps.copyOnAssign(e.getValue()));
+            }
+            a[0] = out;
+        }
+        return true;
+    }
+
+    private static Object findEntry(PhpContext ctx, Object[] a, String fn, boolean returnKey) {
+        PhpArray src = arr(a, 0, fn);
+        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        for (Map.Entry<Object, Object> e : src.entries()) {
+            if (PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()))) {
+                return returnKey ? e.getKey() : PhpOps.copyOnAssign(e.getValue());
+            }
+        }
+        return PhpNull.INSTANCE;
+    }
+
+    private static boolean anyOrAll(PhpContext ctx, Object[] a, boolean isAny) {
+        PhpArray src = arr(a, 0, isAny ? "array_any" : "array_all");
+        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        for (Map.Entry<Object, Object> e : src.entries()) {
+            boolean matched = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
+            if (isAny && matched) {
+                return true;
+            }
+            if (!isAny && !matched) {
+                return false;
+            }
+        }
+        return !isAny;
     }
 }

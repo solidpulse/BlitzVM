@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
@@ -45,6 +46,8 @@ final class PregFunctions {
         Builtins.defRef("preg_match", 2, 5, 1 << 2, (ctx, a) -> match(ctx, a, false));
         Builtins.defRef("preg_match_all", 2, 5, 1 << 2, (ctx, a) -> match(ctx, a, true));
         Builtins.defRef("preg_replace", 3, 5, 1 << 4, PregFunctions::replace);
+        Builtins.defRef("preg_replace_callback", 3, 6, 1 << 4, PregFunctions::replaceCallback);
+        Builtins.defRef("preg_replace_callback_array", 2, 5, 1 << 3, PregFunctions::replaceCallbackArray);
         Builtins.def("preg_split", 2, 4, PregFunctions::split);
         Builtins.def("preg_quote", 1, 2, (ctx, a) -> quote(PhpOps.toStr(a[0]),
                 a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpOps.toStr(a[1]) : ""));
@@ -278,6 +281,118 @@ final class PregFunctions {
         while ((limit < 0 || done < limit) && m.find()) {
             sb.append(subject, last, m.start());
             expand(sb, replacement, re, m, subject);
+            last = m.end();
+            done++;
+        }
+        sb.append(subject, last, subject.length());
+        count[0] += done;
+        return sb.toString();
+    }
+
+    private static Object replaceCallback(PhpContext ctx, Object[] a) {
+        Object pattern = a[0];
+        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        Object subject = a[2];
+        long limit = a.length > 3 && a[3] != PhpNull.INSTANCE ? PhpOps.toLong(a[3]) : -1;
+        long flags = a.length > 5 ? PhpOps.toLong(a[5]) : 0;
+        long[] count = {0};
+        Object result;
+        if (subject instanceof PhpArray subjects) {
+            PhpArray out = new PhpArray();
+            for (Map.Entry<Object, Object> e : subjects.entries()) {
+                String r = replaceCallbackAll(ctx, pattern, cb, PhpOps.toStr(e.getValue()), limit, flags, count);
+                if (r != null) {
+                    out.put(e.getKey(), r);
+                }
+            }
+            result = out;
+        } else {
+            String r = replaceCallbackAll(ctx, pattern, cb, PhpOps.toStr(subject), limit, flags, count);
+            result = r == null ? PhpNull.INSTANCE : r;
+        }
+        if (a.length > 4) {
+            a[4] = count[0];
+        }
+        return result;
+    }
+
+    private static String replaceCallbackAll(PhpContext ctx, Object pattern, PhpCallable cb, String subject,
+                                               long limit, long flags, long[] count) {
+        if (!(pattern instanceof PhpArray patterns)) {
+            return replaceCallbackOne(ctx, "preg_replace_callback", PhpOps.toStr(pattern), cb, subject, limit, flags, count);
+        }
+        for (Object p : patterns.values()) {
+            subject = replaceCallbackOne(ctx, "preg_replace_callback", PhpOps.toStr(p), cb, subject, limit, flags, count);
+            if (subject == null) {
+                return null;
+            }
+        }
+        return subject;
+    }
+
+    private static Object replaceCallbackArray(PhpContext ctx, Object[] a) {
+        if (!(a[0] instanceof PhpArray patternMap)) {
+            throw new PhpError(PhpError.TYPE_ERROR,
+                    "preg_replace_callback_array(): Argument #1 ($pattern) must be of type array, "
+                            + PhpOps.typeName(a[0]) + " given", null);
+        }
+        List<Map.Entry<String, PhpCallable>> pairs = new ArrayList<>(patternMap.size());
+        for (Map.Entry<Object, Object> e : patternMap.entries()) {
+            pairs.add(Map.entry(PhpOps.toStr(e.getKey()), PhpCallable.resolve(ctx, e.getValue(), null)));
+        }
+        Object subject = a[1];
+        long limit = a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : -1;
+        long flags = a.length > 4 ? PhpOps.toLong(a[4]) : 0;
+        long[] count = {0};
+        Object result;
+        if (subject instanceof PhpArray subjects) {
+            PhpArray out = new PhpArray();
+            for (Map.Entry<Object, Object> e : subjects.entries()) {
+                String s = PhpOps.toStr(e.getValue());
+                for (Map.Entry<String, PhpCallable> p : pairs) {
+                    s = replaceCallbackOne(ctx, "preg_replace_callback_array", p.getKey(), p.getValue(), s, limit, flags, count);
+                    if (s == null) {
+                        break;
+                    }
+                }
+                if (s != null) {
+                    out.put(e.getKey(), s);
+                }
+            }
+            result = out;
+        } else {
+            String s = PhpOps.toStr(subject);
+            for (Map.Entry<String, PhpCallable> p : pairs) {
+                s = replaceCallbackOne(ctx, "preg_replace_callback_array", p.getKey(), p.getValue(), s, limit, flags, count);
+                if (s == null) {
+                    break;
+                }
+            }
+            result = s == null ? PhpNull.INSTANCE : s;
+        }
+        if (a.length > 3) {
+            a[3] = count[0];
+        }
+        return result;
+    }
+
+    private static String replaceCallbackOne(PhpContext ctx, String fnName, String regex, PhpCallable cb,
+                                               String subject, long limit, long flags, long[] count) {
+        PcreTranslator.Compiled re = compile(ctx, fnName, regex);
+        if (re == null) {
+            return null;
+        }
+        boolean offsetCapture = (flags & OFFSET_CAPTURE) != 0;
+        boolean unmatchedNull = (flags & UNMATCHED_AS_NULL) != 0;
+        Offsets off = offsetCapture ? new Offsets(subject) : null;
+        Matcher m = re.pattern.matcher(subject);
+        StringBuilder sb = new StringBuilder();
+        int last = 0;
+        long done = 0;
+        while ((limit < 0 || done < limit) && m.find()) {
+            sb.append(subject, last, m.start());
+            PhpArray matches = matchArray(re, m, subject, off, offsetCapture, unmatchedNull);
+            sb.append(PhpOps.toStr(cb.call(ctx, null, null, matches)));
             last = m.end();
             done++;
         }

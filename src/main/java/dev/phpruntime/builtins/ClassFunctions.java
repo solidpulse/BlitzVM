@@ -54,12 +54,16 @@ final class ClassFunctions {
         });
 
         Builtins.def("class_exists", 1, 2, (ctx, a) -> {
-            PhpClass cls = ctx.lookupClass(PhpOps.toStr(a[0]));
+            boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
+            String name = PhpOps.toStr(a[0]);
+            PhpClass cls = autoload ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
             return cls != null && !cls.isInterface();
         });
 
         Builtins.def("interface_exists", 1, 2, (ctx, a) -> {
-            PhpClass cls = ctx.lookupClass(PhpOps.toStr(a[0]));
+            boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
+            String name = PhpOps.toStr(a[0]);
+            PhpClass cls = autoload ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
             return cls != null && cls.isInterface();
         });
 

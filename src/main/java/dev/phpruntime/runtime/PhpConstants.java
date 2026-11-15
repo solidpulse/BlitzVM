@@ -42,6 +42,8 @@ public final class PhpConstants {
             Map.entry("E_ALL", 32767L),
             Map.entry("COUNT_RECURSIVE", 1L),
             Map.entry("COUNT_NORMAL", 0L),
+            Map.entry("ARRAY_FILTER_USE_BOTH", 1L),
+            Map.entry("ARRAY_FILTER_USE_KEY", 2L),
             Map.entry("SORT_REGULAR", 0L),
             Map.entry("SORT_NUMERIC", 1L),
             Map.entry("SORT_STRING", 2L),
