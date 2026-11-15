@@ -1,0 +1,7 @@
+FOO#6 BAR#24 baz-7|cnt=2
+array (
+  'x' => '[a][1][b][2]',
+  'y' => '[9][c]',
+)
+ab (15) cd (17)|cnt3=4
+a:NULL ab:b

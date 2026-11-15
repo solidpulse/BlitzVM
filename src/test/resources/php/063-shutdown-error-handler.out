@@ -1,0 +1,4 @@
+bool(true)
+before_exit
+shutdown:first|events=2:matched:str:line;2:matched:str:line
+nested_shutdown

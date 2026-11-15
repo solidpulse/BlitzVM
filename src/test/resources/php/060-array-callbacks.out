@@ -1,0 +1,52 @@
+array (
+  'a' => 10,
+  'b' => 20,
+  'c' => 30,
+)
+array (
+  0 => 11,
+  1 => 22,
+  2 => 3,
+)
+array (
+  0 => 
+  array (
+    0 => 1,
+    1 => 'x',
+  ),
+  1 => 
+  array (
+    0 => 2,
+    1 => 'y',
+  ),
+  2 => 
+  array (
+    0 => NULL,
+    1 => 'z',
+  ),
+)
+array (
+  'one' => 1,
+  'two' => 2,
+  'ok' => 'yes',
+)
+array (
+  'one' => 1,
+  'two' => 2,
+)
+array (
+  'one' => 1,
+  'two' => 2,
+)
+array (
+  'two' => 2,
+  'ok' => 'yes',
+)
+20|a-b-c
+P:a=1,P:b=2,P:c=3
+int(2)
+string(1) "c"
+NULL
+bool(true)
+bool(true)
+bool(false)

@@ -1,0 +1,15 @@
+15|25
+154|154|999|3
+49
+17
+SUB:25
+SUB:35
+BOX:SUB|BOX
+123
+bool(true)
+string(7) "Closure"
+bool(true)
+string(6) "object"
+bool(true)
+int(7)
+13

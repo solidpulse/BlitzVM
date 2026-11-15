@@ -1,0 +1,8 @@
+count:2
+bool(false)
+bool(false)
+hello|PARENT_BASE|Parent
+bool(true)
+42|pong:ok
+after_unreg:1
+L2:AutoChild,L1:AutoChild,L2:AutoParent,L1:AutoParent,L2:AutoStatic,L1:AutoStatic

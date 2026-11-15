@@ -1,0 +1,21 @@
+array (
+  'b' => 3,
+  'a' => 1,
+  'c' => 2,
+)
+array (
+  0 => 1,
+  1 => 2,
+  2 => 3,
+)
+one,first2,second2,third2
+array (
+  'bob' => 20,
+  'carol' => 20,
+  'alice' => 30,
+)
+array (
+  'carol' => 20,
+  'bob' => 20,
+  'alice' => 30,
+)
