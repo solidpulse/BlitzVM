@@ -53,7 +53,7 @@ public final class PhpContext {
     private PhpFunction[] functionsById = new PhpFunction[256];
     private final Map<String, PhpClass> classes = new HashMap<>();
     private PhpClass[] classesById = new PhpClass[128];
-    private final Map<String, Object> constants = new HashMap<>();
+    private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
     private long nextAnonymousId = 1;
@@ -217,6 +217,27 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
         return classes.get(name.toLowerCase());
+    }
+
+    /** class_alias(): makes an existing class reachable under another name in this request. */
+    @TruffleBoundary
+    public boolean aliasClass(String alias, PhpClass cls) {
+        String lower = alias.toLowerCase();
+        if (classes.containsKey(lower)) {
+            return false;
+        }
+        classes.put(lower, cls);
+        int id = language.classId(lower);
+        if (id >= classesById.length) {
+            classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
+        }
+        classesById[id] = cls;
+        return true;
+    }
+
+    /** Constants defined with define() or const in this request, in definition order. */
+    public Map<String, Object> userConstants() {
+        return java.util.Collections.unmodifiableMap(constants);
     }
 
     @TruffleBoundary
@@ -405,16 +426,55 @@ public final class PhpContext {
 
     // ------------------------------------------------------------ output
 
+    /** One ob_start() level: its buffered text and, for ob_list_handlers, its handler. */
+    public static final class OutputBuffer {
+        public final StringBuilder text = new StringBuilder();
+        public Object handler;
+        public String handlerName = "default output handler";
+    }
+
+    /** ob_start() levels, innermost last. Empty means echo goes straight to the response. */
+    private final java.util.ArrayList<OutputBuffer> outputBuffers = new java.util.ArrayList<>();
+    private boolean outputStarted;
+
+    public java.util.List<OutputBuffer> outputBuffers() {
+        return outputBuffers;
+    }
+
+    /** Appends to the innermost output buffer, or to the response when none is open. */
     @TruffleBoundary
     public void echo(String s) {
+        if (!outputBuffers.isEmpty()) {
+            outputBuffers.get(outputBuffers.size() - 1).text.append(s);
+            return;
+        }
+        if (!s.isEmpty()) {
+            outputStarted = true;
+        }
         output.append(s);
         if (output.length() >= FLUSH_THRESHOLD) {
-            flush();
+            flushOutput();
         }
     }
 
+    /** headers_sent(): whether any output has gone past the output buffers. */
+    public boolean outputStarted() {
+        return outputStarted;
+    }
+
+    /** End of request: flushes any output buffers still open, innermost first, then the response. */
     @TruffleBoundary
     public void flush() {
+        while (!outputBuffers.isEmpty()) {
+            OutputBuffer top = outputBuffers.remove(outputBuffers.size() - 1);
+            echo(top.text.toString());
+        }
+        flushOutput();
+    }
+
+    /** Writes what has reached the response so far (PHP's flush()); open output buffers stay open. */
+    @TruffleBoundary
+    public void flushOutput() {
         if (output.isEmpty()) {
             return;
         }

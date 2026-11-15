@@ -194,7 +194,18 @@ final class StringFunctions {
         Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(a, 0).replaceAll("<[^>]*>", ""));
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
         Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(s(a, 0).getBytes(StandardCharsets.UTF_8)));
-        Builtins.def("base64_decode", 1, 2, (ctx, a) -> new String(java.util.Base64.getDecoder().decode(s(a, 0)), StandardCharsets.UTF_8));
+        Builtins.def("base64_decode", 1, 2, (ctx, a) -> {
+            // Output is often binary: keep every byte (see HashFunctions.fromBytes). Non-strict
+            // mode skips characters outside the alphabet, as PHP does.
+            boolean strict = a.length > 1 && PhpOps.toBool(a[1]);
+            try {
+                byte[] raw = strict ? java.util.Base64.getDecoder().decode(s(a, 0))
+                        : java.util.Base64.getMimeDecoder().decode(s(a, 0));
+                return HashFunctions.fromBytes(raw);
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        });
         Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(s(a, 0).getBytes(StandardCharsets.UTF_8)));
         Builtins.def("md5", 1, 1, (ctx, a) -> digest("MD5", s(a, 0)));
         Builtins.def("sha1", 1, 1, (ctx, a) -> digest("SHA-1", s(a, 0)));

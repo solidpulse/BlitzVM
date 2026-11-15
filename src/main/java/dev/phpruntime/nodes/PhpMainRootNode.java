@@ -11,6 +11,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpQuery;
 import dev.phpruntime.runtime.PhpRequest;
 
 import java.io.IOException;
@@ -78,12 +79,21 @@ public final class PhpMainRootNode extends PhpRootNode {
                 ctx.markIncluded(f.getAbsoluteFile().normalize().getPath());
             }
         }
-        ctx.writeGlobal("_GET", toArray(request.get));
-        ctx.writeGlobal("_POST", toArray(request.post));
-        PhpArray all = toArray(request.get);
-        request.post.forEach(all::put);
+        // Parse the raw query string and urlencoded body PHP's way (so "a[]=1" builds arrays)
+        // when the host provides them; otherwise fall back to the flat maps.
+        PhpArray get = request.queryString.isEmpty() ? toArray(request.get) : PhpQuery.parseQuery(request.queryString);
+        String contentType = PhpQuery.header(request.headers, "Content-Type");
+        PhpArray post = !request.body.isEmpty() && contentType != null
+                && contentType.toLowerCase().startsWith("application/x-www-form-urlencoded")
+                ? PhpQuery.parseQuery(request.body) : toArray(request.post);
+        ctx.writeGlobal("_GET", get);
+        ctx.writeGlobal("_POST", post);
+        PhpArray all = get.share().forWrite();
+        for (var e : post.entries()) {
+            all.put(e.getKey(), e.getValue());
+        }
         ctx.writeGlobal("_REQUEST", all);
-        ctx.writeGlobal("_COOKIE", new PhpArray());
+        ctx.writeGlobal("_COOKIE", PhpQuery.parseCookies(PhpQuery.header(request.headers, "Cookie")));
         ctx.writeGlobal("_SERVER", toArray(request.server));
     }
 

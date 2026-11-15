@@ -55,21 +55,29 @@ final class EnvFunctions {
             String v = INI.get(PhpOps.toStr(a[0]));
             return v == null ? false : v;
         });
-        Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> {
-            String tmp = System.getenv("TMPDIR");
-            if (tmp == null || tmp.isEmpty()) {
-                return "/tmp";
-            }
-            while (tmp.length() > 1 && tmp.endsWith("/")) {
-                tmp = tmp.substring(0, tmp.length() - 1);
-            }
-            return tmp;
-        });
+        Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> tempDir());
         Builtins.def("extension_loaded", 1, 1, (ctx, a) -> {
             String name = PhpOps.toStr(a[0]);
             return EXTENSIONS.stream().anyMatch(e -> e.equalsIgnoreCase(name));
         });
         Builtins.def("get_loaded_extensions", 0, 1, (ctx, a) ->
                 a.length > 0 && PhpOps.toBool(a[0]) ? new PhpArray() : PhpArray.ofList(EXTENSIONS));
+    }
+
+    /** sys_get_temp_dir(): $TMPDIR without trailing slashes, else /tmp. */
+    static String tempDir() {
+        String tmp = System.getenv("TMPDIR");
+        if (tmp == null || tmp.isEmpty()) {
+            return "/tmp";
+        }
+        while (tmp.length() > 1 && tmp.endsWith("/")) {
+            tmp = tmp.substring(0, tmp.length() - 1);
+        }
+        return tmp;
+    }
+
+    /** The ini settings ini_get() reports. */
+    static Map<String, String> iniValues() {
+        return INI;
     }
 }

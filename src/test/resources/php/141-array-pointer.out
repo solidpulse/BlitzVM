@@ -1,0 +1,43 @@
+int(1)
+string(1) "x"
+int(2)
+string(1) "y"
+int(3)
+string(1) "z"
+bool(false)
+NULL
+bool(false)
+bool(false)
+bool(false)
+NULL
+int(1)
+string(1) "x"
+int(3)
+string(1) "z"
+int(2)
+string(1) "y"
+int(1)
+bool(false)
+NULL
+bool(false)
+string(14) "0=10,1=20,2=30"
+int(3)
+int(2)
+int(3)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+NULL
+bool(false)
+bool(false)
+string(1) "a"
+string(1) "b"
+string(4) "last"
+string(2) "k1"
+string(1) "c"
+int(1)
+int(2)
+int(0)
+int(1)
+int(1)

@@ -58,6 +58,16 @@ final class HtmlEntities {
     private HtmlEntities() {
     }
 
+    /** The HTML 4.01 named entities as (name, code point) pairs, in PHP's table order. */
+    static java.util.List<Map.Entry<String, Integer>> namedTable() {
+        java.util.List<Map.Entry<String, Integer>> out = new java.util.ArrayList<>();
+        for (String pair : TABLE.split(" ")) {
+            int colon = pair.indexOf(':');
+            out.add(Map.entry(pair.substring(0, colon), Integer.parseInt(pair.substring(colon + 1))));
+        }
+        return out;
+    }
+
     /** html_entity_decode: all named HTML 4.01 entities plus numeric ones. */
     static String decodeAll(String s, long flags) {
         return decode(s, flags, true);

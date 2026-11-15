@@ -24,6 +24,10 @@ public final class PhpArray implements TruffleObject {
     private long nextIndex;
     /** Number of extra owners. 0 means exclusively owned and safe to mutate in place. */
     private int shared;
+    /** Internal pointer (reset/next/current) as a position in iteration order; valid when 0 <= pointer < size. */
+    private int pointer;
+    /** Keys in order, built on demand for the pointer functions; dropped on any structural change. */
+    private List<Object> keyCache;
 
     public PhpArray() {
         this.map = new LinkedHashMap<>();
@@ -53,7 +57,9 @@ public final class PhpArray implements TruffleObject {
                 e.setValue(inner.share());
             }
         }
-        return new PhpArray(copy, nextIndex);
+        PhpArray result = new PhpArray(copy, nextIndex);
+        result.pointer = pointer;
+        return result;
     }
 
     @TruffleBoundary
@@ -119,7 +125,9 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public void put(Object key, Object value) {
         Object k = normalizeKey(key);
-        map.put(k, value);
+        if (map.put(k, value) == null && keyCache != null) {
+            keyCache = null;
+        }
         if (k instanceof Long l && l >= nextIndex) {
             nextIndex = l + 1;
         }
@@ -127,12 +135,14 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     public void append(Object value) {
+        keyCache = null;
         map.put(nextIndex, value);
         nextIndex++;
     }
 
     @TruffleBoundary
     public void remove(Object key) {
+        keyCache = null;
         map.remove(normalizeKey(key));
     }
 
@@ -172,6 +182,8 @@ public final class PhpArray implements TruffleObject {
             lastKey = it.next();
         }
         Object v = map.remove(lastKey);
+        keyCache = null;
+        pointer = 0;
         recomputeNextIndex();
         return v;
     }
@@ -184,6 +196,7 @@ public final class PhpArray implements TruffleObject {
         Object firstKey = map.keySet().iterator().next();
         Object v = map.remove(firstKey);
         reindex();
+        pointer = 0;
         return v;
     }
 
@@ -200,6 +213,7 @@ public final class PhpArray implements TruffleObject {
             }
         }
         map = fresh;
+        keyCache = null;
         nextIndex = i;
     }
 
@@ -231,6 +245,54 @@ public final class PhpArray implements TruffleObject {
             a.append(v);
         }
         return a;
+    }
+
+    // ---------------------------------------------------------------- internal pointer
+
+    private List<Object> orderedKeys() {
+        if (keyCache == null) {
+            keyCache = new ArrayList<>(map.keySet());
+        }
+        return keyCache;
+    }
+
+    /** Key at the internal pointer, or null when the pointer is past either end. */
+    @TruffleBoundary
+    public Object pointerKey() {
+        List<Object> keys = orderedKeys();
+        return pointer >= 0 && pointer < keys.size() ? keys.get(pointer) : null;
+    }
+
+    /** Value at the internal pointer, or null when the pointer is past either end. */
+    @TruffleBoundary
+    public Object pointerValue() {
+        Object k = pointerKey();
+        return k == null ? null : map.get(k);
+    }
+
+    @TruffleBoundary
+    public void pointerReset() {
+        pointer = 0;
+    }
+
+    @TruffleBoundary
+    public void pointerEnd() {
+        pointer = map.size() - 1;
+    }
+
+    /** Moves forward; a pointer already past either end stays there. */
+    @TruffleBoundary
+    public void pointerNext() {
+        if (pointer >= 0 && pointer < map.size()) {
+            pointer++;
+        }
+    }
+
+    @TruffleBoundary
+    public void pointerPrev() {
+        if (pointer >= 0 && pointer < map.size()) {
+            pointer--;
+        }
     }
 
     @Override

@@ -37,6 +37,14 @@ public final class Builtins {
         SerializeFunctions.register();
         EnvFunctions.register();
         MysqliFunctions.register();
+        OutputBufferFunctions.register();
+        PointerFunctions.register();
+        StreamFunctions.register();
+        PasswordFunctions.register();
+        ZlibFunctions.register();
+        HttpFunctions.register();
+        MbConvertFunctions.register();
+        MiscFunctions.register();
     }
 
     private Builtins() {

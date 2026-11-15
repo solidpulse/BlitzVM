@@ -89,6 +89,9 @@ public final class PhpOps {
         if (v instanceof PhpArray a) {
             return a.size() > 0 ? 1 : 0;
         }
+        if (v instanceof PhpResource r) {
+            return r.id();
+        }
         return 0;
     }
 
@@ -237,6 +240,9 @@ public final class PhpOps {
         }
         if (v instanceof PhpArray) {
             return "Array";
+        }
+        if (v instanceof PhpResource r) {
+            return r.toString();
         }
         if (v instanceof PhpObject o) {
             PhpClass.MethodEntry ts = o.phpClass().toStringMethod();
@@ -433,6 +439,9 @@ public final class PhpOps {
         }
         if (v instanceof PhpObject) {
             return "object";
+        }
+        if (v instanceof PhpResource) {
+            return "resource";
         }
         if (v == PhpNull.INSTANCE) {
             return "null";

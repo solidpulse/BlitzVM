@@ -1,0 +1,27 @@
+start
+int(0)
+bool(false)
+bool(false)
+array(0) {
+}
+array(0) {
+}
+string(3) "one"
+int(3)
+string(3) "one"
+int(0)
+string(21) "outer-inner-éint(2)
+"
+int(2)
+int(1)
+int(15)
+string(22) "default output handler"
+keep
+string(6) "-after"
+gf
+string(2) "gf"
+bool(false)
+bool(false)
+string(19) "<p>Hello World</p>
+"
+level1 level2
