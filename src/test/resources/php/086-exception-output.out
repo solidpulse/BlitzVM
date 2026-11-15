@@ -1,0 +1,95 @@
+=== get_class ===
+DetailedException / LogicException
+=== print_r ===
+DetailedException Object
+(
+    [message:protected] => request failed
+    [string:Exception:private] => 
+    [code:protected] => 502
+    [file:protected] => 086-exception-output.php
+    [line:protected] => 37
+    [trace:Exception:private] => Array
+        (
+            [0] => Array
+                (
+                    [file] => 086-exception-output.php
+                    [line] => 41
+                    [function] => makeEx
+                )
+
+        )
+
+    [previous:Exception:private] => LogicException Object
+        (
+            [message:protected] => root cause
+            [string:Exception:private] => 
+            [code:protected] => 10
+            [file:protected] => 086-exception-output.php
+            [line:protected] => 35
+            [trace:Exception:private] => Array
+                (
+                    [0] => Array
+                        (
+                            [file] => 086-exception-output.php
+                            [line] => 41
+                            [function] => makeEx
+                        )
+
+                )
+
+            [previous:Exception:private] => 
+        )
+
+    [token:DetailedException:private] => sec
+    [retry:protected] => 3
+    [tag] => net
+)
+=== print_r plain ===
+DetailedException Object
+(
+    [message:protected] => plain msg
+    [string:Exception:private] => 
+    [code:protected] => 7
+    [file:protected] => virtual/origin.php
+    [line:protected] => 42
+    [trace:Exception:private] => Array
+        (
+        )
+
+    [previous:Exception:private] => 
+    [token:DetailedException:private] => sec
+    [retry:protected] => 3
+    [tag] => net
+)
+=== getTraceAsString ===
+#0 086-exception-output.php(41): makeEx()
+#1 {main}
+=== __toString ===
+LogicException: root cause in 086-exception-output.php:35
+Stack trace:
+#0 086-exception-output.php(41): makeEx()
+#1 {main}
+
+Next DetailedException: request failed in 086-exception-output.php:37
+Stack trace:
+#0 086-exception-output.php(41): makeEx()
+#1 {main}
+=== empty msg __toString ===
+Error in 086-exception-output.php:69
+Stack trace:
+#0 {main}
+=== TypeError print_r ===
+TypeError Object
+(
+    [message:protected] => bad type
+    [string:Error:private] => 
+    [code:protected] => 5
+    [file:protected] => 086-exception-output.php
+    [line:protected] => 76
+    [trace:Error:private] => Array
+        (
+        )
+
+    [previous:Error:private] => 
+)
+clone error: Error: Trying to clone an uncloneable object of class DetailedException

@@ -47,6 +47,25 @@ final class CoreFunctions {
             }
         });
         Builtins.def("getmypid", 0, 0, (ctx, a) -> ProcessHandle.current().pid());
+        Builtins.def("debug_backtrace", 0, 2, (ctx, a) -> {
+            long options = a.length >= 1 ? PhpOps.toLong(a[0]) : dev.phpruntime.runtime.PhpBacktrace.PROVIDE_OBJECT;
+            int limit = a.length >= 2 ? (int) PhpOps.toLong(a[1]) : 0;
+            boolean provideObj = (options & dev.phpruntime.runtime.PhpBacktrace.PROVIDE_OBJECT) != 0;
+            boolean omitArgs = (options & dev.phpruntime.runtime.PhpBacktrace.IGNORE_ARGS) != 0;
+            dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames =
+                    dev.phpruntime.runtime.PhpBacktrace.captureDebug(options, limit);
+            return dev.phpruntime.runtime.PhpBacktrace.buildTraceArray(frames, provideObj, omitArgs);
+        });
+        Builtins.def("debug_print_backtrace", 0, 2, (ctx, a) -> {
+            long options = a.length >= 1 ? PhpOps.toLong(a[0]) : 0L;
+            int limit = a.length >= 2 ? (int) PhpOps.toLong(a[1]) : 0;
+            boolean ignoreArgs = (options & dev.phpruntime.runtime.PhpBacktrace.IGNORE_ARGS) != 0;
+            dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames =
+                    dev.phpruntime.runtime.PhpBacktrace.captureDebug(options, limit);
+            ctx.echo(dev.phpruntime.runtime.PhpBacktrace.formatDebugPrintBacktrace(frames, ignoreArgs));
+            return PhpNull.INSTANCE;
+        });
+        // TODO(callables): set_exception_handler / restore_exception_handler require callable support (task 03).
     }
 
     private static void types() {

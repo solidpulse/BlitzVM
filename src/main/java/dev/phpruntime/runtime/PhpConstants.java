@@ -126,7 +126,9 @@ public final class PhpConstants {
             Map.entry("PHP_URL_FRAGMENT", 7L),
             Map.entry("PHP_QUERY_RFC1738", 1L),
             Map.entry("PHP_QUERY_RFC3986", 2L),
-            Map.entry("PHP_ROUND_HALF_UP", 1L));
+            Map.entry("PHP_ROUND_HALF_UP", 1L),
+            Map.entry("DEBUG_BACKTRACE_PROVIDE_OBJECT", 1L),
+            Map.entry("DEBUG_BACKTRACE_IGNORE_ARGS", 2L));
 
     private PhpConstants() {
     }

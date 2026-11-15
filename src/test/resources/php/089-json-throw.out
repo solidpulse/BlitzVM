@@ -1,0 +1,12 @@
+initial last_error: 4 (Syntax error)
+decode empty => JsonException code=4 msg=Syntax error (last_err=4)
+decode syntax => JsonException code=4 msg=Syntax error (last_err=4)
+decode ctrl => JsonException code=3 msg=Control character error, possibly incorrectly encoded (last_err=4)
+decode utf16 => JsonException code=10 msg=Single unpaired UTF-16 surrogate in unicode escape (last_err=4)
+decode depth => JsonException code=1 msg=Maximum stack depth exceeded (last_err=4)
+decode ok: 42 last_err=4
+encode nan => JsonException code=7 msg=Inf and NaN cannot be JSON encoded (last_err=4)
+encode inf => JsonException code=7 msg=Inf and NaN cannot be JSON encoded (last_err=4)
+encode depth => JsonException code=1 msg=Maximum stack depth exceeded (last_err=4)
+string(5) "[1,0]"
+encode ok: {"a":1} last_err=7

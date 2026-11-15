@@ -82,9 +82,11 @@ public final class PhpError extends AbstractTruffleException {
         return new PhpError(kind, detail, catchable, customFile, customLine, location, capturedTrace);
     }
 
-    /** Attaches a pre-captured guest call stack (used e.g. when a callee fails on entry). */
+    /** Attaches a pre-captured guest call stack if none is attached yet. */
     public PhpError withTrace(PhpBacktrace.LazyTrace trace) {
-        this.capturedTrace = trace;
+        if (this.capturedTrace == null) {
+            this.capturedTrace = trace;
+        }
         return this;
     }
 
@@ -156,7 +158,8 @@ public final class PhpError extends AbstractTruffleException {
             } else if (root instanceof dev.phpruntime.nodes.PhpMainRootNode) {
                 com.oracle.truffle.api.frame.Frame frame = el.getFrame();
                 if (frame != null && frame.getArguments().length > 0) {
-                    pendingArgs = new Object[]{frame.getArguments()[0]};
+                    pendingFn = null;
+                    pendingArgs = new Object[0];
                 } else {
                     break;
                 }

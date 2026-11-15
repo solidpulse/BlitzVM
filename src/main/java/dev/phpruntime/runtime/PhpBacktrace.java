@@ -65,6 +65,18 @@ public final class PhpBacktrace {
         return new LazyTrace(walkFrames(topLocation, includeArgs, false, 0));
     }
 
+    /** Captures a guest stack trace whose frame #0 is the active builtin call {@code builtinName}. */
+    @TruffleBoundary
+    public static LazyTrace captureFromBuiltin(Node callSite, String builtinName) {
+        FrameEntry[] callerFrames = walkFrames(callSite, false, false, 0);
+        String file = sourcePath(callSite);
+        int line = sourceLine(callSite);
+        FrameEntry[] all = new FrameEntry[callerFrames.length + 1];
+        all[0] = new FrameEntry(file, line, builtinName, null, null, null, null);
+        System.arraycopy(callerFrames, 0, all, 1, callerFrames.length);
+        return new LazyTrace(all);
+    }
+
     /** Captures frames for {@code debug_backtrace($options, $limit)} and {@code debug_print_backtrace()}. */
     @TruffleBoundary
     public static FrameEntry[] captureDebug(long options, int limit) {
@@ -139,9 +151,9 @@ public final class PhpBacktrace {
                 Frame f = fi.getFrame(FrameInstance.FrameAccess.READ_ONLY);
                 Object[] rawArgs = f.getArguments();
                 if (rawArgs.length > 0) {
-                    // Included script: PHP always records the included file path in args.
                     Object incPath = rawArgs[0];
-                    pending[0] = new PendingCall(null, null, null, null, new Object[]{incPath});
+                    pending[0] = new PendingCall(null, null, null, null,
+                            includeArgs ? new Object[]{incPath} : null);
                 } else {
                     // Entry {main} reached.
                     return Boolean.TRUE;
@@ -176,7 +188,7 @@ public final class PhpBacktrace {
                 row.put("line", (long) f.line());
             }
             boolean isInclude = isIncludeName(f.function());
-            if (isInclude && f.args() != null) {
+            if (isInclude && !omitFunctionArgs && f.args() != null) {
                 row.put("args", argsToPhpArray(f.args()));
                 row.put("function", f.function());
             } else {
@@ -289,7 +301,7 @@ public final class PhpBacktrace {
                 sb.append(f.className()).append(f.type());
             }
             sb.append(f.function()).append('(');
-            if ((!ignoreArgs || isIncludeName(f.function())) && f.args() != null) {
+            if (!ignoreArgs && f.args() != null) {
                 for (int j = 0; j < f.args().length; j++) {
                     if (j > 0) {
                         sb.append(", ");

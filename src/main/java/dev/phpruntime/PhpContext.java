@@ -52,6 +52,7 @@ public final class PhpContext {
     private PhpRequest request;
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
+    private Node currentBuiltinCallSite;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
@@ -90,6 +91,14 @@ public final class PhpContext {
 
     public void setBuiltinState(Object state) {
         builtinState = state;
+    }
+
+    public Node currentBuiltinCallSite() {
+        return currentBuiltinCallSite;
+    }
+
+    public void setCurrentBuiltinCallSite(Node site) {
+        currentBuiltinCallSite = site;
     }
 
     // ------------------------------------------------------------ globals
@@ -150,10 +159,7 @@ public final class PhpContext {
                 return cls;
             }
         }
-        if (language.builtinClassTemplateById(id) != null) {
-            return resolveBuiltinById(id);
-        }
-        return null;
+        return resolveBuiltinById(id);
     }
 
     @TruffleBoundary

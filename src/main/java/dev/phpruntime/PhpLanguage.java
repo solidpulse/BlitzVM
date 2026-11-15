@@ -49,6 +49,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     private volatile Map<String, PhpClassTemplate> builtinClassTemplates;
     private volatile String[] builtinClassNamesById;
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private Map<String, PhpClassTemplate> ensureBuiltinTemplates() {
         Map<String, PhpClassTemplate> m = builtinClassTemplates;
         if (m == null) {
@@ -84,8 +85,11 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     }
 
     public PhpClassTemplate builtinClassTemplateById(int id) {
-        ensureBuiltinTemplates();
         String[] names = builtinClassNamesById;
+        if (names == null) {
+            ensureBuiltinTemplates();
+            names = builtinClassNamesById;
+        }
         if (id >= 0 && id < names.length && names[id] != null) {
             return builtinClassTemplates.get(names[id]);
         }
@@ -139,6 +143,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     @Override
     protected PhpContext createContext(Env env) {
+        ensureBuiltinTemplates();
         return new PhpContext(this, env);
     }
 

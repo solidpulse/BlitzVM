@@ -1,0 +1,15 @@
+=== default debug_backtrace ===
+#0 088-backtrace.php:26 leaf obj=none args=[7,"hello",true,null]
+#1 088-backtrace.php:22 Probe::middle obj=none args=[[7,"hello"]]
+#2 088-backtrace.php:58 Probe->entry obj=Probe args=[7,"hello"]
+=== IGNORE_ARGS ===
+#0 088-backtrace.php:26 leaf obj=none args=omitted
+#1 088-backtrace.php:22 Probe::middle obj=none args=omitted
+#2 088-backtrace.php:58 Probe->entry obj=none args=omitted
+=== limit=2, no object ===
+#0 088-backtrace.php:26 leaf obj=none args=[7,"hello",true,null]
+#1 088-backtrace.php:22 Probe::middle obj=none args=[[7,"hello"]]
+=== exception getTrace ===
+#0 088-backtrace.php:26 leaf obj=none args=omitted
+#1 088-backtrace.php:22 Probe::middle obj=none args=omitted
+#2 088-backtrace.php:58 Probe->entry obj=none args=omitted
