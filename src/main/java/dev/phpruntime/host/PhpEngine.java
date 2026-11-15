@@ -9,6 +9,7 @@ import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.SourceSection;
+import org.graalvm.polyglot.io.IOAccess;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -68,7 +69,7 @@ public final class PhpEngine implements AutoCloseable {
         request.scheduler = task == null ? GuestScheduler.NONE : task;
         request.install();
         boolean js = JsLanguage.ID.equals(source.getLanguage());
-        try (Context ctx = Context.newBuilder(source.getLanguage()).engine(engine).out(out).err(err).build()) {
+        try (Context ctx = Context.newBuilder(source.getLanguage()).engine(engine).allowIO(IOAccess.ALL).out(out).err(err).build()) {
             if (task != null) {
                 task.bindContext(ctx);
                 task.acquire();
