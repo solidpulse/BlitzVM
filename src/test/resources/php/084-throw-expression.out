@@ -1,0 +1,10 @@
+present
+coalesce caught: missing value
+yes
+ternary caught: cond false
+and-ok
+done
+or caught: or-failed
+low-or caught: low-prec-or
+bool(true)
+string(8) "assigned"
