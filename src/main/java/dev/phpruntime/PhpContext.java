@@ -275,6 +275,7 @@ public final class PhpContext {
 
     /** ob_start() levels, innermost last. Empty means echo goes straight to the response. */
     private final java.util.ArrayList<OutputBuffer> outputBuffers = new java.util.ArrayList<>();
+    private boolean outputStarted;
 
     public java.util.List<OutputBuffer> outputBuffers() {
         return outputBuffers;
@@ -287,10 +288,18 @@ public final class PhpContext {
             outputBuffers.get(outputBuffers.size() - 1).text.append(s);
             return;
         }
+        if (!s.isEmpty()) {
+            outputStarted = true;
+        }
         output.append(s);
         if (output.length() >= FLUSH_THRESHOLD) {
             flushOutput();
         }
+    }
+
+    /** headers_sent(): whether any output has gone past the output buffers. */
+    public boolean outputStarted() {
+        return outputStarted;
     }
 
     /** End of request: flushes any output buffers still open, innermost first, then the response. */

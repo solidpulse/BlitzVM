@@ -1,0 +1,77 @@
+array(9) {
+  ["a"]=>
+  string(1) "1"
+  ["b"]=>
+  array(2) {
+    [0]=>
+    string(1) "2"
+    [1]=>
+    string(1) "3"
+  }
+  ["c"]=>
+  array(1) {
+    ["k"]=>
+    string(1) "v"
+  }
+  ["d"]=>
+  string(4) "x y!"
+  ["e"]=>
+  string(0) ""
+  ["f_g"]=>
+  string(1) "1"
+  ["h_i"]=>
+  string(1) "2"
+  ["j"]=>
+  array(1) {
+    ["x"]=>
+    array(1) {
+      ["y"]=>
+      string(1) "z"
+    }
+  }
+  ["k"]=>
+  array(3) {
+    [0]=>
+    string(1) "1"
+    [5]=>
+    string(1) "2"
+    [6]=>
+    string(1) "3"
+  }
+}
+array(6) {
+  ["a_b"]=>
+  string(1) "1"
+  ["c]"]=>
+  string(1) "2"
+  ["m"]=>
+  array(2) {
+    [0]=>
+    array(1) {
+      [0]=>
+      string(1) "5"
+    }
+    [1]=>
+    array(1) {
+      [0]=>
+      string(1) "6"
+    }
+  }
+  ["n"]=>
+  array(1) {
+    ["a"]=>
+    array(2) {
+      [0]=>
+      string(1) "7"
+      [1]=>
+      string(1) "8"
+    }
+  }
+  ["a"]=>
+  string(4) "last"
+  ["q"]=>
+  string(3) "€"
+}
+array(0) {
+}
+bool(true)

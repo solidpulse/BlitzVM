@@ -40,6 +40,7 @@ public final class Builtins {
         StreamFunctions.register();
         PasswordFunctions.register();
         ZlibFunctions.register();
+        HttpFunctions.register();
     }
 
     private Builtins() {
