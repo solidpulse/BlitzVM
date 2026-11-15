@@ -53,6 +53,15 @@ public final class PhpConstants {
             Map.entry("JSON_UNESCAPED_UNICODE", 256L),
             Map.entry("JSON_THROW_ON_ERROR", 4194304L),
             Map.entry("ENT_QUOTES", 3L),
+            Map.entry("ENT_COMPAT", 2L),
+            Map.entry("ENT_NOQUOTES", 0L),
+            Map.entry("ENT_IGNORE", 4L),
+            Map.entry("ENT_SUBSTITUTE", 8L),
+            Map.entry("ENT_DISALLOWED", 128L),
+            Map.entry("ENT_HTML401", 0L),
+            Map.entry("ENT_XML1", 16L),
+            Map.entry("ENT_XHTML", 32L),
+            Map.entry("ENT_HTML5", 48L),
             Map.entry("PHP_ROUND_HALF_UP", 1L));
 
     private PhpConstants() {
