@@ -23,6 +23,7 @@ public final class DispatchCallNode extends Node {
     @Child private IndirectCallNode indirectCall;
 
     public Object call(RootCallTarget target, Object[] args) {
+        // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = directCall;
         if (direct != null && direct.getCallTarget() == target) {
             return direct.call(args);

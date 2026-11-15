@@ -26,13 +26,17 @@ public final class PropertyLValueNode extends LValueNode {
     @Child private DynamicObject.PutNode putNode = DynamicObject.PutNode.create();
     @Child private DynamicObject.RemoveKeyNode removeNode = DynamicObject.RemoveKeyNode.create();
 
-    @CompilationFinal private long cachedHierarchyId = -1;
-    @CompilationFinal private long cachedCallerHierarchyId = -2;
-    @CompilationFinal private String cachedStorageKey;
-    @CompilationFinal private boolean cachedProtected;
-    @CompilationFinal private boolean cachedAccessible;
-    @CompilationFinal private Visibility cachedVisibility;
-    @CompilationFinal private String cachedDeclaringClass;
+    /**
+     * How {@link #staticName} resolves for one class hierarchy. Published as a single immutable
+     * object so a request reading it while another installs it never sees half an entry.
+     */
+    private record Resolution(long hierarchyId, long callerHierarchyId, String storageKey,
+                              boolean isProtected, boolean accessible) {
+    }
+
+    private static final Resolution MEGAMORPHIC = new Resolution(-2, -2, null, false, false);
+
+    @CompilationFinal private Resolution cache;
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
         this.targetExpr = targetExpr;
@@ -212,10 +216,11 @@ public final class PropertyLValueNode extends LValueNode {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
-            if (h == cachedHierarchyId && (!cachedProtected || cachedCallerHierarchyId == callerHierarchyId())) {
-                return cachedAccessible ? cachedStorageKey : null;
+            Resolution c = cache;
+            if (c != null && h == c.hierarchyId() && (!c.isProtected() || c.callerHierarchyId() == callerHierarchyId())) {
+                return c.accessible() ? c.storageKey() : null;
             }
-            if (cachedHierarchyId != -2) {
+            if (c != MEGAMORPHIC) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 PhpClass.PropertyResolution res = cacheResolution(cls, h);
                 return res.accessible() ? res.storageKey() : null;
@@ -239,16 +244,10 @@ public final class PropertyLValueNode extends LValueNode {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
-            if (cachedHierarchyId == -1) {
-                cachedHierarchyId = h;
-                cachedCallerHierarchyId = callerH;
-                cachedStorageKey = res.storageKey();
-                cachedProtected = res.visibility() == Visibility.PROTECTED;
-                cachedAccessible = res.accessible();
-                cachedVisibility = res.visibility();
-                cachedDeclaringClass = res.declaringClass();
-            } else if (cachedHierarchyId != h) {
-                cachedHierarchyId = -2;
+            if (cache == null) {
+                cache = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED, res.accessible());
+            } else if (cache.hierarchyId() != h) {
+                cache = MEGAMORPHIC;
             }
         } finally {
             lock.unlock();

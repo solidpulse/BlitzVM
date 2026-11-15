@@ -59,6 +59,7 @@ public final class CallNode extends PhpNode {
             throw new PhpError("Call to undefined function " + name + "()", this);
         }
         RootCallTarget target = fn.callTarget();
+        // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = callNode;
         if (direct != null && direct.getCallTarget() == target) {
             return direct.call(evalArgs(frame));
