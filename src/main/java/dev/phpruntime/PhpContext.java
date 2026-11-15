@@ -266,16 +266,46 @@ public final class PhpContext {
 
     // ------------------------------------------------------------ output
 
+    /** One ob_start() level: its buffered text and, for ob_list_handlers, its handler. */
+    public static final class OutputBuffer {
+        public final StringBuilder text = new StringBuilder();
+        public Object handler;
+        public String handlerName = "default output handler";
+    }
+
+    /** ob_start() levels, innermost last. Empty means echo goes straight to the response. */
+    private final java.util.ArrayList<OutputBuffer> outputBuffers = new java.util.ArrayList<>();
+
+    public java.util.List<OutputBuffer> outputBuffers() {
+        return outputBuffers;
+    }
+
+    /** Appends to the innermost output buffer, or to the response when none is open. */
     @TruffleBoundary
     public void echo(String s) {
+        if (!outputBuffers.isEmpty()) {
+            outputBuffers.get(outputBuffers.size() - 1).text.append(s);
+            return;
+        }
         output.append(s);
         if (output.length() >= FLUSH_THRESHOLD) {
-            flush();
+            flushOutput();
         }
     }
 
+    /** End of request: flushes any output buffers still open, innermost first, then the response. */
     @TruffleBoundary
     public void flush() {
+        while (!outputBuffers.isEmpty()) {
+            OutputBuffer top = outputBuffers.remove(outputBuffers.size() - 1);
+            echo(top.text.toString());
+        }
+        flushOutput();
+    }
+
+    /** Writes what has reached the response so far (PHP's flush()); open output buffers stay open. */
+    @TruffleBoundary
+    public void flushOutput() {
         if (output.isEmpty()) {
             return;
         }

@@ -35,6 +35,7 @@ public final class Builtins {
         CtypeFunctions.register();
         SerializeFunctions.register();
         EnvFunctions.register();
+        OutputBufferFunctions.register();
     }
 
     private Builtins() {

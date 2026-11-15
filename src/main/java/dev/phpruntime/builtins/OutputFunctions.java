@@ -52,7 +52,7 @@ final class OutputFunctions {
             return (long) s.getBytes(StandardCharsets.UTF_8).length;
         });
         Builtins.def("flush", 0, 0, (ctx, a) -> {
-            ctx.flush();
+            ctx.flushOutput();
             return PhpNull.INSTANCE;
         });
     }
