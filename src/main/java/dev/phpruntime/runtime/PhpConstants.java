@@ -5,6 +5,11 @@ import java.util.Map;
 /** Built-in compile-time PHP constants and true/false/null lookup. */
 public final class PhpConstants {
 
+    /** Every built-in constant, for get_defined_constants(). */
+    public static Map<String, Object> all() {
+        return COMPILE_TIME;
+    }
+
     private static final Map<String, Object> COMPILE_TIME = Map.ofEntries(
             Map.entry("DIRECTORY_SEPARATOR", "/"),
             Map.entry("PATH_SEPARATOR", ":"),

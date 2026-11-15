@@ -1,0 +1,62 @@
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+string(5) "ASCII"
+string(5) "UTF-8"
+bool(true)
+string(5) "café"
+bool(true)
+string(16) "valid utf8 café"
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+string(12) "192.168.1.42"
+bool(true)
+string(11) "2001:db8::1"
+bool(false)
+bool(false)
+array(2) {
+  [0]=>
+  string(5) "alpha"
+  [1]=>
+  string(11) "inspectSelf"
+}
+array(3) {
+  [0]=>
+  string(5) "delta"
+  [1]=>
+  string(5) "alpha"
+  [2]=>
+  string(11) "inspectSelf"
+}
+array(4) {
+  [0]=>
+  string(5) "alpha"
+  [1]=>
+  string(4) "beta"
+  [2]=>
+  string(5) "gamma"
+  [3]=>
+  string(11) "inspectSelf"
+}
+bool(true)
+bool(true)
+bool(true)
+string(10) "OrigWidget"
+string(4) "&lt;"
+string(6) "&quot;"
+string(6) "&#039;"
+int(5)
+string(5) "&amp;"
+string(8) "&eacute;"
+string(6) "&copy;"
+bool(true)
+bool(false)
+NULL
+bool(true)
+bool(true)
+bool(true)
+string(5) "val42"
+bool(true)

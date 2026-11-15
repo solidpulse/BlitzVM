@@ -75,4 +75,9 @@ final class EnvFunctions {
         }
         return tmp;
     }
+
+    /** The ini settings ini_get() reports. */
+    static Map<String, String> iniValues() {
+        return INI;
+    }
 }

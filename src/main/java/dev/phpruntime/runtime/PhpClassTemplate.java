@@ -54,7 +54,8 @@ public final class PhpClassTemplate {
         this.interfaceNames = List.copyOf(interfaceNames);
         this.properties = List.copyOf(properties);
         this.constants = List.copyOf(constants);
-        this.methods = Map.copyOf(methods);
+        // Declaration order matters for get_class_methods.
+        this.methods = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(methods));
         this.rootShape = Shape.newBuilder()
                 .layout(PhpObject.class, PhpObject.LOOKUP)
                 .dynamicType(this)

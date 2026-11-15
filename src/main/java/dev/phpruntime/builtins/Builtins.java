@@ -41,6 +41,8 @@ public final class Builtins {
         PasswordFunctions.register();
         ZlibFunctions.register();
         HttpFunctions.register();
+        MbConvertFunctions.register();
+        MiscFunctions.register();
     }
 
     private Builtins() {

@@ -87,6 +87,19 @@ final class HashFunctions {
                 return false;
             }
         });
+        Builtins.def("sodium_crypto_generichash", 1, 3, (ctx, a) -> {
+            byte[] msg = BinaryStrings.bytes(PhpOps.toStr(a[0]));
+            byte[] key = a.length > 1 && a[1] != dev.phpruntime.runtime.PhpNull.INSTANCE
+                    ? BinaryStrings.bytes(PhpOps.toStr(a[1])) : new byte[0];
+            long len = a.length > 2 ? PhpOps.toLong(a[2]) : 32L;
+            if (key.length != 0 && (key.length < 16 || key.length > 64)) {
+                throw new PhpError("SodiumException", "sodium_crypto_generichash(): Argument #2 ($key) must be at least 16 bytes long and at most 64 bytes long", null);
+            }
+            if (len < 16 || len > 64) {
+                throw new PhpError("SodiumException", "sodium_crypto_generichash(): Argument #3 ($length) must be at least 16 and at most 64", null);
+            }
+            return fromBytes(Blake2b.hash(msg, key, (int) len));
+        });
     }
 
     static byte[] bytes(String s) {

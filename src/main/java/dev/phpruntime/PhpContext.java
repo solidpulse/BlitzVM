@@ -42,7 +42,7 @@ public final class PhpContext {
     private PhpFunction[] functionsById = new PhpFunction[256];
     private final Map<String, PhpClass> classes = new HashMap<>();
     private PhpClass[] classesById = new PhpClass[128];
-    private final Map<String, Object> constants = new HashMap<>();
+    private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
     private long nextAnonymousId = 1;
@@ -150,6 +150,27 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
         return classes.get(name.toLowerCase());
+    }
+
+    /** class_alias(): makes an existing class reachable under another name in this request. */
+    @TruffleBoundary
+    public boolean aliasClass(String alias, PhpClass cls) {
+        String lower = alias.toLowerCase();
+        if (classes.containsKey(lower)) {
+            return false;
+        }
+        classes.put(lower, cls);
+        int id = language.classId(lower);
+        if (id >= classesById.length) {
+            classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
+        }
+        classesById[id] = cls;
+        return true;
+    }
+
+    /** Constants defined with define() or const in this request, in definition order. */
+    public Map<String, Object> userConstants() {
+        return java.util.Collections.unmodifiableMap(constants);
     }
 
     @TruffleBoundary
