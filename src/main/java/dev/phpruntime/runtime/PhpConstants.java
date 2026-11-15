@@ -135,7 +135,8 @@ public final class PhpConstants {
 
     /** Looks up a case-sensitive compile-time constant, or null if absent. */
     public static Object compileTime(String name) {
-        return COMPILE_TIME.get(name);
+        Object v = COMPILE_TIME.get(name);
+        return v != null ? v : MysqliConstants.MAP.get(name);
     }
 
     /** Looks up a built-in constant (including case-insensitive true/false/null), or null if absent. */
@@ -150,6 +151,6 @@ public final class PhpConstants {
         if (lower.equals("null")) {
             return PhpNull.INSTANCE;
         }
-        return COMPILE_TIME.get(name);
+        return compileTime(name);
     }
 }

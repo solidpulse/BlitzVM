@@ -36,6 +36,7 @@ public final class Builtins {
         CtypeFunctions.register();
         SerializeFunctions.register();
         EnvFunctions.register();
+        MysqliFunctions.register();
     }
 
     private Builtins() {

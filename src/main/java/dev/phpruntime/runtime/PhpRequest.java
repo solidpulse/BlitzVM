@@ -34,12 +34,27 @@ public final class PhpRequest {
     /** json_last_error() for this request. */
     public int jsonLastError;
 
+    /** Host resources (database connections) the script left open; closed when the request ends. */
+    public final List<AutoCloseable> resources = new ArrayList<>();
+
     /** Scheduler hooks for this request; a no-op scheduler when run outside the server. */
     public GuestScheduler scheduler = GuestScheduler.NONE;
 
     public static PhpRequest current() {
         PhpRequest r = CURRENT.get();
         return r != null ? r : new PhpRequest();
+    }
+
+    /** Closes whatever the script left open. Called by the host after the script finishes. */
+    public void closeResources() {
+        for (AutoCloseable r : resources) {
+            try {
+                r.close();
+            } catch (Exception ignored) {
+                // the request is over; nothing useful to report
+            }
+        }
+        resources.clear();
     }
 
     public void install() {

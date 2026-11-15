@@ -92,6 +92,7 @@ public final class PhpEngine implements AutoCloseable {
             // close() of a cancelled context rethrows the cancellation; report it only once
             return request.status >= 500 ? request.status : fail(request, out, task, e, js);
         } finally {
+            request.closeResources();
             PhpRequest.uninstall();
         }
     }

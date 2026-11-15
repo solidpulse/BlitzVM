@@ -1,0 +1,83 @@
+array(6) {
+  [0]=>
+  string(1) "1"
+  ["id"]=>
+  string(1) "1"
+  [1]=>
+  string(5) "alpha"
+  ["name"]=>
+  string(5) "alpha"
+  [2]=>
+  NULL
+  ["note"]=>
+  NULL
+}
+array(3) {
+  ["id"]=>
+  string(1) "2"
+  ["name"]=>
+  string(9) "béta ☃"
+  ["note"]=>
+  string(3) "two"
+}
+array(3) {
+  [0]=>
+  string(1) "3"
+  [1]=>
+  string(0) ""
+  [2]=>
+  string(1) "0"
+}
+NULL
+bool(true)
+array(3) {
+  [0]=>
+  string(1) "1"
+  [1]=>
+  string(5) "alpha"
+  [2]=>
+  NULL
+}
+bool(true)
+string(8) "stdClass"
+string(1) "2"
+string(9) "béta ☃"
+string(3) "two"
+bool(false)
+array(5) {
+  [0]=>
+  string(1) "1"
+  ["x"]=>
+  string(1) "3"
+  [1]=>
+  string(1) "2"
+  ["y"]=>
+  string(1) "2"
+  [2]=>
+  string(1) "3"
+}
+array(2) {
+  [0]=>
+  array(1) {
+    [0]=>
+    string(1) "2"
+  }
+  [1]=>
+  array(1) {
+    [0]=>
+    string(1) "3"
+  }
+}
+array(0) {
+}
+int(0)
+NULL
+NULL
+array(1) {
+  [0]=>
+  string(7) "t_fetch"
+}
+int(3)
+string(2) "id"
+string(7) "int(11)"
+string(3) "PRI"
