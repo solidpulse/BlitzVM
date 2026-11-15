@@ -11,12 +11,13 @@ import dev.phpruntime.nodes.stmt.*;
 import dev.phpruntime.nodes.var.*;
 import dev.phpruntime.parser.Token.Kind;
 import dev.phpruntime.runtime.PhpArith;
+import dev.phpruntime.runtime.PhpConstants;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Recursive-descent parser for statements with a Pratt (precedence climbing) parser
@@ -25,49 +26,16 @@ import java.util.Map;
  */
 public final class Parser {
 
-    private static final Map<String, Object> CONSTANTS = Map.ofEntries(
-            Map.entry("PHP_EOL", "\n"),
-            Map.entry("PHP_INT_MAX", Long.MAX_VALUE),
-            Map.entry("PHP_INT_MIN", Long.MIN_VALUE),
-            Map.entry("PHP_INT_SIZE", 8L),
-            Map.entry("PHP_FLOAT_EPSILON", Math.ulp(1.0)),
-            Map.entry("PHP_FLOAT_MAX", Double.MAX_VALUE),
-            Map.entry("PHP_VERSION", "8.3.0-truffle"),
-            Map.entry("PHP_MAJOR_VERSION", 8L),
-            Map.entry("PHP_OS", "Linux"),
-            Map.entry("PHP_OS_FAMILY", "Linux"),
-            Map.entry("M_PI", Math.PI),
-            Map.entry("M_E", Math.E),
-            Map.entry("NAN", Double.NaN),
-            Map.entry("INF", Double.POSITIVE_INFINITY),
-            Map.entry("E_ALL", 32767L),
-            Map.entry("E_ERROR", 1L),
-            Map.entry("E_WARNING", 2L),
-            Map.entry("E_NOTICE", 8L),
-            Map.entry("COUNT_RECURSIVE", 1L),
-            Map.entry("COUNT_NORMAL", 0L),
-            Map.entry("SORT_REGULAR", 0L),
-            Map.entry("SORT_NUMERIC", 1L),
-            Map.entry("SORT_STRING", 2L),
-            Map.entry("STR_PAD_RIGHT", 1L),
-            Map.entry("STR_PAD_LEFT", 0L),
-            Map.entry("STR_PAD_BOTH", 2L),
-            Map.entry("JSON_PRETTY_PRINT", 128L),
-            Map.entry("JSON_UNESCAPED_SLASHES", 64L),
-            Map.entry("JSON_UNESCAPED_UNICODE", 256L),
-            Map.entry("JSON_THROW_ON_ERROR", 4194304L),
-            Map.entry("ENT_QUOTES", 3L),
-            Map.entry("PHP_ROUND_HALF_UP", 1L));
-
     private final PhpLanguage language;
     private final Source source;
     private final List<Token> tokens;
     private final List<PhpFunction> functions;
     private Scope scope;
+    private String currentFunction;
     private int pos;
 
     public Parser(PhpLanguage language, Source source) {
-        this(language, source, lex(source), new Scope(true), new ArrayList<>());
+        this(language, source, lex(source), new Scope(true), new ArrayList<>(), "");
     }
 
     private static List<Token> lex(Source source) {
@@ -78,19 +46,21 @@ public final class Parser {
         }
     }
 
-    private Parser(PhpLanguage language, Source source, List<Token> tokens, Scope scope, List<PhpFunction> functions) {
+    private Parser(PhpLanguage language, Source source, List<Token> tokens, Scope scope,
+                   List<PhpFunction> functions, String currentFunction) {
         this.language = language;
         this.source = source;
         this.tokens = tokens;
         this.scope = scope;
         this.functions = functions;
+        this.currentFunction = currentFunction;
     }
 
     public PhpMainRootNode parseMain() {
         try {
             List<PhpNode> stmts = new ArrayList<>();
             while (peek().kind() != Kind.EOF) {
-                PhpNode s = statement();
+                PhpNode s = statement(true);
                 if (s != null) {
                     stmts.add(s);
                 }
@@ -173,6 +143,10 @@ public final class Parser {
     // =================================================================== statements
 
     private PhpNode statement() {
+        return statement(false);
+    }
+
+    private PhpNode statement(boolean topLevel) {
         Token t = peek();
         int line = t.line();
         switch (t.kind()) {
@@ -261,9 +235,15 @@ public final class Parser {
                 case "function" -> {
                     if (peek(1).kind() == Kind.IDENT) {
                         next();
-                        functionDeclaration();
-                        return null;
+                        return functionDeclaration(topLevel, line);
                     }
+                }
+                case "const" -> {
+                    if (!scope.isGlobal()) {
+                        throw error("const declarations are only allowed at top level");
+                    }
+                    next();
+                    return constStatement(line);
                 }
                 case "global" -> {
                     next();
@@ -508,11 +488,29 @@ public final class Parser {
         return new SwitchNode(subject, values.toArray(new PhpNode[0]), bodies.toArray(new PhpNode[0])).at(line);
     }
 
-    private void functionDeclaration() {
+    private PhpNode constStatement(int line) {
+        List<String> names = new ArrayList<>();
+        List<PhpNode> values = new ArrayList<>();
+        do {
+            Token nameTok = next();
+            if (nameTok.kind() != Kind.IDENT) {
+                throw new PhpParseError("syntax error, unexpected " + describe(nameTok) + ", expecting identifier", nameTok.line());
+            }
+            expectOp("=");
+            names.add(nameTok.text());
+            values.add(expression());
+        } while (acceptOp(","));
+        endStatement();
+        return new DefineConstantNode(names.toArray(new String[0]), values.toArray(new PhpNode[0])).at(line);
+    }
+
+    private PhpNode functionDeclaration(boolean topLevel, int line) {
         Token nameTok = next();
         String name = nameTok.text();
         Scope outer = scope;
+        String outerFunction = currentFunction;
         scope = new Scope(false);
+        currentFunction = name;
         try {
             expectOp("(");
             List<Integer> slots = new ArrayList<>();
@@ -543,9 +541,15 @@ public final class Parser {
             }
             PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), source, nameTok.line(), name, slotArray,
                     kindArray, defaults.toArray(new PhpNode[0]), body);
-            functions.add(new PhpFunction(name, root.getCallTarget()));
+            PhpFunction fn = new PhpFunction(name, root.getCallTarget());
+            if (topLevel) {
+                functions.add(fn);
+                return null;
+            }
+            return new DeclareFunctionNode(fn).at(line);
         } finally {
             scope = outer;
+            currentFunction = outerFunction;
         }
     }
 
@@ -713,11 +717,29 @@ public final class Parser {
                 }
             }
         }
-        if (t.isKeyword("print")) {
-            next();
-            return new PrintNode(binary(4), false).at(line);
+        if (t.kind() == Kind.IDENT) {
+            String kw = t.text().toLowerCase();
+            if (kw.equals("print")) {
+                next();
+                return new PrintNode(binary(4), false).at(line);
+            }
+            IncludeNode.Kind inc = includeKind(kw);
+            if (inc != null) {
+                next();
+                return new IncludeNode(inc, expression()).at(line);
+            }
         }
         return postfix();
+    }
+
+    private static IncludeNode.Kind includeKind(String kw) {
+        return switch (kw) {
+            case "include" -> IncludeNode.Kind.INCLUDE;
+            case "include_once" -> IncludeNode.Kind.INCLUDE_ONCE;
+            case "require" -> IncludeNode.Kind.REQUIRE;
+            case "require_once" -> IncludeNode.Kind.REQUIRE_ONCE;
+            default -> null;
+        };
     }
 
     private CastNode.Kind castKind() {
@@ -890,6 +912,21 @@ public final class Parser {
             case "null" -> {
                 return new ConstNode(PhpNull.INSTANCE).at(line);
             }
+            case "__file__" -> {
+                return new ConstNode(magicFile()).at(line);
+            }
+            case "__dir__" -> {
+                return new ConstNode(magicDir()).at(line);
+            }
+            case "__line__" -> {
+                return new ConstNode((long) line).at(line);
+            }
+            case "__function__" -> {
+                return new ConstNode(currentFunction).at(line);
+            }
+            case "__class__", "__method__", "__namespace__" -> {
+                return new ConstNode("").at(line);
+            }
             case "array" -> {
                 if (peek().isOp("(")) {
                     next();
@@ -938,16 +975,30 @@ public final class Parser {
             for (int i = 0; i < argArray.length; i++) {
                 refs[i] = lvalueOrNull(argArray[i]);
             }
-            return new CallNode(name, argArray, refs).at(line);
+            return new CallNode(name, language.functionId(name), argArray, refs).at(line);
         }
-        Object constant = CONSTANTS.get(name);
-        if (constant == null) {
-            constant = CONSTANTS.get(name.toUpperCase());
-        }
+        Object constant = PhpConstants.compileTime(name);
         if (constant != null) {
             return new ConstNode(constant).at(line);
         }
-        throw new PhpParseError("Undefined constant \"" + name + "\"", line);
+        return new ReadConstantNode(name).at(line);
+    }
+
+    private String magicFile() {
+        String path = source.getPath();
+        if (path == null || path.isEmpty()) {
+            return "";
+        }
+        return Path.of(path).toAbsolutePath().normalize().toString();
+    }
+
+    private String magicDir() {
+        String file = magicFile();
+        if (file.isEmpty()) {
+            return "";
+        }
+        Path parent = Path.of(file).getParent();
+        return parent == null ? "" : parent.toString();
     }
 
     private PhpNode arrayLiteral(String closing) {
@@ -977,7 +1028,7 @@ public final class Parser {
                 continue;
             }
             List<Token> sub = Lexer.tokenizeCode(part.value());
-            Parser p = new Parser(language, source, sub, scope, functions);
+            Parser p = new Parser(language, source, sub, scope, functions, currentFunction);
             PhpNode e = p.expression();
             if (p.peek().kind() != Kind.EOF) {
                 throw new PhpParseError("syntax error in string interpolation", t.line());

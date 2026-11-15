@@ -24,6 +24,18 @@ final class CoreFunctions {
         http();
         Builtins.def("function_exists", 1, 1, (ctx, a) ->
                 ctx.lookupFunction(PhpOps.toStr(a[0])) != null || Builtins.lookup(PhpOps.toStr(a[0])) != null);
+        Builtins.def("define", 2, 2, (ctx, a) ->
+                ctx.defineConstant(PhpOps.toStr(a[0]), PhpOps.copyOnAssign(a[1]), 0));
+        Builtins.def("defined", 1, 1, (ctx, a) ->
+                ctx.hasConstant(PhpOps.toStr(a[0])));
+        Builtins.def("constant", 1, 1, (ctx, a) -> {
+            String name = PhpOps.toStr(a[0]);
+            Object v = ctx.readConstant(name);
+            if (v == null) {
+                throw new PhpError("Undefined constant \"" + name + "\"");
+            }
+            return v;
+        });
         Builtins.def("php_sapi_name", 0, 0, (ctx, a) -> ctx.request().scheduler == dev.phpruntime.runtime.GuestScheduler.NONE ? "cli" : "truffle-http");
         Builtins.def("phpversion", 0, 1, (ctx, a) -> "8.3.0-truffle");
         Builtins.def("memory_get_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());

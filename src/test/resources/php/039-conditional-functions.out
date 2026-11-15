@@ -1,0 +1,16 @@
+hoisted_ok
+bool(false)
+bool(false)
+bool(true)
+string(7) "cond_ok"
+bool(false)
+bool(true)
+string(7) "poly:hi"
+else
+from_loop
+bool(true)
+string(10) "from_block"
+bool(false)
+outer_done
+bool(true)
+string(15) "made:inner_made"

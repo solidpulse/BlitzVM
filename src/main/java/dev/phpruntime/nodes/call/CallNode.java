@@ -3,9 +3,12 @@ package dev.phpruntime.nodes.call;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.RootCallTarget;
+import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
+import com.oracle.truffle.api.nodes.IndirectCallNode;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.builtins.Builtins;
 import dev.phpruntime.nodes.PhpNode;
@@ -22,58 +25,93 @@ import dev.phpruntime.runtime.PhpOps;
 public final class CallNode extends PhpNode {
 
     private final String name;
+    /** {@link dev.phpruntime.PhpLanguage#functionId} of {@link #name}. */
+    private final int functionId;
     @Children private final PhpNode[] args;
     /** For each argument, the lvalue it came from (for by-reference builtins), else null. */
     @Children private final LValueNode[] refTargets;
 
-    @CompilationFinal private PhpFunction function;
+    @CompilationFinal private RootCallTarget cachedTarget;
     @Child private DirectCallNode callNode;
+    @Child private IndirectCallNode indirectCall;
     @CompilationFinal private Builtins.Def builtin;
 
-    public CallNode(String name, PhpNode[] args, LValueNode[] refTargets) {
+    public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets) {
         this.name = name;
+        this.functionId = functionId;
         this.args = args;
         this.refTargets = refTargets;
     }
 
     @Override
     public Object execute(VirtualFrame frame) {
-        if (callNode == null && builtin == null) {
-            CompilerDirectives.transferToInterpreterAndInvalidate();
-            resolveOnce();
+        if (builtin != null) {
+            return callBuiltin(frame);
         }
-        if (callNode != null) {
+        // The name can mean a different function in another request (conditional
+        // declarations, includes), so check which one this context has on every call.
+        PhpFunction fn = PhpContext.get(this).functionById(functionId);
+        if (fn == null) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            Builtins.Def def = resolveBuiltin();
+            if (def != null) {
+                return callBuiltin(frame);
+            }
+            throw new PhpError("Call to undefined function " + name + "()", this);
+        }
+        RootCallTarget target = fn.callTarget();
+        if (target == cachedTarget) {
             return callNode.call(evalArgs(frame));
         }
-        return callBuiltin(frame);
+        if (indirectCall != null) {
+            return indirectCall.call(target, evalArgs(frame));
+        }
+        return callDynamic(frame, fn);
     }
 
-    /** The AST is shared by concurrent requests, so the first-call rewrite takes the AST lock. */
+    /** The AST is shared by concurrent requests, so node specialization takes the AST lock. */
     @TruffleBoundary
-    private void resolveOnce() {
+    private Builtins.Def resolveBuiltin() {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
-            if (callNode == null && builtin == null) {
-                resolve();
+            if (builtin == null) {
+                builtin = Builtins.lookup(name);
             }
+            return builtin;
         } finally {
             lock.unlock();
         }
     }
 
-    private void resolve() {
-        PhpFunction fn = PhpContext.get(this).lookupFunction(name);
-        if (fn != null) {
-            function = fn;
-            callNode = insert(DirectCallNode.create(fn.callTarget()));
-            return;
+    private Object callDynamic(VirtualFrame frame, PhpFunction fn) {
+        CompilerDirectives.transferToInterpreterAndInvalidate();
+        if (prepareCall(fn.callTarget())) {
+            return callNode.call(evalArgs(frame));
         }
-        Builtins.Def def = Builtins.lookup(name);
-        if (def == null) {
-            throw new PhpError("Call to undefined function " + name + "()", this);
+        return indirectCall.call(fn.callTarget(), evalArgs(frame));
+    }
+
+    @TruffleBoundary
+    private boolean prepareCall(RootCallTarget target) {
+        java.util.concurrent.locks.Lock lock = getLock();
+        lock.lock();
+        try {
+            if (cachedTarget == null) {
+                cachedTarget = target;
+                callNode = insert(DirectCallNode.create(target));
+                return true;
+            }
+            if (cachedTarget == target) {
+                return true;
+            }
+            if (indirectCall == null) {
+                indirectCall = insert(Truffle.getRuntime().createIndirectCallNode());
+            }
+            return false;
+        } finally {
+            lock.unlock();
         }
-        builtin = def;
     }
 
     @ExplodeLoop

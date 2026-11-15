@@ -1,0 +1,37 @@
+parent=hello_parent
+hoisted_in_inc:ok
+int(1)
+string(14) "value_from_inc"
+string(17) "hoisted_in_inc:ok"
+no_return ran
+array(2) {
+  ["k"]=>
+  string(3) "val"
+  ["n"]=>
+  int(42)
+}
+int(1)
+NULL
+string(10) "once_first"
+bool(true)
+bool(true)
+int(1)
+int(42)
+bool(true)
+bool(true)
+bool(true)
+no_return ran
+expr_if_ok
+inner:nested
+int(109)
+string(3) "val"
+outer:nested
+inner:nested
+array(2) {
+  [0]=>
+  int(99)
+  [1]=>
+  bool(true)
+}
+no_return ran
+int(1)

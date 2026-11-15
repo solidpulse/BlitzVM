@@ -1,0 +1,55 @@
+""||
+"\/"|/|
+"\/\/"|/|
+"\/\/\/"|/|
+"."|.|.
+".."|.|..
+".\/"|.|.
+"\/a"|/|a
+"\/a\/"|/|a
+"\/a\/b"|/a|b
+"\/a\/b\/"|/a|b
+"a\/b"|a|b
+"a\/b\/"|a|b
+"a"|.|a
+"a\/"|.|a
+"\/a\/b\/c.php"|/a/b|c.php
+"foo.php"|.|foo.php
+"\/foo.php\/"|/|foo.php
+"\/a\/\/b\/"|/a|b
+string(4) "/a/b"
+string(2) "/a"
+string(1) "/"
+string(1) "/"
+string(1) "."
+string(1) "."
+string(0) ""
+string(1) "b"
+string(5) "b.php"
+string(4) ".php"
+string(4) ".php"
+string(7) "foo.php"
+string(1) "b"
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(true)

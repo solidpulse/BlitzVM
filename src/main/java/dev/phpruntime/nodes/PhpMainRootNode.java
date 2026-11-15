@@ -1,6 +1,7 @@
 package dev.phpruntime.nodes;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.source.Source;
@@ -11,6 +12,7 @@ import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpRequest;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -31,24 +33,41 @@ public final class PhpMainRootNode extends PhpRootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        boolean isEntry = frame.getArguments().length == 0;
         PhpContext ctx = PhpContext.get(this);
         PhpRequest request = ctx.request();
-        start(ctx, request);
+        if (isEntry) {
+            start(ctx, request);
+        }
+        declareFunctions(ctx);
+        Object result = 1L;
         try {
             body.executeVoid(frame);
-        } catch (ControlFlow.Return | ControlFlow.Exit r) {
-            // top-level return and exit() both end the script
+        } catch (ControlFlow.Return r) {
+            result = r.value;
+        } catch (ControlFlow.Exit e) {
+            if (!isEntry) {
+                throw e;
+            }
         } finally {
-            finish(ctx, request);
+            if (isEntry) {
+                finish(ctx, request);
+            }
         }
-        return PhpNull.INSTANCE;
+        return isEntry ? PhpNull.INSTANCE : result;
     }
 
     @TruffleBoundary
     private void start(PhpContext ctx, PhpRequest request) {
         request.scheduler.attach(ctx.env(), Thread.currentThread());
-        for (PhpFunction fn : functions) {
-            ctx.declareFunction(fn);
+        String entryPath = source().getPath();
+        if (entryPath != null && !entryPath.isEmpty()) {
+            TruffleFile f = ctx.env().getPublicTruffleFile(entryPath);
+            try {
+                ctx.markIncluded(f.getCanonicalFile().getPath());
+            } catch (IOException e) {
+                ctx.markIncluded(f.getAbsoluteFile().normalize().getPath());
+            }
         }
         ctx.writeGlobal("_GET", toArray(request.get));
         ctx.writeGlobal("_POST", toArray(request.post));
@@ -57,6 +76,13 @@ public final class PhpMainRootNode extends PhpRootNode {
         ctx.writeGlobal("_REQUEST", all);
         ctx.writeGlobal("_COOKIE", new PhpArray());
         ctx.writeGlobal("_SERVER", toArray(request.server));
+    }
+
+    @TruffleBoundary
+    private void declareFunctions(PhpContext ctx) {
+        for (PhpFunction fn : functions) {
+            ctx.declareFunction(fn);
+        }
     }
 
     @TruffleBoundary

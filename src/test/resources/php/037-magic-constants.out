@@ -1,0 +1,18 @@
+037-magic-constants.php
+php
+bool(true)
+int(5)
+string(0) ""
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+int(13)
+string(9) "myMagicFn"
+string(9) "myMagicFn"
+int(16)
+string(0) ""
+magic_child.php:inc:2
+bool(true)
+string(10) "childMagic"
+int(5)

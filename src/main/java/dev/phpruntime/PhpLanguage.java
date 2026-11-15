@@ -1,10 +1,14 @@
 package dev.phpruntime;
 
 import com.oracle.truffle.api.CallTarget;
+import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.parser.Parser;
+
+import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Truffle entry point. {@link #parse} turns PHP source into a tree of self-specialising
@@ -25,8 +29,36 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     private static final LanguageReference<PhpLanguage> REFERENCE = LanguageReference.create(PhpLanguage.class);
 
+    private final ConcurrentHashMap<String, CachedSource> sources = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Integer> functionIds = new ConcurrentHashMap<>();
+
+    private record CachedSource(long modified, Source source) {
+    }
+
     public static PhpLanguage get(com.oracle.truffle.api.nodes.Node node) {
         return REFERENCE.get(node);
+    }
+
+    /**
+     * A dense id per function name (case-insensitive), shared by all contexts. Call sites
+     * keep the id and each context keeps its functions in an array indexed by it, so a call
+     * finds the current context's function with one array load instead of a map lookup.
+     */
+    public int functionId(String name) {
+        return functionIds.computeIfAbsent(name.toLowerCase(), n -> functionIds.size());
+    }
+
+    /** Loads a cached Source keyed by canonical path and modification time. */
+    public Source loadSource(TruffleFile canonical) throws IOException {
+        String key = canonical.getPath();
+        long modified = canonical.getLastModifiedTime().toMillis();
+        CachedSource cached = sources.get(key);
+        if (cached != null && cached.modified() == modified) {
+            return cached.source();
+        }
+        Source src = Source.newBuilder(ID, canonical).cached(true).build();
+        sources.put(key, new CachedSource(modified, src));
+        return src;
     }
 
     @Override

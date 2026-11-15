@@ -4,6 +4,8 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.nodes.Node;
+import dev.phpruntime.builtins.Builtins;
+import dev.phpruntime.runtime.PhpConstants;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpRequest;
@@ -13,7 +15,9 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Per-execution state: the global symbol table, the function table and the output
@@ -29,6 +33,9 @@ public final class PhpContext {
     private final TruffleLanguage.Env env;
     private final Map<String, Object> globals = new HashMap<>();
     private final Map<String, PhpFunction> functions = new HashMap<>();
+    private PhpFunction[] functionsById = new PhpFunction[256];
+    private final Map<String, Object> constants = new HashMap<>();
+    private final Set<String> includedFiles = new HashSet<>();
     private final StringBuilder output = new StringBuilder();
     private final PrintStream err;
     private PhpRequest request;
@@ -91,9 +98,58 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void declareFunction(PhpFunction fn) {
-        if (functions.putIfAbsent(fn.name().toLowerCase(), fn) != null) {
+        if (Builtins.lookup(fn.name()) != null || functions.putIfAbsent(fn.name().toLowerCase(), fn) != null) {
             throw new dev.phpruntime.runtime.PhpError("Cannot redeclare function " + fn.name() + "()");
         }
+        int id = language.functionId(fn.name());
+        if (id >= functionsById.length) {
+            functionsById = java.util.Arrays.copyOf(functionsById, Math.max(id + 1, functionsById.length * 2));
+        }
+        functionsById[id] = fn;
+    }
+
+    /** The function with this {@link PhpLanguage#functionId id} in this context, or null. Cheap enough for every call. */
+    public PhpFunction functionById(int id) {
+        PhpFunction[] table = functionsById;
+        return id < table.length ? table[id] : null;
+    }
+
+    // ------------------------------------------------------------ constants
+
+    @TruffleBoundary
+    public boolean defineConstant(String name, Object value, int line) {
+        if (PhpConstants.lookupBuiltin(name) != null || constants.containsKey(name)) {
+            warning("Constant " + name + " already defined", line);
+            return false;
+        }
+        constants.put(name, value);
+        return true;
+    }
+
+    @TruffleBoundary
+    public boolean hasConstant(String name) {
+        return PhpConstants.lookupBuiltin(name) != null || constants.containsKey(name);
+    }
+
+    @TruffleBoundary
+    public Object readConstant(String name) {
+        Object builtin = PhpConstants.lookupBuiltin(name);
+        if (builtin != null) {
+            return builtin;
+        }
+        return constants.get(name);
+    }
+
+    // ------------------------------------------------------------ includes
+
+    @TruffleBoundary
+    public boolean isIncluded(String canonicalPath) {
+        return includedFiles.contains(canonicalPath);
+    }
+
+    @TruffleBoundary
+    public void markIncluded(String canonicalPath) {
+        includedFiles.add(canonicalPath);
     }
 
     // ------------------------------------------------------------ output
