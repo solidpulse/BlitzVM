@@ -36,6 +36,7 @@ public final class Builtins {
         SerializeFunctions.register();
         EnvFunctions.register();
         OutputBufferFunctions.register();
+        PointerFunctions.register();
     }
 
     private Builtins() {
