@@ -1,0 +1,138 @@
+string(59) "a+b%2Bc%2Fd%3Fe%3Df%26g%7Eh%2Ai%27j%28k%29%21l.m-n_o+%C3%A9"
+string(61) "a%20b%2Bc%2Fd%3Fe%3Df%26g~h%2Ai%27j%28k%29%21l.m-n_o%20%C3%A9"
+string(12) "a b c/d%zz%4"
+string(7) "a+b cé"
+bool(true)
+bool(true)
+"http:\/\/user:pass@example.com:8080\/path\/to\/page.php?query=1&b[]=2#frag" => array (
+  'scheme' => 'http',
+  'host' => 'example.com',
+  'port' => 8080,
+  'user' => 'user',
+  'pass' => 'pass',
+  'path' => '/path/to/page.php',
+  'query' => 'query=1&b[]=2',
+  'fragment' => 'frag',
+)
+"https:\/\/example.com" => array (
+  'scheme' => 'https',
+  'host' => 'example.com',
+)
+"https:\/\/example.com\/" => array (
+  'scheme' => 'https',
+  'host' => 'example.com',
+  'path' => '/',
+)
+"\/\/example.com\/path" => array (
+  'host' => 'example.com',
+  'path' => '/path',
+)
+"\/just\/a\/path?x=1" => array (
+  'path' => '/just/a/path',
+  'query' => 'x=1',
+)
+"relative\/path.html" => array (
+  'path' => 'relative/path.html',
+)
+"example.com" => array (
+  'path' => 'example.com',
+)
+"example.com:80" => array (
+  'host' => 'example.com',
+  'port' => 80,
+)
+"example.com:80\/path" => array (
+  'host' => 'example.com',
+  'port' => 80,
+  'path' => '/path',
+)
+"mailto:someone@example.com" => array (
+  'scheme' => 'mailto',
+  'path' => 'someone@example.com',
+)
+"file:\/\/\/etc\/passwd" => array (
+  'scheme' => 'file',
+  'path' => '/etc/passwd',
+)
+"http:\/\/[::1]:8080\/x" => array (
+  'scheme' => 'http',
+  'host' => '[::1]',
+  'port' => 8080,
+  'path' => '/x',
+)
+"http:\/\/example.com?" => array (
+  'scheme' => 'http',
+  'host' => 'example.com',
+  'query' => '',
+)
+"http:\/\/example.com#" => array (
+  'scheme' => 'http',
+  'host' => 'example.com',
+  'fragment' => '',
+)
+"http:\/\/example.com\/?#" => array (
+  'scheme' => 'http',
+  'host' => 'example.com',
+  'path' => '/',
+  'query' => '',
+  'fragment' => '',
+)
+"http:\/\/user@host" => array (
+  'scheme' => 'http',
+  'host' => 'host',
+  'user' => 'user',
+)
+"http:\/\/\/example.com" => false
+"http:\/\/example.com:99999" => false
+"http:\/\/:80" => false
+"" => array (
+  'path' => '',
+)
+"?q=1" => array (
+  'query' => 'q=1',
+)
+"#top" => array (
+  'fragment' => 'top',
+)
+"https:\/\/wordpress.org\/latest.tar.gz?ver=7.1" => array (
+  'scheme' => 'https',
+  'host' => 'wordpress.org',
+  'path' => '/latest.tar.gz',
+  'query' => 'ver=7.1',
+)
+"http:\/\/localhost\/wp-admin\/admin-ajax.php?action=heartbeat" => array (
+  'scheme' => 'http',
+  'host' => 'localhost',
+  'path' => '/wp-admin/admin-ajax.php',
+  'query' => 'action=heartbeat',
+)
+"urn:isbn:0451450523" => array (
+  'scheme' => 'urn',
+  'path' => 'isbn:0451450523',
+)
+"a:65535" => array (
+  'host' => 'a',
+  'port' => 65535,
+)
+"http:\/\/h:0\/" => array (
+  'scheme' => 'http',
+  'host' => 'h',
+  'port' => 0,
+  'path' => '/',
+)
+string(4) "http"
+string(11) "example.com"
+int(8080)
+string(4) "user"
+string(4) "pass"
+string(2) "/p"
+string(3) "q=1"
+string(1) "f"
+NULL
+bool(false)
+string(168) "foo=bar&baz=boom&cow=milk&php=hypertext+processor&t=1&f=0&nested%5Ba%5D=1&nested%5Bb%5D%5B0%5D=2&nested%5Bb%5D%5B1%5D=3&nested%5Bc+d%5D=e+f&0=zero&5=five&pi=3.25&empty="
+string(172) "foo=bar&baz=boom&cow=milk&php=hypertext+processor&t=1&f=0&nested%5Ba%5D=1&nested%5Bb%5D%5B0%5D=2&nested%5Bb%5D%5B1%5D=3&nested%5Bc+d%5D=e+f&p_0=zero&p_5=five&pi=3.25&empty="
+string(220) "foo=bar&amp;baz=boom&amp;cow=milk&amp;php=hypertext+processor&amp;t=1&amp;f=0&amp;nested%5Ba%5D=1&amp;nested%5Bb%5D%5B0%5D=2&amp;nested%5Bb%5D%5B1%5D=3&amp;nested%5Bc+d%5D=e+f&amp;0=zero&amp;5=five&amp;pi=3.25&amp;empty="
+string(12) "a%20b=c%20d~"
+string(0) ""
+string(0) ""

@@ -46,6 +46,7 @@ final class ArrayFunctions {
         construction();
         mutation();
         sorting();
+        setOperations();
     }
 
     private static void inspection() {
@@ -388,5 +389,198 @@ final class ArrayFunctions {
             }
         }
         return out;
+    }
+
+    // ------------------------------------------------------------ set operations, replace, splice
+
+    private static void setOperations() {
+        Builtins.def("array_diff", 1, -1, (ctx, a) -> filterAgainst(a, "array_diff", false, true, false));
+        Builtins.def("array_diff_key", 1, -1, (ctx, a) -> filterAgainst(a, "array_diff_key", true, false, false));
+        Builtins.def("array_diff_assoc", 1, -1, (ctx, a) -> filterAgainst(a, "array_diff_assoc", true, true, false));
+        Builtins.def("array_intersect", 1, -1, (ctx, a) -> filterAgainst(a, "array_intersect", false, true, true));
+        Builtins.def("array_intersect_key", 1, -1, (ctx, a) -> filterAgainst(a, "array_intersect_key", true, false, true));
+        Builtins.def("array_intersect_assoc", 1, -1, (ctx, a) -> filterAgainst(a, "array_intersect_assoc", true, true, true));
+        Builtins.def("array_replace", 1, -1, (ctx, a) -> {
+            PhpArray out = arr(a, 0, "array_replace").share().forWrite();
+            for (int i = 1; i < a.length; i++) {
+                for (Map.Entry<Object, Object> e : arr(a, i, "array_replace").entries()) {
+                    out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+                }
+            }
+            return out;
+        });
+        Builtins.def("array_replace_recursive", 1, -1, (ctx, a) -> {
+            PhpArray out = arr(a, 0, "array_replace_recursive");
+            for (int i = 1; i < a.length; i++) {
+                out = replaceRecursive(out, arr(a, i, "array_replace_recursive"));
+            }
+            return out;
+        });
+        Builtins.def("array_merge_recursive", 0, -1, (ctx, a) -> {
+            PhpArray out = new PhpArray();
+            for (int i = 0; i < a.length; i++) {
+                mergeRecursive(out, arr(a, i, "array_merge_recursive"));
+            }
+            return out;
+        });
+        Builtins.def("array_change_key_case", 1, 2, (ctx, a) -> {
+            boolean upper = a.length > 1 && PhpOps.toLong(a[1]) == 1;
+            PhpArray out = new PhpArray();
+            for (Map.Entry<Object, Object> e : arr(a, 0, "array_change_key_case").entries()) {
+                Object k = e.getKey() instanceof String s ? (upper ? s.toUpperCase() : s.toLowerCase()) : e.getKey();
+                out.put(k, PhpOps.copyOnAssign(e.getValue()));
+            }
+            return out;
+        });
+        Builtins.def("array_first", 1, 1, (ctx, a) -> {
+            List<Object> values = arr(a, 0, "array_first").values();
+            return values.isEmpty() ? PhpNull.INSTANCE : PhpOps.copyOnAssign(values.get(0));
+        });
+        Builtins.def("array_last", 1, 1, (ctx, a) -> {
+            List<Object> values = arr(a, 0, "array_last").values();
+            return values.isEmpty() ? PhpNull.INSTANCE : PhpOps.copyOnAssign(values.get(values.size() - 1));
+        });
+        // TODO(classes): objects implementing Countable are countable too.
+        Builtins.def("is_countable", 1, 1, (ctx, a) -> a[0] instanceof PhpArray);
+        Builtins.defRef("array_splice", 2, 4, REF_FIRST, (ctx, a) -> splice(a));
+    }
+
+    /**
+     * array_diff/array_intersect and their _key/_assoc forms. An entry of the first array is kept
+     * when it appears in none (diff) or all (intersect) of the others, comparing keys and/or
+     * values as strings, as PHP does.
+     */
+    private static PhpArray filterAgainst(Object[] a, String fn, boolean byKey, boolean byValue, boolean intersect) {
+        PhpArray first = arr(a, 0, fn);
+        List<java.util.Set<String>> valueSets = new ArrayList<>();
+        List<PhpArray> others = new ArrayList<>();
+        for (int i = 1; i < a.length; i++) {
+            PhpArray other = arr(a, i, fn);
+            others.add(other);
+            if (byValue && !byKey) {
+                java.util.Set<String> set = new java.util.HashSet<>();
+                for (Object v : other.values()) {
+                    set.add(PhpOps.toStr(v));
+                }
+                valueSets.add(set);
+            }
+        }
+        PhpArray out = new PhpArray();
+        for (Map.Entry<Object, Object> e : first.entries()) {
+            boolean keep = true;
+            for (int i = 0; i < others.size(); i++) {
+                boolean found;
+                if (byKey) {
+                    Object v = others.get(i).get(e.getKey());
+                    found = v != null && (!byValue || PhpOps.toStr(v).equals(PhpOps.toStr(e.getValue())));
+                } else {
+                    found = valueSets.get(i).contains(PhpOps.toStr(e.getValue()));
+                }
+                if (found != intersect) {
+                    keep = false;
+                    break;
+                }
+            }
+            if (keep) {
+                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            }
+        }
+        return out;
+    }
+
+    private static PhpArray replaceRecursive(PhpArray base, PhpArray with) {
+        PhpArray out = base.share().forWrite();
+        for (Map.Entry<Object, Object> e : with.entries()) {
+            Object existing = out.get(e.getKey());
+            if (existing instanceof PhpArray x && e.getValue() instanceof PhpArray y) {
+                out.put(e.getKey(), replaceRecursive(x, y));
+            } else {
+                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            }
+        }
+        return out;
+    }
+
+    /** php_array_merge_recursive: string keys present in both are merged into a list, int keys append. */
+    private static void mergeRecursive(PhpArray dest, PhpArray src) {
+        for (Map.Entry<Object, Object> e : src.entries()) {
+            Object k = e.getKey();
+            Object v = e.getValue();
+            if (k instanceof String && dest.containsKey(k)) {
+                Object existing = dest.get(k);
+                PhpArray merged;
+                if (existing instanceof PhpArray x) {
+                    merged = x.share().forWrite();
+                } else {
+                    merged = new PhpArray();
+                    merged.append(existing);
+                }
+                if (v instanceof PhpArray y) {
+                    mergeRecursive(merged, y);
+                } else {
+                    merged.append(PhpOps.copyOnAssign(v));
+                }
+                dest.put(k, merged);
+            } else if (k instanceof String) {
+                dest.put(k, PhpOps.copyOnAssign(v));
+            } else {
+                dest.append(PhpOps.copyOnAssign(v));
+            }
+        }
+    }
+
+    private static Object splice(Object[] a) {
+        PhpArray x = writable(a);
+        List<Map.Entry<Object, Object>> entries = x.entries();
+        int n = entries.size();
+        long offset = PhpOps.toLong(a[1]);
+        if (offset < 0) {
+            offset = Math.max(0, n + offset);
+        } else if (offset > n) {
+            offset = n;
+        }
+        long end;
+        if (a.length < 3 || a[2] == PhpNull.INSTANCE) {
+            end = n;
+        } else {
+            long len = PhpOps.toLong(a[2]);
+            end = len < 0 ? Math.max(offset, n + len) : Math.min(n, offset + len);
+        }
+        List<Object> replacement = new ArrayList<>();
+        if (a.length > 3) {
+            if (a[3] instanceof PhpArray r) {
+                replacement.addAll(r.values());
+            } else if (a[3] != PhpNull.INSTANCE) {
+                replacement.add(a[3]);
+            }
+        }
+        PhpArray removed = new PhpArray();
+        PhpArray out = new PhpArray();
+        for (int i = 0; i < n; i++) {
+            if (i == offset) {
+                for (Object v : replacement) {
+                    out.append(PhpOps.copyOnAssign(v));
+                }
+            }
+            Map.Entry<Object, Object> e = entries.get(i);
+            if (i >= offset && i < end) {
+                if (e.getKey() instanceof Long) {
+                    removed.append(e.getValue());
+                } else {
+                    removed.put(e.getKey(), e.getValue());
+                }
+            } else if (e.getKey() instanceof Long) {
+                out.append(e.getValue());
+            } else {
+                out.put(e.getKey(), e.getValue());
+            }
+        }
+        if (offset >= n) {
+            for (Object v : replacement) {
+                out.append(PhpOps.copyOnAssign(v));
+            }
+        }
+        a[0] = out;
+        return removed;
     }
 }

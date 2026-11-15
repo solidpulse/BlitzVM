@@ -38,6 +38,7 @@ final class StringFunctions {
         splitting();
         formatting();
         encoding();
+        more();
     }
 
     private static void basics() {
@@ -194,9 +195,6 @@ final class StringFunctions {
         Builtins.def("htmlentities", 1, 4, (ctx, a) -> htmlspecialchars(s(a, 0)));
         Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(a, 0).replaceAll("<[^>]*>", ""));
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
-        Builtins.def("urlencode", 1, 1, (ctx, a) -> java.net.URLEncoder.encode(s(a, 0), StandardCharsets.UTF_8));
-        Builtins.def("rawurlencode", 1, 1, (ctx, a) -> java.net.URLEncoder.encode(s(a, 0), StandardCharsets.UTF_8).replace("+", "%20"));
-        Builtins.def("urldecode", 1, 1, (ctx, a) -> java.net.URLDecoder.decode(s(a, 0), StandardCharsets.UTF_8));
         Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(s(a, 0).getBytes(StandardCharsets.UTF_8)));
         Builtins.def("base64_decode", 1, 2, (ctx, a) -> new String(java.util.Base64.getDecoder().decode(s(a, 0)), StandardCharsets.UTF_8));
         Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(s(a, 0).getBytes(StandardCharsets.UTF_8)));
@@ -625,5 +623,599 @@ final class StringFunctions {
             }
         }
         sb.append('"');
+    }
+
+    // ------------------------------------------------------------------ more
+
+    private static void more() {
+        Builtins.def("strspn", 2, 4, (ctx, a) -> (long) span(segment(a), s(a, 1), true));
+        Builtins.def("strcspn", 2, 4, (ctx, a) -> (long) span(segment(a), s(a, 1), false));
+        Builtins.def("substr_compare", 3, 5, (ctx, a) -> substrCompare(a));
+        Builtins.def("strtr", 2, 3, (ctx, a) -> {
+            if (a.length == 3) {
+                return strtrChars(s(a, 0), s(a, 1), s(a, 2));
+            }
+            if (!(a[1] instanceof PhpArray map)) {
+                throw new PhpError("strtr(): Argument #2 ($from) must be of type array, string given");
+            }
+            return strtrPairs(ctx, s(a, 0), map);
+        });
+        Builtins.def("version_compare", 2, 3, (ctx, a) -> {
+            int c = versionCompare(s(a, 0), s(a, 1));
+            if (a.length < 3 || a[2] == PhpNull.INSTANCE) {
+                return (long) c;
+            }
+            return switch (s(a, 2)) {
+                case "<", "lt" -> c < 0;
+                case "<=", "le" -> c <= 0;
+                case ">", "gt" -> c > 0;
+                case ">=", "ge" -> c >= 0;
+                case "==", "eq" -> c == 0;
+                case "!=", "<>", "ne" -> c != 0;
+                default -> throw new PhpError("version_compare(): Argument #3 ($operator) must be a valid comparison operator");
+            };
+        });
+        Builtins.def("stripslashes", 1, 1, (ctx, a) -> stripslashes(s(a, 0)));
+        Builtins.def("addcslashes", 2, 2, (ctx, a) -> addcslashes(s(a, 0), s(a, 1)));
+        Builtins.def("stripcslashes", 1, 1, (ctx, a) -> stripcslashes(s(a, 0)));
+        Builtins.def("strnatcmp", 2, 2, (ctx, a) -> (long) natCompare(s(a, 0), s(a, 1), false));
+        Builtins.def("strnatcasecmp", 2, 2, (ctx, a) -> (long) natCompare(s(a, 0), s(a, 1), true));
+        Builtins.def("strtok", 1, 2, (ctx, a) -> {
+            ContextState st = ContextState.of(ctx);
+            String token;
+            if (a.length == 2) {
+                st.strtokSubject = s(a, 0);
+                st.strtokPos = 0;
+                token = s(a, 1);
+            } else {
+                token = s(a, 0);
+            }
+            return strtok(st, token);
+        });
+        Builtins.def("substr_replace", 3, 4, (ctx, a) -> substrReplace(a));
+        Builtins.def("stristr", 2, 3, (ctx, a) -> {
+            String hay = s(a, 0);
+            int i = hay.toLowerCase().indexOf(s(a, 1).toLowerCase());
+            if (i < 0) {
+                return false;
+            }
+            return a.length > 2 && PhpOps.toBool(a[2]) ? hay.substring(0, i) : hay.substring(i);
+        });
+        Builtins.def("strrchr", 2, 3, (ctx, a) -> {
+            String hay = s(a, 0);
+            String needle = s(a, 1);
+            int i = needle.isEmpty() ? -1 : hay.lastIndexOf(needle.charAt(0));
+            if (i < 0) {
+                return false;
+            }
+            return a.length > 2 && PhpOps.toBool(a[2]) ? hay.substring(0, i) : hay.substring(i);
+        });
+        Builtins.def("strpbrk", 2, 2, (ctx, a) -> {
+            String str = s(a, 0);
+            String chars = s(a, 1);
+            if (chars.isEmpty()) {
+                throw new PhpError("strpbrk(): Argument #2 ($characters) must be a non-empty string");
+            }
+            for (int i = 0; i < str.length(); i++) {
+                if (chars.indexOf(str.charAt(i)) >= 0) {
+                    return str.substring(i);
+                }
+            }
+            return false;
+        });
+        Builtins.def("html_entity_decode", 1, 3, (ctx, a) ->
+                HtmlEntities.decodeAll(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS));
+        Builtins.def("htmlspecialchars_decode", 1, 2, (ctx, a) ->
+                HtmlEntities.decodeSpecial(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS));
+        Builtins.def("chunk_split", 1, 3, (ctx, a) -> {
+            String str = s(a, 0);
+            long len = a.length > 1 ? l(a, 1) : 76;
+            String end = a.length > 2 ? s(a, 2) : "\r\n";
+            if (len < 1) {
+                throw new PhpError("chunk_split(): Argument #2 ($length) must be greater than 0");
+            }
+            if (len >= str.length()) {
+                return str + end;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < str.length(); i += (int) len) {
+                sb.append(str, i, (int) Math.min(str.length(), i + len)).append(end);
+            }
+            return sb.toString();
+        });
+        Builtins.def("uniqid", 0, 2, (ctx, a) -> {
+            long micros = System.currentTimeMillis() * 1000 + (System.nanoTime() / 1000) % 1000;
+            String id = (a.length > 0 ? s(a, 0) : "") + String.format("%08x%05x", micros / 1_000_000, micros % 1_000_000);
+            if (a.length > 1 && PhpOps.toBool(a[1])) {
+                id += String.format(java.util.Locale.ROOT, "%.8f", Math.random() * 10);
+            }
+            return id;
+        });
+    }
+
+    /** The part of a[0] selected by strspn/strcspn's optional offset and length. */
+    private static String segment(Object[] a) {
+        String str = s(a, 0);
+        if (a.length < 3) {
+            return str;
+        }
+        Long len = a.length > 3 && a[3] != PhpNull.INSTANCE ? l(a, 3) : null;
+        return substr(str, l(a, 2), len);
+    }
+
+    private static int span(String str, String mask, boolean accept) {
+        int i = 0;
+        while (i < str.length() && (mask.indexOf(str.charAt(i)) >= 0) == accept) {
+            i++;
+        }
+        return i;
+    }
+
+    private static Object substrCompare(Object[] a) {
+        String hay = s(a, 0);
+        String needle = s(a, 1);
+        long offset = l(a, 2);
+        boolean lenDefault = a.length < 4 || a[3] == PhpNull.INSTANCE;
+        long len = lenDefault ? 0 : l(a, 3);
+        boolean ci = a.length > 4 && PhpOps.toBool(a[4]);
+        if (!lenDefault && len <= 0) {
+            if (len == 0) {
+                return 0L;
+            }
+            throw new PhpError("substr_compare(): Argument #4 ($length) must be greater than or equal to 0");
+        }
+        if (offset < 0) {
+            offset = Math.max(0, hay.length() + offset);
+        }
+        if (offset > hay.length()) {
+            throw new PhpError("substr_compare(): Argument #3 ($offset) must be contained in argument #1 ($main_str)");
+        }
+        String s1 = hay.substring((int) offset);
+        long cmpLen = lenDefault ? Math.max(needle.length(), s1.length()) : len;
+        int n = (int) Math.min(cmpLen, Math.min(s1.length(), needle.length()));
+        for (int i = 0; i < n; i++) {
+            char x = s1.charAt(i);
+            char y = needle.charAt(i);
+            if (ci) {
+                x = Character.toLowerCase(x);
+                y = Character.toLowerCase(y);
+            }
+            if (x != y) {
+                return (long) (x - y);
+            }
+        }
+        return (long) Long.compare(Math.min(cmpLen, s1.length()), Math.min(cmpLen, needle.length()));
+    }
+
+    private static String strtrChars(String str, String from, String to) {
+        int n = Math.min(from.length(), to.length());
+        if (n == 0) {
+            return str;
+        }
+        StringBuilder sb = new StringBuilder(str.length());
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            int k = from.lastIndexOf(c, n - 1);
+            sb.append(k >= 0 ? to.charAt(k) : c);
+        }
+        return sb.toString();
+    }
+
+    /** strtr with an array: longest key first at each position; replaced text is not rescanned. */
+    private static String strtrPairs(dev.phpruntime.PhpContext ctx, String str, PhpArray map) {
+        java.util.HashMap<String, String> pairs = new java.util.HashMap<>();
+        int maxLen = 0;
+        int minLen = Integer.MAX_VALUE;
+        for (Map.Entry<Object, Object> e : map.entries()) {
+            String k = PhpOps.toStr(e.getKey());
+            if (k.isEmpty()) {
+                ctx.warning("strtr(): Ignoring replacement of empty string", 0);
+                continue;
+            }
+            pairs.put(k, PhpOps.toStr(e.getValue()));
+            maxLen = Math.max(maxLen, k.length());
+            minLen = Math.min(minLen, k.length());
+        }
+        if (pairs.isEmpty()) {
+            return str;
+        }
+        StringBuilder sb = new StringBuilder(str.length());
+        int i = 0;
+        outer:
+        while (i < str.length()) {
+            for (int len = Math.min(maxLen, str.length() - i); len >= minLen; len--) {
+                String rep = pairs.get(str.substring(i, i + len));
+                if (rep != null) {
+                    sb.append(rep);
+                    i += len;
+                    continue outer;
+                }
+            }
+            sb.append(str.charAt(i++));
+        }
+        return sb.toString();
+    }
+
+    // version_compare, ported from ext/standard/versioning.c
+
+    private static boolean isDig(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    private static String canonicalizeVersion(String v) {
+        StringBuilder q = new StringBuilder();
+        char lp = v.charAt(0);
+        q.append(lp);
+        for (int i = 1; i < v.length(); i++) {
+            char p = v.charAt(i);
+            char last = q.charAt(q.length() - 1);
+            if (p == '-' || p == '_' || p == '+') {
+                if (last != '.') {
+                    q.append('.');
+                }
+            } else if ((!isDig(lp) && lp != '.' && isDig(p)) || (isDig(lp) && !isDig(p) && p != '.')) {
+                if (last != '.') {
+                    q.append('.');
+                }
+                q.append(p);
+            } else if (p > 127 || !Character.isLetterOrDigit(p)) {
+                if (last != '.') {
+                    q.append('.');
+                }
+            } else {
+                q.append(p);
+            }
+            lp = p;
+        }
+        return q.toString();
+    }
+
+    private static int specialForm(String s) {
+        String[] names = {"dev", "alpha", "a", "beta", "b", "RC", "rc", "#", "pl", "p"};
+        int[] order = {0, 1, 1, 2, 2, 3, 3, 4, 5, 5};
+        for (int i = 0; i < names.length; i++) {
+            if (s.startsWith(names[i])) {
+                return order[i];
+            }
+        }
+        return -1;
+    }
+
+    private static int compareSpecial(String a, String b) {
+        return Integer.signum(specialForm(a) - specialForm(b));
+    }
+
+    static int versionCompare(String v1, String v2) {
+        if (v1.isEmpty() || v2.isEmpty()) {
+            return v1.isEmpty() && v2.isEmpty() ? 0 : (v1.isEmpty() ? -1 : 1);
+        }
+        String[] p1 = (v1.charAt(0) == '#' ? v1 : canonicalizeVersion(v1)).split("\\.", -1);
+        String[] p2 = (v2.charAt(0) == '#' ? v2 : canonicalizeVersion(v2)).split("\\.", -1);
+        int i = 0;
+        while (i < p1.length && i < p2.length) {
+            String a = p1[i];
+            String b = p2[i];
+            if (a.isEmpty() || b.isEmpty()) {
+                break;
+            }
+            boolean da = isDig(a.charAt(0));
+            boolean db = isDig(b.charAt(0));
+            int compare;
+            if (da && db) {
+                compare = Long.signum(leadingLong(a) - leadingLong(b));
+            } else if (!da && !db) {
+                compare = compareSpecial(a, b);
+            } else if (da) {
+                compare = compareSpecial("#N#", b);
+            } else {
+                compare = compareSpecial(a, "#N#");
+            }
+            if (compare != 0) {
+                return compare;
+            }
+            i++;
+        }
+        if (i < p1.length && i >= p2.length) {
+            String rest = p1[i];
+            return !rest.isEmpty() && isDig(rest.charAt(0)) ? 1
+                    : versionCompare(String.join(".", java.util.Arrays.copyOfRange(p1, i, p1.length)), "#N#");
+        }
+        if (i < p2.length && i >= p1.length) {
+            String rest = p2[i];
+            return !rest.isEmpty() && isDig(rest.charAt(0)) ? -1
+                    : versionCompare("#N#", String.join(".", java.util.Arrays.copyOfRange(p2, i, p2.length)));
+        }
+        return 0;
+    }
+
+    private static long leadingLong(String s) {
+        long v = 0;
+        for (int i = 0; i < s.length() && isDig(s.charAt(i)) && v < Long.MAX_VALUE / 10; i++) {
+            v = v * 10 + (s.charAt(i) - '0');
+        }
+        return v;
+    }
+
+    private static String stripslashes(String str) {
+        StringBuilder sb = new StringBuilder(str.length());
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            if (c != '\\') {
+                sb.append(c);
+            } else if (i + 1 < str.length()) {
+                char n = str.charAt(++i);
+                sb.append(n == '0' ? '\0' : n);
+            }
+        }
+        return sb.toString();
+    }
+
+    /** addcslashes works on bytes, as PHP does, so multi-byte characters are escaped byte by byte. */
+    private static String addcslashes(String str, String charlist) {
+        boolean[] mask = new boolean[256];
+        byte[] list = charlist.getBytes(StandardCharsets.UTF_8);
+        for (int i = 0; i < list.length; i++) {
+            int c = list[i] & 0xFF;
+            if (i + 3 < list.length && list[i + 1] == '.' && list[i + 2] == '.' && (list[i + 3] & 0xFF) >= c) {
+                for (int k = c; k <= (list[i + 3] & 0xFF); k++) {
+                    mask[k] = true;
+                }
+                i += 3;
+            } else {
+                mask[c] = true;
+            }
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        for (byte b : str.getBytes(StandardCharsets.UTF_8)) {
+            int c = b & 0xFF;
+            if (!mask[c]) {
+                out.write(c);
+                continue;
+            }
+            out.write('\\');
+            if (c < 32 || c > 126) {
+                String esc = switch (c) {
+                    case '\n' -> "n";
+                    case '\t' -> "t";
+                    case '\r' -> "r";
+                    case 7 -> "a";
+                    case 11 -> "v";
+                    case '\b' -> "b";
+                    case '\f' -> "f";
+                    default -> String.format("%03o", c);
+                };
+                out.writeBytes(esc.getBytes(StandardCharsets.US_ASCII));
+            } else {
+                out.write(c);
+            }
+        }
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    private static String stripcslashes(String str) {
+        byte[] in = str.getBytes(StandardCharsets.UTF_8);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        for (int i = 0; i < in.length; i++) {
+            if (in[i] != '\\') {
+                out.write(in[i]);
+                continue;
+            }
+            if (i + 1 >= in.length) {
+                continue;
+            }
+            char c = (char) in[++i];
+            switch (c) {
+                case 'n' -> out.write('\n');
+                case 't' -> out.write('\t');
+                case 'r' -> out.write('\r');
+                case 'a' -> out.write(7);
+                case 'v' -> out.write(11);
+                case 'b' -> out.write('\b');
+                case 'f' -> out.write('\f');
+                case 'x' -> {
+                    int v = 0;
+                    int k = 0;
+                    while (k < 2 && i + 1 < in.length && Character.digit(in[i + 1], 16) >= 0) {
+                        v = v * 16 + Character.digit(in[++i], 16);
+                        k++;
+                    }
+                    out.write(k == 0 ? 'x' : v);
+                }
+                default -> {
+                    if (c >= '0' && c <= '7') {
+                        int v = c - '0';
+                        int k = 1;
+                        while (k < 3 && i + 1 < in.length && in[i + 1] >= '0' && in[i + 1] <= '7') {
+                            v = v * 8 + (in[++i] - '0');
+                            k++;
+                        }
+                        out.write(v & 0xFF);
+                    } else {
+                        out.write(in[i]);
+                    }
+                }
+            }
+        }
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    // strnatcmp, ported from ext/standard/strnatcmp.c
+
+    private static char at(String s, int i) {
+        return i < s.length() ? s.charAt(i) : '\0';
+    }
+
+    private static boolean isSpace(char c) {
+        return c == ' ' || (c >= '\t' && c <= '\r');
+    }
+
+    static int natCompare(String a, String b, boolean ci) {
+        int alen = a.length();
+        int blen = b.length();
+        if (alen == 0 || blen == 0) {
+            return alen == blen ? 0 : (alen > blen ? 1 : -1);
+        }
+        int ap = 0;
+        int bp = 0;
+        boolean leading = true;
+        while (true) {
+            char ca = at(a, ap);
+            char cb = at(b, bp);
+            while (leading && ca == '0' && ap + 1 < alen && isDig(a.charAt(ap + 1))) {
+                ca = at(a, ++ap);
+            }
+            while (leading && cb == '0' && bp + 1 < blen && isDig(b.charAt(bp + 1))) {
+                cb = at(b, ++bp);
+            }
+            leading = false;
+            while (isSpace(ca)) {
+                ca = at(a, ++ap);
+            }
+            while (isSpace(cb)) {
+                cb = at(b, ++bp);
+            }
+            if (isDig(ca) && isDig(cb)) {
+                int[] pos = {ap, bp};
+                int result = (ca == '0' || cb == '0') ? compareLeft(a, b, pos) : compareRight(a, b, pos);
+                ap = pos[0];
+                bp = pos[1];
+                if (result != 0) {
+                    return result;
+                } else if (ap == alen && bp == blen) {
+                    return 0;
+                } else if (ap == alen) {
+                    return -1;
+                } else if (bp == blen) {
+                    return 1;
+                }
+                ca = at(a, ap);
+                cb = at(b, bp);
+            }
+            if (ci) {
+                ca = Character.toUpperCase(ca);
+                cb = Character.toUpperCase(cb);
+            }
+            if (ca < cb) {
+                return -1;
+            } else if (ca > cb) {
+                return 1;
+            }
+            ++ap;
+            ++bp;
+            if (ap >= alen && bp >= blen) {
+                return 0;
+            } else if (ap >= alen) {
+                return -1;
+            } else if (bp >= blen) {
+                return 1;
+            }
+        }
+    }
+
+    private static boolean digitEnds(String s, int i) {
+        return i >= s.length() || !isDig(s.charAt(i));
+    }
+
+    private static int compareRight(String a, String b, int[] pos) {
+        int bias = 0;
+        for (; ; pos[0]++, pos[1]++) {
+            boolean ea = digitEnds(a, pos[0]);
+            boolean eb = digitEnds(b, pos[1]);
+            if (ea && eb) {
+                return bias;
+            } else if (ea) {
+                return -1;
+            } else if (eb) {
+                return 1;
+            } else if (bias == 0) {
+                bias = Integer.signum(a.charAt(pos[0]) - b.charAt(pos[1]));
+            }
+        }
+    }
+
+    private static int compareLeft(String a, String b, int[] pos) {
+        for (; ; pos[0]++, pos[1]++) {
+            boolean ea = digitEnds(a, pos[0]);
+            boolean eb = digitEnds(b, pos[1]);
+            if (ea && eb) {
+                return 0;
+            } else if (ea) {
+                return -1;
+            } else if (eb) {
+                return 1;
+            } else if (a.charAt(pos[0]) != b.charAt(pos[1])) {
+                return a.charAt(pos[0]) < b.charAt(pos[1]) ? -1 : 1;
+            }
+        }
+    }
+
+    private static Object strtok(ContextState st, String token) {
+        String subject = st.strtokSubject;
+        if (subject == null) {
+            return false;
+        }
+        int i = st.strtokPos;
+        while (i < subject.length() && token.indexOf(subject.charAt(i)) >= 0) {
+            i++;
+        }
+        if (i >= subject.length()) {
+            st.strtokSubject = null;
+            return false;
+        }
+        int start = i;
+        while (i < subject.length() && token.indexOf(subject.charAt(i)) < 0) {
+            i++;
+        }
+        st.strtokPos = Math.min(subject.length(), i + 1);
+        return subject.substring(start, i);
+    }
+
+    private static Object substrReplace(Object[] a) {
+        Object replace = a[1];
+        Object offset = a[2];
+        Object length = a.length > 3 ? a[3] : PhpNull.INSTANCE;
+        if (!(a[0] instanceof PhpArray subjects)) {
+            return substrReplaceOne(s(a, 0), nth(replace, 0, ""), PhpOps.toLong(nth(offset, 0, 0L)),
+                    lengthOf(nth(length, 0, PhpNull.INSTANCE)));
+        }
+        PhpArray out = new PhpArray();
+        int i = 0;
+        for (Map.Entry<Object, Object> e : subjects.entries()) {
+            out.put(e.getKey(), substrReplaceOne(PhpOps.toStr(e.getValue()), nth(replace, i, ""),
+                    PhpOps.toLong(nth(offset, i, 0L)), lengthOf(nth(length, i, PhpNull.INSTANCE))));
+            i++;
+        }
+        return out;
+    }
+
+    /** The i-th value of an array argument, or the scalar itself (used for every subject). */
+    private static Object nth(Object v, int i, Object missing) {
+        if (!(v instanceof PhpArray arr)) {
+            return v;
+        }
+        List<Object> values = arr.values();
+        return i < values.size() ? values.get(i) : missing;
+    }
+
+    private static Long lengthOf(Object v) {
+        return v == PhpNull.INSTANCE ? null : PhpOps.toLong(v);
+    }
+
+    private static String substrReplaceOne(String str, Object replacement, long start, Long length) {
+        int n = str.length();
+        if (start < 0) {
+            start = Math.max(0, n + start);
+        } else if (start > n) {
+            start = n;
+        }
+        long end;
+        if (length == null) {
+            end = n;
+        } else if (length < 0) {
+            end = Math.max(start, n + length);
+        } else {
+            end = Math.min(n, start + length);
+        }
+        return str.substring(0, (int) start) + PhpOps.toStr(replacement) + str.substring((int) end);
     }
 }

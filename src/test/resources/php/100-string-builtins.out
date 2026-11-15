@@ -1,0 +1,101 @@
+int(2)
+int(2)
+int(0)
+int(2)
+int(2)
+int(1)
+int(3)
+int(2)
+int(0)
+int(0)
+int(-1)
+int(0)
+int(32)
+int(-1)
+int(1)
+int(0)
+string(20) "Hello all, I said hi"
+string(3) "xyc"
+string(3) "abc"
+string(2) "cb"
+string(9) "one two 3"
+5.2 <=> 5.10: -1
+1.0rc1 <=> 1.0: -1
+1.0 <=> 1.0.0: -1
+1.0-dev <=> 1.0alpha: -1
+1.0pl1 <=> 1.0: 1
+ <=> 1: -1
+1.0.0 <=> 1.0: 1
+8.5.12 <=> 7.4: 1
+1.0a <=> 1.0b: -1
+1.0RC2 <=> 1.0rc1: 1
+6.9-beta3 <=> 6.9: -1
+1.10 <=> 1.9: 1
+1..2 <=> 1.2: 0
+1_0 <=> 1-0: 0
+7.4.0 <=> 7.4.0: 0
+1.0#1 <=> 1.0: 1
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+string(7) "a\b'c"d"
+string(8) "foo[bar]"
+string(11) "\z\o\o['.']"
+string(14) "tab\there\nnew"
+string(6) "a
+AAq\"
+string(3) "JK1"
+int(1)
+int(-1)
+int(-1)
+int(-1)
+int(0)
+int(-1)
+int(0)
+int(0)
+int(-1)
+img1.png,IMG2.png,img10.png,img12.png
+[This][is][an][example][string]
+string(1) "a"
+string(1) "b"
+bool(false)
+string(9) "Hello PHP"
+string(5) "Jello"
+string(7) "Hell!!o"
+string(3) "HeX"
+string(6) "HelloX"
+string(7) "Hello d"
+Array
+(
+    [0] => aXa
+    [1] => bXb
+    [2] => cXc
+)
+Array
+(
+    [0] => 1aa
+    [1] => b2
+)
+string(14) "ER@EXAMPLE.com"
+string(4) "USER"
+bool(false)
+string(2) "/c"
+string(2) "/c"
+bool(false)
+string(11) "s is a test"
+bool(false)
+string(45) "&apos;'ééé &bogus;&lt;&#0;&#x110000;…©"
+string(6) "&#39;""
+string(11) "&#39;&quot;"
+string(1) "'"
+string(37) "" " ' ' ' &apos; " &amp; <b> &eacute;"
+string(12) "&quot;&#039;"
+string(7) ""&#039;"
+string(10) "abc|def|g|"
+string(5) "abc
+"
+string(1) "-"
+int(13)
+int(15)
+int(23)

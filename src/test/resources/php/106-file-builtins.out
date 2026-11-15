@@ -1,0 +1,97 @@
+"\/www\/htdocs\/inc\/lib.inc.php" {"dirname":"\/www\/htdocs\/inc","basename":"lib.inc.php","extension":"php","filename":"lib.inc"} "php" "\/www\/htdocs\/inc" "lib.inc" "lib.inc.php"
+"file.txt" {"dirname":".","basename":"file.txt","extension":"txt","filename":"file"} "txt" "." "file" "file.txt"
+"noext" {"dirname":".","basename":"noext","filename":"noext"} "" "." "noext" "noext"
+".htaccess" {"dirname":".","basename":".htaccess","extension":"htaccess","filename":""} "htaccess" "." "" ".htaccess"
+"\/a\/b\/" {"dirname":"\/a","basename":"b","filename":"b"} "" "\/a" "b" "b"
+"" {"basename":"","filename":""} "" "" "" ""
+"\/" {"dirname":"\/","basename":"","filename":""} "" "\/" "" ""
+"a.b.c" {"dirname":".","basename":"a.b.c","extension":"c","filename":"a.b"} "c" "." "a.b" "a.b.c"
+"dir\/.hidden.tar.gz" {"dirname":"dir","basename":".hidden.tar.gz","extension":"gz","filename":".hidden.tar"} "gz" "dir" ".hidden.tar" ".hidden.tar.gz"
+"trail." {"dirname":".","basename":"trail.","extension":"","filename":"trail"} "" "." "trail" "trail."
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+int(7)
+int(5)
+string(12) "héllo
+more
+"
+int(12)
+bool(true)
+bool(true)
+int(3)
+string(3) "xy3"
+string(4) "éll"
+int(0)
+string(0) ""
+int(0)
+int(1)
+int(1)
+array(7) {
+  [0]=>
+  string(1) "."
+  [1]=>
+  string(2) ".."
+  [2]=>
+  string(11) "Z-upper.txt"
+  [3]=>
+  string(10) "_under.txt"
+  [4]=>
+  string(5) "a.txt"
+  [5]=>
+  string(5) "b.txt"
+  [6]=>
+  string(5) "c.txt"
+}
+array(7) {
+  [0]=>
+  string(5) "c.txt"
+  [1]=>
+  string(5) "b.txt"
+  [2]=>
+  string(5) "a.txt"
+  [3]=>
+  string(10) "_under.txt"
+  [4]=>
+  string(11) "Z-upper.txt"
+  [5]=>
+  string(2) ".."
+  [6]=>
+  string(1) "."
+}
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+string(2) "-1"
+string(2) "14"
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)

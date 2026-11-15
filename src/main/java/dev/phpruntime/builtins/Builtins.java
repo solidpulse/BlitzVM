@@ -27,6 +27,12 @@ public final class Builtins {
         ArrayFunctions.register();
         MathFunctions.register();
         FileFunctions.register();
+        UrlFunctions.register();
+        HashFunctions.register();
+        DateFunctions.register();
+        CtypeFunctions.register();
+        SerializeFunctions.register();
+        EnvFunctions.register();
     }
 
     private Builtins() {
