@@ -107,6 +107,8 @@ final class OutputFunctions {
             }
             sb.append(" ".repeat(indent)).append("}\n");
             seen.remove(obj);
+        } else if (v instanceof dev.phpruntime.runtime.PhpResource r) {
+            sb.append("resource(").append(r.id()).append(") of type (").append(r.type()).append(")\n");
         } else {
             sb.append("NULL\n");
         }

@@ -37,6 +37,7 @@ public final class Builtins {
         EnvFunctions.register();
         OutputBufferFunctions.register();
         PointerFunctions.register();
+        StreamFunctions.register();
     }
 
     private Builtins() {

@@ -141,6 +141,7 @@ final class FileFunctions {
                     throw new IOException();
                 }
                 byte[] data = f.readAllBytes();
+                StreamFunctions.consumeStreamId(ctx);
                 int offset = a.length > 3 ? (int) Math.max(0, PhpOps.toLong(a[3])) : 0;
                 int end = data.length;
                 if (a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE) {
@@ -180,6 +181,7 @@ final class FileFunctions {
                 try (java.io.OutputStream out = f.newOutputStream(opts.toArray(new java.nio.file.OpenOption[0]))) {
                     out.write(bytes);
                 }
+                StreamFunctions.consumeStreamId(ctx);
                 return (long) bytes.length;
             } catch (IOException | SecurityException e) {
                 ctx.warning("file_put_contents(" + path + "): Failed to open stream: No such file or directory", 0);
@@ -204,6 +206,7 @@ final class FileFunctions {
                 for (TruffleFile child : dir.list()) {
                     names.add(child.getName());
                 }
+                StreamFunctions.consumeStreamId(ctx);
                 if (order == 0) {
                     names.sort(FileFunctions::compareBytes);
                 } else if (order == 1) {

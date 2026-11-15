@@ -1,0 +1,228 @@
+resource(6) of type (stream)
+bool(true)
+string(8) "resource"
+string(6) "stream"
+bool(true)
+string(17) "resource (stream)"
+int(12)
+int(5)
+int(17)
+bool(true)
+bool(false)
+string(17) "resource (closed)"
+string(7) "Unknown"
+string(17) "resource (closed)"
+Resource id #6
+string(6) "line1
+"
+string(6) "line2
+"
+bool(false)
+string(5) "line3"
+bool(true)
+bool(false)
+string(3) "lin"
+int(3)
+string(1) "e"
+int(0)
+string(2) "e3"
+bool(true)
+int(0)
+bool(false)
+string(5) "line1"
+string(5) "line3"
+string(1) "r"
+string(9) "plainfile"
+bool(true)
+string(3) "lin"
+array(3) {
+  [0]=>
+  string(2) "e1"
+  [1]=>
+  string(5) "line2"
+  [2]=>
+  string(5) "line3"
+}
+int(0)
+int(6)
+string(23) "LINE1
+line2
+line3
+line4"
+string(4) "LINE"
+string(4) "LINE"
+int(4)
+bool(false)
+array(4) {
+  [0]=>
+  string(2) "a
+"
+  [1]=>
+  string(1) "
+"
+  [2]=>
+  string(3) "b
+"
+  [3]=>
+  string(1) "c"
+}
+array(4) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(0) ""
+  [2]=>
+  string(1) "b"
+  [3]=>
+  string(1) "c"
+}
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "c"
+}
+a
+
+b
+cint(7)
+
+string(32) "d89d6e9e2a2fa77c2977f6108f753a7b"
+string(40) "7d206b899a60b684900ca885e329014c912ddb60"
+bool(true)
+int(11)
+bool(false)
+string(6) "hello
+"
+string(5) "world"
+bool(true)
+int(11)
+array(9) {
+  ["timed_out"]=>
+  bool(false)
+  ["blocked"]=>
+  bool(true)
+  ["eof"]=>
+  bool(true)
+  ["wrapper_type"]=>
+  string(3) "PHP"
+  ["stream_type"]=>
+  string(6) "MEMORY"
+  ["mode"]=>
+  string(3) "w+b"
+  ["unread_bytes"]=>
+  int(0)
+  ["seekable"]=>
+  bool(true)
+  ["uri"]=>
+  string(12) "php://memory"
+}
+int(21)
+string(3) "abc"
+to output
+string(8) "captured"
+int(26)
+int(7)
+int(7)
+bool(true)
+bool(true)
+bool(true)
+int(7)
+bool(false)
+int(7)
+bool(true)
+int(1700000000)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+int(22)
+bool(true)
+string(4) "temp"
+bool(true)
+bool(true)
+array(7) {
+  [0]=>
+  string(1) "."
+  [1]=>
+  string(2) ".."
+  [2]=>
+  string(5) "a.txt"
+  [3]=>
+  string(9) "moved.txt"
+  [4]=>
+  string(3) "sub"
+  [5]=>
+  string(5) "t.txt"
+  [6]=>
+  string(5) "x.txt"
+}
+bool(true)
+array(4) {
+  [0]=>
+  string(5) "a.txt"
+  [1]=>
+  string(9) "moved.txt"
+  [2]=>
+  string(5) "t.txt"
+  [3]=>
+  string(5) "x.txt"
+}
+array(5) {
+  [0]=>
+  string(5) "a.txt"
+  [1]=>
+  string(9) "moved.txt"
+  [2]=>
+  string(3) "sub"
+  [3]=>
+  string(5) "t.txt"
+  [4]=>
+  string(5) "x.txt"
+}
+array(1) {
+  [0]=>
+  string(3) "sub"
+}
+array(2) {
+  [0]=>
+  string(5) "a.txt"
+  [1]=>
+  string(5) "t.txt"
+}
+array(2) {
+  [0]=>
+  string(5) "a.txt"
+  [1]=>
+  string(9) "moved.txt"
+}
+array(1) {
+  [0]=>
+  string(9) "inner.php"
+}
+array(0) {
+}
+bool(true)
+string(4) "sub/"
+string(14) "stream-context"
+array(1) {
+  ["http"]=>
+  array(2) {
+    ["method"]=>
+    string(4) "POST"
+    ["timeout"]=>
+    int(5)
+  }
+}
+string(6) "X-A: b"
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(false)

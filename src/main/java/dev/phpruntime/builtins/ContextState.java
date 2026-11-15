@@ -19,7 +19,16 @@ final class ContextState {
     ZoneId timezone = DateFunctions.UTC;
     String timezoneName = "UTC";
 
-    private ContextState() {
+    /** Next resource id. PHP's CLI has STDIN, STDOUT and STDERR as 1 to 3, so the first is 4. */
+    long nextResourceId = 4;
+    /** Whether the default stream context has taken its id (the first stream open does this). */
+    boolean defaultStreamContext;
+    /** The directory handle readdir() and friends use when called without one. */
+    dev.phpruntime.runtime.PhpResource lastDir;
+    /** umask(): kept per request; files are created with the host's own umask. */
+    long umask = 022;
+
+        private ContextState() {
     }
 
     static ContextState of(PhpContext ctx) {
