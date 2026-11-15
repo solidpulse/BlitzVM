@@ -232,6 +232,14 @@ class ExceptionsTest {
                 echo implode(",", array_slice($acc, 0, 4)), ":", count($acc);
                 """);
 
+        // Warm both mode=0 and mode=1 once so pre-existing DispatchCallNode cachedTarget race
+        // (fixed on branch shared-policy-fixes) does not mask concurrent TryCatchNode testing.
+        for (String m : List.of("0", "1")) {
+            PhpRequest warm = new PhpRequest();
+            warm.get.put("mode", m);
+            assertEquals(200, engine.execute(shared, warm).status());
+        }
+
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
             List<Callable<Void>> tasks = new ArrayList<>();
