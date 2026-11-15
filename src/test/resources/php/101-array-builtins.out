@@ -1,0 +1,199 @@
+Array
+(
+    [1] => blue
+    [2] => 1
+    [x] => 1
+)
+Array
+(
+)
+Array
+(
+    [a] => green
+    [0] => red
+    [1] => blue
+    [2] => 1
+    [x] => 1
+)
+Array
+(
+    [a] => green
+    [0] => red
+)
+Array
+(
+    [0] => red
+)
+Array
+(
+    [blue] => 1
+    [red] => 2
+    [purple] => 4
+)
+Array
+(
+    [green] => 3
+    [0] => z
+)
+Array
+(
+    [b] => brown
+    [c] => blue
+    [0] => red
+)
+Array
+(
+    [a] => green
+)
+Array
+(
+    [citrus] => Array
+        (
+            [0] => pineapple
+        )
+
+    [berries] => Array
+        (
+            [1] => blueberry
+        )
+
+    [x] => 1
+    [5] => new
+)
+Array
+(
+    [citrus] => Array
+        (
+            [0] => pineapple
+        )
+
+    [berries] => Array
+        (
+            [0] => blackberry
+            [1] => blueberry
+        )
+
+    [x] => 1
+    [5] => new
+)
+Array
+(
+    [0] => 1
+    [1] => b
+    [2] => 3
+    [3] => d
+)
+Array
+(
+    [citrus] => Array
+        (
+            [0] => orange
+        )
+
+    [berries] => Array
+        (
+            [0] => blackberry
+            [1] => raspberry
+        )
+
+    [x] => 1
+)
+Array
+(
+    [color] => Array
+        (
+            [favorite] => Array
+                (
+                    [0] => red
+                    [1] => green
+                )
+
+            [0] => blue
+        )
+
+    [0] => 5
+    [1] => 10
+)
+Array
+(
+    [a] => Array
+        (
+            [0] => 1
+            [1] => 3
+            [2] => 5
+        )
+
+    [b] => Array
+        (
+            [0] => 2
+            [1] => 4
+        )
+
+)
+Array
+(
+    [FIRST] => 1
+    [SECOND] => 4
+    [7] => x
+)
+Array
+(
+    [first] => 2
+)
+NULL
+int(1)
+int(3)
+array(1) {
+  [0]=>
+  string(1) "n"
+}
+bool(true)
+bool(false)
+bool(false)
+Array
+(
+    [0] => red
+    [1] => green
+)
+Array
+(
+    [0] => blue
+    [1] => yellow
+)
+Array
+(
+    [0] => red
+    [1] => yellow
+)
+Array
+(
+    [0] => red
+    [1] => orange
+)
+Array
+(
+    [0] => red
+    [1] => green
+    [2] => blue
+    [3] => black
+    [4] => maroon
+)
+Array
+(
+    [0] => y
+    [b] => z
+)
+Array
+(
+    [a] => x
+    [0] => n1
+    [1] => n2
+    [2] => n3
+    [3] => w
+)
+Array
+(
+    [0] => 1
+    [1] => 2
+    [2] => 3
+)

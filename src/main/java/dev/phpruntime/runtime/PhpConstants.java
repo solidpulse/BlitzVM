@@ -62,6 +62,8 @@ public final class PhpConstants {
             Map.entry("ENT_XML1", 16L),
             Map.entry("ENT_XHTML", 32L),
             Map.entry("ENT_HTML5", 48L),
+            Map.entry("CASE_LOWER", 0L),
+            Map.entry("CASE_UPPER", 1L),
             Map.entry("PHP_URL_SCHEME", 0L),
             Map.entry("PHP_URL_HOST", 1L),
             Map.entry("PHP_URL_PORT", 2L),
