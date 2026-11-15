@@ -3,7 +3,6 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.PhpContext;
 
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -22,7 +21,7 @@ final class ContextState {
     int strtokPos;
 
     /** date_default_timezone_set; PHP defaults to UTC when date.timezone is not configured. */
-    ZoneId timezone = ZoneOffset.UTC;
+    ZoneId timezone = DateFunctions.UTC;
     String timezoneName = "UTC";
 
     private ContextState() {

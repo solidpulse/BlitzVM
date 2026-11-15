@@ -6,10 +6,6 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpRequest;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.TextStyle;
 import java.util.Locale;
 
 /** Type inspection, conversion, time, sleeping and the HTTP response API. */
@@ -111,10 +107,6 @@ final class CoreFunctions {
             r.append(t % 1_000_000_000L);
             return r;
         });
-        Builtins.def("date", 1, 2, (ctx, a) -> {
-            long ts = a.length > 1 ? PhpOps.toLong(a[1]) : System.currentTimeMillis() / 1000;
-            return date(PhpOps.toStr(a[0]), ZonedDateTime.ofInstant(Instant.ofEpochSecond(ts), ZoneId.systemDefault()));
-        });
         // Sleeping releases the CPU slot to other requests, like a goroutine parking.
         Builtins.def("usleep", 1, 1, (ctx, a) -> {
             long micros = PhpOps.toLong(a[0]);
@@ -164,43 +156,5 @@ final class CoreFunctions {
             return old;
         });
         Builtins.def("headers_sent", 0, 0, (ctx, a) -> false);
-    }
-
-    private static String date(String format, ZonedDateTime t) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < format.length(); i++) {
-            char c = format.charAt(i);
-            switch (c) {
-                case 'd' -> sb.append(String.format("%02d", t.getDayOfMonth()));
-                case 'j' -> sb.append(t.getDayOfMonth());
-                case 'D' -> sb.append(t.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH));
-                case 'l' -> sb.append(t.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH));
-                case 'N' -> sb.append(t.getDayOfWeek().getValue());
-                case 'm' -> sb.append(String.format("%02d", t.getMonthValue()));
-                case 'n' -> sb.append(t.getMonthValue());
-                case 'M' -> sb.append(t.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH));
-                case 'F' -> sb.append(t.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH));
-                case 'Y' -> sb.append(t.getYear());
-                case 'y' -> sb.append(String.format("%02d", t.getYear() % 100));
-                case 'H' -> sb.append(String.format("%02d", t.getHour()));
-                case 'G' -> sb.append(t.getHour());
-                case 'h' -> sb.append(String.format("%02d", (t.getHour() + 11) % 12 + 1));
-                case 'g' -> sb.append((t.getHour() + 11) % 12 + 1);
-                case 'i' -> sb.append(String.format("%02d", t.getMinute()));
-                case 's' -> sb.append(String.format("%02d", t.getSecond()));
-                case 'A' -> sb.append(t.getHour() < 12 ? "AM" : "PM");
-                case 'a' -> sb.append(t.getHour() < 12 ? "am" : "pm");
-                case 'U' -> sb.append(t.toEpochSecond());
-                case 'T' -> sb.append(t.getZone().getDisplayName(TextStyle.SHORT, Locale.ENGLISH));
-                case 'c' -> sb.append(t.format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME));
-                case '\\' -> {
-                    if (i + 1 < format.length()) {
-                        sb.append(format.charAt(++i));
-                    }
-                }
-                default -> sb.append(c);
-            }
-        }
-        return sb.toString();
     }
 }
