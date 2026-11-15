@@ -50,6 +50,8 @@ public final class PhpContext {
     private final StringBuilder output = new StringBuilder();
     private final PrintStream err;
     private PhpRequest request;
+    /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
+    private Object builtinState;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
@@ -80,6 +82,14 @@ public final class PhpContext {
             request = PhpRequest.current();
         }
         return request;
+    }
+
+    public Object builtinState() {
+        return builtinState;
+    }
+
+    public void setBuiltinState(Object state) {
+        builtinState = state;
     }
 
     // ------------------------------------------------------------ globals

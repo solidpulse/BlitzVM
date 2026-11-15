@@ -3,18 +3,13 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.PhpContext;
 
 import java.time.ZoneId;
-import java.util.Collections;
-import java.util.Map;
-import java.util.WeakHashMap;
 
 /**
  * Per-request state that a few builtins keep between calls (strtok's position, the default
- * timezone). Held outside {@link PhpContext} so builtins can add state without touching it;
- * the weak map lets the entry go when the request's context is collected.
+ * timezone). Kept in a field of the request's {@link PhpContext}, so it needs no locking
+ * and goes away with the context.
  */
 final class ContextState {
-
-    private static final Map<PhpContext, ContextState> STATES = Collections.synchronizedMap(new WeakHashMap<>());
 
     /** strtok: the string being tokenized and the position of the next token. */
     String strtokSubject;
@@ -28,6 +23,11 @@ final class ContextState {
     }
 
     static ContextState of(PhpContext ctx) {
-        return STATES.computeIfAbsent(ctx, c -> new ContextState());
+        Object state = ctx.builtinState();
+        if (state == null) {
+            state = new ContextState();
+            ctx.setBuiltinState(state);
+        }
+        return (ContextState) state;
     }
 }
