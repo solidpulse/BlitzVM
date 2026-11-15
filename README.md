@@ -116,7 +116,7 @@ always pointed at your feet: miss one lock and you get a bug that only shows up 
 and never on your laptop. BlitzVM requests work like classic php-fpm: they don't share
 anything, so there's nothing for them to race on.
 
-Laravel doesn't run yet. It needs classes and `require`, which are next on the list.
+Laravel and WordPress don't run yet. They need classes and closures, which are next on the list.
 
 ## Architecture
 
@@ -146,7 +146,7 @@ Packages under `dev.phpruntime`:
 | `parser` | PHP lexer (HTML and code modes, string interpolation) and a recursive-descent parser with Pratt precedence for expressions. Function locals get frame slots at parse time. |
 | `nodes` | PHP AST nodes. Truffle DSL specializations with `long` fast paths that overflow to `double`; locals in typed `long`/`double` frame slots; `LoopNode` for OSR and safepoint polls; call sites cache a `DirectCallNode` so Graal can inline. |
 | `runtime` | Values and helpers: copy-on-write ordered arrays, PHP 8 type juggling, float formatting that matches `zend_gcvt`. |
-| `builtins` | 179 PHP functions across strings, arrays, math, output, types, date/time, `sleep`/`usleep`, `header()`. |
+| `builtins` | 189 PHP functions across strings, arrays, math, output, types, constants, paths, date/time, `sleep`/`usleep`, `header()`. |
 | `js` | The JavaScript front end: lexer, parser, nodes with int/double specialization and typed frame slots, Node-style globals. |
 | `sched` | The preemptive scheduler. |
 | `host` | One shared polyglot engine, a context per request, the URL dispatcher, the Netty and JDK HTTP servers, and the CLI. |
@@ -240,13 +240,15 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
 
 ## Testing
 
-`mvn test` runs 53 tests:
+`mvn test` runs 69 tests:
 
-- `ConformanceTest`: 35 PHP scripts whose expected output came from real PHP 8.5, matched
+- `ConformanceTest`: 41 PHP scripts whose expected output came from real PHP 8.5, matched
   byte for byte.
 - `JsConformanceTest`: 16 JavaScript scripts whose expected output came from real Node.js.
 - `SchedulerTest`: a busy loop and a sleeping request must not starve a hello request on a
   single slot, and the busy loop must hit its time budget.
+- `IncludeConstantsTest`: the warning and fatal paths of `include`, `require` and `define`,
+  and that constants and conditional functions don't leak between requests.
 
 ## PHP support
 
@@ -255,10 +257,11 @@ Supported: `echo`/`print`, inline HTML and `<?= ?>`, alternative syntax, `int`/`
 assignment operators including `??=` and `++`/`--`, `if`/`elseif`/`else`, `while`,
 `do-while`, `for`, `foreach` with keys, `switch`, `break N`/`continue N`, functions with
 defaults and recursion, `global`, `isset`/`unset`/`empty`, casts, superglobals, `header()`,
-`http_response_code()`.
+`http_response_code()`, `include`/`require` and their `_once` forms, `define`/`const` and
+magic constants, and functions declared conditionally inside `if` blocks.
 
 Not yet: classes and objects, closures, references (`&` is parsed but treated as by-value),
-static variables, `include`/`require`, heredoc/nowdoc, exceptions, generators, `preg_*`,
+static variables, `include` inside a function (it runs in global scope), heredoc/nowdoc, exceptions, generators, `preg_*`,
 sessions and cookies. Strings are Java strings rather than byte strings, so `strlen` counts
 UTF-8 bytes while `substr` works on characters.
 
@@ -269,7 +272,8 @@ UTF-8 bytes while `substr` works on characters.
 | working | PHP 8 core, checked against PHP 8.5 with a conformance suite |
 | prototype | Request contexts on Java virtual threads: 2,000 requests that each sleep 200 ms finish in 0.38 s, against 6.4 s on a 64-thread pool |
 | prototype | JavaScript front end (BlitzVM-JS in the tables above) |
-| next | Classes, closures and `require`, so real apps and Laravel can run |
+| working | `include`/`require`, runtime constants, conditional function declarations |
+| next | Classes and closures, so real apps, WordPress and Laravel can run |
 | next | Hot builtins (`strlen`, `count`, `microtime`) as nodes the JIT can inline |
 | next | Fast paths for large array writes |
 | planned | Node.js- and Bun-compatible environments |
