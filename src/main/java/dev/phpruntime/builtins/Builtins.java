@@ -31,6 +31,7 @@ public final class Builtins {
         DateFunctions.register();
         CtypeFunctions.register();
         SerializeFunctions.register();
+        EnvFunctions.register();
     }
 
     private Builtins() {
