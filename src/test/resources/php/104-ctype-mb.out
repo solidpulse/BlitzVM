@@ -1,0 +1,39 @@
+ctype_digit  01000000000000001
+ctype_alpha  00011100001000000
+ctype_alnum  01011110011000001
+ctype_upper  00001000000000000
+ctype_lower  00010000001000000
+ctype_space  00000001000000000
+ctype_xdigit 01011110010000001
+ctype_punct  00000000000100000
+ctype_print  01111110111110011
+ctype_graph  01111110011110001
+ctype_cntrl  00000000000000100
+bool(false)
+bool(false)
+bool(false)
+string(5) "UTF-8"
+bool(true)
+string(5) "UTF-8"
+bool(true)
+bool(true)
+bool(true)
+int(65)
+int(233)
+int(8364)
+int(128512)
+string(1) "A"
+string(2) "é"
+string(4) "😀"
+bool(false)
+bool(false)
+bool(true)
+int(63)
+bool(true)
+array(2) {
+  [0]=>
+  string(5) "ASCII"
+  [1]=>
+  string(5) "UTF-8"
+}
+bool(true)

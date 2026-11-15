@@ -29,6 +29,7 @@ public final class Builtins {
         UrlFunctions.register();
         HashFunctions.register();
         DateFunctions.register();
+        CtypeFunctions.register();
     }
 
     private Builtins() {
