@@ -1,0 +1,108 @@
+"1" => 1 | 0 No error
+"-0" => 0 | 0 No error
+"-0.0" => -0.0 | 0 No error
+"1.0" => 1.0 | 0 No error
+"1e2" => 100.0 | 0 No error
+"1E-2" => 0.01 | 0 No error
+"0.1" => 0.1 | 0 No error
+"12345678901234567890" => 1.2345678901234567E+19 | 0 No error
+"9223372036854775807" => 9223372036854775807 | 0 No error
+int(-9223372036854775808)
+"9223372036854775808" => 9.223372036854776E+18 | 0 No error
+"\"plain\"" => 'plain' | 0 No error
+"\"esc \\\" \\\\ \\\/ \\b \\f \\n \\r \\t\"" => 'esc " \\ /   
+  	' | 0 No error
+"\"a\u00e9\ud83d\ude00\"" => 'aé😀' | 0 No error
+int(2)
+int(0)
+"true" => true | 0 No error
+"false" => false | 0 No error
+"null" => NULL | 0 No error
+"[]" => array (
+) | 0 No error
+"{}" => array (
+) | 0 No error
+" [ 1 , \"two\" , 3.5 , true , null ] " => array (
+  0 => 1,
+  1 => 'two',
+  2 => 3.5,
+  3 => true,
+  4 => NULL,
+) | 0 No error
+"{\"a\":1,\"b\":{\"c\":[1,2,{\"d\":null}]}}" => array (
+  'a' => 1,
+  'b' => 
+  array (
+    'c' => 
+    array (
+      0 => 1,
+      1 => 2,
+      2 => 
+      array (
+        'd' => NULL,
+      ),
+    ),
+  ),
+) | 0 No error
+"{\"a\":1,\"a\":2}" => array (
+  'a' => 2,
+) | 0 No error
+"{\"1\":\"x\",\"01\":\"y\",\"\":\"z\",\"-5\":\"neg\"}" => array (
+  1 => 'x',
+  '01' => 'y',
+  '' => 'z',
+  -5 => 'neg',
+) | 0 No error
+"[[[]]]" => array (
+  0 => 
+  array (
+    0 => 
+    array (
+    ),
+  ),
+) | 0 No error
+"" => NULL | 4 Syntax error
+" " => NULL | 4 Syntax error
+"[1,2" => NULL | 4 Syntax error
+"[1,]" => NULL | 4 Syntax error
+"{\"a\"}" => NULL | 4 Syntax error
+"{a:1}" => NULL | 4 Syntax error
+"01" => NULL | 4 Syntax error
+"1." => NULL | 4 Syntax error
+".5" => NULL | 4 Syntax error
+"TRUE" => NULL | 4 Syntax error
+"nul" => NULL | 4 Syntax error
+"\"tab\there\"" => NULL | 3 Control character error, possibly incorrectly encoded
+"\"\\x\"" => NULL | 4 Syntax error
+"\"\\ud83d\"" => NULL | 10 Single unpaired UTF-16 surrogate in unicode escape
+"\"\\ude00\"" => NULL | 10 Single unpaired UTF-16 surrogate in unicode escape
+"[1] x" => NULL | 4 Syntax error
+"[1]" => NULL | 1 Maximum stack depth exceeded
+"1" => 1 | 0 No error
+"[1]" => array (
+  0 => 1,
+) | 0 No error
+"[[1]]" => NULL | 1 Maximum stack depth exceeded
+"{\"a\":{\"b\":1}}" => array (
+  'a' => 
+  array (
+    'b' => 1,
+  ),
+) | 0 No error
+"{\"a\":{\"b\":1}}" => NULL | 1 Maximum stack depth exceeded
+array(2) {
+  [0]=>
+  string(20) "12345678901234567890"
+  [1]=>
+  int(5)
+}
+array(1) {
+  ["k"]=>
+  string(1) "v"
+}
+4
+0
+string(7) "#FFFFFF"
+string(6) "1340px"
+bool(true)
+{"version":3,"settings":{"color":{"palette":[{"slug":"base","color":"#FFFFFF","name":"Base"}]},"layout":{"contentSize":"645px","wideSize":"1340px"},"typography":{"fluid":true,"fontSizes":[{"slug":"small","size":"0.9rem"}]}},"styles":{"spacing":{"padding":{"top":"0px"}}}}
