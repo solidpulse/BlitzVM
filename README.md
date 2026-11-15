@@ -116,7 +116,7 @@ always pointed at your feet: miss one lock and you get a bug that only shows up 
 and never on your laptop. BlitzVM requests work like classic php-fpm: they don't share
 anything, so there's nothing for them to race on.
 
-Laravel and WordPress don't run yet. They need closures, exceptions and references, which are next on the list.
+Laravel and WordPress don't run yet. They need general references, namespaces and SPL interfaces, which are next on the list.
 
 ## Architecture
 
