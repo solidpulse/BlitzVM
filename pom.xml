@@ -53,6 +53,12 @@
             <version>${netty.version}</version>
             <classifier>linux-aarch_64</classifier>
         </dependency>
+        <!-- mysqli: MariaDB Connector/J, a pure-Java MySQL/MariaDB driver. -->
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+            <version>3.5.3</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
