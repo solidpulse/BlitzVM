@@ -8,10 +8,13 @@ import statistics
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("file", nargs="?", default=str(Path(__file__).with_name("results.json")))
+    parser.add_argument("files", nargs="*", default=[str(Path(__file__).with_name("results.json"))])
     args = parser.parse_args()
-    data = json.loads(Path(args.file).read_text())
-    records = data["measurements"]
+    records = []
+    for batch, file in enumerate(args.files):
+        data = json.loads(Path(file).read_text())
+        for record in data["measurements"]:
+            records.append(dict(record, batch=batch))
     for jit in (False, True):
         print("\nGraal enabled" if jit else "\nInterpreter only")
         print("| Benchmark | PHP | AST | BC | AST/BC |")
@@ -34,8 +37,9 @@ def main():
     for jit in (False, True):
         for name in sorted({r["file"] for r in records}):
             pairs = []
-            for repeat in sorted({r["repeat"] for r in records}):
-                pair = {r["mode"]: r["median_ms"] for r in records if r["jit"] == jit and r["file"] == name and r["repeat"] == repeat}
+            for batch, repeat in sorted({(r["batch"], r["repeat"]) for r in records}):
+                pair = {r["mode"]: r["median_ms"] for r in records if r["jit"] == jit and r["file"] == name
+                        and r["batch"] == batch and r["repeat"] == repeat}
                 if "ast" in pair and "bc" in pair:
                     pairs.append(pair["ast"] / pair["bc"])
             print(f"{name} jit={jit}: " + ", ".join(f"{p:.3f}x" for p in pairs))

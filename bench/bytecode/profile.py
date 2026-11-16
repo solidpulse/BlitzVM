@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Collect three CodeSize traces per path, then a separate interpreter-only JFR (serially)."""
+import argparse
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,14 @@ def execute(launcher, path, options):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--trace-only", action="store_true")
+    parser.add_argument("--summarize-existing", action="store_true")
+    args = parser.parse_args()
+    if args.summarize_existing:
+        previous = json.loads((BENCH / "profile-summary.json").read_text())
+        summarize(json.loads((SCRATCH / "samples.json").read_text()), previous.get("load"))
+        return
     traces = []
     # Default thresholds/inlining, the same configuration as the timing table.
     for repeat in range(3):
@@ -42,6 +51,10 @@ def main():
             traces.append(dict(mode=mode, repeat=repeat, load=load, compilations=entries))
             print(f"{mode} trace {repeat + 1}: " + ", ".join(f"tier {e['tier']} {e['bytes']} bytes" for e in entries), flush=True)
     (BENCH / "code-size.json").write_text(json.dumps(traces, indent=2) + "\n")
+    if any(not trace["compilations"] for trace in traces):
+        raise RuntimeError("Missing named function CodeSize trace; ensure RootNode.toString() exposes its PHP name")
+    if args.trace_only:
+        return
 
     # Same function/call sites; only the untimed outer round count is extended to collect samples.
     source = (BENCH / "02-small-functions.php").read_text().replace("$round < 10", "$round < 150")
@@ -67,6 +80,11 @@ def category(frames):
     names = [method_name(f) for f in frames]
     if any(n.startswith("dev.phpruntime.runtime.PhpArray.") for n in names):
         return "PhpArray lookup/storage/COW"
+    if any(n.startswith(("com.oracle.truffle.api.impl.FrameWithoutBoxing.",
+                         "com.oracle.truffle.api.impl.FrameExtensions")) for n in names[:4]):
+        return "operand-stack/local frame access and frame initialization"
+    if any("BytecodeDSLUncheckedAccess.writeInt" in n for n in names[:3]):
+        return "bytecode branch profile updates"
     if any(n.startswith("dev.phpruntime.bc.PhpBytecodeRootNodeGen") and ".do" in n for n in names[:2]):
         return "generated specialization dispatch"
     if any(n.startswith("com.oracle.truffle.runtime.") for n in names[:3]):
@@ -83,8 +101,11 @@ def summarize(data, load=None):
     allocation = Counter()
     count = 0
     gc_ms = 0
+    gc_events = 0
+    timestamps = []
     for event in data["recording"]["events"]:
         values = event["values"]
+        timestamps.append(values["startTime"])
         frames = (values.get("stackTrace") or {}).get("frames", [])
         if event["type"] == "jdk.ExecutionSample":
             # Only the guest execution thread and stacks in the bytecode path, not Graal compiler threads.
@@ -98,14 +119,18 @@ def summarize(data, load=None):
         elif event["type"] == "jdk.ObjectAllocationSample":
             allocation[values["objectClass"]["name"].replace("/", ".")] += values["weight"]
         elif event["type"] == "jdk.GarbageCollection":
+            gc_events += 1
             # JSON duration is an ISO-8601 duration string.
             duration = values.get("duration", "PT0S")
             if duration.startswith("PT") and duration.endswith("S"):
                 gc_ms += float(duration[2:-1]) * 1000
     summary = dict(execution_samples=count, load=load, categories=dict(groups), top_leaves=leaves.most_common(20),
                    sampled_allocation_weight_bytes=allocation.most_common(15), gc_duration_ms=gc_ms,
+                   gc_events=gc_events, first_event=min(timestamps), last_event=max(timestamps),
                    recording=str(SCRATCH / "small-functions-bc.jfr"))
     (BENCH / "profile-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    if not count:
+        raise RuntimeError("JFR contained no bytecode guest execution samples; do not report an empty profile")
     print(json.dumps(summary, indent=2))
 
 

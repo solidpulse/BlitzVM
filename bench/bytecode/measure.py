@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One process at a time, interleaved AST/BC pairs; retain every round and load sample."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -41,6 +42,17 @@ def normalized(output):
     return re.sub(r"ns=\d+", "ns=<time>", output)
 
 
+def build_fingerprint():
+    digest = hashlib.sha256()
+    for path in sorted((ROOT / "target/classes").rglob("*.class")):
+        digest.update(str(path.relative_to(ROOT / "target/classes")).encode())
+        digest.update(path.read_bytes())
+    for path in FILES:
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def verify():
     # Keep verification serial too; reference output comes only from /usr/bin/php.
     check = BENCH / "check.php"
@@ -78,13 +90,14 @@ def main():
                     java=subprocess.run([str(ROOT / ".graalvm/current/bin/java"), "-version"],
                                         capture_output=True, text=True, cwd=ROOT).stderr,
                     repeats=args.repeats,
-                    revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip())
+                    revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                    build_sha256=build_fingerprint())
     if args.resume:
         saved = json.loads(output.read_text())
         results = saved["measurements"]
         metadata = saved["metadata"]
-        if metadata.get("revision") != subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip():
-            parser.error("Do not resume results across different code revisions")
+        if metadata.get("build_sha256") != build_fingerprint():
+            parser.error("Do not resume results across different builds/workloads")
         metadata["repeats"] = args.repeats
     for jit in (False, True):
         for path in FILES:

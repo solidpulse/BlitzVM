@@ -45,6 +45,11 @@ public abstract class PhpBytecodeRootNode extends RootNode implements BytecodeRo
         return name;
     }
 
+    @Override
+    public String toString() {
+        return getName();
+    }
+
     /** Linked once, before any execution; supports forward calls and recursion. */
     public static final class Function {
         @CompilationFinal public RootCallTarget target;

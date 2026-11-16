@@ -41,11 +41,18 @@ interference and GC **inside** the timed call are included.
 
 `measure.py` runs AST, BC, PHP, AST, BC, PHP, AST, BC, PHP for each file/configuration, always
 one benchmark process at a time. A process measurement is the median of rounds 7, 8, 9;
-the report uses the median of three process measurements and their min/max spread. Every
+each batch uses the median of three process measurements and their min/max spread. Every
 round, stdout/stderr and pre-run `uptime` sample is retained in `results.json`. PHP always
 uses `/usr/bin/php -d opcache.enable_cli=1 -d opcache.jit=disable`; the PHP baseline is the
 same configuration in both Java-mode rows. `--verify` compares outputs after normalizing
 only `ns=...`, and also checks the independent `check.php` subset exercise.
+
+The report retains a second full batch (`results-repeat.json`) because the first had
+high, changing shared-machine load. To regenerate a combined six-process table:
+
+```bash
+python3 bench/bytecode/summarize.py bench/bytecode/results.json bench/bytecode/results-repeat.json
+```
 
 `profile.py` collects three interleaved default-configuration `TraceCompilation` runs per
 path and a separate interpreter-only JFR for benchmark 2 (same workload, 150 outer rounds,
@@ -68,8 +75,8 @@ stack/local boxing elimination are enabled; the initial cached interpreter is me
 Not supported: references, closures, dynamic calls/variables, globals/includes, objects,
 general PHP error/warning behaviour, interpolated strings, or most of PHP's grammar and
 builtins (including `++/--`; use explicit addition/subtraction). Missing array/local reads
-return `PhpNull` without production warnings. Only
-array/null offset writes are valid. This deliberately avoids the migration's hard parts;
+return `PhpNull` without production warnings. Only array/null offset writes are valid.
+This deliberately avoids the migration's hard parts;
 its numbers are a best-case subset experiment, not a predicted WordPress request speedup.
 
 See `tasks/15-report.md` for the results and decision.
