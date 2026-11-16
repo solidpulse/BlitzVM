@@ -282,6 +282,10 @@ final class ArrayFunctions {
         Builtins.defRef("arsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, false).reversed(), true));
         Builtins.defRef("ksort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, true), true));
         Builtins.defRef("krsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, true).reversed(), true));
+        Builtins.defRef("natsort", 1, 1, REF_FIRST, (ctx, a) -> sort(a,
+                (x, y) -> StringFunctions.natCompare(PhpOps.toStr(x.getValue()), PhpOps.toStr(y.getValue()), false), true));
+        Builtins.defRef("natcasesort", 1, 1, REF_FIRST, (ctx, a) -> sort(a,
+                (x, y) -> StringFunctions.natCompare(PhpOps.toStr(x.getValue()), PhpOps.toStr(y.getValue()), true), true));
         Builtins.defRef("shuffle", 1, 1, REF_FIRST, (ctx, a) -> {
             List<Object> values = new ArrayList<>(writable(a).values());
             Collections.shuffle(values, java.util.concurrent.ThreadLocalRandom.current());
