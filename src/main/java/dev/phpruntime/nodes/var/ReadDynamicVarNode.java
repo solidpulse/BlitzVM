@@ -45,7 +45,7 @@ public final class ReadDynamicVarNode extends PhpNode {
                     return ref.getValue();
                 }
                 if (v != null) {
-                    return v;
+                    return dev.phpruntime.runtime.PhpStringBuffer.flatten(v);
                 }
             }
         }

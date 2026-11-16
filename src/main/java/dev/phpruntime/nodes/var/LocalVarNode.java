@@ -4,6 +4,8 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpStringBuffer;
+import dev.phpruntime.runtime.PhpOps;
 
 /**
  * A function-local variable stored in a Truffle frame slot. Ints and floats are stored
@@ -63,7 +65,7 @@ public final class LocalVarNode extends LValueNode {
             if (obj == null || obj instanceof PhpReference) {
                 return (PhpReference) obj;
             }
-            PhpReference ref = new PhpReference(obj);
+            PhpReference ref = new PhpReference(kind.isAppendTarget() ? PhpStringBuffer.flatten(obj) : obj);
             frame.setObject(slot, ref);
             return ref;
         }
@@ -92,7 +94,26 @@ public final class LocalVarNode extends LValueNode {
         if (frame.isDouble(slot)) {
             return frame.getDouble(slot);
         }
-        return frame.getObject(slot);
+        Object value = frame.getObject(slot);
+        return kind.isAppendTarget() ? PhpStringBuffer.flatten(value) : value;
+    }
+
+    @Override
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        if (kind.isCell()) {
+            return super.appendString(frame, keys, suffix, resultNeeded);
+        }
+        Object current = frame.isObject(slot) ? frame.getObject(slot)
+                : frame.isLong(slot) ? frame.getLong(slot) : frame.isDouble(slot) ? frame.getDouble(slot) : null;
+        PhpStringBuffer buffer;
+        if (current instanceof PhpStringBuffer existing) { buffer = existing; }
+        else {
+            buffer = new PhpStringBuffer(current instanceof String s ? s
+                    : PhpOps.toStr(current == null ? PhpNull.INSTANCE : current));
+            frame.setObject(slot, buffer);
+        }
+        buffer.append(suffix);
+        return resultNeeded ? buffer.asString() : null;
     }
 
     public PhpReference readOrCreateCell(VirtualFrame frame) {

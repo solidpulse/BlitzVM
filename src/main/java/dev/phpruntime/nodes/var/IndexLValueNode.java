@@ -270,6 +270,18 @@ public final class IndexLValueNode extends LValueNode {
         return keyNodes.length > 1;
     }
 
+    @Override
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        if (isNested() && usesArrayAccess(frame, keys)) {
+            PhpReference cell = obtainCell(frame, keys);
+            Object current = cell.getValue();
+            String result = PhpOps.toStr(current == null ? PhpNull.INSTANCE : current).concat(suffix);
+            cell.setValue(result);
+            return result;
+        }
+        return super.appendString(frame, keys, suffix, resultNeeded);
+    }
+
     private record CellResult(Object root, PhpReference cell) {}
 
     private CellResult mixedCell(Object root, Object[] keys, int at) {

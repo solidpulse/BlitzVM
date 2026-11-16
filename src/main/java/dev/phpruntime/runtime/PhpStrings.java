@@ -390,8 +390,30 @@ public final class PhpStrings {
         checkValue(value, origin, new IdentityHashMap<>());
     }
 
+    /** Unlike byte validation, this must not materialize lazy exception traces while reading arguments. */
+    public static void checkNoBuffer(Object value, String origin) {
+        checkNoBuffer(value, origin, new IdentityHashMap<>());
+    }
+
+    private static void checkNoBuffer(Object value, String origin, IdentityHashMap<Object, Boolean> seen) {
+        if (value instanceof PhpStringBuffer) {
+            throw new IllegalStateException("PHP string append buffer escaped storage into " + origin);
+        } else if (value instanceof PhpReference ref && seen.put(ref, true) == null) {
+            checkNoBuffer(ref.getValue(), origin, seen);
+        } else if (value instanceof PhpArray arr && seen.put(arr, true) == null) {
+            for (var entry : arr.rawEntries()) { checkNoBuffer(entry.getValue(), origin, seen); }
+        } else if (value instanceof PhpObject obj && seen.put(obj, true) == null) {
+            var get = com.oracle.truffle.api.object.DynamicObject.GetNode.getUncached();
+            for (Object key : com.oracle.truffle.api.object.DynamicObject.GetKeyArrayNode.getUncached().execute(obj)) {
+                checkNoBuffer(get.execute(obj, key, PhpNull.INSTANCE), origin, seen);
+            }
+        }
+    }
+
     private static void checkValue(Object value, String origin, IdentityHashMap<Object, Boolean> seen) {
-        if (value instanceof String s) {
+        if (value instanceof PhpStringBuffer) {
+            throw new IllegalStateException("PHP string append buffer escaped storage into " + origin);
+        } else if (value instanceof String s) {
             check(s, origin);
         } else if (value instanceof PhpReference ref) {
             if (seen.put(ref, true) == null) {
