@@ -20,15 +20,20 @@ public final class UnaryNode extends PhpNode {
         Object v = operand.execute(frame);
         try {
             if (bitNot && v instanceof String s) {
-                StringBuilder out = new StringBuilder(s.length());
-                for (int i = 0; i < s.length(); i++) {
-                    out.append((char) (s.charAt(i) ^ 255));
-                }
-                return out.toString();
+                return invertBytes(s);
             }
             return bitNot ? ~PhpOps.toLong(v) : PhpOps.toNumber(v);
         } catch (dev.phpruntime.runtime.PhpError e) {
             throw e.at(this);
         }
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static String invertBytes(String s) {
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            out.append((char) (s.charAt(i) ^ 255));
+        }
+        return out.toString();
     }
 }
