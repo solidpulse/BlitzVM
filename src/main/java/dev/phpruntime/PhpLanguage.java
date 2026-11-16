@@ -38,6 +38,13 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     private static final LanguageReference<PhpLanguage> REFERENCE = LanguageReference.create(PhpLanguage.class);
 
     private final ConcurrentHashMap<String, CachedSource> sources = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ResolvedInclude> includes = new ConcurrentHashMap<>();
+
+    /**
+     * How long a resolved include stays trusted without touching the file system, like
+     * opcache.revalidate_freq. 0 checks on every include.
+     */
+    private static final long INCLUDE_REVALIDATE_NANOS = Long.getLong("blitz.include.revalidateMs", 2000L) * 1_000_000L;
     private final ConcurrentHashMap<String, Integer> functionIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextFunctionId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> methodIds = new ConcurrentHashMap<>();
@@ -184,6 +191,28 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     public long hierarchyId(List<PhpClassTemplate> chain) {
         return hierarchyIds.computeIfAbsent(chain, k -> nextHierarchyId.getAndIncrement());
+    }
+
+    /**
+     * An include path already resolved to a parsed file: what {@code include} would find for
+     * this path string from this directory, checked at {@code checkedAt} (System.nanoTime).
+     */
+    public record ResolvedInclude(String canonicalPath, CallTarget target, long checkedAt) {
+    }
+
+    /** The cached resolution for this include key, or null if absent or due for revalidation. */
+    public ResolvedInclude cachedInclude(String key) {
+        ResolvedInclude r = includes.get(key);
+        if (r != null && INCLUDE_REVALIDATE_NANOS > 0 && System.nanoTime() - r.checkedAt() < INCLUDE_REVALIDATE_NANOS) {
+            return r;
+        }
+        return null;
+    }
+
+    public ResolvedInclude cacheInclude(String key, String canonicalPath, CallTarget target) {
+        ResolvedInclude r = new ResolvedInclude(canonicalPath, target, System.nanoTime());
+        includes.put(key, r);
+        return r;
     }
 
     /** Loads a cached Source keyed by canonical path and modification time. */

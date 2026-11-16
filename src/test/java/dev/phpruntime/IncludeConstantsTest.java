@@ -30,6 +30,21 @@ class IncludeConstantsTest {
     }
 
     @Test
+    void cachedRelativeIncludeResolvesPerIncludingDirectory(@TempDir Path dir) throws Exception {
+        // The include cache is engine-wide; the same relative string from two directories
+        // must still find each directory's own file, on every repeat request.
+        for (String name : new String[]{"a", "b"}) {
+            Path sub = Files.createDirectories(dir.resolve(name));
+            Files.writeString(sub.resolve("part.php"), "<?php echo '" + name + "';");
+            Files.writeString(sub.resolve("main.php"), "<?php include 'part.php'; require_once 'part.php'; include_once __DIR__ . '/part.php';");
+        }
+        for (int i = 0; i < 3; i++) {
+            assertEquals("a", engine.execute(dir.resolve("a/main.php"), new PhpRequest()).bodyText());
+            assertEquals("b", engine.execute(dir.resolve("b/main.php"), new PhpRequest()).bodyText());
+        }
+    }
+
+    @Test
     void exactPhp83Constants(@TempDir Path dir) throws Exception {
         Path script = Files.writeString(dir.resolve("ver.php"),
                 "<?php echo PHP_VERSION_ID, ':', PHP_MAJOR_VERSION, ':', PHP_MINOR_VERSION, ':', E_ALL;");

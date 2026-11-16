@@ -10,6 +10,7 @@ import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.runtime.PhpError;
@@ -52,6 +53,18 @@ public final class IncludeNode extends PhpNode {
     @TruffleBoundary
     private Object prepare(String path) {
         PhpContext ctx = PhpContext.get(this);
+        boolean once = kind == Kind.INCLUDE_ONCE || kind == Kind.REQUIRE_ONCE;
+        // Fast path: the same path string from the same file resolved recently. No stat,
+        // realpath or parse-cache lookup; WordPress does ~500 includes per request.
+        String cacheKey = includeKey(ctx, path);
+        PhpLanguage.ResolvedInclude hit = cacheKey == null ? null : ctx.language().cachedInclude(cacheKey);
+        if (hit != null) {
+            if (once && ctx.isIncluded(hit.canonicalPath())) {
+                return Boolean.TRUE;
+            }
+            ctx.markIncluded(hit.canonicalPath());
+            return new PreparedInclude(hit.target(), hit.canonicalPath());
+        }
         TruffleLanguage.Env env = ctx.env();
         TruffleFile resolved = resolveFile(env, path);
         if (resolved == null) {
@@ -64,7 +77,6 @@ public final class IncludeNode extends PhpNode {
             canonical = resolved.getAbsoluteFile().normalize();
         }
         String key = canonical.getPath();
-        boolean once = kind == Kind.INCLUDE_ONCE || kind == Kind.REQUIRE_ONCE;
         if (once && ctx.isIncluded(key)) {
             return Boolean.TRUE;
         }
@@ -75,13 +87,37 @@ public final class IncludeNode extends PhpNode {
         } catch (IOException e) {
             return missing(ctx, path);
         }
+        CallTarget target;
         try {
-            return new PreparedInclude(env.parsePublic(source), key);
+            target = env.parsePublic(source);
         } catch (dev.phpruntime.parser.PhpParseError pe) {
             String msg = pe.getMessage();
             throw new PhpError(PhpError.PARSE_ERROR, msg != null ? msg : "syntax error",
                     source.getPath() != null ? source.getPath() : key, pe.line(), this);
         }
+        if (cacheKey != null) {
+            ctx.language().cacheInclude(cacheKey, key, target);
+        }
+        return new PreparedInclude(target, key);
+    }
+
+    /**
+     * What an include of {@code path} from this node resolves against: the path itself when
+     * absolute, else the including file and the working directory too. Null if uncacheable.
+     */
+    private String includeKey(PhpContext ctx, String path) {
+        if (path.isEmpty()) {
+            return null;
+        }
+        if (path.charAt(0) == '/') {
+            return path;
+        }
+        RootNode root = getRootNode();
+        String srcPath = root instanceof PhpRootNode r && r.source() != null ? r.source().getPath() : null;
+        if (srcPath == null) {
+            return null;
+        }
+        return srcPath + '\0' + path + '\0' + ctx.env().getCurrentWorkingDirectory().getPath();
     }
 
     private Object missing(PhpContext ctx, String path) {

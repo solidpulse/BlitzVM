@@ -191,6 +191,10 @@ Requires JDK 21+ to build. Without GraalVM the same AST runs interpreter-only on
 `bin/php-truffle` prefers `./.graalvm/current` over `JAVA_HOME` (override with
 `PHP_TRUFFLE_JAVA_HOME`).
 
+Includes are cached engine-wide like opcache: a resolved `include`/`require` path is trusted
+for 2 seconds before the file is checked again, so an edited file shows up within 2 s.
+`PHP_TRUFFLE_OPTS=-Dblitz.include.revalidateMs=0` checks on every include.
+
 ## JavaScript front end (prototype)
 
 `.js` files are Node-style request handlers on the same engine, scheduler and isolation:
