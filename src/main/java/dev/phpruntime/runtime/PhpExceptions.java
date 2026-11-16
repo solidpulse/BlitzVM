@@ -112,7 +112,7 @@ public final class PhpExceptions {
     private static void addAbstractMethod(PhpLanguage language,
                                           Map<String, PhpClassTemplate.MethodDecl> map,
                                           String name) {
-        String lower = name.toLowerCase();
+        String lower = PhpStrings.lower(name);
         map.put(lower, new PhpClassTemplate.MethodDecl(
                 name, lower, language.methodId(name), Visibility.PUBLIC, false, true, false, null));
     }
@@ -120,7 +120,7 @@ public final class PhpExceptions {
     private static void addMethod(PhpLanguage language,
                                   Map<String, PhpClassTemplate.MethodDecl> map,
                                   String name, Visibility vis, boolean isFinal, BuiltinMethod impl) {
-        String lower = name.toLowerCase();
+        String lower = PhpStrings.lower(name);
         RootNode root = new BuiltinMethodRootNode(language, name, impl);
         map.put(lower, new PhpClassTemplate.MethodDecl(
                 name, lower, language.methodId(name), vis, false, false, isFinal, root.getCallTarget()));

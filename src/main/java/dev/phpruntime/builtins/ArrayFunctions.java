@@ -276,14 +276,12 @@ final class ArrayFunctions {
     }
 
     private static void sorting() {
-        Comparator<Map.Entry<Object, Object>> byValue = (x, y) -> PhpOps.compare(x.getValue(), y.getValue());
-        Comparator<Map.Entry<Object, Object>> byKey = (x, y) -> PhpOps.compare(x.getKey(), y.getKey());
-        Builtins.defRef("sort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, byValue, false));
-        Builtins.defRef("rsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, byValue.reversed(), false));
-        Builtins.defRef("asort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, byValue, true));
-        Builtins.defRef("arsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, byValue.reversed(), true));
-        Builtins.defRef("ksort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, byKey, true));
-        Builtins.defRef("krsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, byKey.reversed(), true));
+        Builtins.defRef("sort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, false), false));
+        Builtins.defRef("rsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, false).reversed(), false));
+        Builtins.defRef("asort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, false), true));
+        Builtins.defRef("arsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, false).reversed(), true));
+        Builtins.defRef("ksort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, true), true));
+        Builtins.defRef("krsort", 1, 2, REF_FIRST, (ctx, a) -> sort(a, sortComparator(a, true).reversed(), true));
         Builtins.defRef("shuffle", 1, 1, REF_FIRST, (ctx, a) -> {
             List<Object> values = new ArrayList<>(writable(a).values());
             Collections.shuffle(values, java.util.concurrent.ThreadLocalRandom.current());
@@ -297,6 +295,31 @@ final class ArrayFunctions {
         entries.sort(cmp); // stable, like PHP 8's sort
         a[0] = fromEntries(entries, keepKeys);
         return true;
+    }
+
+    private static Comparator<Map.Entry<Object, Object>> sortComparator(Object[] a, boolean keys) {
+        long flags = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
+        return (x, y) -> {
+            Object u = keys ? x.getKey() : x.getValue();
+            Object v = keys ? y.getKey() : y.getValue();
+            long mode = flags & ~8;
+            if (mode == 1) {
+                return Double.compare(PhpOps.toDouble(u), PhpOps.toDouble(v));
+            }
+            if (mode == 2 || mode == 5 || mode == 6) {
+                String s = PhpOps.toStr(u);
+                String t = PhpOps.toStr(v);
+                if (mode == 6) {
+                    return StringFunctions.natCompare(s, t, (flags & 8) != 0);
+                }
+                if ((flags & 8) != 0) {
+                    s = dev.phpruntime.runtime.PhpStrings.lower(s);
+                    t = dev.phpruntime.runtime.PhpStrings.lower(t);
+                }
+                return s.compareTo(t);
+            }
+            return PhpOps.compare(u, v);
+        };
     }
 
     // ------------------------------------------------------------------ helpers
@@ -431,7 +454,8 @@ final class ArrayFunctions {
             boolean upper = a.length > 1 && PhpOps.toLong(a[1]) == 1;
             PhpArray out = new PhpArray();
             for (Map.Entry<Object, Object> e : arr(a, 0, "array_change_key_case").entries()) {
-                Object k = e.getKey() instanceof String s ? (upper ? s.toUpperCase() : s.toLowerCase()) : e.getKey();
+                Object k = e.getKey() instanceof String s ? (upper ? dev.phpruntime.runtime.PhpStrings.upper(s)
+                        : dev.phpruntime.runtime.PhpStrings.lower(s)) : e.getKey();
                 out.put(k, PhpOps.copyOnAssign(e.getValue()));
             }
             return out;

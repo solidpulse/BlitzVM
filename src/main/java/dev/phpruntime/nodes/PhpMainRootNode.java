@@ -109,7 +109,7 @@ public final class PhpMainRootNode extends PhpRootNode {
         PhpArray get = request.queryString.isEmpty() ? toArray(request.get) : PhpQuery.parseQuery(request.queryString);
         String contentType = PhpQuery.header(request.headers, "Content-Type");
         PhpArray post = !request.body.isEmpty() && contentType != null
-                && contentType.toLowerCase().startsWith("application/x-www-form-urlencoded")
+                && dev.phpruntime.runtime.PhpStrings.lower(contentType).startsWith("application/x-www-form-urlencoded")
                 ? PhpQuery.parseQuery(request.body) : toArray(request.post);
         ctx.writeGlobal("_GET", get);
         ctx.writeGlobal("_POST", post);

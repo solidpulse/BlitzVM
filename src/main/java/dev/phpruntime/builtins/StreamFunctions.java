@@ -113,7 +113,7 @@ final class StreamFunctions {
 
     /** Opens path with an fopen mode; warns and returns null on failure, as fopen does. */
     static PhpStream openStream(PhpContext ctx, String path, String mode, String fn) {
-        String lower = path.toLowerCase();
+        String lower = PhpStrings.lower(path);
         if (lower.startsWith("php://")) {
             String what = lower.substring(6);
             return switch (what.contains("/") ? what.substring(0, what.indexOf('/')) : what) {
@@ -375,7 +375,7 @@ final class StreamFunctions {
             if (a[0] instanceof PhpResource) {
                 return true;
             }
-            String p = PhpOps.toStr(a[0]).toLowerCase();
+            String p = PhpStrings.lower(PhpOps.toStr(a[0]));
             return !p.matches("^[a-z][a-z0-9+.-]+://.*") || p.startsWith("file://") || p.startsWith("php://");
         });
         // TODO: stream_socket_client and fsockopen (network streams, through scheduler.blocking).

@@ -52,6 +52,9 @@ public final class PhpConstants {
             Map.entry("SORT_REGULAR", 0L),
             Map.entry("SORT_NUMERIC", 1L),
             Map.entry("SORT_STRING", 2L),
+            Map.entry("SORT_LOCALE_STRING", 5L),
+            Map.entry("SORT_NATURAL", 6L),
+            Map.entry("SORT_FLAG_CASE", 8L),
             Map.entry("STR_PAD_RIGHT", 1L),
             Map.entry("STR_PAD_LEFT", 0L),
             Map.entry("STR_PAD_BOTH", 2L),
@@ -259,7 +262,7 @@ public final class PhpConstants {
 
     /** Looks up a built-in constant (including case-insensitive true/false/null), or null if absent. */
     public static Object lookupBuiltin(String name) {
-        String lower = name.toLowerCase();
+        String lower = PhpStrings.lower(name);
         if (lower.equals("true")) {
             return Boolean.TRUE;
         }

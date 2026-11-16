@@ -69,7 +69,7 @@ final class MathFunctions {
         Builtins.def("decoct", 1, 1, (ctx, a) -> Long.toOctalString(PhpOps.toLong(a[0])));
         Builtins.def("octdec", 1, 1, (ctx, a) -> parseBase(PhpOps.toStr(a[0]), 8));
         Builtins.def("base_convert", 3, 3, (ctx, a) -> {
-            long v = parseBase(PhpOps.toStr(a[0]).toLowerCase(), (int) PhpOps.toLong(a[1]));
+            long v = parseBase(dev.phpruntime.runtime.PhpStrings.lower(PhpOps.toStr(a[0])), (int) PhpOps.toLong(a[1]));
             return Long.toString(v, (int) PhpOps.toLong(a[2]));
         });
         Builtins.def("rand", 0, 2, (ctx, a) -> random(a, false));

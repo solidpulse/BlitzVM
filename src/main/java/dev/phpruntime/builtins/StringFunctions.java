@@ -43,17 +43,17 @@ final class StringFunctions {
     private static void basics() {
         Builtins.def("strlen", 1, 1, (ctx, a) -> (long) s(a, 0).length());
         Builtins.def("mb_strlen", 1, 2, (ctx, a) -> (long) s(a, 0).codePointCount(0, s(a, 0).length()));
-        Builtins.def("strtoupper", 1, 1, (ctx, a) -> s(a, 0).toUpperCase());
-        Builtins.def("strtolower", 1, 1, (ctx, a) -> s(a, 0).toLowerCase());
+        Builtins.def("strtoupper", 1, 1, (ctx, a) -> PhpStrings.upper(s(a, 0)));
+        Builtins.def("strtolower", 1, 1, (ctx, a) -> PhpStrings.lower(s(a, 0)));
         Builtins.def("mb_strtoupper", 1, 2, (ctx, a) -> s(a, 0).toUpperCase());
         Builtins.def("mb_strtolower", 1, 2, (ctx, a) -> s(a, 0).toLowerCase());
         Builtins.def("ucfirst", 1, 1, (ctx, a) -> {
             String x = s(a, 0);
-            return x.isEmpty() ? x : Character.toUpperCase(x.charAt(0)) + x.substring(1);
+            return x.isEmpty() ? x : PhpStrings.upper(x.charAt(0)) + x.substring(1);
         });
         Builtins.def("lcfirst", 1, 1, (ctx, a) -> {
             String x = s(a, 0);
-            return x.isEmpty() ? x : Character.toLowerCase(x.charAt(0)) + x.substring(1);
+            return x.isEmpty() ? x : PhpStrings.lower(x.charAt(0)) + x.substring(1);
         });
         Builtins.def("ucwords", 1, 2, (ctx, a) -> {
             String delims = a.length > 1 ? s(a, 1) : " \t\r\n\f\u000B";
@@ -61,7 +61,7 @@ final class StringFunctions {
             boolean up = true;
             for (int i = 0; i < sb.length(); i++) {
                 if (up) {
-                    sb.setCharAt(i, Character.toUpperCase(sb.charAt(i)));
+                    sb.setCharAt(i, PhpStrings.upper(sb.charAt(i)));
                 }
                 up = delims.indexOf(sb.charAt(i)) >= 0;
             }
@@ -83,7 +83,12 @@ final class StringFunctions {
         Builtins.def("chop", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, false, true));
         Builtins.def("str_pad", 2, 4, (ctx, a) -> strPad(s(a, 0), (int) l(a, 1), a.length > 2 ? s(a, 2) : " ", a.length > 3 ? (int) l(a, 3) : 1));
         Builtins.def("strcmp", 2, 2, (ctx, a) -> (long) Integer.signum(s(a, 0).compareTo(s(a, 1))));
-        Builtins.def("strcasecmp", 2, 2, (ctx, a) -> (long) Integer.signum(s(a, 0).compareToIgnoreCase(s(a, 1))));
+        Builtins.def("strcasecmp", 2, 2, (ctx, a) -> (long) Integer.signum(PhpStrings.lower(s(a, 0)).compareTo(PhpStrings.lower(s(a, 1)))));
+        Builtins.def("strncasecmp", 3, 3, (ctx, a) -> {
+            int n = Math.max(0, (int) l(a, 2));
+            return (long) Integer.signum(PhpStrings.lower(substr(s(a, 0), 0, (long) n))
+                    .compareTo(PhpStrings.lower(substr(s(a, 1), 0, (long) n))));
+        });
         Builtins.def("strncmp", 3, 3, (ctx, a) -> {
             int n = (int) l(a, 2);
             String x = s(a, 0);
@@ -106,8 +111,9 @@ final class StringFunctions {
 
     private static void searching() {
         Builtins.def("strpos", 2, 3, (ctx, a) -> indexResult(s(a, 0).indexOf(s(a, 1), offset(s(a, 0), a))));
-        Builtins.def("stripos", 2, 3, (ctx, a) -> indexResult(s(a, 0).toLowerCase().indexOf(s(a, 1).toLowerCase(), offset(s(a, 0), a))));
-        Builtins.def("strrpos", 2, 3, (ctx, a) -> indexResult(s(a, 0).lastIndexOf(s(a, 1))));
+        Builtins.def("stripos", 2, 3, (ctx, a) -> indexResult(PhpStrings.lower(s(a, 0)).indexOf(PhpStrings.lower(s(a, 1)), offset(s(a, 0), a))));
+        Builtins.def("strrpos", 2, 3, (ctx, a) -> reversePosition(a, false));
+        Builtins.def("strripos", 2, 3, (ctx, a) -> reversePosition(a, true));
         Builtins.def("str_contains", 2, 2, (ctx, a) -> s(a, 0).contains(s(a, 1)));
         Builtins.def("str_starts_with", 2, 2, (ctx, a) -> s(a, 0).startsWith(s(a, 1)));
         Builtins.def("str_ends_with", 2, 2, (ctx, a) -> s(a, 0).endsWith(s(a, 1)));
@@ -161,12 +167,12 @@ final class StringFunctions {
         Builtins.def("str_split", 1, 2, (ctx, a) -> {
             String str = s(a, 0);
             int n = a.length > 1 ? (int) l(a, 1) : 1;
+            if (n < 1) {
+                throw new PhpError(PhpError.VALUE_ERROR, "str_split(): Argument #2 ($length) must be greater than 0", null);
+            }
             PhpArray out = new PhpArray();
             for (int i = 0; i < str.length(); i += n) {
                 out.append(str.substring(i, Math.min(str.length(), i + n)));
-            }
-            if (str.isEmpty()) {
-                out.append("");
             }
             return out;
         });
@@ -306,6 +312,7 @@ final class StringFunctions {
         int lineLen = 0;
         for (int i = 0; i < words.length; i++) {
             String w = words[i];
+            boolean cutWord = false;
             while (cut && w.length() > width) {
                 if (lineLen > 0) {
                     out.append(brk);
@@ -313,8 +320,9 @@ final class StringFunctions {
                 }
                 out.append(w, 0, width).append(brk);
                 w = w.substring(width);
+                cutWord = true;
             }
-            if (i > 0) {
+            if (i > 0 && !cutWord) {
                 if (lineLen + 1 + w.length() > width) {
                     out.append(brk);
                     lineLen = 0;
@@ -357,7 +365,15 @@ final class StringFunctions {
         if (!ignoreCase) {
             return str.replace(from, to);
         }
-        return str.replaceAll("(?i)" + java.util.regex.Pattern.quote(from), java.util.regex.Matcher.quoteReplacement(to));
+        String folded = PhpStrings.lower(str);
+        String needle = PhpStrings.lower(from);
+        StringBuilder out = new StringBuilder();
+        int start = 0;
+        for (int at = folded.indexOf(needle); at >= 0; at = folded.indexOf(needle, start)) {
+            out.append(str, start, at).append(to);
+            start = at + from.length();
+        }
+        return out.append(str, start, str.length()).toString();
     }
 
     private static Object implode(dev.phpruntime.PhpContext ctx, Object[] a) {
@@ -521,13 +537,13 @@ final class StringFunctions {
                 case 'e', 'E' -> {
                     String r = String.format("%." + (precision < 0 ? 6 : precision) + "e", PhpOps.toDouble(arg));
                     r = r.replaceAll("e([+-])0*(\\d)", "e$1$2");
-                    yield spec == 'E' ? r.toUpperCase() : r;
+                    yield spec == 'E' ? PhpStrings.upper(r) : r;
                 }
                 case 'x' -> Long.toHexString(PhpOps.toLong(arg));
-                case 'X' -> Long.toHexString(PhpOps.toLong(arg)).toUpperCase();
+                case 'X' -> PhpStrings.upper(Long.toHexString(PhpOps.toLong(arg)));
                 case 'o' -> Long.toOctalString(PhpOps.toLong(arg));
                 case 'b' -> Long.toBinaryString(PhpOps.toLong(arg));
-                case 'c' -> String.valueOf((char) PhpOps.toLong(arg));
+                case 'c' -> String.valueOf((char) (PhpOps.toLong(arg) & 255));
                 default -> throw new PhpError(PhpError.VALUE_ERROR, "Unknown format specifier " + '"' + spec + '"', null);
             };
             if (body.length() < width) {
@@ -595,7 +611,7 @@ final class StringFunctions {
         Builtins.def("substr_replace", 3, 4, (ctx, a) -> substrReplace(a));
         Builtins.def("stristr", 2, 3, (ctx, a) -> {
             String hay = s(a, 0);
-            int i = hay.toLowerCase().indexOf(s(a, 1).toLowerCase());
+            int i = PhpStrings.lower(hay).indexOf(PhpStrings.lower(s(a, 1)));
             if (i < 0) {
                 return false;
             }
@@ -651,6 +667,16 @@ final class StringFunctions {
             }
             return id;
         });
+        Builtins.defRef("similar_text", 2, 3, 1 << 2, (ctx, a) -> {
+            int count = similar(s(a, 0), s(a, 1));
+            if (a.length > 2) {
+                int length = s(a, 0).length() + s(a, 1).length();
+                a[2] = length == 0 ? 0.0 : count * 200.0 / length;
+            }
+            return (long) count;
+        });
+        Builtins.def("levenshtein", 2, 5, (ctx, a) -> (long) levenshtein(s(a, 0), s(a, 1),
+                a.length > 2 ? (int) l(a, 2) : 1, a.length > 3 ? (int) l(a, 3) : 1, a.length > 4 ? (int) l(a, 4) : 1));
     }
 
     /** The part of a[0] selected by strspn/strcspn's optional offset and length. */
@@ -697,8 +723,8 @@ final class StringFunctions {
             char x = s1.charAt(i);
             char y = needle.charAt(i);
             if (ci) {
-                x = Character.toLowerCase(x);
-                y = Character.toLowerCase(y);
+                x = PhpStrings.lower(x);
+                y = PhpStrings.lower(y);
             }
             if (x != y) {
                 return (long) (x - y);
@@ -1012,8 +1038,8 @@ final class StringFunctions {
                 cb = at(b, bp);
             }
             if (ci) {
-                ca = Character.toUpperCase(ca);
-                cb = Character.toUpperCase(cb);
+                ca = PhpStrings.upper(ca);
+                cb = PhpStrings.upper(cb);
             }
             if (ca < cb) {
                 return -1;
@@ -1137,5 +1163,55 @@ final class StringFunctions {
             end = Math.min(n, start + length);
         }
         return str.substring(0, (int) start) + PhpOps.toStr(replacement) + str.substring((int) end);
+    }
+
+    private static Object reversePosition(Object[] a, boolean ci) {
+        String hay = ci ? PhpStrings.lower(s(a, 0)) : s(a, 0);
+        String needle = ci ? PhpStrings.lower(s(a, 1)) : s(a, 1);
+        long offset = a.length > 2 ? l(a, 2) : 0;
+        int at = offset < 0 ? hay.lastIndexOf(needle, (int) Math.max(0, hay.length() + offset)) : hay.lastIndexOf(needle);
+        return offset > 0 && at < offset ? false : indexResult(at);
+    }
+
+    private static int similar(String a, String b) {
+        int max = 0;
+        int pa = 0;
+        int pb = 0;
+        for (int i = 0; i < a.length(); i++) {
+            for (int j = 0; j < b.length(); j++) {
+                int k = 0;
+                while (i + k < a.length() && j + k < b.length() && a.charAt(i + k) == b.charAt(j + k)) {
+                    k++;
+                }
+                if (k > max) {
+                    max = k;
+                    pa = i;
+                    pb = j;
+                }
+            }
+        }
+        if (max == 0) {
+            return 0;
+        }
+        return max + (pa > 0 && pb > 0 ? similar(a.substring(0, pa), b.substring(0, pb)) : 0)
+                + (pa + max < a.length() && pb + max < b.length() ? similar(a.substring(pa + max), b.substring(pb + max)) : 0);
+    }
+
+    private static int levenshtein(String a, String b, int insert, int replace, int delete) {
+        int[] row = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) {
+            row[j] = j * insert;
+        }
+        for (int i = 1; i <= a.length(); i++) {
+            int previous = row[0];
+            row[0] = i * delete;
+            for (int j = 1; j <= b.length(); j++) {
+                int old = row[j];
+                row[j] = Math.min(Math.min(row[j] + delete, row[j - 1] + insert),
+                        previous + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : replace));
+                previous = old;
+            }
+        }
+        return row[b.length()];
     }
 }

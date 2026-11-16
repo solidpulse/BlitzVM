@@ -178,15 +178,15 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
      * finds the current context's function with one array load instead of a map lookup.
      */
     public int functionId(String name) {
-        return functionIds.computeIfAbsent(name.toLowerCase(), n -> nextFunctionId.getAndIncrement());
+        return functionIds.computeIfAbsent(PhpStrings.lower(name), n -> nextFunctionId.getAndIncrement());
     }
 
     public int methodId(String name) {
-        return methodIds.computeIfAbsent(name.toLowerCase(), k -> nextMethodId.getAndIncrement());
+        return methodIds.computeIfAbsent(PhpStrings.lower(name), k -> nextMethodId.getAndIncrement());
     }
 
     public int classId(String name) {
-        return classIds.computeIfAbsent(name.toLowerCase(), k -> nextClassId.getAndIncrement());
+        return classIds.computeIfAbsent(PhpStrings.lower(name), k -> nextClassId.getAndIncrement());
     }
 
     public int globalId(String name) {

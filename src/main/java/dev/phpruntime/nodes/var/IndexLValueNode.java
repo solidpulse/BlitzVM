@@ -157,6 +157,33 @@ public final class IndexLValueNode extends LValueNode {
 
     @TruffleBoundary
     private Object writePath(Object root, Object[] keys, Object value) {
+        if (root instanceof String s && keys.length == 1) {
+            Object key = keys[0];
+            if (key == APPEND) {
+                throw new PhpError("[] operator not supported for strings", this);
+            }
+            long offset = PhpOps.toLong(key);
+            if (offset < 0) {
+                offset += s.length();
+            }
+            if (offset < 0 || offset > Integer.MAX_VALUE - 8) {
+                PhpContext.get(this).warning("Illegal string offset " + PhpOps.toStr(key), line());
+                return s;
+            }
+            String replacement = PhpOps.toStr(value);
+            if (replacement.isEmpty()) {
+                throw new PhpError(PhpError.VALUE_ERROR, "Cannot assign an empty string to a string offset", this);
+            }
+            if (replacement.length() > 1) {
+                PhpContext.get(this).warning("Only the first byte will be assigned to the string offset", line());
+            }
+            StringBuilder out = new StringBuilder(s);
+            if (offset >= out.length()) {
+                out.append(" ".repeat((int) offset + 1 - out.length()));
+            }
+            out.setCharAt((int) offset, replacement.charAt(0));
+            return out.toString();
+        }
         PhpArray top = writable(root);
         PhpArray arr = top;
         for (int i = 0; i < keys.length - 1; i++) {

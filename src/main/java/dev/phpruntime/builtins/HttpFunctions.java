@@ -63,7 +63,7 @@ final class HttpFunctions {
                 throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Expects exactly 3 arguments when argument #3 ($expires_or_options) is an array", null);
             }
             for (var e : opts.entries()) {
-                String key = PhpOps.toStr(e.getKey()).toLowerCase(Locale.ROOT);
+                String key = dev.phpruntime.runtime.PhpStrings.lower(PhpOps.toStr(e.getKey()));
                 Object v = e.getValue();
                 switch (key) {
                     case "expires" -> expires = PhpOps.toLong(v);

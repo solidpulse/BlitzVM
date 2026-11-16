@@ -69,7 +69,7 @@ public final class PhpClassTemplate {
                             Map<String, MethodDecl> methods) {
         this.id = id;
         this.name = name;
-        this.lowerName = name.toLowerCase();
+        this.lowerName = PhpStrings.lower(name);
         this.isInterface = isInterface;
         this.isTrait = isTrait;
         this.isAbstract = isAbstract;
