@@ -57,11 +57,13 @@ public final class Main {
         request.server.put("SCRIPT_FILENAME", PhpStrings.fromJava(script.toAbsolutePath().toString()));
         request.server.put("argc", Integer.toString(args.length));
         request.argv = java.util.Arrays.stream(args).map(PhpStrings::fromJava).toArray(String[]::new);
+        int code;
         try (PhpEngine engine = new PhpEngine(null)) {
-            int code = engine.executeStreaming(script, request, System.out, System.err);
+            code = engine.executeStreaming(script, request, System.out, System.err);
             System.out.flush();
-            System.exit(code);
         }
+        // Exit after the engine closes, so engine-level statistics and logs are flushed.
+        System.exit(code);
     }
 
     private static void serve(String[] args) throws Exception {
