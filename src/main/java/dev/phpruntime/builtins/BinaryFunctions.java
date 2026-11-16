@@ -217,10 +217,16 @@ final class BinaryFunctions {
         StringBuilder out = new StringBuilder(s.length());
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
+            if (c == 0) {
+                break;
+            }
             if (c == '=' && i + 1 < s.length()) {
                 int j = i + 1;
                 while (j < s.length() && (s.charAt(j) == ' ' || s.charAt(j) == '\t')) {
                     j++;
+                }
+                if (j == s.length() || s.charAt(j) == 0) {
+                    break;
                 }
                 if (j < s.length() && (s.charAt(j) == '\n' || s.charAt(j) == '\r')) {
                     i = j + (s.charAt(j) == '\r' && j + 1 < s.length() && s.charAt(j + 1) == '\n' ? 1 : 0);
@@ -252,15 +258,19 @@ final class BinaryFunctions {
                 i++;
                 continue;
             }
-            boolean trailing = c == ' ' && (i + 1 == s.length() || s.charAt(i + 1) == '\r' || s.charAt(i + 1) == '\n');
-            String piece = c >= 32 && c <= 126 && c != '=' && !trailing ? String.valueOf((char) c)
+            boolean escaped = c < 32 || c >= 127 || c == '=' || c == ' ' && i + 1 < s.length() && s.charAt(i + 1) == '\r';
+            String piece = !escaped ? String.valueOf((char) c)
                     : "=" + "0123456789ABCDEF".charAt(c >> 4) + "0123456789ABCDEF".charAt(c & 15);
-            if (column + piece.length() > 75) {
+            column += piece.length();
+            // PHP reserves room for all escaped bytes of a UTF-8 sequence. This also
+            // defines its wrapping of arbitrary binary bytes, without decoding them.
+            boolean wrap = !escaped ? column > 75 : c <= 127 ? column > 75 : c <= 0xdf ? column + 3 > 75
+                    : c <= 0xef ? column + 6 > 75 : c <= 0xf4 && column + 9 > 75;
+            if (wrap) {
                 out.append("=\r\n");
-                column = 0;
+                column = piece.length();
             }
             out.append(piece);
-            column += piece.length();
         }
         return out.toString();
     }

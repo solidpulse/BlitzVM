@@ -30,7 +30,7 @@ public final class PhpEngine implements AutoCloseable {
     /** Result of one execution: the response body plus whatever the script set via header(). */
     public record Result(int status, byte[] body, PhpRequest request, String errors) {
         public String bodyText() {
-            return new String(body, StandardCharsets.UTF_8);
+            return PhpStrings.toJava(PhpStrings.of(body));
         }
     }
 
@@ -57,7 +57,7 @@ public final class PhpEngine implements AutoCloseable {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         int status = run(source(script), request, out, err);
-        return new Result(status, out.toByteArray(), request, err.toString(StandardCharsets.UTF_8));
+        return new Result(status, out.toByteArray(), request, PhpStrings.toJava(PhpStrings.of(err.toByteArray())));
     }
 
     /** Executes a script streaming output, as the CLI needs. Returns a process exit code. */

@@ -8,7 +8,6 @@ import dev.phpruntime.runtime.PhpStrings;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -200,16 +199,7 @@ final class StringFunctions {
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
         Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(PhpStrings.bytes(s(a, 0))));
         Builtins.def("base64_decode", 1, 2, (ctx, a) -> {
-            // Output is often binary: keep every byte. Non-strict
-            // mode skips characters outside the alphabet, as PHP does.
-            boolean strict = a.length > 1 && PhpOps.toBool(a[1]);
-            try {
-                byte[] raw = strict ? java.util.Base64.getDecoder().decode(s(a, 0))
-                        : java.util.Base64.getMimeDecoder().decode(s(a, 0));
-                return PhpStrings.of(raw);
-            } catch (IllegalArgumentException e) {
-                return false;
-            }
+            return base64Decode(s(a, 0), a.length > 1 && PhpOps.toBool(a[1]));
         });
         Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(PhpStrings.bytes(s(a, 0))));
         Builtins.def("md5", 1, 2, (ctx, a) -> digest("md5", s(a, 0), a.length > 1 && PhpOps.toBool(a[1])));
@@ -404,6 +394,41 @@ final class StringFunctions {
     private static String digest(String algorithm, String str, boolean raw) {
         byte[] digest = HashFunctions.digest(algorithm, PhpStrings.bytes(str), algorithm);
         return raw ? PhpStrings.of(digest) : HexFormat.of().formatHex(digest);
+    }
+
+    private static Object base64Decode(String s, boolean strict) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        StringBuilder out = new StringBuilder(s.length() * 3 / 4);
+        int bits = 0;
+        int accumulator = 0;
+        int digits = 0;
+        int padding = 0;
+        boolean ended = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            int value = alphabet.indexOf(c);
+            if (value >= 0) {
+                if (strict && ended) {
+                    return false;
+                }
+                accumulator = (accumulator << 6) | value;
+                bits += 6;
+                digits++;
+                if (bits >= 8) {
+                    bits -= 8;
+                    out.append((char) ((accumulator >>> bits) & 255));
+                }
+            } else if (c == '=') {
+                ended = true;
+                padding++;
+            } else if (strict && c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+                return false;
+            }
+        }
+        if (strict && (digits % 4 == 1 || padding > 2 || padding > 0 && (digits + padding) % 4 != 0)) {
+            return false;
+        }
+        return out.toString();
     }
 
     /** PHP rounding: half away from zero. */
@@ -912,7 +937,7 @@ final class StringFunctions {
                     case '\f' -> "f";
                     default -> String.format("%03o", c);
                 };
-                out.writeBytes(esc.getBytes(StandardCharsets.US_ASCII));
+                out.writeBytes(PhpStrings.bytes(esc));
             } else {
                 out.write(c);
             }

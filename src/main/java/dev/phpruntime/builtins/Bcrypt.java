@@ -1,6 +1,6 @@
 package dev.phpruntime.builtins;
 
-import java.nio.charset.StandardCharsets;
+import dev.phpruntime.runtime.PhpStrings;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 
@@ -113,7 +113,7 @@ final class Bcrypt {
     }
 
     private static final String B64 = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final byte[] MAGIC = "OrpheanBeholderScryDoubt".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] MAGIC = PhpStrings.bytes("OrpheanBeholderScryDoubt");
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final int[] p = P_INIT.clone();
@@ -136,7 +136,7 @@ final class Bcrypt {
             return false;
         }
         String computed = crypt(password, info.cost, decode(hash.substring(7, 29), 16), info.variant);
-        return MessageDigest.isEqual(computed.getBytes(StandardCharsets.US_ASCII), hash.getBytes(StandardCharsets.US_ASCII));
+        return MessageDigest.isEqual(PhpStrings.bytes(computed), PhpStrings.bytes(hash));
     }
 
     record Info(String variant, int cost) {

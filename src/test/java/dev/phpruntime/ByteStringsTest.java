@@ -93,6 +93,41 @@ class ByteStringsTest {
     }
 
     @Test
+    void sharedRegexCacheKeepsOffsetsAndSettingsRequestLocal(@TempDir Path dir) throws Exception {
+        Path script = Files.writeString(dir.resolve("concurrent.php"), """
+                <?php
+                $text = $_GET['text'];
+                preg_match_all('/./u', $text, $matches, PREG_OFFSET_CAPTURE);
+                foreach ($matches[0] as $pair) { echo bin2hex($pair[0]), '@', $pair[1], ':'; }
+                echo mb_internal_encoding(), ':', preg_last_error();
+                mb_internal_encoding('ISO-8859-1');
+                preg_match('/./u', "\\xFF");
+                """);
+        try (PhpEngine engine = new PhpEngine(null)) {
+            var workers = java.util.concurrent.Executors.newFixedThreadPool(4);
+            try {
+                var jobs = new java.util.ArrayList<java.util.concurrent.Future<byte[]>>();
+                for (int i = 0; i < 24; i++) {
+                    String text = i % 2 == 0 ? "é😀a" : "😀éb";
+                    jobs.add(workers.submit(() -> {
+                        PhpRequest request = new PhpRequest();
+                        request.get.put("text", PhpStrings.fromJava(text));
+                        var result = engine.execute(script, request);
+                        assertEquals(200, result.status(), result.bodyText() + result.errors());
+                        return result.body();
+                    }));
+                }
+                for (int i = 0; i < jobs.size(); i++) {
+                    String expected = i % 2 == 0 ? "c3a9@0:f09f9880@2:61@6:UTF-8:0" : "f09f9880@0:c3a9@4:62@6:UTF-8:0";
+                    assertArrayEquals(expected.getBytes(StandardCharsets.US_ASCII), jobs.get(i).get());
+                }
+            } finally {
+                workers.shutdown();
+            }
+        }
+    }
+
+    @Test
     void nonAsciiPathsAndHeredocEscapes(@TempDir Path dir) throws Exception {
         Path nested = Files.createDirectory(dir.resolve("café😀"));
         Files.writeString(nested.resolve("part.php"), "<?php echo 'é😀', \"\\xFF\";", StandardCharsets.UTF_8);

@@ -95,6 +95,13 @@ public final class PhpExceptions {
         addSubclass(language, out, "ParseError", "CompileError");
         addSubclass(language, out, "UnhandledMatchError", ERROR);
 
+        Map<String, PhpClassTemplate.MethodDecl> hashMethods = new LinkedHashMap<>();
+        addMethod(language, hashMethods, "__construct", Visibility.PRIVATE, true, (ctx, self, args) -> {
+            throw new PhpError("Cannot directly construct HashContext, use hash_init() instead");
+        });
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "HashContext", false, false, true, false,
+                null, List.of(), List.of(), List.of(), hashMethods));
+
         return Map.copyOf(out);
     }
 

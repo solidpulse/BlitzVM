@@ -89,25 +89,36 @@ final class PregFunctions {
     /** Converts between char indexes and UTF-8 byte offsets of one subject string. */
     static final class Offsets {
         final String text;
-        private final PhpStrings.Utf8Offsets offsets;
+        private PhpStrings.Utf8Offsets offsets;
+        private final int byteLength;
         final boolean utf;
 
         Offsets(String s, boolean utf) {
             this.utf = utf;
             text = utf ? PhpStrings.toJava(s) : s;
-            offsets = utf ? new PhpStrings.Utf8Offsets(text) : null;
+            byteLength = s.length();
         }
 
         long toBytes(int charIndex) {
-            return offsets == null ? charIndex : offsets.toBytes(charIndex);
+            if (!utf || charIndex == 0) {
+                return charIndex;
+            }
+            return offsets().toBytes(charIndex);
         }
 
         int byteLength() {
-            return (int) toBytes(text.length());
+            return byteLength;
         }
 
         int toChars(long byteOffset) {
-            return offsets == null ? (int) byteOffset : offsets.toChars((int) byteOffset);
+            return !utf || byteOffset == 0 ? (int) byteOffset : offsets().toChars((int) byteOffset);
+        }
+
+        private PhpStrings.Utf8Offsets offsets() {
+            if (offsets == null) {
+                offsets = new PhpStrings.Utf8Offsets(text);
+            }
+            return offsets;
         }
 
         String php(String s) {

@@ -34,4 +34,10 @@ class MysqliSqlTest {
         String sql = "SELECT '" + MysqliFunctions.escape(value) + "'";
         assertEquals("SELECT X'ff27293b2044524f50205441424c4520743b202d2d'", MysqliSql.toJava(sql));
     }
+
+    @Test
+    void binaryCharsetIntroducersDoNotCorruptTheHexSyntax() throws Exception {
+        assertEquals("SELECT X'ff', X'80', 'é'", MysqliSql.toJava("SELECT _binary'\u00ff', _latin1 '\u0080', '"
+                + PhpStrings.fromJava("é") + "'"));
+    }
 }

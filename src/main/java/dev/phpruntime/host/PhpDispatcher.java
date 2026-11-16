@@ -133,6 +133,13 @@ public final class PhpDispatcher {
             s.put("HTTP_" + PhpStrings.upper(h.getKey()).replace('-', '_'), h.getValue());
             r.headers.put(h.getKey(), h.getValue());
         }
+        // The shared host also serves JavaScript. Keep that language's existing text
+        // request contract without changing its runtime/parser or PHP's byte fields.
+        if (file.toString().endsWith(".js")) {
+            r.get.replaceAll((key, value) -> PhpStrings.toJava(value));
+            r.post.replaceAll((key, value) -> PhpStrings.toJava(value));
+            r.body = PhpStrings.toJava(r.body);
+        }
         return r;
     }
 

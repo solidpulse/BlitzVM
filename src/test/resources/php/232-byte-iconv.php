@@ -7,3 +7,6 @@ var_dump(iconv_strlen('é😀a'), iconv_strpos('é😀a', 'a'), iconv_substr('é
 echo bin2hex(@utf8_encode("caf\xE9")), ':', bin2hex(@utf8_decode('café😀')), "\n";
 echo @mb_convert_encoding('é€😀', 'HTML-ENTITIES', 'UTF-8'), "\n";
 echo bin2hex(@mb_convert_encoding('&eacute;&#128512;', 'UTF-8', 'HTML-ENTITIES')), "\n";
+mb_internal_encoding('ISO-8859-1');
+var_dump(iconv_strlen('é😀a'), iconv_strpos('é😀a', 'a'));
+mb_internal_encoding('UTF-8');

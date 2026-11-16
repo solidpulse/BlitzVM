@@ -4,6 +4,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
+import dev.phpruntime.runtime.PhpObject;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -59,6 +60,21 @@ final class HashFunctions {
             byte[] mac = hmac(algo, spec, PhpStrings.bytes(PhpOps.toStr(a[2])), PhpStrings.bytes(PhpOps.toStr(a[1])));
             return output(mac, a.length > 3 && PhpOps.toBool(a[3]));
         });
+        Builtins.def("hash_file", 2, 4, (ctx, a) -> {
+            byte[] data = StreamFunctions.readFile(ctx, PhpOps.toStr(a[1]), "hash_file");
+            return data == null ? false : output(digest(PhpStrings.lower(PhpOps.toStr(a[0])), data, "hash_file"),
+                    a.length > 2 && PhpOps.toBool(a[2]));
+        });
+        Builtins.def("hash_hmac_file", 3, 4, (ctx, a) -> {
+            byte[] data = StreamFunctions.readFile(ctx, PhpOps.toStr(a[1]), "hash_hmac_file");
+            if (data == null) {
+                return false;
+            }
+            String algo = PhpStrings.lower(PhpOps.toStr(a[0]));
+            Algo spec = crypto(algo, "hash_hmac_file");
+            return output(hmac(algo, spec, PhpStrings.bytes(PhpOps.toStr(a[2])), data), a.length > 3 && PhpOps.toBool(a[3]));
+        });
+        incremental();
         Builtins.def("hash_equals", 2, 2, (ctx, a) -> {
             if (!(a[0] instanceof String known)) {
                 throw new PhpError(PhpError.TYPE_ERROR, "hash_equals(): Argument #1 ($known_string) must be of type string, " + PhpOps.typeName(a[0]) + " given", null);
@@ -109,6 +125,161 @@ final class HashFunctions {
     }
 
     static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+
+    private static Algo crypto(String algo, String fn) {
+        Algo spec = ALGOS.get(algo);
+        if (spec == null || spec.javaName() == null) {
+            throw new PhpError(PhpError.VALUE_ERROR, fn + "(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm", null);
+        }
+        return spec;
+    }
+
+    /** Request-owned HashContext handle; never stored in a shared AST node. */
+    static final class HashContext {
+        final String algo;
+        final byte[] key;
+        final java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream();
+
+        HashContext(String algo, byte[] key) {
+            this.algo = algo;
+            this.key = key;
+        }
+    }
+
+    private static HashContext hashContext(dev.phpruntime.PhpContext ctx, Object value, String fn) {
+        if (value instanceof PhpObject object && object.phpClass().template() == ctx.language().builtinClassTemplate("hashcontext")) {
+            HashContext hash = ContextState.of(ctx).hashContexts.get(object.id());
+            if (hash != null) {
+                return hash;
+            }
+            throw new PhpError(PhpError.VALUE_ERROR, fn + "(): Argument #1 ($context) must be a valid, non-finalized HashContext", null);
+        }
+        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($context) must be a valid HashContext", null);
+    }
+
+    private static PhpObject hashObject(dev.phpruntime.PhpContext ctx, HashContext hash) {
+        PhpObject object = new PhpObject(ctx.lookupClass("HashContext"), ctx.nextObjectId());
+        ContextState.of(ctx).hashContexts.put(object.id(), hash);
+        return object;
+    }
+
+    private static void incremental() {
+        Builtins.def("hash_init", 1, 4, (ctx, a) -> {
+            String algo = PhpStrings.lower(PhpOps.toStr(a[0]));
+            if (!ALGOS.containsKey(algo)) {
+                digest(algo, new byte[0], "hash_init");
+            }
+            boolean hmac = a.length > 1 && (PhpOps.toLong(a[1]) & 1) != 0;
+            byte[] key = hmac ? a.length > 2 ? PhpStrings.bytes(PhpOps.toStr(a[2])) : new byte[0] : null;
+            if (hmac) {
+                crypto(algo, "hash_init");
+                if (key.length == 0) {
+                    throw new PhpError(PhpError.VALUE_ERROR, "hash_init(): Argument #3 ($key) must not be empty when HMAC is requested", null);
+                }
+            }
+            return hashObject(ctx, new HashContext(algo, key));
+        });
+        Builtins.def("hash_update", 2, 2, (ctx, a) -> {
+            hashContext(ctx, a[0], "hash_update").data.writeBytes(PhpStrings.bytes(PhpOps.toStr(a[1])));
+            return true;
+        });
+        Builtins.def("hash_update_file", 2, 3, (ctx, a) -> {
+            HashContext hash = hashContext(ctx, a[0], "hash_update_file");
+            byte[] data = StreamFunctions.readFile(ctx, PhpOps.toStr(a[1]), "hash_update_file");
+            if (data == null) {
+                return false;
+            }
+            hash.data.writeBytes(data);
+            return true;
+        });
+        Builtins.def("hash_update_stream", 2, 3, (ctx, a) -> {
+            HashContext hash = hashContext(ctx, a[0], "hash_update_stream");
+            PhpStream stream = StreamFunctions.stream(StreamFunctions.resource(a[1], "hash_update_stream"), "hash_update_stream");
+            try {
+                long length = a.length > 2 ? PhpOps.toLong(a[2]) : -1;
+                byte[] data = length < 0 ? stream.readAll() : stream.readBytes((int) length);
+                hash.data.writeBytes(data);
+                return (long) data.length;
+            } catch (java.io.IOException e) {
+                return 0L;
+            }
+        });
+        Builtins.def("hash_copy", 1, 1, (ctx, a) -> {
+            HashContext hash = hashContext(ctx, a[0], "hash_copy");
+            HashContext copy = new HashContext(hash.algo, hash.key);
+            copy.data.writeBytes(hash.data.toByteArray());
+            return hashObject(ctx, copy);
+        });
+        Builtins.def("hash_final", 1, 2, (ctx, a) -> {
+            HashContext hash = hashContext(ctx, a[0], "hash_final");
+            byte[] data = hash.data.toByteArray();
+            byte[] digest = hash.key == null ? digest(hash.algo, data, "hash_final")
+                    : hmac(hash.algo, crypto(hash.algo, "hash_final"), hash.key, data);
+            ContextState.of(ctx).hashContexts.remove(((PhpObject) a[0]).id());
+            return output(digest, a.length > 1 && PhpOps.toBool(a[1]));
+        });
+        Builtins.def("hash_pbkdf2", 4, 6, (ctx, a) -> {
+            String algo = PhpStrings.lower(PhpOps.toStr(a[0]));
+            Algo spec = crypto(algo, "hash_pbkdf2");
+            byte[] password = PhpStrings.bytes(PhpOps.toStr(a[1]));
+            byte[] salt = PhpStrings.bytes(PhpOps.toStr(a[2]));
+            long iterations = PhpOps.toLong(a[3]);
+            if (iterations < 1) {
+                throw new PhpError(PhpError.VALUE_ERROR, "hash_pbkdf2(): Argument #4 ($iterations) must be greater than 0", null);
+            }
+            boolean raw = a.length > 5 && PhpOps.toBool(a[5]);
+            int digestLength = digest(algo, new byte[0], "hash_pbkdf2").length;
+            int length = a.length > 4 ? (int) PhpOps.toLong(a[4]) : 0;
+            int chars = length == 0 ? digestLength * (raw ? 1 : 2) : length;
+            if (chars < 0) {
+                throw new PhpError(PhpError.VALUE_ERROR, "hash_pbkdf2(): Argument #5 ($length) must be greater than or equal to 0", null);
+            }
+            int bytes = raw ? chars : (chars + 1) / 2;
+            byte[] result = new byte[bytes];
+            for (int block = 1, offset = 0; offset < bytes; block++) {
+                byte[] input = java.util.Arrays.copyOf(salt, salt.length + 4);
+                java.nio.ByteBuffer.wrap(input, salt.length, 4).putInt(block);
+                byte[] u = hmac(algo, spec, password, input);
+                byte[] combined = u.clone();
+                for (long i = 1; i < iterations; i++) {
+                    u = hmac(algo, spec, password, u);
+                    for (int j = 0; j < combined.length; j++) {
+                        combined[j] ^= u[j];
+                    }
+                }
+                int n = Math.min(combined.length, bytes - offset);
+                System.arraycopy(combined, 0, result, offset, n);
+                offset += n;
+            }
+            return raw ? PhpStrings.of(result) : HexFormat.of().formatHex(result).substring(0, chars);
+        });
+        Builtins.def("hash_hkdf", 2, 5, (ctx, a) -> {
+            String algo = PhpStrings.lower(PhpOps.toStr(a[0]));
+            Algo spec = crypto(algo, "hash_hkdf");
+            byte[] key = PhpStrings.bytes(PhpOps.toStr(a[1]));
+            int digestLength = digest(algo, new byte[0], "hash_hkdf").length;
+            int length = a.length > 2 ? (int) PhpOps.toLong(a[2]) : 0;
+            length = length == 0 ? digestLength : length;
+            if (key.length == 0 || length < 0 || length > 255 * digestLength) {
+                throw new PhpError(PhpError.VALUE_ERROR, "hash_hkdf(): Invalid key or output length", null);
+            }
+            byte[] info = a.length > 3 ? PhpStrings.bytes(PhpOps.toStr(a[3])) : new byte[0];
+            byte[] salt = a.length > 4 ? PhpStrings.bytes(PhpOps.toStr(a[4])) : new byte[digestLength];
+            byte[] prk = hmac(algo, spec, salt, key);
+            byte[] previous = new byte[0];
+            byte[] result = new byte[length];
+            for (int block = 1, offset = 0; offset < length; block++) {
+                byte[] input = java.util.Arrays.copyOf(previous, previous.length + info.length + 1);
+                System.arraycopy(info, 0, input, previous.length, info.length);
+                input[input.length - 1] = (byte) block;
+                previous = hmac(algo, spec, prk, input);
+                int n = Math.min(previous.length, length - offset);
+                System.arraycopy(previous, 0, result, offset, n);
+                offset += n;
+            }
+            return PhpStrings.of(result);
+        });
+    }
 
     private static Object output(byte[] digest, boolean binary) {
         return binary ? PhpStrings.of(digest) : HexFormat.of().formatHex(digest);

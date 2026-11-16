@@ -21,3 +21,4 @@ echo bin2hex(mb_convert_encoding("\x80\xE9", 'UTF-8', 'Windows-1252')), "\n";
 var_dump(mb_detect_encoding('abc'), mb_detect_encoding('é', ['ASCII', 'UTF-8']), mb_detect_encoding("\xFF", ['ASCII', 'UTF-8'], true));
 mb_detect_order(['UTF-8', 'ISO-8859-1']);
 var_dump(mb_detect_order(), mb_detect_encoding("\xFF"), in_array('UTF-8', mb_list_encodings(), true));
+echo bin2hex(mb_convert_encoding("\xFF\xFE\xE9\x00", 'UTF-8', 'UTF-16')), "\n";

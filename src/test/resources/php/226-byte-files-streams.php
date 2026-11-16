@@ -31,6 +31,15 @@ $n = file_put_contents('php://output', $s);
 $out = ob_get_clean();
 var_dump($n, $out === $s);
 var_dump(md5_file($f) === md5($s), md5_file($f, true) === md5($s, true));
+var_dump(hash_file('sha256', $f, true) === hash('sha256', $s, true),
+         hash_hmac_file('sha256', $f, "é\xFF", true) === hash_hmac('sha256', $s, "é\xFF", true));
+$ctx = hash_init('sha256');
+hash_update_file($ctx, $f);
+var_dump(hash_final($ctx) === hash('sha256', $s));
+$ctx = hash_init('sha256');
+$h = fopen($f, 'rb');
+var_dump(hash_update_stream($ctx, $h), hash_final($ctx, true) === hash('sha256', $s, true));
+fclose($h);
 unlink($f);
 foreach (['gzcompress', 'gzdeflate', 'gzencode'] as $fn) {
     $z = $fn($s);

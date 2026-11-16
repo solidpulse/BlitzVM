@@ -35,7 +35,16 @@ final class MysqliSql {
                 int end = quotedEnd(sql, i, c);
                 String literal = sql.substring(i + 1, end - 1);
                 if (!PhpStrings.isUtf8(literal)) {
-                    out.append(sql, copied, i);
+                    int start = i;
+                    var introducer = java.util.regex.Pattern.compile("(?:_[A-Za-z0-9]+|[nN])\\s*$")
+                            .matcher(sql.substring(copied, i));
+                    if (introducer.find()) {
+                        int at = copied + introducer.start();
+                        if (at == 0 || !Character.isLetterOrDigit(sql.charAt(at - 1)) && sql.charAt(at - 1) != '_') {
+                            start = at;
+                        }
+                    }
+                    out.append(sql, copied, start);
                     out.append("X'").append(HexFormat.of().formatHex(PhpStrings.bytes(unescape(literal, c)))).append('\'');
                     copied = end;
                 }

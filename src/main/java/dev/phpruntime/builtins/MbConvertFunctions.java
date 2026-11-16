@@ -436,23 +436,52 @@ final class MbConvertFunctions {
             return to.charset() == null ? encode(ctx, text, to) : PhpStrings.encode(text, to.charset(), ignore ? "" : "?");
         });
         Builtins.def("iconv_strlen", 1, 2, (ctx, a) -> {
-            Encoding e = argumentEncoding(ctx, a, 1, "iconv_strlen");
+            Encoding e = iconvEncoding(a, 1, "iconv_strlen");
             String s = PhpOps.toStr(a[0]);
-            if (e.charset() != null && !PhpStrings.isEncoding(s, e.charset())) {
+            boolean ignore = iconvIgnore(a, 1);
+            if (e.charset() != null && !PhpStrings.isEncoding(s, e.charset()) && !ignore) {
                 return false;
             }
-            String text = decode(ctx, s, e);
+            String text = e.charset() == null ? decode(ctx, s, e) : PhpStrings.decode(s, e.charset(), ignore ? "" : "?");
             return (long) text.codePointCount(0, text.length());
         });
         Builtins.def("iconv_substr", 2, 4, (ctx, a) -> {
-            Encoding e = argumentEncoding(ctx, a, 3, "iconv_substr");
+            Encoding e = iconvEncoding(a, 3, "iconv_substr");
             String s = PhpOps.toStr(a[0]);
-            if (e.charset() != null && !PhpStrings.isEncoding(s, e.charset())) {
+            boolean ignore = iconvIgnore(a, 3);
+            if (e.charset() != null && !PhpStrings.isEncoding(s, e.charset()) && !ignore) {
                 return false;
             }
-            return encode(ctx, cpSubstr(decode(ctx, s, e), PhpOps.toLong(a[1]),
+            String text = e.charset() == null ? decode(ctx, s, e) : PhpStrings.decode(s, e.charset(), ignore ? "" : "?");
+            return encode(ctx, cpSubstr(text, PhpOps.toLong(a[1]),
                     a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : null), e);
         });
-        Builtins.def("iconv_strpos", 2, 4, (ctx, a) -> position(ctx, a, false, false));
+        Builtins.def("iconv_strpos", 2, 4, (ctx, a) -> {
+            Encoding e = iconvEncoding(a, 3, "iconv_strpos");
+            String hay = PhpOps.toStr(a[0]);
+            String needle = PhpOps.toStr(a[1]);
+            if (e.charset() != null && (!PhpStrings.isEncoding(hay, e.charset()) || !PhpStrings.isEncoding(needle, e.charset()))
+                    && !iconvIgnore(a, 3)) {
+                return false;
+            }
+            String text = e.charset() == null ? decode(ctx, hay, e) : PhpStrings.decode(hay, e.charset(), iconvIgnore(a, 3) ? "" : "?");
+            String sought = decode(ctx, needle, e);
+            long offset = a.length > 2 ? PhpOps.toLong(a[2]) : 0;
+            int count = text.codePointCount(0, text.length());
+            if (offset < 0 || offset > count) {
+                throw new PhpError(PhpError.VALUE_ERROR, "iconv_strpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)", null);
+            }
+            int at = text.indexOf(sought, text.offsetByCodePoints(0, (int) offset));
+            return at < 0 ? false : (long) text.codePointCount(0, at);
+        });
+    }
+
+    private static Encoding iconvEncoding(Object[] a, int i, String fn) {
+        String name = a.length > i && a[i] != PhpNull.INSTANCE ? PhpOps.toStr(a[i]) : "UTF-8";
+        return require(name.split("//")[0], fn, i + 1);
+    }
+
+    private static boolean iconvIgnore(Object[] a, int i) {
+        return a.length > i && PhpStrings.upper(PhpOps.toStr(a[i])).contains("//IGNORE");
     }
 }

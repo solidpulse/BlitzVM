@@ -52,6 +52,7 @@ public final class PhpConstants {
             Map.entry("SORT_REGULAR", 0L),
             Map.entry("SORT_NUMERIC", 1L),
             Map.entry("SORT_STRING", 2L),
+            Map.entry("HASH_HMAC", 1L),
             Map.entry("SORT_LOCALE_STRING", 5L),
             Map.entry("SORT_NATURAL", 6L),
             Map.entry("SORT_FLAG_CASE", 8L),
