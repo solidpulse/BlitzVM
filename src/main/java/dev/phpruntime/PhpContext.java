@@ -196,7 +196,8 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpFunction lookupFunction(String name) {
-        return functions.get(name.toLowerCase());
+        String n = name.startsWith("\\") ? name.substring(1) : name;
+        return functions.get(n.toLowerCase());
     }
 
     @TruffleBoundary
@@ -238,7 +239,8 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
-        String lower = name.toLowerCase();
+        String n = name.startsWith("\\") ? name.substring(1) : name;
+        String lower = n.toLowerCase();
         PhpClass existing = classes.get(lower);
         if (existing != null) {
             return existing;
@@ -253,7 +255,8 @@ public final class PhpContext {
     /** class_alias(): makes an existing class reachable under another name in this request. */
     @TruffleBoundary
     public boolean aliasClass(String alias, PhpClass cls) {
-        String lower = alias.toLowerCase();
+        String n = alias.startsWith("\\") ? alias.substring(1) : alias;
+        String lower = n.toLowerCase();
         if (classes.containsKey(lower) || language.builtinClassTemplate(lower) != null) {
             return false;
         }
@@ -273,8 +276,9 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpClass lookupOrAutoloadClass(String name) {
-        PhpClass cls = lookupClass(name);
-        String lower = name.toLowerCase();
+        String n = name.startsWith("\\") ? name.substring(1) : name;
+        PhpClass cls = lookupClass(n);
+        String lower = n.toLowerCase();
         if (cls != null || autoloaders.isEmpty() || !autoloadingInProgress.add(lower)) {
             return cls;
         }
@@ -282,8 +286,8 @@ public final class PhpContext {
             for (Object cbVal : List.copyOf(autoloaders)) {
                 PhpCallable cb = PhpCallable.resolveOrNull(this, cbVal);
                 if (cb != null) {
-                    cb.call(this, null, null, name);
-                    cls = lookupClass(name);
+                    cb.call(this, null, null, n);
+                    cls = lookupClass(n);
                     if (cls != null) {
                         return cls;
                     }
@@ -353,6 +357,13 @@ public final class PhpContext {
                 return false;
             }
         }
+        for (PhpClassTemplate.TraitUse use : template.traitUses()) {
+            for (String tn : use.traitNames()) {
+                if (lookupClass(tn) == null) {
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
@@ -365,7 +376,7 @@ public final class PhpContext {
     private PhpClass declareClassInternal(PhpClassTemplate template, boolean isBuiltin) {
         String lower = template.lowerName();
         if (classes.containsKey(lower) || (!isBuiltin && language.builtinClassTemplate(lower) != null)) {
-            String kind = template.isInterface() ? "interface" : "class";
+            String kind = template.isInterface() ? "interface" : (template.isTrait() ? "trait" : "class");
             throw PhpError.fatal("Cannot declare " + kind + " " + template.name() + ", because the name is already in use");
         }
         PhpClass parent = null;
@@ -375,8 +386,9 @@ public final class PhpContext {
                 String kind = template.isInterface() ? "Interface" : "Class";
                 throw new PhpError(kind + " \"" + template.parentName() + "\" not found");
             }
-            if (!template.isInterface() && parent.isInterface()) {
-                throw PhpError.fatal(template.name() + " cannot extend interface " + parent.name());
+            if (!template.isInterface() && (parent.isInterface() || parent.isTrait())) {
+                throw PhpError.fatal(template.name() + " cannot extend "
+                        + (parent.isTrait() ? "trait " : "interface ") + parent.name());
             }
             if (!template.isInterface() && parent.isFinal()) {
                 throw PhpError.fatal("Class " + template.name() + " cannot extend final class " + parent.name());
@@ -397,6 +409,22 @@ public final class PhpContext {
             }
             ifaces.add(iface);
         }
+        Map<String, PhpClass> resolvedTraits = template.traitUses().isEmpty() ? Map.of() : new HashMap<>();
+        for (PhpClassTemplate.TraitUse use : template.traitUses()) {
+            for (String traitName : use.traitNames()) {
+                String tLower = traitName.toLowerCase();
+                if (!resolvedTraits.containsKey(tLower)) {
+                    PhpClass tr = lookupOrAutoloadClass(traitName);
+                    if (tr == null) {
+                        throw new PhpError("Trait \"" + traitName + "\" not found");
+                    }
+                    if (!tr.isTrait()) {
+                        throw PhpError.fatal(template.name() + " cannot use " + tr.name() + " - it is not a trait");
+                    }
+                    resolvedTraits.put(tLower, tr);
+                }
+            }
+        }
         if (!isBuiltin && parent != null) {
             for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
                 PhpClass.MethodEntry inherited = parent.lookupMethod(m.lowerName());
@@ -405,14 +433,13 @@ public final class PhpContext {
                 }
             }
         }
-        PhpClass cls = new PhpClass(language, template, parent, ifaces);
+        PhpClass cls = new PhpClass(language, template, parent, ifaces, resolvedTraits);
         classes.put(lower, cls);
         int id = language.classId(lower);
         if (id >= classesById.length) {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
         }
         classesById[id] = cls;
-        cls.initStaticProperties();
         return cls;
     }
 
@@ -428,36 +455,39 @@ public final class PhpContext {
 
     @TruffleBoundary
     public boolean defineConstant(String name, Object value, int line) {
-        if (PhpConstants.lookupBuiltin(name) != null || constants.containsKey(name)) {
-            warning("Constant " + name + " already defined", line);
+        String n = name.startsWith("\\") ? name.substring(1) : name;
+        if (PhpConstants.lookupBuiltin(n) != null || constants.containsKey(n)) {
+            warning("Constant " + n + " already defined", line);
             return false;
         }
-        constants.put(name, value);
+        constants.put(n, value);
         return true;
     }
 
     @TruffleBoundary
     public boolean hasConstant(String name) {
-        int sep = name.indexOf("::");
+        String n = name.startsWith("\\") ? name.substring(1) : name;
+        int sep = n.indexOf("::");
         if (sep > 0) {
-            PhpClass cls = lookupClass(name.substring(0, sep));
-            return cls != null && cls.lookupConstant(name.substring(sep + 2)) != null;
+            PhpClass cls = lookupClass(n.substring(0, sep));
+            return cls != null && cls.lookupConstant(n.substring(sep + 2)) != null;
         }
-        return PhpConstants.lookupBuiltin(name) != null || constants.containsKey(name);
+        return PhpConstants.lookupBuiltin(n) != null || constants.containsKey(n);
     }
 
     @TruffleBoundary
     public Object readConstant(String name) {
-        int sep = name.indexOf("::");
+        String n = name.startsWith("\\") ? name.substring(1) : name;
+        int sep = n.indexOf("::");
         if (sep > 0) {
-            PhpClass cls = lookupClass(name.substring(0, sep));
-            return cls == null ? null : cls.lookupConstant(name.substring(sep + 2));
+            PhpClass cls = lookupClass(n.substring(0, sep));
+            return cls == null ? null : cls.lookupConstant(n.substring(sep + 2));
         }
-        Object builtin = PhpConstants.lookupBuiltin(name);
+        Object builtin = PhpConstants.lookupBuiltin(n);
         if (builtin != null) {
             return builtin;
         }
-        return constants.get(name);
+        return constants.get(n);
     }
 
     // ------------------------------------------------------------ includes

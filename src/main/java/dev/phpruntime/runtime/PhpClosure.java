@@ -22,38 +22,55 @@ public final class PhpClosure {
     private final Builtins.Def builtin;
     private final Object boundThis;
     private final PhpClass calledClass;
+    private final PhpClass traitSelf;
     private final Object[] captures;
     private final String magicMethodName;
 
     public PhpClosure(Kind kind, RootCallTarget callTarget, Builtins.Def builtin,
                       Object boundThis, PhpClass calledClass, Object[] captures, String magicMethodName) {
+        this(kind, callTarget, builtin, boundThis, calledClass, null, captures, magicMethodName);
+    }
+
+    public PhpClosure(Kind kind, RootCallTarget callTarget, Builtins.Def builtin,
+                      Object boundThis, PhpClass calledClass, PhpClass traitSelf,
+                      Object[] captures, String magicMethodName) {
         this.kind = kind;
         this.callTarget = callTarget;
         this.builtin = builtin;
         this.boundThis = boundThis;
         this.calledClass = calledClass;
+        this.traitSelf = traitSelf;
         this.captures = captures;
         this.magicMethodName = magicMethodName;
     }
 
     public static PhpClosure closure(RootCallTarget callTarget, Object boundThis, PhpClass calledClass, Object[] captures) {
-        return new PhpClosure(Kind.CLOSURE, callTarget, null, boundThis, calledClass, captures, null);
+        return new PhpClosure(Kind.CLOSURE, callTarget, null, boundThis, calledClass, null, captures, null);
+    }
+
+    public static PhpClosure closure(RootCallTarget callTarget, Object boundThis, PhpClass calledClass,
+                                     PhpClass traitSelf, Object[] captures) {
+        return new PhpClosure(Kind.CLOSURE, callTarget, null, boundThis, calledClass, traitSelf, captures, null);
     }
 
     public static PhpClosure userFunction(RootCallTarget callTarget) {
-        return new PhpClosure(Kind.USER_FUNCTION, callTarget, null, PhpNull.INSTANCE, null, null, null);
+        return new PhpClosure(Kind.USER_FUNCTION, callTarget, null, PhpNull.INSTANCE, null, null, null, null);
     }
 
     public static PhpClosure method(RootCallTarget callTarget, Object boundThis, PhpClass calledClass) {
-        return new PhpClosure(Kind.METHOD, callTarget, null, boundThis, calledClass, null, null);
+        return new PhpClosure(Kind.METHOD, callTarget, null, boundThis, calledClass, null, null, null);
+    }
+
+    public static PhpClosure method(RootCallTarget callTarget, Object boundThis, PhpClass calledClass, PhpClass traitSelf) {
+        return new PhpClosure(Kind.METHOD, callTarget, null, boundThis, calledClass, traitSelf, null, null);
     }
 
     public static PhpClosure magicCall(RootCallTarget callTarget, Object boundThis, PhpClass calledClass, String magicMethodName) {
-        return new PhpClosure(Kind.MAGIC_CALL, callTarget, null, boundThis, calledClass, null, magicMethodName);
+        return new PhpClosure(Kind.MAGIC_CALL, callTarget, null, boundThis, calledClass, null, null, magicMethodName);
     }
 
     public static PhpClosure builtin(Builtins.Def builtin) {
-        return new PhpClosure(Kind.BUILTIN, null, builtin, PhpNull.INSTANCE, null, null, null);
+        return new PhpClosure(Kind.BUILTIN, null, builtin, PhpNull.INSTANCE, null, null, null, null);
     }
 
     public Kind kind() {
@@ -76,6 +93,10 @@ public final class PhpClosure {
         return calledClass;
     }
 
+    public PhpClass traitSelf() {
+        return traitSelf;
+    }
+
     public Object[] captures() {
         return captures;
     }
@@ -86,6 +107,6 @@ public final class PhpClosure {
 
     public PhpClosure copy() {
         Object[] capCopy = captures == null ? null : captures.clone();
-        return new PhpClosure(kind, callTarget, builtin, boundThis, calledClass, capCopy, magicMethodName);
+        return new PhpClosure(kind, callTarget, builtin, boundThis, calledClass, traitSelf, capCopy, magicMethodName);
     }
 }

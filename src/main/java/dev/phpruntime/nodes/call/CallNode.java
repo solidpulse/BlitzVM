@@ -24,6 +24,8 @@ import dev.phpruntime.runtime.PhpOps;
  */
 public final class CallNode extends PhpNode {
 
+    private final String nsName;
+    private final int nsFunctionId;
     private final String name;
     /** {@link dev.phpruntime.PhpLanguage#functionId} of {@link #name}. */
     private final int functionId;
@@ -36,6 +38,13 @@ public final class CallNode extends PhpNode {
     @CompilationFinal private Builtins.Def builtin;
 
     public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets) {
+        this(null, -1, name, functionId, args, refTargets);
+    }
+
+    public CallNode(String nsName, int nsFunctionId, String name, int functionId,
+                    PhpNode[] args, LValueNode[] refTargets) {
+        this.nsName = nsName;
+        this.nsFunctionId = nsFunctionId;
         this.name = name;
         this.functionId = functionId;
         this.args = args;
@@ -44,6 +53,12 @@ public final class CallNode extends PhpNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (nsFunctionId >= 0) {
+            PhpFunction nsFn = PhpContext.get(this).functionById(nsFunctionId);
+            if (nsFn != null) {
+                return callUserFunction(frame, nsFn);
+            }
+        }
         if (builtin != null) {
             return callBuiltin(frame);
         }
@@ -56,8 +71,12 @@ public final class CallNode extends PhpNode {
             if (def != null) {
                 return callBuiltin(frame);
             }
-            throw new PhpError("Call to undefined function " + name + "()", this);
+            throw new PhpError("Call to undefined function " + (nsName != null ? nsName : name) + "()", this);
         }
+        return callUserFunction(frame, fn);
+    }
+
+    private Object callUserFunction(VirtualFrame frame, PhpFunction fn) {
         RootCallTarget target = fn.callTarget();
         // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = callNode;

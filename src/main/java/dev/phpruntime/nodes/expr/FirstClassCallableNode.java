@@ -30,6 +30,8 @@ public final class FirstClassCallableNode extends PhpNode {
     }
 
     private final Mode mode;
+    private final String nsFnName;
+    private final int nsFunctionId;
     private final String fnName;
     private final int functionId;
     @CompilationFinal private Builtins.Def builtin;
@@ -42,10 +44,12 @@ public final class FirstClassCallableNode extends PhpNode {
     private final int thisSlot;
     private final int calledClassSlot;
 
-    private FirstClassCallableNode(Mode mode, String fnName, int functionId, PhpNode targetExpr,
-                                   ClassRefNode classRef, String staticMemberName, int methodId,
+    private FirstClassCallableNode(Mode mode, String nsFnName, int nsFunctionId, String fnName, int functionId,
+                                   PhpNode targetExpr, ClassRefNode classRef, String staticMemberName, int methodId,
                                    PhpNode dynamicMemberExpr, int thisSlot, int calledClassSlot) {
         this.mode = mode;
+        this.nsFnName = nsFnName;
+        this.nsFunctionId = nsFunctionId;
         this.fnName = fnName;
         this.functionId = functionId;
         this.targetExpr = targetExpr;
@@ -58,21 +62,25 @@ public final class FirstClassCallableNode extends PhpNode {
     }
 
     public static FirstClassCallableNode forFunction(String name, int functionId) {
-        return new FirstClassCallableNode(Mode.FUNCTION, name, functionId, null, null, null, -1, null, -1, -1);
+        return new FirstClassCallableNode(Mode.FUNCTION, null, -1, name, functionId, null, null, null, -1, null, -1, -1);
+    }
+
+    public static FirstClassCallableNode forFunction(String nsName, int nsFunctionId, String name, int functionId) {
+        return new FirstClassCallableNode(Mode.FUNCTION, nsName, nsFunctionId, name, functionId, null, null, null, -1, null, -1, -1);
     }
 
     public static FirstClassCallableNode forMethod(PhpNode targetExpr, String staticName, int methodId, PhpNode dynamicNameExpr) {
-        return new FirstClassCallableNode(Mode.METHOD, null, -1, targetExpr, null, staticName, methodId, dynamicNameExpr, -1, -1);
+        return new FirstClassCallableNode(Mode.METHOD, null, -1, null, -1, targetExpr, null, staticName, methodId, dynamicNameExpr, -1, -1);
     }
 
     public static FirstClassCallableNode forStaticMethod(ClassRefNode classRef, String staticName, int methodId,
                                                          PhpNode dynamicNameExpr, int thisSlot, int calledClassSlot) {
-        return new FirstClassCallableNode(Mode.STATIC_METHOD, null, -1, null, classRef, staticName, methodId,
+        return new FirstClassCallableNode(Mode.STATIC_METHOD, null, -1, null, -1, null, classRef, staticName, methodId,
                 dynamicNameExpr, thisSlot, calledClassSlot);
     }
 
     public static FirstClassCallableNode forCallable(PhpNode targetExpr, int thisSlot) {
-        return new FirstClassCallableNode(Mode.CALLABLE, null, -1, targetExpr, null, null, -1, null, thisSlot, -1);
+        return new FirstClassCallableNode(Mode.CALLABLE, null, -1, null, -1, targetExpr, null, null, -1, null, thisSlot, -1);
     }
 
     @Override
@@ -89,6 +97,12 @@ public final class FirstClassCallableNode extends PhpNode {
     }
 
     private PhpObject resolveFunction(PhpContext ctx) {
+        if (nsFunctionId >= 0) {
+            PhpFunction nsFn = ctx.functionById(nsFunctionId);
+            if (nsFn != null) {
+                return ctx.newClosure(PhpClosure.userFunction(nsFn.callTarget()));
+            }
+        }
         if (builtin != null) {
             return ctx.newClosure(PhpClosure.builtin(builtin));
         }
@@ -100,7 +114,7 @@ public final class FirstClassCallableNode extends PhpNode {
         if (def != null) {
             return ctx.newClosure(PhpClosure.builtin(def));
         }
-        throw new PhpError("Call to undefined function " + fnName + "()", this);
+        throw new PhpError("Call to undefined function " + (nsFnName != null ? nsFnName : fnName) + "()", this);
     }
 
     @TruffleBoundary
@@ -137,7 +151,8 @@ public final class FirstClassCallableNode extends PhpNode {
             throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
-        return ctx.newClosure(PhpClosure.method(entry.callTarget(), thisArg, cls));
+        return ctx.newClosure(PhpClosure.method(
+                entry.callTarget(), thisArg, cls, entry.fromTrait() ? entry.declaringClass() : null));
     }
 
     private PhpObject resolveStaticMethod(VirtualFrame frame, PhpContext ctx) {
@@ -173,6 +188,7 @@ public final class FirstClassCallableNode extends PhpNode {
             throw new PhpError("Non-static method " + entry.declaringClass().name() + "::" + entry.name()
                     + "() cannot be called statically", this);
         }
-        return ctx.newClosure(PhpClosure.method(entry.callTarget(), thisArg, calledArg));
+        return ctx.newClosure(PhpClosure.method(
+                entry.callTarget(), thisArg, calledArg, entry.fromTrait() ? entry.declaringClass() : null));
     }
 }

@@ -40,4 +40,13 @@ public final class ControlFlow {
     /** {@code exit} / {@code die}: ends the script after flushing output. */
     public static final class Exit extends ControlFlowException {
     }
+
+    /** {@code goto label;}: jumps to the matching label within the same function. */
+    public static final class Goto extends ControlFlowException {
+        public final int labelId;
+
+        public Goto(int labelId) {
+            this.labelId = labelId;
+        }
+    }
 }

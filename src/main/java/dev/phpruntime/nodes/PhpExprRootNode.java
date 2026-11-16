@@ -9,14 +9,28 @@ import dev.phpruntime.PhpLanguage;
 public final class PhpExprRootNode extends PhpRootNode {
 
     @Child private PhpNode expr;
+    private final int traitSelfSlot;
 
     public PhpExprRootNode(PhpLanguage language, Source source, PhpNode expr) {
-        super(language, FrameDescriptor.newBuilder().build(), source, expr.line());
+        this(language, FrameDescriptor.newBuilder().build(), source, expr, -1);
+    }
+
+    public PhpExprRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode expr, int traitSelfSlot) {
+        super(language, fd, source, expr.line());
         this.expr = expr;
+        this.traitSelfSlot = traitSelfSlot;
+    }
+
+    public boolean hasTraitSelf() {
+        return traitSelfSlot >= 0;
     }
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (traitSelfSlot >= 0) {
+            Object[] args = frame.getArguments();
+            frame.setObject(traitSelfSlot, args.length > 0 ? args[0] : null);
+        }
         return expr.execute(frame);
     }
 }

@@ -73,7 +73,7 @@ public final class StaticMethodCallNode extends PhpNode {
                     this);
         }
         try {
-            return dispatch.call(entry.callTarget(), evalArgs(frame, thisArg, calledArg));
+            return dispatch.callMethod(entry, evalArgs(frame, thisArg, calledArg));
         } catch (PhpError e) {
             throw e.at(this);
         }
@@ -89,4 +89,5 @@ public final class StaticMethodCallNode extends PhpNode {
         }
         return values;
     }
+
 }

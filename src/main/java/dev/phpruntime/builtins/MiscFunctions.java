@@ -345,7 +345,14 @@ final class MiscFunctions {
             if (frameInstance.getCallTarget() instanceof RootCallTarget rct
                     && rct.getRootNode() instanceof PhpRootNode root) {
                 if (root instanceof PhpFunctionRootNode fn) {
-                    found[0] = fn.declaringClass();
+                    if (fn.traitSelfSlot() >= 0) {
+                        com.oracle.truffle.api.frame.Frame f =
+                                frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
+                        Object ts = f != null ? f.getObject(fn.traitSelfSlot()) : null;
+                        found[0] = ts instanceof dev.phpruntime.runtime.PhpClass c ? c.name() : fn.declaringClass();
+                    } else {
+                        found[0] = fn.declaringClass();
+                    }
                 }
                 return Boolean.TRUE;
             }

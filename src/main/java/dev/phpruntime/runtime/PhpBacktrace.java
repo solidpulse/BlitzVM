@@ -145,12 +145,15 @@ public final class PhpBacktrace {
                     Object thisObj = rawArgs.length > 0 ? rawArgs[0] : PhpNull.INSTANCE;
                     PhpObject recv = thisObj instanceof PhpObject o ? o : null;
                     String clsName = fnRoot.declaringClass();
-                    if (clsName == null && rawArgs.length > 1 && rawArgs[1] instanceof PhpClass c) {
+                    if (fnRoot.traitSelfSlot() >= 0 && rawArgs.length > 2 && rawArgs[2] instanceof PhpClass ts) {
+                        clsName = ts.name();
+                    } else if (clsName == null && rawArgs.length > 1 && rawArgs[1] instanceof PhpClass c) {
                         clsName = c.name();
                     }
                     String type = recv != null ? "->" : "::";
-                    Object[] callArgs = includeArgs && rawArgs.length > 2
-                            ? Arrays.copyOfRange(rawArgs, 2, rawArgs.length)
+                    int off = fnRoot.argOffset();
+                    Object[] callArgs = includeArgs && rawArgs.length > off
+                            ? Arrays.copyOfRange(rawArgs, off, rawArgs.length)
                             : (includeArgs ? new Object[0] : null);
                     pending[0] = new PendingCall(
                             fnRoot.rawFunctionName(), clsName, type,

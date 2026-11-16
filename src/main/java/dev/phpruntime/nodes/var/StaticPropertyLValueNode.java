@@ -18,19 +18,29 @@ public final class StaticPropertyLValueNode extends LValueNode {
     private final String staticName;
     @Child private PhpNode dynamicNameExpr;
     private final String callingClassLower;
+    private final int traitSelfSlot;
 
     public StaticPropertyLValueNode(ClassRefNode classRef, String staticName, PhpNode dynamicNameExpr,
                                     String callingClassLower) {
+        this(classRef, staticName, dynamicNameExpr, callingClassLower, -1);
+    }
+
+    public StaticPropertyLValueNode(ClassRefNode classRef, String staticName, PhpNode dynamicNameExpr,
+                                    String callingClassLower, int traitSelfSlot) {
         this.classRef = classRef;
         this.staticName = staticName;
         this.dynamicNameExpr = dynamicNameExpr;
         this.callingClassLower = callingClassLower;
+        this.traitSelfSlot = traitSelfSlot;
     }
 
     @Override
     public Object[] evalKeys(VirtualFrame frame) {
         PhpClass cls = classRef.resolve(frame);
         String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
+        if (traitSelfSlot >= 0) {
+            return new Object[]{cls, name, frame.getObject(traitSelfSlot)};
+        }
         return new Object[]{cls, name};
     }
 
@@ -39,27 +49,31 @@ public final class StaticPropertyLValueNode extends LValueNode {
         Object[] keys = evalKeys(frame);
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
-        PhpClass.StaticSlot slot = requireSlot(cls, name);
-        return slot.value == null ? PhpNull.INSTANCE : slot.value;
+        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
+        Object val = slot.get();
+        return val == null ? PhpNull.INSTANCE : val;
     }
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
+        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
         PhpClass.StaticSlot slot = cls.lookupStaticProperty(name);
-        if (slot == null || !isAccessible(cls, slot)) {
+        if (slot == null || !isAccessible(cls, slot, caller)) {
             return null;
         }
-        return slot.value;
+        return slot.get();
     }
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
-        PhpClass.StaticSlot slot = requireSlot(cls, name);
-        slot.value = value;
+        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
+        slot.set(value);
     }
 
     @Override
@@ -70,12 +84,12 @@ public final class StaticPropertyLValueNode extends LValueNode {
     }
 
     @TruffleBoundary
-    private PhpClass.StaticSlot requireSlot(PhpClass cls, String name) {
+    private PhpClass.StaticSlot requireSlot(PhpClass cls, String name, PhpClass traitCaller) {
         PhpClass.StaticSlot slot = cls.lookupStaticProperty(name);
         if (slot == null) {
             throw new PhpError("Access to undeclared static property " + cls.name() + "::$" + name, this);
         }
-        if (!isAccessible(cls, slot)) {
+        if (!isAccessible(cls, slot, traitCaller)) {
             String level = slot.visibility == Visibility.PRIVATE ? "private" : "protected";
             throw new PhpError(
                     "Cannot access " + level + " property " + slot.declaringClass.name() + "::$" + name,
@@ -85,9 +99,15 @@ public final class StaticPropertyLValueNode extends LValueNode {
     }
 
     @TruffleBoundary
-    private boolean isAccessible(PhpClass targetClass, PhpClass.StaticSlot slot) {
+    private boolean isAccessible(PhpClass targetClass, PhpClass.StaticSlot slot, PhpClass traitCaller) {
         if (slot.visibility == Visibility.PUBLIC) {
             return true;
+        }
+        if (traitCaller != null) {
+            if (slot.visibility == Visibility.PRIVATE) {
+                return slot.declaringClass == traitCaller;
+            }
+            return targetClass.isInstanceOf(traitCaller) || traitCaller.isInstanceOf(slot.declaringClass);
         }
         if (callingClassLower == null) {
             return false;

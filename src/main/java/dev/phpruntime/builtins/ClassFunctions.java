@@ -57,7 +57,7 @@ final class ClassFunctions {
             boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
             String name = PhpOps.toStr(a[0]);
             PhpClass cls = autoload ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
-            return cls != null && !cls.isInterface();
+            return cls != null && !cls.isInterface() && !cls.isTrait();
         });
 
         Builtins.def("interface_exists", 1, 2, (ctx, a) -> {
@@ -65,6 +65,33 @@ final class ClassFunctions {
             String name = PhpOps.toStr(a[0]);
             PhpClass cls = autoload ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
             return cls != null && cls.isInterface();
+        });
+
+        Builtins.def("trait_exists", 1, 2, (ctx, a) -> {
+            boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
+            String name = PhpOps.toStr(a[0]);
+            PhpClass cls = autoload ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
+            return cls != null && cls.isTrait();
+        });
+
+        Builtins.def("class_uses", 1, 2, (ctx, a) -> {
+            boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
+            PhpClass cls;
+            if (a[0] instanceof PhpObject obj) {
+                cls = obj.phpClass();
+            } else if (a[0] instanceof String s) {
+                cls = autoload ? ctx.lookupOrAutoloadClass(s) : ctx.lookupClass(s);
+            } else {
+                return false;
+            }
+            if (cls == null) {
+                return false;
+            }
+            PhpArray out = new PhpArray();
+            for (PhpClass tr : cls.usedTraits()) {
+                out.put(tr.name(), tr.name());
+            }
+            return out;
         });
 
         Builtins.def("method_exists", 2, 2, (ctx, a) -> {
@@ -158,7 +185,14 @@ final class ClassFunctions {
             if (frameInstance.getCallTarget() instanceof RootCallTarget rct
                     && rct.getRootNode() instanceof PhpRootNode root) {
                 if (root instanceof PhpFunctionRootNode fn) {
-                    found[0] = fn.declaringClass();
+                    if (fn.traitSelfSlot() >= 0) {
+                        com.oracle.truffle.api.frame.Frame f =
+                                frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
+                        Object ts = f != null ? f.getObject(fn.traitSelfSlot()) : null;
+                        found[0] = ts instanceof PhpClass c ? c.name() : fn.declaringClass();
+                    } else {
+                        found[0] = fn.declaringClass();
+                    }
                 }
                 return Boolean.TRUE;
             }

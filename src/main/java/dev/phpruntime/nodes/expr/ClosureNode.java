@@ -28,16 +28,23 @@ public final class ClosureNode extends PhpNode {
     private final boolean bindThis;
     private final int outerThisSlot;
     private final int outerCalledClassSlot;
+    private final int outerTraitSelfSlot;
     @Children private final LValueNode[] captureReads;
     @CompilationFinal(dimensions = 1) private final boolean[] warnIfUndefined;
     @CompilationFinal(dimensions = 1) private final boolean[] byRef;
 
     public ClosureNode(RootCallTarget callTarget, boolean bindThis, int outerThisSlot, int outerCalledClassSlot,
                        LValueNode[] captureReads, boolean[] warnIfUndefined, boolean[] byRef) {
+        this(callTarget, bindThis, outerThisSlot, outerCalledClassSlot, -1, captureReads, warnIfUndefined, byRef);
+    }
+
+    public ClosureNode(RootCallTarget callTarget, boolean bindThis, int outerThisSlot, int outerCalledClassSlot,
+                       int outerTraitSelfSlot, LValueNode[] captureReads, boolean[] warnIfUndefined, boolean[] byRef) {
         this.callTarget = callTarget;
         this.bindThis = bindThis;
         this.outerThisSlot = outerThisSlot;
         this.outerCalledClassSlot = outerCalledClassSlot;
+        this.outerTraitSelfSlot = outerTraitSelfSlot;
         this.captureReads = captureReads;
         this.warnIfUndefined = warnIfUndefined;
         this.byRef = byRef;
@@ -49,6 +56,7 @@ public final class ClosureNode extends PhpNode {
         PhpContext ctx = PhpContext.get(this);
         Object boundThis = bindThis && outerThisSlot >= 0 ? frame.getObject(outerThisSlot) : PhpNull.INSTANCE;
         PhpClass calledClass = outerCalledClassSlot >= 0 ? (PhpClass) frame.getObject(outerCalledClassSlot) : null;
+        PhpClass traitSelf = outerTraitSelfSlot >= 0 ? (PhpClass) frame.getObject(outerTraitSelfSlot) : null;
         Object[] caps = new Object[captureReads.length];
         for (int i = 0; i < captureReads.length; i++) {
             if (byRef[i]) {
@@ -67,6 +75,6 @@ public final class ClosureNode extends PhpNode {
                 caps[i] = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
             }
         }
-        return ctx.newClosure(PhpClosure.closure(callTarget, boundThis, calledClass, caps));
+        return ctx.newClosure(PhpClosure.closure(callTarget, boundThis, calledClass, traitSelf, caps));
     }
 }

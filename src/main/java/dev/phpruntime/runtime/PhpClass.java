@@ -5,6 +5,7 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
+import dev.phpruntime.nodes.PhpExprRootNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,27 +16,55 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Per-request runtime representation of a PHP class or interface.
- * Holds resolved inheritance links, method table, static property slots, and
- * evaluated class constants for a single {@link PhpContext}.
+ * Per-request runtime representation of a PHP class, interface, or trait.
+ * Holds resolved inheritance links, composed traits, method table, static property
+ * slots, and evaluated class constants for a single {@link PhpContext}.
  */
 public final class PhpClass {
 
     public record MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
-                              boolean isStatic, boolean isFinal, RootCallTarget callTarget) {
+                              boolean isStatic, boolean isFinal, boolean fromTrait,
+                              RootCallTarget callTarget) {
     }
 
     public static final class StaticSlot {
         public final String name;
         public final Visibility visibility;
         public final PhpClass declaringClass;
-        public Object value;
+        private final Object constDefault;
+        private final RootCallTarget defaultTarget;
+        private boolean initialized;
+        private Object value;
 
-        public StaticSlot(String name, Visibility visibility, PhpClass declaringClass, Object value) {
+        public StaticSlot(String name, Visibility visibility, PhpClass declaringClass,
+                          Object constDefault, RootCallTarget defaultTarget) {
             this.name = name;
             this.visibility = visibility;
             this.declaringClass = declaringClass;
-            this.value = value;
+            this.constDefault = constDefault;
+            this.defaultTarget = defaultTarget;
+            this.initialized = defaultTarget == null;
+            this.value = defaultTarget == null ? PhpOps.copyOnAssign(constDefault) : null;
+        }
+
+        public Object get() {
+            if (!initialized) {
+                // Set first so a self-referencing initializer sees null instead of recursing;
+                // reset on failure so a throwing initializer is retried, as php does.
+                initialized = true;
+                try {
+                    value = PhpOps.copyOnAssign(evalExpr(constDefault, defaultTarget, declaringClass));
+                } catch (RuntimeException e) {
+                    initialized = false;
+                    throw e;
+                }
+            }
+            return value;
+        }
+
+        public void set(Object v) {
+            initialized = true;
+            value = v;
         }
     }
 
@@ -50,11 +79,15 @@ public final class PhpClass {
     private final long hierarchyId;
     private final PhpClass parent;
     private final List<PhpClass> interfaces;
+    private final List<PhpClass> usedTraits;
+    private final List<PhpClassTemplate.PropertyDecl> traitProperties;
+    private final List<PhpClassTemplate.ConstantDecl> traitConstants;
     private final Map<String, MethodEntry> methods = new HashMap<>();
-    private final MethodEntry[] methodsById;
+    private MethodEntry[] methodsById;
     private final Map<String, StaticSlot> staticProperties = new HashMap<>();
     private final Map<String, PhpClassTemplate.ConstantDecl> constantDecls = new LinkedHashMap<>();
     private final Map<String, Object> constants = new HashMap<>();
+    private final Set<String> evaluatingConstants = new HashSet<>();
     private final List<InstanceProp> instanceProps = new ArrayList<>();
     private final Map<String, InstanceProp> visibleProps = new HashMap<>();
     private final Map<String, InstanceProp> privateProps = new HashMap<>();
@@ -75,6 +108,11 @@ public final class PhpClass {
     private final boolean isThrowable;
 
     public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent, List<PhpClass> interfaces) {
+        this(language, template, parent, interfaces, Map.of());
+    }
+
+    public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent,
+                    List<PhpClass> interfaces, Map<String, PhpClass> resolvedTraits) {
         this.template = template;
         this.parent = parent;
         this.interfaces = List.copyOf(interfaces);
@@ -82,13 +120,25 @@ public final class PhpClass {
                 || "exception".equals(template.lowerName())
                 || "error".equals(template.lowerName());
 
+        List<PhpClass> directTraits = new ArrayList<>();
+        Set<String> seenTraits = new HashSet<>();
+        for (PhpClassTemplate.TraitUse use : template.traitUses()) {
+            for (String tn : use.traitNames()) {
+                String tl = tn.toLowerCase();
+                if (seenTraits.add(tl)) {
+                    directTraits.add(resolvedTraits.get(tl));
+                }
+            }
+        }
+        this.usedTraits = List.copyOf(directTraits);
+
         List<PhpClassTemplate> chain = new ArrayList<>();
         for (PhpClass c = this; c != null; c = c.parent) {
             chain.add(c.template);
         }
         this.hierarchyId = language.hierarchyId(chain);
 
-        // Inherit methods from parent, then overlay this class's declared methods.
+        // Inherit methods from parent, compose traits, then overlay this class's declared methods.
         int maxMethodId = parent != null ? parent.methodsById.length : 0;
         for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
             if (m.methodId() >= maxMethodId) {
@@ -100,10 +150,15 @@ public final class PhpClass {
             this.methods.putAll(parent.methods);
             System.arraycopy(parent.methodsById, 0, this.methodsById, 0, parent.methodsById.length);
         }
+
+        if (!template.traitUses().isEmpty()) {
+            composeTraitMethods(language, resolvedTraits);
+        }
+
+        boolean ownIsTrait = template.isTrait();
         for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
-            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(), m.callTarget());
-            this.methods.put(m.lowerName(), entry);
-            this.methodsById[m.methodId()] = entry;
+            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(), ownIsTrait, m.callTarget());
+            putMethod(m.lowerName(), m.methodId(), entry);
         }
 
         // Cache magic methods if present anywhere in hierarchy.
@@ -126,45 +181,163 @@ public final class PhpClass {
             this.declaredPropNames.addAll(parent.declaredPropNames);
         }
 
+        // Collect trait properties (applied before own declarations; own declarations win on duplicates).
+        Set<String> ownPropNames = new HashSet<>();
+        for (PhpClassTemplate.PropertyDecl p : template.properties()) {
+            ownPropNames.add(p.name());
+        }
+        List<PhpClassTemplate.PropertyDecl> allTraitProps = new ArrayList<>();
+        for (PhpClass tr : usedTraits) {
+            for (PhpClassTemplate.PropertyDecl tp : tr.traitProperties) {
+                allTraitProps.add(tp);
+                if (!ownPropNames.contains(tp.name())) {
+                    applyPropertyDecl(tp);
+                }
+            }
+        }
+        allTraitProps.addAll(template.properties());
+        this.traitProperties = ownIsTrait ? List.copyOf(allTraitProps) : List.of();
+
         // Apply own property declarations (overriding non-private properties in place).
         for (PhpClassTemplate.PropertyDecl p : template.properties()) {
-            this.declaredPropNames.add(p.name());
-            if (p.isStatic()) {
-                this.staticProperties.put(p.name(), new StaticSlot(p.name(), p.visibility(), this, PhpNull.INSTANCE));
-            } else if (p.visibility() == Visibility.PRIVATE) {
-                String storageKey = "\0" + template.name() + "\0" + p.name();
-                InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, this, p.constDefault(), p.defaultTarget());
-                this.instanceProps.add(ip);
-                this.privateProps.put(template.lowerName() + "\0" + p.name(), ip);
-            } else {
-                InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget());
-                InstanceProp prev = this.visibleProps.put(p.name(), ip);
-                if (prev != null) {
-                    int idx = this.instanceProps.indexOf(prev);
-                    if (idx >= 0) {
-                        this.instanceProps.set(idx, ip);
-                    } else {
-                        this.instanceProps.add(ip);
+            applyPropertyDecl(p);
+        }
+
+        // Record trait & own constant declarations (evaluated lazily on first lookup).
+        for (PhpClass tr : usedTraits) {
+            for (PhpClassTemplate.ConstantDecl tc : tr.traitConstants) {
+                this.constantDecls.putIfAbsent(tc.name(), tc);
+            }
+        }
+        for (PhpClassTemplate.ConstantDecl c : template.constants()) {
+            this.constantDecls.put(c.name(), c);
+        }
+        this.traitConstants = ownIsTrait ? List.copyOf(this.constantDecls.values()) : List.of();
+    }
+
+    private void putMethod(String lower, int methodId, MethodEntry entry) {
+        this.methods.put(lower, entry);
+        if (methodId >= this.methodsById.length) {
+            this.methodsById = java.util.Arrays.copyOf(this.methodsById, Math.max(methodId + 1, this.methodsById.length * 2));
+        }
+        this.methodsById[methodId] = entry;
+    }
+
+    private void composeTraitMethods(PhpLanguage language, Map<String, PhpClass> resolvedTraits) {
+        Map<String, MethodEntry> composed = new LinkedHashMap<>();
+        Map<String, String> sourceTrait = new HashMap<>();
+
+        for (PhpClassTemplate.TraitUse use : template.traitUses()) {
+            Set<String> excluded = new HashSet<>();
+            for (PhpClassTemplate.TraitPrecedence prec : use.precedences()) {
+                String mLower = prec.methodName().toLowerCase();
+                for (String ex : prec.excludedTraits()) {
+                    excluded.add(ex.toLowerCase() + "\0" + mLower);
+                }
+            }
+            for (String tName : use.traitNames()) {
+                String tLower = tName.toLowerCase();
+                PhpClass tCls = resolvedTraits.get(tLower);
+                for (MethodEntry tm : tCls.methods.values()) {
+                    String mLower = tm.name().toLowerCase();
+                    if (excluded.contains(tLower + "\0" + mLower)) {
+                        continue;
                     }
+                    MethodEntry prev = composed.get(mLower);
+                    if (prev != null) {
+                        if (prev.callTarget() == null && tm.callTarget() != null) {
+                            // concrete trait method replaces abstract
+                        } else if (tm.callTarget() == null) {
+                            continue;
+                        } else if (prev.callTarget() == tm.callTarget()) {
+                            continue;
+                        } else if (!template.methods().containsKey(mLower)) {
+                            throw PhpError.fatal("Trait method " + tCls.name() + "::" + tm.name()
+                                    + " has not been applied as " + template.name() + "::" + tm.name()
+                                    + ", because of collision with " + sourceTrait.get(mLower) + "::" + prev.name());
+                        }
+                    }
+                    composed.put(mLower, new MethodEntry(
+                            tm.name(), this, tm.visibility(), tm.isStatic(), tm.isFinal(), true, tm.callTarget()));
+                    sourceTrait.put(mLower, tCls.name());
+                }
+            }
+            for (PhpClassTemplate.TraitAlias al : use.aliases()) {
+                String mLower = al.methodName().toLowerCase();
+                MethodEntry src = findAliasSource(al, use.traitNames(), resolvedTraits, composed);
+                if (src == null) {
+                    throw PhpError.fatal("An alias was defined for method " + al.methodName() + ", which does not exist");
+                }
+                Visibility vis = al.visibility() != null ? al.visibility() : src.visibility();
+                if (al.aliasName() != null) {
+                    String aLower = al.aliasName().toLowerCase();
+                    composed.put(aLower, new MethodEntry(
+                            al.aliasName(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
                 } else {
-                    this.instanceProps.add(ip);
+                    composed.put(mLower, new MethodEntry(
+                            src.name(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
                 }
             }
         }
 
-        // Record constant declarations (evaluated lazily on first lookup or initialization).
-        for (PhpClassTemplate.ConstantDecl c : template.constants()) {
-            this.constantDecls.put(c.name(), c);
+        for (Map.Entry<String, MethodEntry> e : composed.entrySet()) {
+            String lower = e.getKey();
+            MethodEntry tm = e.getValue();
+            if (tm.callTarget() == null) {
+                MethodEntry inherited = this.methods.get(lower);
+                if (inherited != null && inherited.callTarget() != null) {
+                    continue;
+                }
+            }
+            putMethod(lower, language.methodId(tm.name()), tm);
         }
     }
 
-    /** Evaluates static property default expressions after the class is registered in PhpContext. */
-    @TruffleBoundary
-    public void initStaticProperties() {
-        for (PhpClassTemplate.PropertyDecl p : template.properties()) {
-            if (p.isStatic()) {
-                Object initVal = evalExpr(p.constDefault(), p.defaultTarget());
-                this.staticProperties.get(p.name()).value = PhpOps.copyOnAssign(initVal);
+    private static MethodEntry findAliasSource(PhpClassTemplate.TraitAlias al, List<String> traitNames,
+                                             Map<String, PhpClass> resolvedTraits,
+                                             Map<String, MethodEntry> composed) {
+        String mLower = al.methodName().toLowerCase();
+        if (al.traitName() != null) {
+            PhpClass tr = resolvedTraits.get(al.traitName().toLowerCase());
+            return tr == null ? null : tr.methods.get(mLower);
+        }
+        MethodEntry direct = composed.get(mLower);
+        if (direct != null) {
+            return direct;
+        }
+        for (String tn : traitNames) {
+            PhpClass tr = resolvedTraits.get(tn.toLowerCase());
+            if (tr != null) {
+                MethodEntry m = tr.methods.get(mLower);
+                if (m != null) {
+                    return m;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void applyPropertyDecl(PhpClassTemplate.PropertyDecl p) {
+        this.declaredPropNames.add(p.name());
+        if (p.isStatic()) {
+            this.staticProperties.put(p.name(), new StaticSlot(p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget()));
+        } else if (p.visibility() == Visibility.PRIVATE) {
+            String storageKey = "\0" + template.name() + "\0" + p.name();
+            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, this, p.constDefault(), p.defaultTarget());
+            this.instanceProps.add(ip);
+            this.privateProps.put(template.lowerName() + "\0" + p.name(), ip);
+        } else {
+            InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget());
+            InstanceProp prev = this.visibleProps.put(p.name(), ip);
+            if (prev != null) {
+                int idx = this.instanceProps.indexOf(prev);
+                if (idx >= 0) {
+                    this.instanceProps.set(idx, ip);
+                } else {
+                    this.instanceProps.add(ip);
+                }
+            } else {
+                this.instanceProps.add(ip);
             }
         }
     }
@@ -189,8 +362,16 @@ public final class PhpClass {
         return interfaces;
     }
 
+    public List<PhpClass> usedTraits() {
+        return usedTraits;
+    }
+
     public boolean isInterface() {
         return template.isInterface();
+    }
+
+    public boolean isTrait() {
+        return template.isTrait();
     }
 
     public boolean isAbstract() {
@@ -300,9 +481,16 @@ public final class PhpClass {
         }
         PhpClassTemplate.ConstantDecl own = constantDecls.get(name);
         if (own != null) {
-            Object val = evalExpr(own.constValue(), own.valueTarget());
-            constants.put(name, val);
-            return val;
+            if (!evaluatingConstants.add(name)) {
+                throw new PhpError("Cannot declare self-referencing constant " + template.name() + "::" + name);
+            }
+            try {
+                Object val = evalExpr(own.constValue(), own.valueTarget(), this);
+                constants.put(name, val);
+                return val;
+            } finally {
+                evaluatingConstants.remove(name);
+            }
         }
         if (parent != null) {
             Object p = parent.lookupConstantOrNull(name);
@@ -363,7 +551,7 @@ public final class PhpClass {
             for (int i = 0; i < instanceProps.size(); i++) {
                 InstanceProp p = instanceProps.get(i);
                 keys[i] = p.storageKey();
-                vals[i] = evalExpr(p.constDefault(), p.defaultTarget());
+                vals[i] = evalExpr(p.constDefault(), p.defaultTarget(), this);
             }
             this.defaultPropKeys = keys;
             this.defaultPropValues = vals;
@@ -374,9 +562,12 @@ public final class PhpClass {
         }
     }
 
-    private static Object evalExpr(Object constVal, RootCallTarget target) {
+    private static Object evalExpr(Object constVal, RootCallTarget target, PhpClass selfClass) {
         if (target == null) {
             return constVal;
+        }
+        if (target.getRootNode() instanceof PhpExprRootNode ern && ern.hasTraitSelf()) {
+            return target.call(selfClass);
         }
         return target.call();
     }

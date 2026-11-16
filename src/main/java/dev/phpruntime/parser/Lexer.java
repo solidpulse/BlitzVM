@@ -140,6 +140,10 @@ public final class Lexer {
             lexDoubleQuoted();
             return;
         }
+        if (src.startsWith("<<<", pos)) {
+            lexHeredoc();
+            return;
+        }
         for (String op : OPS) {
             if (src.startsWith(op, pos)) {
                 out.add(new Token(Kind.OP, op, pos, line));
@@ -170,9 +174,7 @@ public final class Lexer {
         while (pos < src.length() && (isIdentPart(src.charAt(pos)) || src.charAt(pos) == '\\')) {
             pos++;
         }
-        String name = src.substring(start, pos);
-        // Namespaced names like \strlen resolve to the global function.
-        return name.startsWith("\\") ? name.substring(1) : name;
+        return src.substring(start, pos);
     }
 
     private void lexNumber() {
@@ -233,52 +235,189 @@ public final class Lexer {
     private void lexDoubleQuoted() {
         int start = pos++;
         int startLine = line;
-        List<Part> parts = new ArrayList<>();
-        StringBuilder lit = new StringBuilder();
-        while (pos < src.length() && src.charAt(pos) != '"') {
-            char ch = src.charAt(pos);
-            if (ch == '\\' && pos + 1 < src.length()) {
-                if (isByteEscape()) {
-                    appendByteEscapes(lit);
-                    continue;
+        pos = lexInterpolated(src, pos, true, start, startLine);
+    }
+
+    private record RawLine(int start, int end, int lineNum) {
+    }
+
+    private void lexHeredoc() {
+        int start = pos;
+        int startLine = line;
+        pos += 3;
+        while (pos < src.length() && (src.charAt(pos) == ' ' || src.charAt(pos) == '\t')) {
+            pos++;
+        }
+        char quote = 0;
+        if (pos < src.length() && (src.charAt(pos) == '\'' || src.charAt(pos) == '"')) {
+            quote = src.charAt(pos++);
+        }
+        if (pos >= src.length() || !isIdentStart(src.charAt(pos))) {
+            throw new PhpParseError("syntax error, unexpected heredoc label", startLine);
+        }
+        int lblStart = pos++;
+        while (pos < src.length() && isIdentPart(src.charAt(pos))) {
+            pos++;
+        }
+        String label = src.substring(lblStart, pos);
+        if (quote != 0) {
+            if (pos >= src.length() || src.charAt(pos) != quote) {
+                throw new PhpParseError("syntax error, unterminated heredoc label quote", startLine);
+            }
+            pos++;
+        }
+        while (pos < src.length() && (src.charAt(pos) == ' ' || src.charAt(pos) == '\t')) {
+            pos++;
+        }
+        if (pos < src.length() && src.charAt(pos) == '\r') {
+            pos++;
+        }
+        if (pos >= src.length() || src.charAt(pos) != '\n') {
+            throw new PhpParseError("syntax error, unexpected character after heredoc label", startLine);
+        }
+        pos++;
+        line++;
+
+        List<RawLine> bodyLines = new ArrayList<>();
+        String indentStr = "";
+        boolean foundClose = false;
+        while (pos < src.length()) {
+            int p = pos;
+            while (p < src.length() && (src.charAt(p) == ' ' || src.charAt(p) == '\t')) {
+                p++;
+            }
+            if (src.startsWith(label, p)) {
+                int after = p + label.length();
+                if (after == src.length() || !isIdentPart(src.charAt(after))) {
+                    indentStr = src.substring(pos, p);
+                    if (indentStr.indexOf(' ') >= 0 && indentStr.indexOf('\t') >= 0) {
+                        throw new PhpParseError("Invalid indentation - tabs and spaces cannot be mixed", line);
+                    }
+                    pos = after;
+                    foundClose = true;
+                    break;
                 }
-                if (src.startsWith("u{", pos + 1) && src.indexOf('}', pos + 3) > pos + 3) {
-                    int close = src.indexOf('}', pos + 3);
-                    try {
-                        lit.appendCodePoint(Integer.parseInt(src.substring(pos + 3, close), 16));
-                        pos = close + 1;
-                        continue;
-                    } catch (IllegalArgumentException e) {
-                        throw new PhpParseError("Invalid UTF-8 codepoint escape sequence", line);
+            }
+            int nl = src.indexOf('\n', pos);
+            if (nl < 0) {
+                throw new PhpParseError("Unterminated heredoc", startLine);
+            }
+            int contentEnd = (nl > pos && src.charAt(nl - 1) == '\r') ? nl - 1 : nl;
+            bodyLines.add(new RawLine(pos, contentEnd, line));
+            pos = nl + 1;
+            line++;
+        }
+        if (!foundClose) {
+            throw new PhpParseError("Unterminated heredoc", startLine);
+        }
+
+        int indentLen = indentStr.length();
+        char indentChar = indentLen > 0 ? indentStr.charAt(0) : 0;
+        StringBuilder rawBody = new StringBuilder();
+        for (int i = 0; i < bodyLines.size(); i++) {
+            RawLine rl = bodyLines.get(i);
+            int s = rl.start();
+            int e = rl.end();
+            if (indentLen > 0) {
+                int matched = 0;
+                while (s + matched < e && matched < indentLen) {
+                    char ch = src.charAt(s + matched);
+                    if (ch == indentChar) {
+                        matched++;
+                    } else if (ch == ' ' || ch == '\t') {
+                        throw new PhpParseError("Invalid indentation - tabs and spaces cannot be mixed", rl.lineNum());
+                    } else {
+                        throw new PhpParseError(
+                                "Invalid body indentation level (expecting an indentation level of at least " + indentLen + ")",
+                                rl.lineNum());
                     }
                 }
-                pos += 2;
-                appendEscape(src.charAt(pos - 1), lit);
-                continue;
+                s += matched;
             }
-            if (ch == '$' && pos + 1 < src.length() && isIdentStart(src.charAt(pos + 1))) {
+            rawBody.append(src, s, e);
+            if (i < bodyLines.size() - 1) {
+                rawBody.append('\n');
+            }
+        }
+
+        if (quote == '\'') {
+            out.add(new Token(Kind.STRING, rawBody.toString(), start, startLine));
+        } else {
+            lexInterpolated(rawBody.toString(), 0, false, start, startLine);
+        }
+    }
+
+    private int lexInterpolated(String text, int p, boolean stopAtQuote, int tokenStart, int startLine) {
+        List<Part> parts = new ArrayList<>();
+        StringBuilder lit = new StringBuilder();
+        while (p < text.length()) {
+            char ch = text.charAt(p);
+            if (stopAtQuote && ch == '"') {
+                p++;
                 flush(lit, parts);
-                parts.add(new Part(true, readSimpleInterpolation()));
+                emitInterpolatedToken(parts, tokenStart, startLine);
+                return p;
+            }
+            if (ch == '\\' && p + 1 < text.length()) {
+                if (isByteEscape(text, p)) {
+                    p = appendByteEscapes(text, p, lit);
+                    continue;
+                }
+                if (text.startsWith("u{", p + 1) && text.indexOf('}', p + 3) > p + 3) {
+                    int close = text.indexOf('}', p + 3);
+                    try {
+                        lit.appendCodePoint(Integer.parseInt(text.substring(p + 3, close), 16));
+                        p = close + 1;
+                        continue;
+                    } catch (IllegalArgumentException e) {
+                        throw new PhpParseError("Invalid UTF-8 codepoint escape sequence", stopAtQuote ? line : startLine);
+                    }
+                }
+                appendEscape(text.charAt(p + 1), lit, stopAtQuote);
+                p += 2;
                 continue;
             }
-            if (ch == '{' && pos + 1 < src.length() && src.charAt(pos + 1) == '$') {
+            if (ch == '$' && p + 1 < text.length() && isIdentStart(text.charAt(p + 1))) {
                 flush(lit, parts);
-                int close = matchingBrace(pos);
-                parts.add(new Part(true, src.substring(pos + 1, close)));
-                pos = close + 1;
+                int[] nextPos = new int[1];
+                parts.add(new Part(Token.PartKind.EXPR, readSimpleInterpolation(text, p, nextPos)));
+                p = nextPos[0];
                 continue;
             }
-            if (ch == '\n') {
+            if (ch == '$' && p + 1 < text.length() && text.charAt(p + 1) == '{') {
+                flush(lit, parts);
+                int close = matchingBrace(text, p + 1, stopAtQuote);
+                String inner = text.substring(p + 2, close).trim();
+                if (isDollarBraceVar(inner)) {
+                    parts.add(new Part(Token.PartKind.EXPR, "$" + inner));
+                } else {
+                    parts.add(new Part(Token.PartKind.DYNAMIC_VAR, inner));
+                }
+                p = close + 1;
+                continue;
+            }
+            if (ch == '{' && p + 1 < text.length() && text.charAt(p + 1) == '$') {
+                flush(lit, parts);
+                int close = matchingBrace(text, p, stopAtQuote);
+                parts.add(new Part(Token.PartKind.EXPR, text.substring(p + 1, close)));
+                p = close + 1;
+                continue;
+            }
+            if (stopAtQuote && ch == '\n') {
                 line++;
             }
             lit.append(ch);
-            pos++;
+            p++;
         }
-        if (pos >= src.length()) {
+        if (stopAtQuote) {
             throw new PhpParseError("Unterminated string", startLine);
         }
-        pos++;
         flush(lit, parts);
+        emitInterpolatedToken(parts, tokenStart, startLine);
+        return p;
+    }
+
+    private void emitInterpolatedToken(List<Part> parts, int start, int startLine) {
         boolean literal = parts.stream().noneMatch(Part::isExpr);
         if (literal) {
             String s = parts.isEmpty() ? "" : parts.get(0).value();
@@ -288,47 +427,111 @@ public final class Lexer {
         }
     }
 
-    /** "$name", "$name[key]" or "$name->prop" inside a double-quoted string. */
-    private String readSimpleInterpolation() {
-        int start = pos++;
-        while (pos < src.length() && isIdentPart(src.charAt(pos))) {
-            pos++;
+    /** "$name", "$name[key]", "$name->prop", or "$name?->prop" inside an interpolated string. */
+    private static String readSimpleInterpolation(String text, int start, int[] nextPos) {
+        int p = start + 1;
+        while (p < text.length() && isIdentPart(text.charAt(p))) {
+            p++;
         }
-        if (pos < src.length() && src.charAt(pos) == '[') {
-            int close = src.indexOf(']', pos);
+        if (p < text.length() && text.charAt(p) == '[') {
+            int close = text.indexOf(']', p);
             if (close > 0) {
-                String key = src.substring(pos + 1, close);
-                pos = close + 1;
-                String varPart = src.substring(start, src.lastIndexOf('[', close));
+                String key = text.substring(p + 1, close);
+                String varPart = text.substring(start, p);
+                nextPos[0] = close + 1;
                 // Unquoted keys in simple syntax are string literals: "$a[name]".
                 boolean bare = !key.isEmpty() && isIdentStart(key.charAt(0));
                 return varPart + "[" + (bare ? "'" + key + "'" : key) + "]";
             }
+        } else if (p + 2 < text.length() && text.charAt(p) == '-' && text.charAt(p + 1) == '>'
+                && isIdentStart(text.charAt(p + 2))) {
+            p += 2;
+            while (p < text.length() && isIdentPart(text.charAt(p))) {
+                p++;
+            }
+        } else if (p + 3 < text.length() && text.startsWith("?->", p) && isIdentStart(text.charAt(p + 3))) {
+            p += 3;
+            while (p < text.length() && isIdentPart(text.charAt(p))) {
+                p++;
+            }
         }
-        return src.substring(start, pos);
+        nextPos[0] = p;
+        return text.substring(start, p);
     }
 
-    private int matchingBrace(int open) {
+    /** True for "${name}" or "${name[...]}" (which refer directly to $name / $name[...]). */
+    private static boolean isDollarBraceVar(String inner) {
+        if (inner.isEmpty() || !isIdentStart(inner.charAt(0))) {
+            return false;
+        }
+        int i = 1;
+        while (i < inner.length() && isIdentPart(inner.charAt(i))) {
+            i++;
+        }
+        if (i == inner.length()) {
+            return true;
+        }
+        if (inner.charAt(i) != '[') {
+            return false;
+        }
         int depth = 0;
-        for (int i = open; i < src.length(); i++) {
-            char ch = src.charAt(i);
-            if (ch == '{') {
+        for (int j = i; j < inner.length(); j++) {
+            char ch = inner.charAt(j);
+            if (ch == '\'' || ch == '"') {
+                j = skipQuoted(inner, j, ch);
+            } else if (ch == '[') {
+                depth++;
+            } else if (ch == ']') {
+                depth--;
+                if (depth == 0) {
+                    return j == inner.length() - 1;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static int skipQuoted(String s, int start, char quote) {
+        for (int i = start + 1; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '\\') {
+                i++;
+            } else if (ch == quote) {
+                return i;
+            }
+        }
+        return s.length() - 1;
+    }
+
+    private int matchingBrace(String text, int open, boolean countLines) {
+        int depth = 0;
+        for (int i = open; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == '\'' || ch == '"') {
+                int end = skipQuoted(text, i, ch);
+                if (countLines) {
+                    countLines(text.substring(i, end + 1));
+                }
+                i = end;
+            } else if (ch == '{') {
                 depth++;
             } else if (ch == '}' && --depth == 0) {
                 return i;
+            } else if (countLines && ch == '\n') {
+                line++;
             }
         }
         throw new PhpParseError("Unterminated {$...} in string", line);
     }
 
     /** At a backslash: is this an octal (\\101) or hex (\\x41) escape, which PHP turns into a byte? */
-    private boolean isByteEscape() {
-        char e = pos + 1 < src.length() ? src.charAt(pos + 1) : 0;
+    private static boolean isByteEscape(String text, int p) {
+        char e = p + 1 < text.length() ? text.charAt(p + 1) : 0;
         if (e >= '0' && e <= '7') {
             // a lone \\0 is still the NUL byte, which this also produces
             return true;
         }
-        return e == 'x' && pos + 2 < src.length() && Character.digit(src.charAt(pos + 2), 16) >= 0;
+        return e == 'x' && p + 2 < text.length() && Character.digit(text.charAt(p + 2), 16) >= 0;
     }
 
     /**
@@ -336,25 +539,25 @@ public final class Lexer {
      * for now, so a run that is valid UTF-8 (such as "\\xC2\\xA0") becomes those characters and
      * anything else becomes one char per byte.
      */
-    private void appendByteEscapes(StringBuilder lit) {
+    private static int appendByteEscapes(String text, int p, StringBuilder lit) {
         java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
-        while (pos < src.length() && src.charAt(pos) == '\\' && isByteEscape()) {
-            int i = pos + 1;
+        while (p < text.length() && text.charAt(p) == '\\' && isByteEscape(text, p)) {
+            int i = p + 1;
             int value;
-            if (src.charAt(i) == 'x') {
+            if (text.charAt(i) == 'x') {
                 int end = i + 1;
-                while (end < src.length() && end < i + 3 && Character.digit(src.charAt(end), 16) >= 0) {
+                while (end < text.length() && end < i + 3 && Character.digit(text.charAt(end), 16) >= 0) {
                     end++;
                 }
-                value = Integer.parseInt(src.substring(i + 1, end), 16);
-                pos = end;
+                value = Integer.parseInt(text.substring(i + 1, end), 16);
+                p = end;
             } else {
                 int end = i;
-                while (end < src.length() && end < i + 3 && src.charAt(end) >= '0' && src.charAt(end) <= '7') {
+                while (end < text.length() && end < i + 3 && text.charAt(end) >= '0' && text.charAt(end) <= '7') {
                     end++;
                 }
-                value = Integer.parseInt(src.substring(i, end), 8) & 0xFF;
-                pos = end;
+                value = Integer.parseInt(text.substring(i, end), 8) & 0xFF;
+                p = end;
             }
             bytes.write(value);
         }
@@ -367,9 +570,10 @@ public final class Lexer {
                 lit.append((char) (x & 0xFF));
             }
         }
+        return p;
     }
 
-    private static void appendEscape(char e, StringBuilder sb) {
+    private static void appendEscape(char e, StringBuilder sb, boolean unescapeDoubleQuote) {
         switch (e) {
             case 'n' -> sb.append('\n');
             case 't' -> sb.append('\t');
@@ -379,7 +583,7 @@ public final class Lexer {
             case 'f' -> sb.append('\f');
             case '\\' -> sb.append('\\');
             case '$' -> sb.append('$');
-            case '"' -> sb.append('"');
+            case '"' -> sb.append(unescapeDoubleQuote ? "\"" : "\\\"");
             default -> sb.append('\\').append(e);
         }
     }

@@ -247,7 +247,9 @@ public final class PhpOps {
         if (v instanceof PhpObject o) {
             PhpClass.MethodEntry ts = o.phpClass().toStringMethod();
             if (ts != null && ts.callTarget() != null) {
-                Object res = ts.callTarget().call(o, o.phpClass());
+                Object res = ts.fromTrait()
+                        ? ts.callTarget().call(o, o.phpClass(), ts.declaringClass())
+                        : ts.callTarget().call(o, o.phpClass());
                 if (!(res instanceof String s)) {
                     throw new PhpError(o.phpClass().name() + "::__toString() must return a string value");
                 }

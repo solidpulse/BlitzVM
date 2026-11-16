@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Shared, immutable description of a parsed PHP class or interface.
+ * Shared, immutable description of a parsed PHP class, interface, or trait.
  * Lives on the AST / engine across requests; per-request state lives in {@link PhpClass}.
  */
 public final class PhpClassTemplate {
@@ -25,15 +25,26 @@ public final class PhpClassTemplate {
                              RootCallTarget callTarget) {
     }
 
+    public record TraitPrecedence(String chosenTrait, String methodName, List<String> excludedTraits) {
+    }
+
+    public record TraitAlias(String traitName, String methodName, String aliasName, Visibility visibility) {
+    }
+
+    public record TraitUse(List<String> traitNames, List<TraitPrecedence> precedences, List<TraitAlias> aliases) {
+    }
+
     private final long id;
     private final String name;
     private final String lowerName;
     private final boolean isInterface;
+    private final boolean isTrait;
     private final boolean isAbstract;
     private final boolean isFinal;
     private final boolean isAnonymous;
     private final String parentName;
     private final List<String> interfaceNames;
+    private final List<TraitUse> traitUses;
     private final List<PropertyDecl> properties;
     private final List<ConstantDecl> constants;
     private final Map<String, MethodDecl> methods;
@@ -43,15 +54,26 @@ public final class PhpClassTemplate {
                             boolean isAnonymous, String parentName, List<String> interfaceNames,
                             List<PropertyDecl> properties, List<ConstantDecl> constants,
                             Map<String, MethodDecl> methods) {
+        this(id, name, isInterface, false, isAbstract, isFinal, isAnonymous,
+                parentName, interfaceNames, List.of(), properties, constants, methods);
+    }
+
+    public PhpClassTemplate(long id, String name, boolean isInterface, boolean isTrait,
+                            boolean isAbstract, boolean isFinal, boolean isAnonymous,
+                            String parentName, List<String> interfaceNames, List<TraitUse> traitUses,
+                            List<PropertyDecl> properties, List<ConstantDecl> constants,
+                            Map<String, MethodDecl> methods) {
         this.id = id;
         this.name = name;
         this.lowerName = name.toLowerCase();
         this.isInterface = isInterface;
+        this.isTrait = isTrait;
         this.isAbstract = isAbstract;
         this.isFinal = isFinal;
         this.isAnonymous = isAnonymous;
         this.parentName = parentName;
         this.interfaceNames = List.copyOf(interfaceNames);
+        this.traitUses = List.copyOf(traitUses);
         this.properties = List.copyOf(properties);
         this.constants = List.copyOf(constants);
         // Declaration order matters for get_class_methods.
@@ -78,6 +100,10 @@ public final class PhpClassTemplate {
         return isInterface;
     }
 
+    public boolean isTrait() {
+        return isTrait;
+    }
+
     public boolean isAbstract() {
         return isAbstract;
     }
@@ -96,6 +122,10 @@ public final class PhpClassTemplate {
 
     public List<String> interfaceNames() {
         return interfaceNames;
+    }
+
+    public List<TraitUse> traitUses() {
+        return traitUses;
     }
 
     public List<PropertyDecl> properties() {

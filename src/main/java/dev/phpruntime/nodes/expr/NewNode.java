@@ -30,10 +30,9 @@ public final class NewNode extends PhpNode {
         if (cls == ctx.closureClass()) {
             throw new PhpError("Instantiation of Closure is not allowed", this);
         }
-        if (cls.isInterface() || cls.isAbstract()) {
-            throw new PhpError(
-                    "Cannot instantiate " + (cls.isInterface() ? "interface " : "abstract class ") + cls.name(),
-                    this);
+        if (cls.isInterface() || cls.isTrait() || cls.isAbstract()) {
+            String kind = cls.isInterface() ? "interface " : (cls.isTrait() ? "trait " : "abstract class ");
+            throw new PhpError("Cannot instantiate " + kind + cls.name(), this);
         }
         PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
         cls.populateDefaults(obj);
@@ -43,7 +42,10 @@ public final class NewNode extends PhpNode {
         PhpClass.MethodEntry ctor = cls.constructMethod();
         if (ctor != null) {
             try {
-                dispatch.call(ctor.callTarget(), evalArgs(frame, obj, cls));
+                Object[] callArgs = ctor.fromTrait()
+                        ? evalTraitArgs(frame, obj, cls, ctor.declaringClass())
+                        : evalArgs(frame, obj, cls);
+                dispatch.call(ctor.callTarget(), callArgs);
             } catch (PhpError e) {
                 throw e.at(this);
             }
@@ -60,6 +62,18 @@ public final class NewNode extends PhpNode {
         values[1] = cls;
         for (int i = 0; i < args.length; i++) {
             values[2 + i] = PhpOps.copyOnAssign(args[i].execute(frame));
+        }
+        return values;
+    }
+
+    @ExplodeLoop
+    private Object[] evalTraitArgs(VirtualFrame frame, PhpObject obj, PhpClass cls, PhpClass declaringClass) {
+        Object[] values = new Object[3 + args.length];
+        values[0] = obj;
+        values[1] = cls;
+        values[2] = declaringClass;
+        for (int i = 0; i < args.length; i++) {
+            values[3 + i] = PhpOps.copyOnAssign(args[i].execute(frame));
         }
         return values;
     }

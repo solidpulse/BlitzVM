@@ -55,7 +55,10 @@ public final class CallValueNode extends PhpNode {
                 case CLOSURE -> callTargetFast(
                         c.callTarget(), evalClosureArgs(frame, c.boundThis(), c.calledClass(), obj));
                 case USER_FUNCTION -> callTargetFast(c.callTarget(), evalPlainArgs(frame));
-                case METHOD -> callTargetFast(c.callTarget(), evalMethodArgs(frame, c.boundThis(), c.calledClass()));
+                case METHOD -> callTargetFast(c.callTarget(),
+                        c.traitSelf() != null
+                                ? evalTraitMethodArgs(frame, c.boundThis(), c.calledClass(), c.traitSelf())
+                                : evalMethodArgs(frame, c.boundThis(), c.calledClass()));
                 case MAGIC_CALL, BUILTIN -> {
                     ensureIndirectCall();
                     yield PhpCallable.invokeClosure(
@@ -214,6 +217,18 @@ public final class CallValueNode extends PhpNode {
         values[1] = calledClass;
         for (int i = 0; i < args.length; i++) {
             values[2 + i] = PhpOps.copyOnAssign(args[i].execute(frame));
+        }
+        return values;
+    }
+
+    @ExplodeLoop
+    private Object[] evalTraitMethodArgs(VirtualFrame frame, Object boundThis, PhpClass calledClass, PhpClass traitSelf) {
+        Object[] values = new Object[3 + args.length];
+        values[0] = boundThis;
+        values[1] = calledClass;
+        values[2] = traitSelf;
+        for (int i = 0; i < args.length; i++) {
+            values[3 + i] = PhpOps.copyOnAssign(args[i].execute(frame));
         }
         return values;
     }

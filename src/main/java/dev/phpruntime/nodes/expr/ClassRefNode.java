@@ -13,7 +13,7 @@ import dev.phpruntime.runtime.PhpOps;
 /** Resolves a class target: literal name, {@code self}, {@code parent}, {@code static}, or dynamic expression. */
 public final class ClassRefNode extends PhpNode {
 
-    public enum Kind { NAMED, SELF, PARENT, STATIC, DYNAMIC, ANONYMOUS }
+    public enum Kind { NAMED, SELF, PARENT, STATIC, TRAIT_SELF, TRAIT_PARENT, DYNAMIC, ANONYMOUS }
 
     private final Kind kind;
     private final String name;
@@ -48,6 +48,14 @@ public final class ClassRefNode extends PhpNode {
         return new ClassRefNode(Kind.STATIC, "static", -1, calledClassSlot, null, null);
     }
 
+    public static ClassRefNode traitSelf(int traitSelfSlot) {
+        return new ClassRefNode(Kind.TRAIT_SELF, "self", -1, traitSelfSlot, null, null);
+    }
+
+    public static ClassRefNode traitParent(int traitSelfSlot) {
+        return new ClassRefNode(Kind.TRAIT_PARENT, "parent", -1, traitSelfSlot, null, null);
+    }
+
     public static ClassRefNode dynamic(PhpNode expr) {
         return new ClassRefNode(Kind.DYNAMIC, null, -1, -1, expr, null);
     }
@@ -61,7 +69,8 @@ public final class ClassRefNode extends PhpNode {
     }
 
     public boolean isForwarding() {
-        return kind == Kind.SELF || kind == Kind.PARENT || kind == Kind.STATIC;
+        return kind == Kind.SELF || kind == Kind.PARENT || kind == Kind.STATIC
+                || kind == Kind.TRAIT_SELF || kind == Kind.TRAIT_PARENT;
     }
 
     public String staticName() {
@@ -79,6 +88,10 @@ public final class ClassRefNode extends PhpNode {
             CompilerDirectives.transferToInterpreter();
             if (kind == Kind.PARENT) {
                 throw new PhpError("Class \"" + name + "\" has no parent", this);
+            }
+            if (kind == Kind.TRAIT_PARENT) {
+                PhpClass cur = (PhpClass) frame.getObject(calledClassSlot);
+                throw new PhpError("Class \"" + (cur != null ? cur.name() : "") + "\" has no parent", this);
             }
             if (kind == Kind.STATIC) {
                 throw new PhpError("Cannot use \"static\" when no class scope is active", this);
@@ -100,7 +113,11 @@ public final class ClassRefNode extends PhpNode {
                 PhpClass cur = PhpContext.get(this).classById(classId);
                 yield cur == null ? null : cur.parent();
             }
-            case STATIC -> calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
+            case STATIC, TRAIT_SELF -> calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
+            case TRAIT_PARENT -> {
+                PhpClass cur = calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
+                yield cur == null ? null : cur.parent();
+            }
             case DYNAMIC -> {
                 Object v = expr.execute(frame);
                 if (v instanceof PhpObject o) {

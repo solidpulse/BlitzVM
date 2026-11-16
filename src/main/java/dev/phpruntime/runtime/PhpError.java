@@ -153,6 +153,10 @@ public final class PhpError extends AbstractTruffleException {
                     }
                 } else if (fnRoot.isMethod()) {
                     pendingCls = fnRoot.declaringClass();
+                    if (fnRoot.traitSelfSlot() >= 0 && frame != null
+                            && frame.getObject(fnRoot.traitSelfSlot()) instanceof PhpClass ts) {
+                        pendingCls = ts.name();
+                    }
                     if (frame != null) {
                         boolean hasThis = frame.getArguments().length > 0 && frame.getArguments()[0] instanceof PhpObject;
                         pendingType = hasThis ? "->" : "::";
