@@ -804,6 +804,46 @@ public final class ParseDate {
         return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == 0x0b;
     }
 
+    /** C: {@code timelib_fill_holes} */
+    public static void fillHoles(TimelibTime parsed, TimelibTime now, int options) {
+        if ((options & TIMELIB_OVERRIDE_TIME) == 0 && parsed.haveDate != 0 && parsed.haveTime == 0) {
+            parsed.h = 0;
+            parsed.i = 0;
+            parsed.s = 0;
+            parsed.us = 0;
+        }
+        if (
+            parsed.y != TIMELIB_UNSET || parsed.m != TIMELIB_UNSET || parsed.d != TIMELIB_UNSET ||
+            parsed.h != TIMELIB_UNSET || parsed.i != TIMELIB_UNSET || parsed.s != TIMELIB_UNSET
+        ) {
+            if (parsed.us == TIMELIB_UNSET) parsed.us = 0;
+        } else {
+            if (parsed.us == TIMELIB_UNSET) parsed.us = (now != null && now.us != TIMELIB_UNSET) ? now.us : 0;
+        }
+        if (parsed.y == TIMELIB_UNSET) parsed.y = (now != null && now.y != TIMELIB_UNSET) ? now.y : 0;
+        if (parsed.m == TIMELIB_UNSET) parsed.m = (now != null && now.m != TIMELIB_UNSET) ? now.m : 0;
+        if (parsed.d == TIMELIB_UNSET) parsed.d = (now != null && now.d != TIMELIB_UNSET) ? now.d : 0;
+        if (parsed.h == TIMELIB_UNSET) parsed.h = (now != null && now.h != TIMELIB_UNSET) ? now.h : 0;
+        if (parsed.i == TIMELIB_UNSET) parsed.i = (now != null && now.i != TIMELIB_UNSET) ? now.i : 0;
+        if (parsed.s == TIMELIB_UNSET) parsed.s = (now != null && now.s != TIMELIB_UNSET) ? now.s : 0;
+
+        if (parsed.tzInfo == null && now != null) {
+            parsed.tzInfo = now.tzInfo;
+
+            if (parsed.z == TIMELIB_UNSET) parsed.z = (now.z != TIMELIB_UNSET) ? now.z : 0;
+            if (parsed.dst == TIMELIB_UNSET) parsed.dst = (now.dst != TIMELIB_UNSET) ? now.dst : 0;
+
+            if (parsed.tzAbbr == null) {
+                parsed.tzAbbr = now.tzAbbr;
+            }
+        }
+
+        if (parsed.zoneType == 0 && now != null && now.zoneType != 0) {
+            parsed.zoneType = now.zoneType;
+            parsed.isLocaltime = 1;
+        }
+    }
+
     /**
      * C: {@code timelib_strtotime}
      *
