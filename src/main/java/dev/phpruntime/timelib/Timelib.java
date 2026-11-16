@@ -139,7 +139,7 @@ public final class Timelib {
     }
 
     /** C: {@code timelib_hmsf_to_decimal_hour} */
-    public static double hmsfToDecimalHour(int hour, int min, int sec, int us) {
+    public static double hmsfToDecimalHour(long hour, long min, long sec, long us) {
         if (hour >= 0) {
             return ((double) hour + (double) min / MINS_PER_HOUR + (double) sec / SECS_PER_HOUR) + (double) us / USECS_PER_HOUR;
         } else {

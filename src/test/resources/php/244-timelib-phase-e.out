@@ -1,0 +1,36 @@
+y=1 m=2 d=3 h=4 i=5 s=6 f=0.000000 invert=0 days=false
+y=5 m=0 d=0 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=3 d=0 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=10 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=0 h=2 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=0 h=0 i=15 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=0 h=0 i=0 s=30 f=0.000000 invert=0 days=false
+y=0 m=0 d=14 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=0 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=2 h=3 i=0 s=0 f=0.000000 invert=0 days=false
+y=1 m=2 d=3 h=4 i=5 s=6 f=0.000000 invert=0 days=false
+y=0 m=0 d=7 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=1 d=0 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+y=0 m=0 d=-1 h=0 i=0 s=0 f=0.000000 invert=0 days=false
+%Y=01 %y=1 %M=02 %m=2 %D=03 %d=3 %H=04 %h=4 %I=05 %i=5 %S=06 %s=6 %F=000000 %f=0 %R=+ %r= %%
+y=0 m=2 d=4 h=3 i=30 s=45 f=0.550000 invert=0 days=64
+0 years, 2 months, 4 days, 3:30:45.550000 (total 64 days)
+y=0 m=2 d=4 h=3 i=30 s=45 f=0.550000 invert=1 days=64
+-0 years, 2 months, 4 days, 3:30:45.550000 (total 64 days)
+2 day, total 2 days
+1 day, total 1 days
+0 hours, 0 minutes, total 0 days
+2024-02-20 10:00:00
+2024-01-05 08:00:00
+2024-03-02 12:00:00
+10 days
+10 days, total 10 days
+2024-01-11
+2024-01-01
+CAUGHT: DateMalformedIntervalStringException for 'P'
+CAUGHT: DateMalformedIntervalStringException for 'PT'
+CAUGHT: DateMalformedIntervalStringException for 'P1X'
+CAUGHT: DateMalformedIntervalStringException for 'invalid'
+CAUGHT: DateMalformedIntervalStringException for ''
+CAUGHT: DateMalformedIntervalStringException for non-relative string
+CAUGHT: DateMalformedIntervalStringException for unparseable string
