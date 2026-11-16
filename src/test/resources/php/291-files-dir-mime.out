@@ -1,0 +1,39 @@
+string(9) "Directory"
+bool(true)
+bool(true)
+string(6) "stream"
+array(4) {
+  [0]=>
+  string(1) "."
+  [1]=>
+  string(2) ".."
+  [2]=>
+  string(5) "a.txt"
+  [3]=>
+  string(5) "b.txt"
+}
+bool(true)
+TypeError: Directory::read(): cannot use Directory resource after it has been closed
+bool(false)
+bool(true)
+string(1) "a"
+bool(true)
+bool(false)
+bool(true)
+empty => 'application/x-empty'
+t.txt => 'text/plain'
+c.php => 'text/x-php'
+d.json => 'application/json'
+p.svg => 'image/svg+xml'
+d.pdf => 'application/pdf'
+j.jpg => 'image/jpeg'
+g.gif => 'image/gif'
+a.gz => 'application/gzip'
+s.sh => 'text/x-shellscript'
+bin.dat => 'application/octet-stream'
+missing => false
+bool(true)
+bool(false)
+bool(false)
+bool(false)
+bool(false)

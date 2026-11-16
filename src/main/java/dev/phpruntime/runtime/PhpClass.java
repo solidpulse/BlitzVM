@@ -627,6 +627,12 @@ public final class PhpClass {
         return target.call();
     }
 
+    /** The default (not current) value of a declared property, for get_class_vars(). */
+    @TruffleBoundary
+    public Object evaluatePropertyDefault(PhpClassTemplate.PropertyDecl p) {
+        return PhpOps.copyOnAssign(evalExpr(p.constDefault(), p.defaultTarget(), this));
+    }
+
     /** Collects visible property entries for an object from {@code callerClassName} scope. */
     @TruffleBoundary
     public static List<Map.Entry<Object, Object>> visibleEntries(PhpContext ctx, PhpObject obj, String callerClassName) {

@@ -1,0 +1,40 @@
+handler:1024:plain notice:7
+bool(true)
+handler:512:warning text:8
+bool(true)
+handler:1024:notice text:9
+bool(true)
+handler:16384:deprecated text:10
+bool(true)
+handler:8192:Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, throw an exception or call exit with a string message instead:11
+handler:256:fatal text:11
+bool(true)
+after handler
+ValueError: trigger_error(): Argument #2 ($error_level) must be one of E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE, or E_USER_DEPRECATED
+bool(true)
+int(0)
+bool(true)
+bool(true)
+1
+int(0)
+int(0)
+int(1)
+int(1)
+int(0)
+Linux|x86_64
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+ValueError
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)

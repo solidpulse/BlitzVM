@@ -1,0 +1,61 @@
+"123": true false true false false false false true true true false 
+"12a": false false true false false false false true true true false 
+"": false false false false false false false false false false false 
+" ": false false false false false true false false true false false 
+"\t\n\r\f\u000b": false false false false false true false false false false true 
+"abc": false true true false true false false true true true false 
+"ABC": false true true true false false false true true true false 
+"aBc": false true true false false false false true true true false 
+"a1": false false true false false false false true true true false 
+"!": false false false false false false true false true true false 
+"0": true false true false false false false true true true false 
+"0x1F": false false true false false false false false true true false 
+"\u0000": false false false false false false false false false false true 
+"": false false false false false false false false false false true 
+: false false false false false false false false false false false 
+"\u00e9": false false false false false false false false false false false 
+null: false false false false false false false false false false false 
+true: false false false false false false false false false false false 
+false: false false false false false false false false false false false 
+1.5: false false false false false false false false false false false 
+49: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+true deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+48: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+true deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+256: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+true deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+-1: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+-129: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+65: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+true deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+10: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+true deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+true
+32: deprecated:8192:ctype_digit(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_alpha(): Argument of type int will be interpreted as string in the future
+false deprecated:8192:ctype_space(): Argument of type int will be interpreted as string in the future
+true deprecated:8192:ctype_cntrl(): Argument of type int will be interpreted as string in the future
+false
+bool(true)

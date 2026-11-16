@@ -462,6 +462,12 @@ public final class PhpContext {
         return id < table.length ? table[id] : null;
     }
 
+    /** Names of script-declared functions (lowercase keys), for get_defined_functions(). */
+    @TruffleBoundary
+    public List<String> definedFunctionNames() {
+        return new ArrayList<>(functions.keySet());
+    }
+
     // ------------------------------------------------------------ classes
 
     public PhpClass classById(int id) {
@@ -951,8 +957,24 @@ public final class PhpContext {
         emitDiagnostic(8L, "Notice", message, line);
     }
 
+    /**
+     * An error raised by the script itself (trigger_error/user_error), routed through
+     * set_error_handler. Returns whether a handler accepted it (and so execution continues).
+     */
     @TruffleBoundary
-    private void emitDiagnostic(long errno, String label, String message, int line) {
+    public boolean userError(long errno, String message, int line) {
+        String label = switch ((int) errno) {
+            case 256 -> "Fatal error";
+            case 512 -> "Warning";
+            case 8192 -> "Deprecated";
+            case 16384 -> "Deprecated";
+            default -> "Notice";
+        };
+        return emitDiagnostic(errno, label, message, line);
+    }
+
+    @TruffleBoundary
+    private boolean emitDiagnostic(long errno, String label, String message, int line) {
         String file = PhpStrings.fromJava(request().scriptFilename);
         ErrorHandlerEntry handler = errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
@@ -963,7 +985,7 @@ public final class PhpContext {
                 try {
                     Object handled = cb.call(this, null, null, errno, message, file, (long) line);
                     if (!Boolean.FALSE.equals(handled)) {
-                        return;
+                        return true;
                     }
                 } finally {
                     inErrorHandler = false;
@@ -971,5 +993,6 @@ public final class PhpContext {
             }
         }
         err.println("PHP " + label + ":  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
+        return false;
     }
 }

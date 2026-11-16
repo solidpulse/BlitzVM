@@ -71,6 +71,55 @@ final class StreamFunctions {
         directories();
         files();
         contexts();
+        selection();
+    }
+
+    private static void selection() {
+        Builtins.defRef("stream_select", 4, 5, 0b111, (ctx, a) -> {
+            PhpArray read = a[0] instanceof PhpArray p ? p.forWrite() : null;
+            PhpArray write = a[1] instanceof PhpArray p ? p.forWrite() : null;
+            PhpArray except = a[2] instanceof PhpArray p ? p.forWrite() : null;
+            a[0] = read;
+            a[1] = write;
+            a[2] = except;
+            PhpArray[] arrays = {read, write, except};
+            int remaining = 0;
+            for (PhpArray arr : arrays) {
+                if (arr == null) {
+                    continue;
+                }
+                for (java.util.Map.Entry<Object, Object> e : arr.entries()) {
+                    PhpStream s = stream(e.getValue(), "stream_select");
+                    if (!selectable(s)) {
+                        ctx.warning("stream_select(): Cannot represent a stream of type " + s.streamType()
+                                + " as a select()able descriptor", 0);
+                        arr.remove(e.getKey());
+                    }
+                }
+                remaining += arr.size();
+            }
+            if (remaining == 0) {
+                throw new PhpError(PhpError.VALUE_ERROR, "No stream arrays were passed", null);
+            }
+            // Local files are always ready; the arrays stay unchanged, as php leaves them.
+            return (long) remaining;
+        });
+        Builtins.def("stream_socket_enable_crypto", 2, 3, (ctx, a) -> {
+            boolean enable = PhpOps.toBool(a[1]);
+            if (enable && a.length < 3) {
+                throw new PhpError(PhpError.VALUE_ERROR,
+                        "stream_socket_enable_crypto(): Argument #3 ($crypto_method) must be specified when enabling encryption", null);
+            }
+            stream(a[0], "stream_socket_enable_crypto");
+            // Sockets are a later task; the stream kinds here do not support TLS.
+            ctx.warning("stream_socket_enable_crypto(): This stream does not support SSL/crypto", 0);
+            return !enable;
+        });
+    }
+
+    /** Whether stream_select can wait on this kind of stream: local files and stdio only. */
+    private static boolean selectable(PhpStream s) {
+        return "plainfile".equals(s.wrapperType());
     }
 
     // ------------------------------------------------------------------ fopen
@@ -189,7 +238,7 @@ final class StreamFunctions {
         throw new PhpError(PhpError.TYPE_ERROR, fn + "(): supplied resource is not a valid stream resource", null);
     }
 
-    private static PhpStream stream(Object v, String fn) {
+    static PhpStream stream(Object v, String fn) {
         return stream(resource(v, fn), fn);
     }
 
@@ -405,24 +454,11 @@ final class StreamFunctions {
     private static void directories() {
         Builtins.def("opendir", 1, 2, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
-            try {
-                TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-                if (!dir.isDirectory()) {
-                    throw new IOException();
-                }
-                List<String> names = new ArrayList<>();
-                names.add(".");
-                names.add("..");
-                for (TruffleFile child : dir.list()) {
-                    names.add(PhpStrings.fromJava(child.getName()));
-                }
-                PhpResource r = new PhpResource(streamId(ctx), "stream", new PhpStream.DirHandle(names));
+            PhpResource r = openDir(ctx, path, "opendir");
+            if (r != null) {
                 ContextState.of(ctx).lastDir = r;
-                return r;
-            } catch (IOException | SecurityException | IllegalArgumentException e) {
-                ctx.warning("opendir(" + path + "): Failed to open directory: No such file or directory", 0);
-                return false;
             }
+            return r == null ? false : r;
         });
         Builtins.def("readdir", 0, 1, (ctx, a) -> {
             PhpStream.DirHandle d = dir(ctx, a, "readdir");
@@ -438,6 +474,26 @@ final class StreamFunctions {
             r.close();
             return PhpNull.INSTANCE;
         });
+    }
+
+    /** Opens a directory as php's opendir resource; null after a warning on failure. */
+    static PhpResource openDir(PhpContext ctx, String path, String fn) {
+        try {
+            TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
+            if (!dir.isDirectory()) {
+                throw new IOException();
+            }
+            List<String> names = new ArrayList<>();
+            names.add(".");
+            names.add("..");
+            for (TruffleFile child : dir.list()) {
+                names.add(PhpStrings.fromJava(child.getName()));
+            }
+            return new PhpResource(streamId(ctx), "stream", new PhpStream.DirHandle(names));
+        } catch (IOException | SecurityException | IllegalArgumentException e) {
+            ctx.warning(fn + "(" + path + "): Failed to open directory: No such file or directory", 0);
+            return null;
+        }
     }
 
     private static PhpStream.DirHandle dir(PhpContext ctx, Object[] a, String fn) {

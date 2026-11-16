@@ -1,0 +1,11 @@
+int(1)
+bool(true)
+int(1)
+int(1)
+bool(true)
+ValueError: No stream arrays were passed
+ValueError: No stream arrays were passed
+int(1)
+ValueError: stream_socket_enable_crypto(): Argument #3 ($crypto_method) must be specified when enabling encryption
+bool(false)
+bool(true)

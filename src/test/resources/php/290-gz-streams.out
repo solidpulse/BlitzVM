@@ -1,0 +1,27 @@
+bool(true)
+string(6) "stream"
+int(5)
+int(6)
+bool(true)
+string(8) "1f8b0800"
+string(5) "hello"
+bool(false)
+string(6) " world"
+bool(true)
+int(11)
+bool(true)
+string(11) "hello world"
+int(0)
+string(5) "world"
+bool(true)
+string(11) "hello world"
+string(6) "line1
+"
+string(6) "line2
+"
+bool(false)
+bool(false)
+string(6) "stream"
+bool(true)
+bool(true)
+bool(true)

@@ -47,7 +47,7 @@ public final class CastNode extends PhpNode {
     }
 
     @TruffleBoundary
-    private static Object toArray(Object v) {
+    public static Object toArray(Object v) {
         if (v instanceof PhpArray) {
             return v;
         }
@@ -92,7 +92,7 @@ public final class CastNode extends PhpNode {
     }
 
     @TruffleBoundary
-    private static PhpObject toObject(PhpContext ctx, Object v) {
+    public static PhpObject toObject(PhpContext ctx, Object v) {
         if (v instanceof PhpObject obj) {
             return obj;
         }

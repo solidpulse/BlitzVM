@@ -8,9 +8,12 @@ import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpClass;
+import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
+import dev.phpruntime.runtime.Visibility;
 
 /** Class, interface, and object inspection builtins. */
 final class ClassFunctions {
@@ -139,6 +142,47 @@ final class ClassFunctions {
         Builtins.def("spl_object_id", 1, 1, (ctx, a) -> requireObject("spl_object_id", a[0]).id());
         Builtins.def("spl_object_hash", 1, 1, (ctx, a) ->
                 String.format("%032x", requireObject("spl_object_hash", a[0]).id()));
+        Builtins.def("get_class_vars", 1, 1, (ctx, a) -> {
+            if (!(a[0] instanceof String name)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "get_class_vars(): Argument #1 ($class) must be of type string, "
+                        + PhpOps.typeName(a[0]) + " given", null);
+            }
+            PhpClass cls = ctx.lookupClass(name);
+            if (cls == null) {
+                throw new PhpError(PhpError.TYPE_ERROR,
+                        "get_class_vars(): Argument #1 ($class) must be a valid class name, " + name + " given", null);
+            }
+            String callerName = callingClass();
+            PhpClass caller = callerName == null ? null : ctx.lookupClass(callerName);
+            PhpArray out = new PhpArray();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (PhpClass c = cls; c != null; c = c.parent()) {
+                PhpClassTemplate tpl = c.template();
+                for (PhpClassTemplate.PropertyDecl p : tpl.properties()) {
+                    if (p.isStatic() || !seen.add(p.name()) || !visibleFrom(p.visibility(), c, caller)) {
+                        continue;
+                    }
+                    out.put(p.name(), c.evaluatePropertyDefault(p));
+                }
+                for (PhpClassTemplate.PropertyDecl p : tpl.properties()) {
+                    if (!p.isStatic() || !seen.add(p.name()) || !visibleFrom(p.visibility(), c, caller)) {
+                        continue;
+                    }
+                    out.put(p.name(), c.evaluatePropertyDefault(p));
+                }
+            }
+            return out;
+        });
+    }
+
+    private static boolean visibleFrom(Visibility visibility, PhpClass declaring, PhpClass caller) {
+        return switch (visibility) {
+            case PUBLIC -> true;
+            case PROTECTED -> caller != null
+                    && (declaring.isInstanceOf(caller) || caller.isInstanceOf(declaring));
+            case PRIVATE -> caller != null
+                    && PhpStrings.lower(caller.name()).equals(PhpStrings.lower(declaring.name()));
+        };
     }
 
     static PhpArray collectVisibleVars(PhpContext ctx, PhpObject obj, String callerClassName) {
