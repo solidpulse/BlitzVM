@@ -1,0 +1,7 @@
+ab|ab|ab|abc
+string(3) "abc"
+{"s":"abc"}|a:1:{i:0;s:3:"abc";}
+string(3) "abc"
+ABC|bc|aBc
+3|3|3
+["b","b"]

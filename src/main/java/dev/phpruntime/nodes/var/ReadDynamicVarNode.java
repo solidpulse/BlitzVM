@@ -42,10 +42,10 @@ public final class ReadDynamicVarNode extends PhpNode {
             if (frame.isObject(slot)) {
                 Object v = frame.getObject(slot);
                 if (v instanceof PhpReference ref) {
-                    return ref.value;
+                    return ref.getValue();
                 }
                 if (v != null) {
-                    return v;
+                    return dev.phpruntime.runtime.PhpStringBuffer.flatten(v);
                 }
             }
         }

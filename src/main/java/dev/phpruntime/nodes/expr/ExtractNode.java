@@ -82,7 +82,7 @@ public final class ExtractNode extends PhpNode {
             String original = PhpOps.toStr(entry.getKey());
             boolean exists = table == null ? ctx.isGlobalDefined(original)
                     : original.equals("this") ? table.thisValue != null && table.thisValue != PhpNull.INSTANCE
-                    : table.cell(original, false) != null && table.cell(original, false).value != null;
+                    : table.cell(original, false) != null && table.cell(original, false).getValue() != null;
             String name = original;
             switch (type) {
                 case 1 -> { if (exists || original.equals("this")) { continue; } }
@@ -103,10 +103,10 @@ public final class ExtractNode extends PhpNode {
                 if (table == null) { ctx.bindExtractedGlobal(name, cell); }
                 else { table.bind(name, cell); }
             } else {
-                Object value = entry.getValue() instanceof PhpReference ref ? ref.value : entry.getValue();
+                Object value = entry.getValue() instanceof PhpReference ref ? ref.getValue() : entry.getValue();
                 value = PhpOps.copyOnAssign(value);
                 if (table == null) { ctx.writeExtractedGlobal(name, value); }
-                else { table.cell(name, true).value = value; }
+                else { table.cell(name, true).setValue(value); }
             }
             count++;
         }

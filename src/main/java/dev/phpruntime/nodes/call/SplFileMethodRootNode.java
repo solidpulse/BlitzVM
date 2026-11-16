@@ -26,7 +26,8 @@ public final class SplFileMethodRootNode extends RootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        return invoke(PhpContext.get(this), frame.getArguments());
+        PhpStrings.checkArguments(frame.getArguments(), owner + "::" + name);
+        return PhpStrings.checkReturn(invoke(PhpContext.get(this), frame.getArguments()), owner + "::" + name);
     }
 
     @TruffleBoundary

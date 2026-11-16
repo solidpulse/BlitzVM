@@ -13,6 +13,9 @@ public final class IncludedVarNode extends LValueNode {
     private PhpSymbolTable.Access access(VirtualFrame frame) { return (PhpSymbolTable.Access) frame.getObject(slot); }
     @Override public Object read(VirtualFrame frame, Object[] keys) { return access(frame).read(); }
     @Override public void write(VirtualFrame frame, Object[] keys, Object value) { access(frame).write(value); }
+    @Override public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        return access(frame).appendString(suffix, resultNeeded);
+    }
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) { return access(frame).obtain(); }
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) { access(frame).bind(cell.alias()); }
     @Override public void unset(VirtualFrame frame, Object[] keys) { access(frame).bind(null); }

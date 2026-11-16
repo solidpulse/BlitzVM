@@ -34,16 +34,21 @@ public final class PhpSymbolTable {
             if (slot >= 0) { table.cells[slot] = cell; }
             else { binding.cell = cell; }
         }
-        public Object read() { PhpReference cell = get(); return cell == null ? null : cell.value; }
+        public Object read() { PhpReference cell = get(); return cell == null ? null : cell.getValue(); }
         public void write(Object value) {
             PhpReference cell = get();
             if (cell == null) { bind(PhpReference.local(value)); }
-            else { cell.value = value; }
+            else { cell.setValue(value); }
+        }
+        public String appendString(String suffix, boolean resultNeeded) {
+            PhpReference cell = get();
+            if (cell == null) { bind(cell = PhpReference.local(null)); }
+            return cell.appendString(suffix, resultNeeded);
         }
         public PhpReference obtain() {
             PhpReference cell = get();
             if (cell == null) { bind(cell = new PhpReference(PhpNull.INSTANCE)); }
-            else if (cell.value == null) { cell.value = PhpNull.INSTANCE; }
+            else { cell.ensureDefined(); }
             return cell.alias();
         }
     }
@@ -121,17 +126,17 @@ public final class PhpSymbolTable {
         PhpArray result = new PhpArray();
         for (var entry : layout.locals().entrySet()) {
             PhpReference cell = cells[entry.getValue()];
-            if (cell != null && cell.value != null) {
+            if (cell != null && cell.getValue() != null) {
                 if (cell.isAliased()) { result.putRef(entry.getKey(), cell); }
-                else { result.put(entry.getKey(), PhpOps.copyOnAssign(cell.value)); }
+                else { result.put(entry.getKey(), PhpOps.copyOnAssign(cell.getValue())); }
             }
         }
         for (String name : dynamicOrder) {
             Integer literal = layout.literalSlots().get(name);
             PhpReference cell = literal == null ? extra.get(name).cell : cells[literal];
-            if (cell != null && cell.value != null) {
+            if (cell != null && cell.getValue() != null) {
                 if (cell.isAliased()) { result.putRef(name, cell); }
-                else { result.put(name, PhpOps.copyOnAssign(cell.value)); }
+                else { result.put(name, PhpOps.copyOnAssign(cell.getValue())); }
             }
         }
         return result;

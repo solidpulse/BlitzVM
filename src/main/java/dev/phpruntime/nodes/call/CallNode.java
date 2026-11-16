@@ -239,7 +239,7 @@ public final class CallNode extends PhpNode {
                 } else {
                     Object res = args[i].executeForRef(frame);
                     if (res instanceof dev.phpruntime.runtime.PhpReference ref) {
-                        values[i] = ref.value == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.value;
+                        values[i] = ref.getValue() == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.getValue();
                     } else if (args[i] instanceof CallNode || args[i] instanceof MethodCallNode
                             || args[i] instanceof StaticMethodCallNode || args[i] instanceof CallValueNode) {
                         PhpContext.get(this).notice("Only variables should be passed by reference", line());

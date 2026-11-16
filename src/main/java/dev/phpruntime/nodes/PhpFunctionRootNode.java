@@ -286,7 +286,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
                 PhpReference cell = raw instanceof PhpReference ref ? ref : new PhpReference(PhpOps.copyOnAssign(raw));
                 frame.setObject(paramSlots[i], cell);
             } else {
-                Object val = raw instanceof PhpReference ref ? PhpOps.copyOnAssign(ref.value) : raw;
+                Object val = raw instanceof PhpReference ref ? PhpOps.copyOnAssign(ref.getValue()) : raw;
                 writeSlot(frame, paramSlots[i], paramKinds[i], val);
             }
         }
@@ -304,14 +304,14 @@ public final class PhpFunctionRootNode extends PhpRootNode {
                             if (e.getValue() instanceof PhpReference ref && varByRef) {
                                 rest.putRef(e.getKey(), ref);
                             } else {
-                                Object val = e.getValue() instanceof PhpReference ref ? ref.value : e.getValue();
+                                Object val = e.getValue() instanceof PhpReference ref ? ref.getValue() : e.getValue();
                                 rest.put(e.getKey(), PhpOps.copyOnAssign(val));
                             }
                         }
                     } else if (varByRef && item instanceof PhpReference ref) {
                         rest.appendRef(ref);
                     } else {
-                        Object val = item instanceof PhpReference ref ? ref.value : item;
+                        Object val = item instanceof PhpReference ref ? ref.getValue() : item;
                         rest.append(PhpOps.copyOnAssign(val));
                     }
                 }
@@ -349,13 +349,13 @@ public final class PhpFunctionRootNode extends PhpRootNode {
             int slot = captureSlots[i];
             Object value = frame.getValue(slot);
             table.cells[slot] = captureByRef[i] ? ((PhpReference) value).alias()
-                    : PhpReference.local(value instanceof PhpReference ref ? ref.value : value);
+                    : PhpReference.local(value instanceof PhpReference ref ? ref.getValue() : value);
         }
         for (int i = 0; i < paramSlots.length; i++) {
             int slot = paramSlots[i];
             Object value = frame.getValue(slot);
             table.cells[slot] = paramByRef[i] && !(variadic && i == paramSlots.length - 1) ? ((PhpReference) value).alias()
-                    : PhpReference.local(value instanceof PhpReference ref ? ref.value : value);
+                    : PhpReference.local(value instanceof PhpReference ref ? ref.getValue() : value);
         }
         frame.setObject(scopeLayout.tableSlot(), table);
     }

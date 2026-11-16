@@ -131,7 +131,7 @@ public final class SplArrayState implements PhpNativeState {
         }
         if (position < 0 || position >= iterationValues.length) { return PhpNull.INSTANCE; }
         Object value = iterationValues[position];
-        return value instanceof PhpReference ref ? ref.value : value;
+        return value instanceof PhpReference ref ? ref.getValue() : value;
     }
 
     @TruffleBoundary

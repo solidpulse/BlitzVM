@@ -95,7 +95,7 @@ public final class ForeachNode extends PhpNode {
                     keyTarget.write(frame, keyTarget.evalKeys(frame), e.getKey());
                 }
                 Object rawVal = e.getValue();
-                Object curVal = rawVal instanceof PhpReference ref ? ref.value : rawVal;
+                Object curVal = rawVal instanceof PhpReference ref ? ref.getValue() : rawVal;
                 valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(curVal));
                 try {
                     body.executeVoid(frame);
@@ -129,7 +129,7 @@ public final class ForeachNode extends PhpNode {
             if (cur instanceof PhpArray arr) {
                 subjectCell = subjectLValue.obtainCell(frame, sk);
                 PhpArray writable = arr.forWrite();
-                subjectCell.value = writable;
+                subjectCell.setValue(writable);
                 s = writable;
             } else {
                 s = cur;
@@ -138,12 +138,12 @@ public final class ForeachNode extends PhpNode {
             Object raw = subject.executeForRef(frame);
             if (raw instanceof PhpReference ref) {
                 subjectCell = ref;
-                if (ref.value instanceof PhpArray arr) {
+                if (ref.getValue() instanceof PhpArray arr) {
                     PhpArray writable = arr.forWrite();
-                    ref.value = writable;
+                    ref.setValue(writable);
                     s = writable;
                 } else {
-                    s = ref.value == null ? PhpNull.INSTANCE : ref.value;
+                    s = ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue();
                 }
             } else {
                 s = raw;
@@ -157,7 +157,7 @@ public final class ForeachNode extends PhpNode {
                 for (Object k : keys) {
                     TruffleSafepoint.poll(this);
                     count++;
-                    PhpArray currentArr = subjectCell != null && subjectCell.value instanceof PhpArray ca ? ca : arr;
+                    PhpArray currentArr = subjectCell != null && subjectCell.getValue() instanceof PhpArray ca ? ca : arr;
                     if (!currentArr.containsKey(k)) {
                         continue;
                     }

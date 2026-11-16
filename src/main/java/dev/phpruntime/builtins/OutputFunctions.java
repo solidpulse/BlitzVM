@@ -85,7 +85,7 @@ final class OutputFunctions {
 
     private static void varDump(StringBuilder sb, Object v, int indent, IdentityHashMap<PhpObject, Boolean> seen, boolean isRef) {
         if (v instanceof PhpReference ref) {
-            varDump(sb, ref.value == null ? PhpNull.INSTANCE : ref.value, indent, seen, true);
+            varDump(sb, ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue(), indent, seen, true);
             return;
         }
         sb.append(" ".repeat(indent));

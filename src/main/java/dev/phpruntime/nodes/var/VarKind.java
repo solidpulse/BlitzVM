@@ -19,6 +19,12 @@ public final class VarKind {
     private final Assumption noInts = Truffle.getRuntime().createAssumption("variable never held an int");
     private final Assumption noFloats = Truffle.getRuntime().createAssumption("variable never held a float");
     private final Assumption notCell = Truffle.getRuntime().createAssumption("variable is not a reference cell");
+    private final Assumption notAppendTarget = Truffle.getRuntime().createAssumption("variable is not an append target");
+
+    public boolean isAppendTarget() { return !notAppendTarget.isValid(); }
+
+    /** Set while parsing; reads of all other variables have no buffer type check. */
+    public void markAppendTarget() { notAppendTarget.invalidate(); }
 
     /** True if this local is stored indirectly through a {@code PhpReference} cell. */
     public boolean isCell() {

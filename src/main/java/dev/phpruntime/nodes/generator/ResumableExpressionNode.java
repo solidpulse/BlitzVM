@@ -36,4 +36,17 @@ public final class ResumableExpressionNode extends PhpNode {
             frame.setObject(slot, null);
         }
     }
+
+    @Override
+    public void executeVoid(VirtualFrame frame) {
+        try {
+            expression.executeVoid(frame);
+            clear(frame);
+        } catch (ControlFlow.Yield suspended) {
+            throw suspended;
+        } catch (RuntimeException | Error error) {
+            clear(frame);
+            throw error;
+        }
+    }
 }

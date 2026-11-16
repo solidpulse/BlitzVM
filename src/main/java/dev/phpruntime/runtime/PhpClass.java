@@ -66,13 +66,13 @@ public final class PhpClass {
         /** The value, with a reference cell bound to this property unwrapped. */
         public Object get() {
             Object v = raw();
-            return v instanceof PhpReference ref ? ref.value : v;
+            return v instanceof PhpReference ref ? ref.getValue() : v;
         }
 
         /** Assigns, writing through a reference cell bound to this property. */
         public void set(Object v) {
             if (initialized && value instanceof PhpReference ref) {
-                ref.value = v;
+                ref.setValue(v);
                 return;
             }
             initialized = true;
@@ -83,9 +83,7 @@ public final class PhpClass {
         public PhpReference obtainCell() {
             Object v = raw();
             if (v instanceof PhpReference ref) {
-                if (ref.value == null) {
-                    ref.value = PhpNull.INSTANCE;
-                }
+                ref.ensureDefined();
                 return ref;
             }
             PhpReference ref = new PhpReference(v == null ? PhpNull.INSTANCE : v);
@@ -730,7 +728,7 @@ public final class PhpClass {
 
     public static Object unwrapProp(Object pv) {
         if (pv instanceof PhpReference ref) {
-            pv = ref.value;
+            pv = ref.getValue();
         }
         if (pv instanceof PhpBacktrace.LazyTrace lt) {
             pv = lt.toPhpArray();

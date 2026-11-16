@@ -1666,6 +1666,10 @@ public final class Parser {
                 if (compound != null) {
                     next();
                     PhpNode value = binary(4);
+                    if (compound == PhpArith.Op.CONCAT) {
+                        if (target instanceof LocalVarNode local) { local.kind().markAppendTarget(); }
+                        return new StringAppendNode(target, value).at(line);
+                    }
                     if (target instanceof LocalVarNode local && arithmetic(compound) != null) {
                         // $x += v is $x = $x + v for a plain variable, and that way it gets the
                         // typed operator nodes and an unboxed assignment.

@@ -235,7 +235,7 @@ public final class PhpBacktrace {
         PhpArray a = new PhpArray();
         for (Object v : args) {
             if (v instanceof PhpReference ref) {
-                v = ref.value == null ? PhpNull.INSTANCE : ref.value;
+                v = ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue();
             }
             a.append(PhpOps.copyOnAssign(v));
         }
@@ -348,7 +348,7 @@ public final class PhpBacktrace {
 
     private static String formatDebugArg(Object v) {
         if (v instanceof PhpReference ref) {
-            v = ref.value;
+            v = ref.getValue();
         }
         if (v == null || v == PhpNull.INSTANCE) {
             return "NULL";

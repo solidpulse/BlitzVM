@@ -32,6 +32,15 @@ public abstract class LValueNode extends PhpNode {
 
     public abstract void write(VirtualFrame frame, Object[] keys, Object value);
 
+    /** Append without exposing mutable storage. Arrays/properties retain immutable stores. */
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        Object current = read(frame, keys);
+        String result = dev.phpruntime.runtime.PhpOps.toStr(current == null
+                ? dev.phpruntime.runtime.PhpNull.INSTANCE : current).concat(suffix);
+        write(frame, keys, result);
+        return result;
+    }
+
     /**
      * Obtains (or creates) a {@link PhpReference} cell backing this lvalue so writes to the
      * returned cell mutate this variable, array element, or property in place.

@@ -25,7 +25,7 @@ public final class AssignRefNode extends PhpNode {
         PhpReference cell = resolveCell(frame);
         Object[] targetKeys = target.evalKeys(frame);
         target.bindCell(frame, targetKeys, cell);
-        return cell.value == null ? PhpNull.INSTANCE : cell.value;
+        return cell.getValue() == null ? PhpNull.INSTANCE : cell.getValue();
     }
 
     @Override
@@ -46,9 +46,7 @@ public final class AssignRefNode extends PhpNode {
         }
         Object raw = value.executeForRef(frame);
         if (raw instanceof PhpReference ref) {
-            if (ref.value == null) {
-                ref.value = PhpNull.INSTANCE;
-            }
+            ref.ensureDefined();
             return ref;
         }
         PhpContext.get(this).notice("Only variables should be assigned by reference", line());

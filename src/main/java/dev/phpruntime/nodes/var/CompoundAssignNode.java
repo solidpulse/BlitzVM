@@ -24,7 +24,7 @@ public final class CompoundAssignNode extends PhpNode {
         Object[] keys = target.evalKeys(frame);
         dev.phpruntime.runtime.PhpReference nested = op != PhpArith.Op.COALESCE && target instanceof IndexLValueNode index
                 && index.isNested() && index.usesArrayAccess(frame, keys) ? index.obtainCell(frame, keys) : null;
-        Object current = nested != null ? nested.value
+        Object current = nested != null ? nested.getValue()
                 : op == PhpArith.Op.COALESCE ? target.readIfSet(frame, keys) : target.read(frame, keys);
         if (op == PhpArith.Op.COALESCE) {
             if (current != null && current != PhpNull.INSTANCE) {
@@ -43,7 +43,7 @@ public final class CompoundAssignNode extends PhpNode {
         } catch (dev.phpruntime.runtime.PhpError e) {
             throw e.at(this);
         }
-        if (nested != null) { nested.value = result; }
+        if (nested != null) { nested.setValue(result); }
         else { target.write(frame, keys, result); }
         return result;
     }

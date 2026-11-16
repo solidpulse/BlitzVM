@@ -19,7 +19,8 @@ public final class ClosureMethodRootNode extends RootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        return invoke(PhpContext.get(this), frame.getArguments());
+        PhpStrings.checkArguments(frame.getArguments(), "Closure::" + name);
+        return PhpStrings.checkReturn(invoke(PhpContext.get(this), frame.getArguments()), "Closure::" + name);
     }
 
     @TruffleBoundary

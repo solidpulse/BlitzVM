@@ -29,6 +29,7 @@ public final class Builtins {
                 ctx.setByteStringOrigin(name);
             }
             try {
+                for (Object arg : args) { PhpStrings.checkNoBuffer(arg, name + "() argument"); }
                 Object value = impl.call(ctx, args);
                 PhpStrings.checkValue(value, name + "()");
                 for (int i = 0; i < args.length; i++) {

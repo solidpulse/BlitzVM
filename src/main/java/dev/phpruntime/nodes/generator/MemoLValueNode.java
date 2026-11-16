@@ -52,6 +52,9 @@ public final class MemoLValueNode extends LValueNode {
         return value;
     }
     @Override public void write(VirtualFrame f, Object[] k, Object v) { target.write(f, k, v); }
+    @Override public String appendString(VirtualFrame f, Object[] k, String suffix, boolean resultNeeded) {
+        return target.appendString(f, k, suffix, resultNeeded);
+    }
     @Override public PhpReference obtainCell(VirtualFrame f, Object[] k) {
         Object saved = f.getObject(cellSlot);
         if (saved instanceof PhpReference cell) { return cell; }

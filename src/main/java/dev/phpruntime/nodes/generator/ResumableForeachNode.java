@@ -94,7 +94,7 @@ public final class ResumableForeachNode extends PhpNode {
                     if (byRef && value instanceof PhpReference ref) {
                         valueTarget.bindCell(frame, valueTarget.evalKeys(frame), ref);
                     } else {
-                        valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(value instanceof PhpReference ref ? ref.value : value));
+                        valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(value instanceof PhpReference ref ? ref.getValue() : value));
                     }
                     cursor.inBody = true;
                 }

@@ -64,21 +64,21 @@ public final class DestructureLValueNode extends LValueNode {
                 if (cur instanceof PhpArray arr) {
                     PhpReference rootCell = rhsLValue.obtainCell(frame, rk);
                     PhpArray writable = arr.forWrite();
-                    rootCell.value = writable;
+                    rootCell.setValue(writable);
                     destructureRef(frame, rootCell);
-                    return PhpOps.copyOnAssign(rootCell.value);
+                    return PhpOps.copyOnAssign(rootCell.getValue());
                 }
                 destructureValue(frame, cur);
                 return cur;
             }
             Object raw = rhsExpr.executeForRef(frame);
             if (raw instanceof PhpReference ref) {
-                if (ref.value instanceof PhpArray arr) {
-                    ref.value = arr.forWrite();
+                if (ref.getValue() instanceof PhpArray arr) {
+                    ref.setValue(arr.forWrite());
                     destructureRef(frame, ref);
-                    return PhpOps.copyOnAssign(ref.value);
+                    return PhpOps.copyOnAssign(ref.getValue());
                 }
-                Object v = ref.value == null ? PhpNull.INSTANCE : ref.value;
+                Object v = ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue();
                 destructureValue(frame, v);
                 return v;
             }
@@ -103,11 +103,11 @@ public final class DestructureLValueNode extends LValueNode {
 
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
-        if (cell.value instanceof PhpArray arr) {
-            cell.value = arr.forWrite();
+        if (cell.getValue() instanceof PhpArray arr) {
+            cell.setValue(arr.forWrite());
             destructureRef(frame, cell);
         } else {
-            destructureValue(frame, cell.value == null ? PhpNull.INSTANCE : cell.value);
+            destructureValue(frame, cell.getValue() == null ? PhpNull.INSTANCE : cell.getValue());
         }
     }
 
@@ -163,7 +163,7 @@ public final class DestructureLValueNode extends LValueNode {
             }
             Object k = keyNodes[i] != null ? keyNodes[i].execute(frame) : autoIndices[i];
             Object[] tKeys = target.evalKeys(frame);
-            PhpArray curArr = containerCell.value instanceof PhpArray a ? a : null;
+            PhpArray curArr = containerCell.getValue() instanceof PhpArray a ? a : null;
             if (curArr == null) {
                 if (byRef[i]) {
                     target.bindCell(frame, tKeys, new PhpReference(PhpNull.INSTANCE));

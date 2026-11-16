@@ -4,6 +4,8 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpStringBuffer;
+import dev.phpruntime.runtime.PhpOps;
 
 /**
  * A function-local variable stored in a Truffle frame slot. Ints and floats are stored
@@ -63,7 +65,7 @@ public final class LocalVarNode extends LValueNode {
             if (obj == null || obj instanceof PhpReference) {
                 return (PhpReference) obj;
             }
-            PhpReference ref = new PhpReference(obj);
+            PhpReference ref = new PhpReference(kind.isAppendTarget() ? PhpStringBuffer.flatten(obj) : obj);
             frame.setObject(slot, ref);
             return ref;
         }
@@ -84,7 +86,7 @@ public final class LocalVarNode extends LValueNode {
     public Object read(VirtualFrame frame, Object[] keys) {
         if (kind.isCell()) {
             PhpReference ref = getOrMigrateCell(frame);
-            return ref == null ? null : ref.value;
+            return ref == null ? null : ref.getValue();
         }
         if (frame.isLong(slot)) {
             return frame.getLong(slot);
@@ -92,7 +94,28 @@ public final class LocalVarNode extends LValueNode {
         if (frame.isDouble(slot)) {
             return frame.getDouble(slot);
         }
-        return frame.getObject(slot);
+        Object value = frame.getObject(slot);
+        return kind.isAppendTarget() ? PhpStringBuffer.flatten(value) : value;
+    }
+
+    @Override
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        if (kind.isCell()) {
+            PhpReference cell = getOrMigrateCell(frame);
+            if (cell == null) { frame.setObject(slot, cell = new PhpReference(null)); }
+            return cell.appendString(suffix, resultNeeded);
+        }
+        Object current = frame.isObject(slot) ? frame.getObject(slot)
+                : frame.isLong(slot) ? frame.getLong(slot) : frame.isDouble(slot) ? frame.getDouble(slot) : null;
+        PhpStringBuffer buffer;
+        if (current instanceof PhpStringBuffer existing) { buffer = existing; }
+        else {
+            buffer = new PhpStringBuffer(current instanceof String s ? s
+                    : PhpOps.toStr(current == null ? PhpNull.INSTANCE : current));
+            frame.setObject(slot, buffer);
+        }
+        buffer.append(suffix);
+        return resultNeeded ? buffer.asString() : null;
     }
 
     public PhpReference readOrCreateCell(VirtualFrame frame) {
@@ -100,9 +123,7 @@ public final class LocalVarNode extends LValueNode {
         if (ref == null) {
             ref = new PhpReference(PhpNull.INSTANCE);
             frame.setObject(slot, ref);
-        } else if (ref.value == null) {
-            ref.value = PhpNull.INSTANCE;
-        }
+        } else { ref.ensureDefined(); }
         return ref;
     }
 
@@ -138,7 +159,7 @@ public final class LocalVarNode extends LValueNode {
     public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
         if (kind.isCell()) {
             PhpReference ref = getOrMigrateCell(frame);
-            if (ref != null && ref.value instanceof Long l) {
+            if (ref != null && ref.getValue() instanceof Long l) {
                 return l;
             }
             throw new UnexpectedResultException(execute(frame));
@@ -156,7 +177,7 @@ public final class LocalVarNode extends LValueNode {
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
         if (kind.isCell()) {
             PhpReference ref = getOrMigrateCell(frame);
-            if (ref != null && ref.value instanceof Double d) {
+            if (ref != null && ref.getValue() instanceof Double d) {
                 return d;
             }
             throw new UnexpectedResultException(execute(frame));
@@ -216,7 +237,7 @@ public final class LocalVarNode extends LValueNode {
         if (ref == null) {
             frame.setObject(slot, new PhpReference(value));
         } else {
-            ref.value = value;
+            ref.setValue(value);
         }
     }
 

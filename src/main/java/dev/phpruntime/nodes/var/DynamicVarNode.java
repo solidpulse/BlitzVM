@@ -64,7 +64,7 @@ public final class DynamicVarNode extends LValueNode {
         }
         int slot = slot(table, name);
         PhpReference cell = slot >= 0 ? table.cells[slot] : table.cell(name, false);
-        return cell == null ? null : cell.value;
+        return cell == null ? null : cell.getValue();
     }
 
     @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
@@ -96,8 +96,8 @@ public final class DynamicVarNode extends LValueNode {
         if (slot >= 0) {
             PhpReference cell = table.cells[slot];
             if (cell == null) { table.cells[slot] = PhpReference.local(value); }
-            else { cell.value = value; }
-        } else { table.cell(name, true).value = value; }
+            else { cell.setValue(value); }
+        } else { table.cell(name, true).setValue(value); }
     }
 
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
@@ -111,8 +111,27 @@ public final class DynamicVarNode extends LValueNode {
             cell = table.cells[slot];
             if (cell == null) { table.cells[slot] = cell = new PhpReference(null); }
         } else { cell = table.cell(name, true); }
-        if (cell.value == null) { cell.value = PhpNull.INSTANCE; }
+        cell.ensureDefined();
         return cell.alias();
+    }
+
+    @Override public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        String name = (String) keys[0];
+        writable(name);
+        if (tableSlot < 0) {
+            if (name.equals("GLOBALS")) {
+                return PhpContext.get(this).globalSymbolRef(name).appendString(suffix, resultNeeded);
+            }
+            return PhpContext.get(this).appendGlobalById(PhpContext.get(this).language().globalId(name), suffix, resultNeeded);
+        }
+        PhpSymbolTable table = table(frame);
+        int slot = slot(table, name);
+        PhpReference cell;
+        if (slot >= 0) {
+            cell = table.cells[slot];
+            if (cell == null) { table.cells[slot] = cell = PhpReference.local(null); }
+        } else { cell = table.cell(name, true); }
+        return cell.appendString(suffix, resultNeeded);
     }
 
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {

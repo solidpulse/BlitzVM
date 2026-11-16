@@ -66,7 +66,9 @@ public final class CloneNode extends PhpNode {
                 continue;
             }
             if (raw instanceof dev.phpruntime.runtime.PhpReference ref) {
-                raw = ref.value;
+                // PHP clone preserves explicit aliases, not a copy of their current values.
+                put.execute(copy, k, ref);
+                continue;
             }
             put.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
         }

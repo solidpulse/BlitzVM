@@ -28,6 +28,12 @@ public final class SplBuiltinNode extends Node {
     }
 
     public Object execute(Object[] args) {
+        if (!dev.phpruntime.runtime.PhpStrings.CHECK) { return executeBuiltin(args); }
+        dev.phpruntime.runtime.PhpStrings.checkArguments(args, name);
+        return dev.phpruntime.runtime.PhpStrings.checkReturn(executeBuiltin(args), name);
+    }
+
+    private Object executeBuiltin(Object[] args) {
         Object subject = args[0];
         if (name.equals("count") || name.equals("sizeof")) {
             long mode = args.length > 1 ? args[1] instanceof Long n ? n : PhpOps.toLong(args[1]) : 0;
