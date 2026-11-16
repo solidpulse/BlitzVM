@@ -976,9 +976,23 @@ public final class PhpContext {
         return emitDiagnostic(errno, label, message, line);
     }
 
+    /** The source file of the innermost PHP frame (an included file, not just the entry script). */
+    @TruffleBoundary
+    private String currentGuestFile() {
+        String path = com.oracle.truffle.api.Truffle.getRuntime().iterateFrames(frame -> {
+            if (frame.getCallTarget() instanceof com.oracle.truffle.api.RootCallTarget target
+                    && target.getRootNode() instanceof dev.phpruntime.nodes.PhpRootNode root
+                    && root.source() != null && root.source().getPath() != null) {
+                return root.source().getPath();
+            }
+            return null;
+        });
+        return path != null ? path : request().scriptFilename;
+    }
+
     @TruffleBoundary
     private boolean emitDiagnostic(long errno, String label, String message, int line) {
-        String file = PhpStrings.fromJava(request().scriptFilename);
+        String file = PhpStrings.fromJava(currentGuestFile());
         ErrorHandlerEntry handler = errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
                 && (handler.errorLevels() & errno) != 0) {
