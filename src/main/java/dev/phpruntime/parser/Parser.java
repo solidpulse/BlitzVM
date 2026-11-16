@@ -2219,6 +2219,26 @@ public final class Parser {
                         rn.fallback(), language.functionId(rn.fallback())).at(line);
             }
             ParsedCallArgs pca = parseCallArgDetails();
+            if (rn.primary().equalsIgnoreCase("compact") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length == 0) { throw error("compact() expects at least 1 argument"); }
+                PhpNode[] args = pca.args();
+                LValueNode[] reads = new LValueNode[args.length];
+                String[] names = new String[args.length];
+                boolean dynamic = false;
+                for (int i = 0; i < args.length; i++) {
+                    if (args[i] instanceof ConstNode constant && constant.value() instanceof String varName) {
+                        names[i] = varName;
+                        reads[i] = scope.compactVariable(varName);
+                    } else { dynamic = true; }
+                }
+                return new CompactNode(args, reads, names, dynamic ? scope.dynamicSlot() : -1).at(line);
+            }
+            if (rn.primary().equalsIgnoreCase("extract") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length < 1 || pca.args().length > 3) { throw error("extract() expects 1 to 3 arguments"); }
+                PhpNode[] args = pca.args();
+                return new ExtractNode(args[0], pca.refs()[0], args.length > 1 ? args[1] : null,
+                        args.length > 2 ? args[2] : null, scope.dynamicSlot()).at(line);
+            }
             if (rn.fallback() == null) {
                 return new CallNode(rn.primary(), language.functionId(rn.primary()), pca.args(), pca.refs(),
                         pca.names(), pca.spreads()).withSpl(language).at(line);

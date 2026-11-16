@@ -149,6 +149,31 @@ public final class PhpContext {
 
     // ------------------------------------------------------------ globals
 
+    /** extract can create an ordinary symbol called GLOBALS; literal $GLOBALS remains special. */
+    @TruffleBoundary
+    public void bindExtractedGlobal(String name, PhpReference cell) {
+        if (name.equals("GLOBALS")) { dynamicGlobals.put(name, cell); }
+        else { bindGlobal(name, cell); }
+    }
+
+    @TruffleBoundary
+    public void writeExtractedGlobal(String name, Object value) {
+        if (name.equals("GLOBALS")) {
+            PhpReference cell = dynamicGlobals.get(name);
+            if (cell == null) { dynamicGlobals.put(name, new PhpReference(value)); }
+            else { cell.value = value; }
+        } else { writeGlobal(name, value); }
+    }
+
+    @TruffleBoundary
+    public Object readGlobalSymbol(String name) {
+        if (name.equals("GLOBALS")) {
+            PhpReference cell = dynamicGlobals.get(name);
+            return cell == null ? null : cell.value;
+        }
+        return readGlobal(name);
+    }
+
     public Object readGlobalById(int id) {
         PhpReference[] table = globalsById;
         if (id < table.length) {

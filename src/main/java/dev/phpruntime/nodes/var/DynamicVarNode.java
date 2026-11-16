@@ -48,7 +48,7 @@ public final class DynamicVarNode extends LValueNode {
 
     @Override public Object read(VirtualFrame frame, Object[] keys) {
         String name = (String) keys[0];
-        if (tableSlot < 0 || name.equals("GLOBALS")) { return PhpContext.get(this).readGlobal(name); }
+        if (tableSlot < 0) { return PhpContext.get(this).readGlobal(name); }
         PhpSymbolTable table = table(frame);
         if (name.equals("this")) {
             if (table.thisValue == null || table.thisValue == PhpNull.INSTANCE) {
@@ -63,7 +63,7 @@ public final class DynamicVarNode extends LValueNode {
 
     private void writable(String name) {
         if (name.equals("this")) { throw new PhpError("Cannot re-assign $this", this); }
-        if (name.equals("GLOBALS")) {
+        if (tableSlot < 0 && name.equals("GLOBALS")) {
             throw new PhpError("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax", this);
         }
     }
@@ -83,7 +83,7 @@ public final class DynamicVarNode extends LValueNode {
 
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         String name = (String) keys[0];
-        if (name.equals("GLOBALS")) { throw new PhpError("Cannot acquire reference to $GLOBALS", this); }
+        if (tableSlot < 0 && name.equals("GLOBALS")) { throw new PhpError("Cannot acquire reference to $GLOBALS", this); }
         writable(name);
         if (tableSlot < 0) { return PhpContext.get(this).globalRef(name); }
         PhpSymbolTable table = table(frame);

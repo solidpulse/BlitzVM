@@ -23,10 +23,13 @@ public final class PhpSymbolTable {
 
     @TruffleBoundary
     public PhpReference cell(String name, boolean create) {
-        Integer slot = layout.locals().get(name);
+        Integer slot = layout.slot(name);
         if (slot != null) {
             PhpReference cell = cells[slot];
-            if (cell == null && create) { cells[slot] = cell = new PhpReference(null); }
+            if (cell == null && create) {
+                cells[slot] = cell = new PhpReference(null);
+                if (!layout.locals().containsKey(name)) { extra.put(name, cell); }
+            }
             return cell;
         }
         PhpReference cell = extra.get(name);
@@ -36,16 +39,16 @@ public final class PhpSymbolTable {
 
     @TruffleBoundary
     public void bind(String name, PhpReference cell) {
-        Integer slot = layout.locals().get(name);
+        Integer slot = layout.slot(name);
         if (slot != null) { cells[slot] = cell; }
-        else { extra.put(name, cell); }
+        if (!layout.locals().containsKey(name)) { extra.put(name, cell); }
     }
 
     @TruffleBoundary
     public void unset(String name) {
-        Integer slot = layout.locals().get(name);
+        Integer slot = layout.slot(name);
         if (slot != null) { cells[slot] = null; }
-        else { extra.remove(name); }
+        extra.remove(name);
     }
 
     @TruffleBoundary

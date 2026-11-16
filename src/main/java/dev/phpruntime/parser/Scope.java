@@ -50,6 +50,15 @@ final class Scope {
     private boolean usesThis;
     private int tableSlot = -1;
     private boolean included;
+    private final Map<String, Integer> literalSlots = new HashMap<>();
+
+    LValueNode compactVariable(String name) {
+        if (global || included) { return variable(name); }
+        Integer existing = slots.get(name);
+        int slot = existing != null ? existing : literalSlots.computeIfAbsent(name,
+                n -> frame.addSlot(FrameSlotKind.Illegal, n, null));
+        return new LocalVarNode(slot, name, kind(slot));
+    }
 
     static Scope forInclude(PhpLanguage language) {
         Scope scope = new Scope(language, false, true, null, false, false, true);
@@ -183,7 +192,10 @@ final class Scope {
     }
 
     int slot(String name) {
-        return slots.computeIfAbsent(name, n -> frame.addSlot(FrameSlotKind.Illegal, n, null));
+        return slots.computeIfAbsent(name, n -> {
+            Integer reserved = literalSlots.remove(n);
+            return reserved != null ? reserved : frame.addSlot(FrameSlotKind.Illegal, n, null);
+        });
     }
 
     int intSlot(String name) {
@@ -317,8 +329,9 @@ final class Scope {
                     locals.put(entry.getKey(), entry.getValue());
                 }
             }
-            int cellCount = slots.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
-            frame.info(new PhpScopeLayout(tableSlot, cellCount, locals, thisSlot, calledClassSlot, traitSelfSlot, included));
+            int cellCount = Math.max(slots.values().stream().mapToInt(Integer::intValue).max().orElse(-1),
+                    literalSlots.values().stream().mapToInt(Integer::intValue).max().orElse(-1)) + 1;
+            frame.info(new PhpScopeLayout(tableSlot, cellCount, locals, literalSlots, thisSlot, calledClassSlot, traitSelfSlot, included));
         }
         return frame.build();
     }
