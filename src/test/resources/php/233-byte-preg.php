@@ -19,3 +19,8 @@ foreach (preg_split('/😀/u', 'é😀a😀b', -1, PREG_SPLIT_OFFSET_CAPTURE) as
     echo bin2hex($pair[0]), '@', $pair[1], ':';
 }
 echo "\n";
+preg_match_all('//u', $s, $m, PREG_OFFSET_CAPTURE);
+foreach ($m[0] as $pair) { echo $pair[1], ':'; }
+echo "\n";
+foreach (preg_split('//u', $s) as $part) { echo bin2hex($part), ':'; }
+echo "\n";

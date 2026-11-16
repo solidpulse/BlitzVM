@@ -7,13 +7,11 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Map;
 
 /**
- * serialize and unserialize for scalars and arrays. String lengths are UTF-8 byte counts, as in
- * PHP, so data written by real PHP (WordPress options in the database) reads back correctly.
+ * serialize and unserialize for scalars and arrays. Each string char is one byte, so
+ * serialized lengths are ordinary String.length(), including binary and invalid UTF-8.
  */
 final class SerializeFunctions {
 

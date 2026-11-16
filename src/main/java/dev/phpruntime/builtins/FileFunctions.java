@@ -136,6 +136,28 @@ final class FileFunctions {
     private static void io() {
         Builtins.def("file_get_contents", 1, 5, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
+            if (PhpStrings.lower(path).startsWith("php://")) {
+                PhpStream stream = StreamFunctions.openStream(ctx, path, "rb", "file_get_contents");
+                if (stream == null) {
+                    return false;
+                }
+                try {
+                    StreamFunctions.consumeStreamId(ctx);
+                    long offset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
+                    if (offset != 0 && !stream.seek(offset < 0 ? stream.size() + offset : offset)) {
+                        return false;
+                    }
+                    return PhpStrings.of(a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE
+                            ? stream.readBytes((int) PhpOps.toLong(a[4])) : stream.readAll());
+                } catch (IOException e) {
+                    return false;
+                } finally {
+                    try {
+                        stream.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
             TruffleFile f = file(ctx, path);
             try {
                 if (f == null || !f.isRegularFile()) {
@@ -143,7 +165,8 @@ final class FileFunctions {
                 }
                 byte[] data = f.readAllBytes();
                 StreamFunctions.consumeStreamId(ctx);
-                int offset = a.length > 3 ? (int) Math.max(0, PhpOps.toLong(a[3])) : 0;
+                long requestedOffset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
+                int offset = (int) Math.max(0, Math.min(data.length, requestedOffset < 0 ? data.length + requestedOffset : requestedOffset));
                 int end = data.length;
                 if (a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE) {
                     end = (int) Math.min(data.length, offset + Math.max(0, PhpOps.toLong(a[4])));
@@ -171,6 +194,24 @@ final class FileFunctions {
             }
             boolean append = a.length > 2 && (PhpOps.toLong(a[2]) & 8) != 0;
             byte[] bytes = PhpStrings.bytes(data);
+            if (PhpStrings.lower(path).startsWith("php://")) {
+                PhpStream stream = StreamFunctions.openStream(ctx, path, append ? "ab" : "wb", "file_put_contents");
+                if (stream == null || !stream.canWrite) {
+                    return false;
+                }
+                try {
+                    StreamFunctions.consumeStreamId(ctx);
+                    stream.write(bytes);
+                    return (long) bytes.length;
+                } catch (IOException e) {
+                    return false;
+                } finally {
+                    try {
+                        stream.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
             TruffleFile f = file(ctx, path);
             try {
                 if (f == null) {

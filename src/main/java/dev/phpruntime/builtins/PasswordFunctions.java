@@ -4,8 +4,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
-
-import java.nio.charset.StandardCharsets;
+import dev.phpruntime.runtime.PhpStrings;
 
 /** password_hash and friends. Only bcrypt is available; Argon2 is not. */
 final class PasswordFunctions {
@@ -21,7 +20,7 @@ final class PasswordFunctions {
             if (!algo.equals("2y")) {
                 throw new PhpError("ValueError", "password_hash(): Argument #2 ($algo) must be a valid password hashing algorithm", null);
             }
-            byte[] password = dev.phpruntime.runtime.PhpStrings.bytes(PhpOps.toStr(a[0]));
+            byte[] password = PhpStrings.bytes(PhpOps.toStr(a[0]));
             for (byte b : password) {
                 if (b == 0) {
                     throw new PhpError("ValueError", "Bcrypt password must not contain null character", null);
@@ -31,7 +30,7 @@ final class PasswordFunctions {
             return Bcrypt.hash(password, cost);
         });
         Builtins.def("password_verify", 2, 2, (ctx, a) ->
-                Bcrypt.verify(dev.phpruntime.runtime.PhpStrings.bytes(PhpOps.toStr(a[0])), PhpOps.toStr(a[1])));
+                Bcrypt.verify(PhpStrings.bytes(PhpOps.toStr(a[0])), PhpOps.toStr(a[1])));
         Builtins.def("password_get_info", 1, 1, (ctx, a) -> {
             Bcrypt.Info info = Bcrypt.parse(PhpOps.toStr(a[0]));
             PhpArray out = new PhpArray();

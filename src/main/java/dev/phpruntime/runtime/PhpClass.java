@@ -633,7 +633,7 @@ public final class PhpClass {
                 int sep = k.indexOf('\0', 1);
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
-                if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
+                if (callerLower != null && PhpStrings.equalsIgnoreCase(declaring, callerLower)) {
                     out.add(Map.entry(prop, unwrapProp(rawVal)));
                 }
                 continue;
@@ -666,7 +666,7 @@ public final class PhpClass {
                 int sep = k.indexOf('\0', 1);
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
-                if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
+                if (callerLower != null && PhpStrings.equalsIgnoreCase(declaring, callerLower)) {
                     out.add(Map.entry(prop, ensurePropRef(obj, k, get, put)));
                 }
                 continue;

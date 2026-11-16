@@ -21,16 +21,27 @@ public final class Builtins {
 
         /** All builtin dispatch paths use this boundary, including callbacks and unpacked calls. */
         public Object call(PhpContext ctx, Object[] args) {
-            Object value = impl.call(ctx, args);
-            if (PhpStrings.CHECK) {
+            if (!PhpStrings.CHECK) {
+                return impl.call(ctx, args);
+            }
+            String previous = ctx == null ? null : ctx.byteStringOrigin();
+            if (ctx != null) {
+                ctx.setByteStringOrigin(name);
+            }
+            try {
+                Object value = impl.call(ctx, args);
                 PhpStrings.checkValue(value, name + "()");
                 for (int i = 0; i < args.length; i++) {
                     if (isRef(i)) {
                         PhpStrings.checkValue(args[i], name + "() reference argument");
                     }
                 }
+                return value;
+            } finally {
+                if (ctx != null) {
+                    ctx.setByteStringOrigin(previous);
+                }
             }
-            return value;
         }
     }
 

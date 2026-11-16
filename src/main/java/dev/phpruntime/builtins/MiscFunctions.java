@@ -17,7 +17,6 @@ import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
 import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,7 +38,8 @@ final class MiscFunctions {
         network();
         introspection();
         Builtins.def("get_html_translation_table", 0, 3, (ctx, a) -> translationTable(
-                a.length > 0 ? PhpOps.toLong(a[0]) : 0, a.length > 1 ? PhpOps.toLong(a[1]) : HtmlEntities.DEFAULT_FLAGS));
+                a.length > 0 ? PhpOps.toLong(a[0]) : 0, a.length > 1 ? PhpOps.toLong(a[1]) : HtmlEntities.DEFAULT_FLAGS,
+                a.length > 2 ? PhpOps.toStr(a[2]) : "UTF-8"));
         Builtins.def("session_status", 0, 0, (ctx, a) -> 1L); // PHP_SESSION_NONE: sessions are not supported
         Builtins.def("opcache_get_status", 0, 1, (ctx, a) -> false);
         Builtins.def("timezone_identifiers_list", 0, 2, (ctx, a) -> timezones());
@@ -365,7 +365,7 @@ final class MiscFunctions {
     // ------------------------------------------------------------------ misc helpers
 
     /** HTML_SPECIALCHARS (0) or HTML_ENTITIES (1) for the HTML 4.01 doctype. */
-    private static PhpArray translationTable(long table, long flags) {
+    private static PhpArray translationTable(long table, long flags, String encoding) {
         List<Map.Entry<Integer, String>> rows = new ArrayList<>();
         boolean doubleQuote = (flags & 2) != 0;
         boolean singleQuote = (flags & 1) != 0;
@@ -385,12 +385,16 @@ final class MiscFunctions {
             rows.add(Map.entry((int) '>', "&gt;"));
         }
         if (singleQuote) {
-            rows.add(Map.entry((int) '\'', "&#039;"));
+            rows.add(Map.entry((int) '\'', (flags & 48) == HtmlEntities.ENT_HTML401 ? "&#039;" : "&apos;"));
         }
         rows.sort(Map.Entry.comparingByKey());
         PhpArray out = new PhpArray();
+        java.nio.charset.Charset charset = HtmlEntities.charset(encoding);
         for (Map.Entry<Integer, String> r : rows) {
-            out.put(PhpStrings.codePoint(r.getKey()), r.getValue());
+            String text = new String(Character.toChars(r.getKey()));
+            if (PhpStrings.canEncode(text, charset)) {
+                out.put(PhpStrings.encode(text, charset, "?"), r.getValue());
+            }
         }
         return out;
     }

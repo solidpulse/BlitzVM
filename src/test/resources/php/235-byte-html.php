@@ -12,3 +12,5 @@ echo bin2hex(htmlspecialchars("\xE9<&", ENT_QUOTES, 'ISO-8859-1')), "\n";
 echo bin2hex(html_entity_decode('&eacute;&euro;', ENT_QUOTES, 'ISO-8859-1')), "\n";
 $table = get_html_translation_table(HTML_ENTITIES, ENT_QUOTES, 'UTF-8');
 echo $table['é'], ':', $table['€'], ':', $table["'"], "\n";
+$latin = get_html_translation_table(HTML_ENTITIES, ENT_QUOTES, 'ISO-8859-1');
+echo $latin["\xE9"], ':', $latin["\xA9"], "\n";

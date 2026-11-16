@@ -197,7 +197,7 @@ final class HtmlEntities {
                 continue;
             }
             String text = new String(Character.toChars(cp));
-            if (!charset.newEncoder().canEncode(text)) {
+            if (!PhpStrings.canEncode(text, charset)) {
                 sb.append(s, i, semi + 1);
             } else {
                 sb.append(PhpStrings.encode(text, charset, "?"));

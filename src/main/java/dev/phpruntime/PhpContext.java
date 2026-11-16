@@ -80,6 +80,7 @@ public final class PhpContext {
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
     private Node currentBuiltinCallSite;
+    private String byteStringOrigin;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
@@ -136,6 +137,14 @@ public final class PhpContext {
 
     public void setCurrentBuiltinCallSite(Node site) {
         currentBuiltinCallSite = site;
+    }
+
+    public String byteStringOrigin() {
+        return byteStringOrigin;
+    }
+
+    public void setByteStringOrigin(String origin) {
+        byteStringOrigin = origin;
     }
 
     // ------------------------------------------------------------ globals
@@ -677,7 +686,7 @@ public final class PhpContext {
     @TruffleBoundary
     public void echo(String s) {
         if (PhpStrings.CHECK) {
-            PhpStrings.check(s, "echo/output");
+            PhpStrings.check(s, byteStringOrigin == null ? "echo/output" : "echo/output in " + byteStringOrigin + "()");
         }
         if (!outputBuffers.isEmpty()) {
             outputBuffers.get(outputBuffers.size() - 1).text.append(s);

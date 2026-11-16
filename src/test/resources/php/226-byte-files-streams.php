@@ -2,6 +2,7 @@
 $s = "é😀\0\xFF\nnext\xE9\r\n";
 $f = tempnam(sys_get_temp_dir(), 'bytes');
 var_dump(file_put_contents($f, $s), file_get_contents($f) === $s);
+echo bin2hex(file_get_contents($f, false, null, -4)), "\n";
 echo bin2hex(file_get_contents($f, false, null, 1, 5)), "\n";
 $h = fopen($f, 'rb');
 echo bin2hex(fread($h, 2)), ':', bin2hex(fgets($h)), ':', bin2hex(fgets($h)), "\n";
@@ -25,6 +26,10 @@ $h = fopen('php://output', 'wb');
 fputs($h, $s);
 fclose($h);
 var_dump(ob_get_clean() === $s);
+ob_start();
+$n = file_put_contents('php://output', $s);
+$out = ob_get_clean();
+var_dump($n, $out === $s);
 var_dump(md5_file($f) === md5($s), md5_file($f, true) === md5($s, true));
 unlink($f);
 foreach (['gzcompress', 'gzdeflate', 'gzencode'] as $fn) {

@@ -206,7 +206,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
                     ? source().getPath()
                     : (source() != null ? source().getName() : "");
             int l = getSourceSection() != null ? getSourceSection().getStartLine() : 0;
-            return "{closure:" + f + ":" + l + "}";
+            return "{closure:" + dev.phpruntime.runtime.PhpStrings.fromJava(f) + ":" + l + "}";
         }
         return declaringClass == null ? name : declaringClass + "::" + name;
     }

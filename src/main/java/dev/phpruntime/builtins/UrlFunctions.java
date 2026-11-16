@@ -7,8 +7,6 @@ import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.PhpQuery;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /** URL encoding, parse_url and http_build_query. */
@@ -38,7 +36,7 @@ final class UrlFunctions {
         });
     }
 
-    /** urlencode (space as '+') or rawurlencode (RFC 3986, '~' kept), byte by byte over UTF-8. */
+    /** urlencode (space as '+') or rawurlencode (RFC 3986, '~' kept), byte by byte. */
     static String encode(String s, boolean raw) {
         StringBuilder sb = new StringBuilder(s.length());
         for (byte b : PhpStrings.bytes(s)) {

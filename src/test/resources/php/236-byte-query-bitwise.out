@@ -1,0 +1,7 @@
+text:c3a9
+raw:ff
+nul:00
+nested:f09f9880
+text=%C3%A9&raw=%FF&nul=%00&nested%5Bk%5D=%F0%9F%98%80
+c380:3c29:ffa978:3c56
+c3a9f09f9880

@@ -40,7 +40,21 @@ public final class PhpStrings {
     }
 
     public static String codePoint(int cp) {
-        return fromJava(new String(Character.toChars(cp)));
+        if (cp < 0 || cp > 0x10FFFF) {
+            throw new IllegalArgumentException("Code point out of range");
+        }
+        // PHP's Unicode source escape also permits surrogates, producing invalid UTF-8.
+        if (cp < 128) {
+            return String.valueOf((char) cp);
+        }
+        if (cp < 0x800) {
+            return of(new byte[]{(byte) (0xC0 | cp >> 6), (byte) (0x80 | cp & 63)});
+        }
+        if (cp < 0x10000) {
+            return of(new byte[]{(byte) (0xE0 | cp >> 12), (byte) (0x80 | cp >> 6 & 63), (byte) (0x80 | cp & 63)});
+        }
+        return of(new byte[]{(byte) (0xF0 | cp >> 18), (byte) (0x80 | cp >> 12 & 63),
+                (byte) (0x80 | cp >> 6 & 63), (byte) (0x80 | cp & 63)});
     }
 
     public static boolean isAscii(String s) {
@@ -71,6 +85,18 @@ public final class PhpStrings {
             }
         }
         return s;
+    }
+
+    public static boolean equalsIgnoreCase(String a, String b) {
+        if (a.length() != b.length()) {
+            return false;
+        }
+        for (int i = 0; i < a.length(); i++) {
+            if (lower(a.charAt(i)) != lower(b.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static String upper(String s) {
@@ -136,7 +162,7 @@ public final class PhpStrings {
         return true;
     }
 
-    /** mbstring counts each invalid byte as a character too. */
+    /** mbstring counts invalid bytes too, grouping truncated valid prefixes. */
     public static int utf8Length(String s) {
         int count = 0;
         for (int i = 0; i < s.length(); count++) {
@@ -269,6 +295,35 @@ public final class PhpStrings {
         }
     }
 
+    public static boolean canEncode(String text, Charset charset) {
+        return charset.newEncoder().canEncode(text);
+    }
+
+    /** Preserve original UTF-8 bytes for mb_substr; only malformed spans are substituted. */
+    public static String utf8Substr(String php, long start, Long length, String substitute) {
+        int count = utf8Length(php);
+        long from = start < 0 ? Math.max(0, count + start) : Math.min(count, start);
+        long end = length == null ? count : length < 0 ? Math.max(from, count + length) : Math.min(count, from + length);
+        if (from >= end) {
+            return "";
+        }
+        int first = 0;
+        int at = 0;
+        boolean invalid = false;
+        for (int cp = 0; cp < end; cp++) {
+            if (cp == from) {
+                first = at;
+            }
+            int width = utf8SequenceLength(php, at);
+            if (cp >= from && width == 0) {
+                invalid = true;
+            }
+            at += width == 0 ? invalidUtf8Width(php, at) : width;
+        }
+        String part = php.substring(first, at);
+        return invalid ? fromJava(decodeUtf8(part, substitute)) : part;
+    }
+
     /** One linear pass per Unicode regex call; subsequent lookups are O(1)/O(log n). */
     public static final class Utf8Offsets {
         private final int[] byteOffsets;
@@ -338,9 +393,10 @@ public final class PhpStrings {
                 checkValue(e.getValue(), origin, seen);
             }
         } else if (value instanceof PhpObject obj && seen.put(obj, true) == null) {
-            for (var e : PhpClass.visibleEntries(null, obj, null)) {
-                checkValue(e.getKey(), origin, seen);
-                checkValue(e.getValue(), origin, seen);
+            var get = com.oracle.truffle.api.object.DynamicObject.GetNode.getUncached();
+            for (Object key : com.oracle.truffle.api.object.DynamicObject.GetKeyArrayNode.getUncached().execute(obj)) {
+                checkValue(key, origin, seen);
+                checkValue(PhpClass.unwrapProp(get.execute(obj, key, PhpNull.INSTANCE)), origin, seen);
             }
         }
     }

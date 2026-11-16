@@ -24,13 +24,28 @@ public final class PhpArith {
             case MOD -> mod(a, b);
             case POW -> pow(a, b);
             case CONCAT -> PhpOps.toStr(a).concat(PhpOps.toStr(b));
-            case BIT_AND -> PhpOps.toLong(a) & PhpOps.toLong(b);
-            case BIT_OR -> PhpOps.toLong(a) | PhpOps.toLong(b);
-            case BIT_XOR -> PhpOps.toLong(a) ^ PhpOps.toLong(b);
+            case BIT_AND -> a instanceof String x && b instanceof String y ? bitwise(x, y, op) : PhpOps.toLong(a) & PhpOps.toLong(b);
+            case BIT_OR -> a instanceof String x && b instanceof String y ? bitwise(x, y, op) : PhpOps.toLong(a) | PhpOps.toLong(b);
+            case BIT_XOR -> a instanceof String x && b instanceof String y ? bitwise(x, y, op) : PhpOps.toLong(a) ^ PhpOps.toLong(b);
             case SHL -> PhpOps.toLong(a) << PhpOps.toLong(b);
             case SHR -> PhpOps.toLong(a) >> PhpOps.toLong(b);
             case COALESCE -> a == null || a == PhpNull.INSTANCE ? b : a;
         };
+    }
+
+    private static String bitwise(String a, String b, Op op) {
+        int common = Math.min(a.length(), b.length());
+        int length = op == Op.BIT_OR ? Math.max(a.length(), b.length()) : common;
+        StringBuilder out = new StringBuilder(length);
+        for (int i = 0; i < common; i++) {
+            int x = a.charAt(i);
+            int y = b.charAt(i);
+            out.append((char) (op == Op.BIT_AND ? x & y : op == Op.BIT_OR ? x | y : x ^ y));
+        }
+        if (op == Op.BIT_OR) {
+            out.append(a.length() > common ? a.substring(common) : b.substring(common));
+        }
+        return out.toString();
     }
 
     @TruffleBoundary

@@ -13,3 +13,4 @@ $n = printf('%5s', 'é');
 $out = ob_get_clean();
 echo $n, ':', bin2hex($out), "\n";
 var_dump('é', "\xFF\0");
+debug_zval_dump('é', '😀');

@@ -1,0 +1,12 @@
+5:Malformed UTF-8 characters, possibly incorrectly encoded
+5:Malformed UTF-8 characters, possibly incorrectly encoded
+225c75323032385c7532303239f09f988022
+22e280a8e280a9f09f988022
+NULL
+int(4)
+string(56) "Malformed UTF-8 characters, possibly incorrectly encoded"
+bool(false)
+int(4)
+ffff
+c3a9@0:null@-1
+f09f9880c3a9@2:f09f9880@2

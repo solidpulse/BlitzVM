@@ -11,7 +11,6 @@ import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 import java.nio.channels.SeekableByteChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
 import java.nio.file.StandardCopyOption;

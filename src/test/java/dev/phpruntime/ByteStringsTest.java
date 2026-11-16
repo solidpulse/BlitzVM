@@ -2,6 +2,7 @@ package dev.phpruntime;
 
 import dev.phpruntime.builtins.Builtins;
 import dev.phpruntime.host.PhpEngine;
+import dev.phpruntime.host.PhpDispatcher;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 import org.graalvm.polyglot.Context;
@@ -14,6 +15,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -69,6 +71,28 @@ class ByteStringsTest {
     }
 
     @Test
+    void fileSourcesDefaultToBytesForPolyglotEmbedders(@TempDir Path dir) throws Exception {
+        Path script = Files.writeString(dir.resolve("text.php"), "<?php echo 'é😀', \"\\xFF\";");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (Context ctx = Context.newBuilder("php").allowIO(IOAccess.ALL).out(out).build()) {
+            ctx.eval(Source.newBuilder("php", script.toFile()).build());
+        }
+        assertArrayEquals(PhpStrings.bytes(PhpStrings.fromJava("é😀") + "\u00ff"), out.toByteArray());
+    }
+
+    @Test
+    void byteCaseFoldingAndSubstringsDoNotTouchNonAscii() {
+        String lower = "already lower\u00c9\u00df";
+        assertSame(lower, PhpStrings.lower(lower));
+        assertEquals("abc\u00c9", PhpStrings.lower("ABC\u00c9"));
+        assertEquals("ABC\u00e9", PhpStrings.upper("abc\u00e9"));
+        assertFalse(PhpStrings.equalsIgnoreCase("\u00c9", "\u00e9"));
+        String s = PhpStrings.fromJava("é😀éß");
+        assertEquals(PhpStrings.fromJava("😀é"), PhpStrings.utf8Substr(s, 1, 3L, "?"));
+        assertEquals("?X", PhpStrings.utf8Substr("\u00e2\u0082X", 0, 2L, "?"));
+    }
+
+    @Test
     void nonAsciiPathsAndHeredocEscapes(@TempDir Path dir) throws Exception {
         Path nested = Files.createDirectory(dir.resolve("café😀"));
         Files.writeString(nested.resolve("part.php"), "<?php echo 'é😀', \"\\xFF\";", StandardCharsets.UTF_8);
@@ -85,5 +109,71 @@ class ByteStringsTest {
             assertArrayEquals(new byte[]{(byte) 0xc3, (byte) 0xa9, (byte) 0xf0, (byte) 0x9f, (byte) 0x98, (byte) 0x80, (byte) 0xff,
                     (byte) 0xf0, (byte) 0x9f, (byte) 0x98, (byte) 0x80, (byte) 0xff}, result.body());
         }
+    }
+
+    @Test
+    void dispatcherPreservesQueryPostCookiesAndRawBody(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("é.php"), """
+                <?php
+                echo bin2hex($_GET['text']), ':', bin2hex($_GET['raw']), "\\n";
+                echo bin2hex($_POST['text']), ':', bin2hex($_POST['raw']), "\\n";
+                echo bin2hex($_COOKIE['text']), ':', bin2hex($_COOKIE['raw']), "\\n";
+                echo bin2hex(file_get_contents('php://input')), "\\n";
+                echo bin2hex($_SERVER['HTTP_X_BYTES']), "\\n";
+                echo bin2hex(basename($_SERVER['SCRIPT_FILENAME']));
+                """);
+        byte[] body = PhpStrings.bytes("text=\u00c3\u00a9&raw=%FF");
+        try (PhpEngine engine = new PhpEngine(null)) {
+            PhpDispatcher dispatcher = new PhpDispatcher(dir, engine);
+            var request = new PhpDispatcher.Request("POST", "/%C3%A9.php", "text=%C3%A9&raw=%FF", "HTTP/1.1",
+                    Map.of("Content-Type", "application/x-www-form-urlencoded", "Cookie", "text=%C3%A9; raw=%FF",
+                            "X-Bytes", "\u00c3\u00a9\u00ff"), body, "127.0.0.1", "localhost", 80);
+            var response = dispatcher.handle(request);
+            String expected = "c3a9:ff\nc3a9:ff\nc3a9:ff\n746578743dc3a9267261773d254646\nc3a9ff\nc3a92e706870";
+            assertEquals(200, response.status());
+            assertArrayEquals(expected.getBytes(StandardCharsets.US_ASCII), response.body());
+        }
+    }
+
+    @Test
+    void dispatcherRawInputAndOutputAreBinary(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("raw.php"), "<?php echo file_get_contents('php://input');");
+        byte[] body = new byte[]{(byte) 0xff, 0, (byte) 0xc3, (byte) 0xa9, (byte) 0x80};
+        try (PhpEngine engine = new PhpEngine(null)) {
+            var dispatcher = new PhpDispatcher(dir, engine);
+            var request = new PhpDispatcher.Request("POST", "/raw.php", "", "HTTP/1.1", Map.of(), body,
+                    "127.0.0.1", "localhost", 80);
+            var response = dispatcher.handle(request);
+            assertEquals(200, response.status());
+            assertArrayEquals(body, response.body());
+        }
+    }
+
+    @Test
+    void pathsAndDiagnosticsHaveExplicitBoundaries(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("é😀"), "payload");
+        String code = """
+                <?php
+                $p = __DIR__ . '/é😀';
+                echo bin2hex(basename(realpath($p))), "\\n";
+                $found = glob(__DIR__ . '/*');
+                foreach ($found as $f) { if (basename($f) === 'é😀') { echo bin2hex(basename($f)), "\\n"; } }
+                $dir = opendir(__DIR__);
+                while (false !== ($f = readdir($dir))) { if ($f === 'é😀') { echo bin2hex($f), "\\n"; } }
+                closedir($dir);
+                error_log("é\\xFF");
+                echo 'é';
+                """;
+        Path script = Files.writeString(dir.resolve("paths.php"), code);
+        try (PhpEngine engine = new PhpEngine(null)) {
+            var result = engine.execute(script, new PhpRequest());
+            assertEquals(200, result.status(), result.bodyText() + result.errors());
+            assertArrayEquals(PhpStrings.bytes("c3a9f09f9880\nc3a9f09f9880\nc3a9f09f9880\n" + PhpStrings.fromJava("é")), result.body());
+        }
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        try (Context ctx = Context.newBuilder("php").allowIO(IOAccess.ALL).out(new ByteArrayOutputStream()).err(err).build()) {
+            ctx.eval(Source.newBuilder("php", "<?php error_log(\"é\\xFF\");", "diagnostic").build());
+        }
+        assertArrayEquals(PhpStrings.bytes(PhpStrings.fromJava("é") + "\u00ff\n"), err.toByteArray());
     }
 }

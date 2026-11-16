@@ -9,8 +9,6 @@ import dev.phpruntime.runtime.PhpStrings;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -202,7 +200,7 @@ final class StringFunctions {
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
         Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(PhpStrings.bytes(s(a, 0))));
         Builtins.def("base64_decode", 1, 2, (ctx, a) -> {
-            // Output is often binary: keep every byte (see HashFunctions.fromBytes). Non-strict
+            // Output is often binary: keep every byte. Non-strict
             // mode skips characters outside the alphabet, as PHP does.
             boolean strict = a.length > 1 && PhpOps.toBool(a[1]);
             try {

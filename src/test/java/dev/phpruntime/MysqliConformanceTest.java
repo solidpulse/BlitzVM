@@ -57,9 +57,12 @@ class MysqliConformanceTest {
             // Random BLOBs are checked inside the script, not printed. Generate the reference
             // against the same live server rather than committing an unverified expected file.
             Process php = new ProcessBuilder("/usr/bin/php", script.toString()).start();
+            if (!php.waitFor(30, TimeUnit.SECONDS)) {
+                php.destroyForcibly();
+                throw new AssertionError("reference PHP timed out");
+            }
             expected = php.getInputStream().readAllBytes();
             String errors = new String(php.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            assertTrue(php.waitFor(30, TimeUnit.SECONDS), "reference PHP timed out");
             assertEquals(0, php.exitValue(), errors);
         } else {
             expected = Files.readAllBytes(Path.of(script.toString().replaceAll("\\.php$", ".out")));

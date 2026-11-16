@@ -8,7 +8,6 @@ import dev.phpruntime.runtime.PhpStrings;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 
 /** pack/unpack and MIME quoted-printable, with no text decoding. */
 final class BinaryFunctions {

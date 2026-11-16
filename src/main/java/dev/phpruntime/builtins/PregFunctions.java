@@ -18,12 +18,9 @@ import java.util.regex.Matcher;
  * preg_match, preg_match_all, preg_replace, preg_split, preg_quote, preg_grep.
  *
  * <p>Patterns go through {@link PcreTranslator} to java.util.regex. Offsets reported to
- * PHP (PREG_OFFSET_CAPTURE, preg_split's offsets) and the offset argument are UTF-8 byte
- * offsets, as in PHP; internally strings are Java strings. Without the {@code u}
- * modifier PHP matches bytes while this matches characters, so {@code .} consumes a whole
- * multi-byte character here.
- *
- * <p>TODO(callables): preg_replace_callback and preg_replace_callback_array need closures.
+ * PHP (PREG_OFFSET_CAPTURE, preg_split's offsets) and the offset argument are always
+ * byte offsets. Only {@code /u} decodes the pattern/subject; captured text is encoded
+ * back to PHP bytes. Each Unicode call builds its byte-offset map in one linear pass.
  */
 final class PregFunctions {
 
@@ -126,6 +123,17 @@ final class PregFunctions {
         return new Offsets(s, re.utf);
     }
 
+    /** Java advances empty matches by UTF-16 units; PCRE /u advances by code points. */
+    private static boolean find(Matcher matcher, Offsets off) {
+        while (matcher.find()) {
+            int start = matcher.start();
+            if (!off.utf || start == off.text.length() || !Character.isLowSurrogate(off.text.charAt(start))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------------ preg_match(_all)
 
     private static Object match(PhpContext ctx, Object[] a, boolean all) {
@@ -167,7 +175,7 @@ final class PregFunctions {
         boolean offsetCapture = (flags & OFFSET_CAPTURE) != 0;
         boolean unmatchedNull = (flags & UNMATCHED_AS_NULL) != 0;
         if (!all) {
-            boolean found = m.find();
+            boolean found = find(m, off);
             if (a.length > 2) {
                 a[2] = found ? matchArray(re, m, subject, off, offsetCapture, unmatchedNull) : new PhpArray();
             }
@@ -184,7 +192,7 @@ final class PregFunctions {
             columns[g] = new PhpArray();
         }
         long count = 0;
-        while (m.find()) {
+        while (find(m, off)) {
             count++;
             if (setOrder) {
                 sets.add(matchArray(re, m, subject, off, offsetCapture, unmatchedNull));
@@ -302,7 +310,7 @@ final class PregFunctions {
         StringBuilder sb = new StringBuilder();
         int last = 0;
         long done = 0;
-        while ((limit < 0 || done < limit) && m.find()) {
+        while ((limit < 0 || done < limit) && find(m, off)) {
             sb.append(off.php(subject.substring(last, m.start())));
             expand(sb, replacement, re, m, subject, off);
             last = m.end();
@@ -417,7 +425,7 @@ final class PregFunctions {
         StringBuilder sb = new StringBuilder();
         int last = 0;
         long done = 0;
-        while ((limit < 0 || done < limit) && m.find()) {
+        while ((limit < 0 || done < limit) && find(m, off)) {
             sb.append(off.php(subject.substring(last, m.start())));
             PhpArray matches = matchArray(re, m, subject, off, offsetCapture, unmatchedNull);
             sb.append(PhpOps.toStr(cb.call(ctx, null, null, matches)));
@@ -499,7 +507,7 @@ final class PregFunctions {
         int last = 0;
         if (limit != 1) {
             Matcher m = re.pattern.matcher(subject);
-            while ((limit == -1 || limit > 1) && m.find()) {
+            while ((limit == -1 || limit > 1) && find(m, off)) {
                 if (!noEmpty || m.start() != last) {
                     out.append(piece(subject, last, m.start(), off, offsets));
                     if (limit != -1) {

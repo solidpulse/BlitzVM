@@ -174,7 +174,13 @@ final class JsonFunctions {
                     sb.append('\n').append("    ".repeat(depth + 1));
                 }
                 if (object) {
-                    string(PhpOps.toStr(e.getKey()));
+                    String key = PhpOps.toStr(e.getKey());
+                    if (!PhpStrings.isUtf8(key) && !has(INVALID_UTF8_IGNORE) && !has(INVALID_UTF8_SUBSTITUTE)) {
+                        error = ERROR_UTF8;
+                        sb.append("\"\"");
+                    } else {
+                        string(key);
+                    }
                     sb.append(pretty ? ": " : ":");
                 }
                 value(e.getValue(), depth + 1);

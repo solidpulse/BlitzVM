@@ -6,13 +6,7 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CharsetEncoder;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -180,7 +174,9 @@ final class MbConvertFunctions {
         if (e.charset() == null) {
             return PhpStrings.toJava(HtmlEntities.decodeAll(s, HtmlEntities.DEFAULT_FLAGS));
         }
-        return PhpStrings.decode(s, e.charset(), substitute(ctx));
+        // mbstring's generic UTF-16 input honors a BOM but its output is BE without one.
+        Charset charset = e.name().equals("UTF-16") ? StandardCharsets.UTF_16 : e.charset();
+        return PhpStrings.decode(s, charset, substitute(ctx));
     }
 
     private static String encode(dev.phpruntime.PhpContext ctx, String text, Encoding e) {
@@ -256,7 +252,7 @@ final class MbConvertFunctions {
         Builtins.def("mb_strlen", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_strlen");
             String s = PhpOps.toStr(a[0]);
-            if (e.charset().equals(StandardCharsets.UTF_8)) {
+            if (StandardCharsets.UTF_8.equals(e.charset())) {
                 return (long) PhpStrings.utf8Length(s);
             }
             String text = decode(ctx, s, e);
@@ -264,6 +260,10 @@ final class MbConvertFunctions {
         });
         Builtins.def("mb_substr", 2, 4, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 3, "mb_substr");
+            if (StandardCharsets.UTF_8.equals(e.charset())) {
+                return PhpStrings.utf8Substr(PhpOps.toStr(a[0]), PhpOps.toLong(a[1]),
+                        a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : null, substitute(ctx));
+            }
             String text = decode(ctx, PhpOps.toStr(a[0]), e);
             return encode(ctx, cpSubstr(text, PhpOps.toLong(a[1]), a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : null), e);
         });
@@ -281,7 +281,7 @@ final class MbConvertFunctions {
             if (s.isEmpty()) {
                 return false;
             }
-            if (e.charset().equals(StandardCharsets.UTF_8) && PhpStrings.utf8SequenceLength(s, 0) == 0) {
+            if (StandardCharsets.UTF_8.equals(e.charset()) && PhpStrings.utf8SequenceLength(s, 0) == 0) {
                 return false;
             }
             return (long) decode(ctx, s, e).codePointAt(0);
@@ -293,7 +293,7 @@ final class MbConvertFunctions {
                 return false;
             }
             String text = new String(Character.toChars((int) cp));
-            if (e.charset() != null && !e.charset().newEncoder().canEncode(text)) {
+            if (e.charset() != null && !PhpStrings.canEncode(text, e.charset())) {
                 return false;
             }
             return encode(ctx, text, e);
@@ -426,11 +426,11 @@ final class MbConvertFunctions {
                 return false;
             }
             String text = from.charset() == null ? decode(ctx, data, from) : PhpStrings.decode(data, from.charset(), ignore ? "" : "?");
-            if (translit && to.charset() != null && !to.charset().newEncoder().canEncode(text)) {
+            if (translit && to.charset() != null && !PhpStrings.canEncode(text, to.charset())) {
                 text = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKD).replaceAll("\\p{M}+", "")
                         .replace("ß", "ss").replace("Æ", "AE").replace("æ", "ae").replace("Ø", "O").replace("ø", "o");
             }
-            if (to.charset() != null && !to.charset().newEncoder().canEncode(text) && !ignore && !translit) {
+            if (to.charset() != null && !PhpStrings.canEncode(text, to.charset()) && !ignore && !translit) {
                 return false;
             }
             return to.charset() == null ? encode(ctx, text, to) : PhpStrings.encode(text, to.charset(), ignore ? "" : "?");

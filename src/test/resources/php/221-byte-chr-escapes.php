@@ -18,3 +18,5 @@ $n = <<<'END'
 é\xFF\u{1F600}
 END;
 echo bin2hex($n), "\n";
+echo bin2hex("\u{D800}"), ':';
+var_dump(mb_check_encoding("\u{D800}", 'UTF-8'));

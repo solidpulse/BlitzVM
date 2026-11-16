@@ -14,6 +14,7 @@ public final class PhpRequest {
 
     private static final ThreadLocal<PhpRequest> CURRENT = new ThreadLocal<>();
 
+    /** HTTP protocol data below is PHP bytes; scriptFilename alone is a Java path. */
     public String method = "GET";
     public String uri = "/";
     public String queryString = "";

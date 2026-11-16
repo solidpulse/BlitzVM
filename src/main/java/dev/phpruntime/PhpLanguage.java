@@ -277,13 +277,16 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     protected CallTarget parse(ParsingRequest request) {
         Source source = request.getSource();
         // Polyglot character sources are Java text; files are explicitly read as bytes.
-        // Marked in-memory sources (eval) are already PHP strings.
-        if (source.getPath() == null && !source.getName().endsWith(" [bytes]")) {
+        if (source.getPath() == null) {
             source = Source.newBuilder(ID, PhpStrings.fromJava(source.getCharacters().toString()), source.getName())
                     .uri(source.getURI()).cached(source.isCached()).build();
         }
-        PhpMainRootNode root = new Parser(this, source).parseMain();
-        return root.getCallTarget();
+        return parseBytes(source);
+    }
+
+    /** Internal sources (eval) already contain PHP bytes, unlike polyglot character sources. */
+    public CallTarget parseBytes(Source source) {
+        return new Parser(this, source).parseMain().getCallTarget();
     }
 
     @Override

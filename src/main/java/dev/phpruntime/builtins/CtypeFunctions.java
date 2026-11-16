@@ -1,11 +1,5 @@
 package dev.phpruntime.builtins;
 
-import dev.phpruntime.runtime.PhpArray;
-import dev.phpruntime.runtime.PhpError;
-import dev.phpruntime.runtime.PhpNull;
-import dev.phpruntime.runtime.PhpOps;
-
-import java.util.Map;
 import java.util.function.IntPredicate;
 
 /** ctype_* in the ASCII C locale. */

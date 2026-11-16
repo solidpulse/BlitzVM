@@ -5,7 +5,6 @@ import dev.phpruntime.runtime.PhpQuery;
 import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -131,7 +130,7 @@ public final class PhpDispatcher {
         s.put("REMOTE_ADDR", r.remoteAddr);
         s.put("REQUEST_TIME", Long.toString(System.currentTimeMillis() / 1000));
         for (Map.Entry<String, String> h : req.headers().entrySet()) {
-            s.put("HTTP_" + h.getKey().toUpperCase().replace('-', '_'), h.getValue());
+            s.put("HTTP_" + PhpStrings.upper(h.getKey()).replace('-', '_'), h.getValue());
             r.headers.put(h.getKey(), h.getValue());
         }
         return r;

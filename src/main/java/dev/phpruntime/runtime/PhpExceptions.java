@@ -511,7 +511,11 @@ public final class PhpExceptions {
 
         @TruffleBoundary
         private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs) {
-            return impl.invoke(ctx, self, callArgs);
+            Object value = impl.invoke(ctx, self, callArgs);
+            if (PhpStrings.CHECK) {
+                PhpStrings.checkValue(value, self.phpClass().name() + "::" + name + "()");
+            }
+            return value;
         }
 
         @Override

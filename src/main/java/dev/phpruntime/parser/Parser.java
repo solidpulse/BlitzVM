@@ -2081,6 +2081,12 @@ public final class Parser {
                 expectOp(")");
                 return new IssetNode(targets.toArray(new PhpNode[0])).at(line);
             }
+            case "eval" -> {
+                expectOp("(");
+                PhpNode code = expression();
+                expectOp(")");
+                return new EvalNode(code).at(line);
+            }
             case "match" -> {
                 if (peek().isOp("(")) {
                     return parseMatch(line);
