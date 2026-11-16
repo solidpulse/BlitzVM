@@ -53,6 +53,10 @@ public final class CastNode extends PhpNode {
         }
         PhpArray a = new PhpArray();
         if (v instanceof PhpObject obj) {
+            if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state
+                    && (state.flags & dev.phpruntime.runtime.SplArrayState.STD_PROP_LIST) == 0) {
+                return state.arrayCopy();
+            }
             PhpClass cls = obj.phpClass();
             Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
@@ -71,7 +75,7 @@ public final class CastNode extends PhpNode {
                 }
                 a.put(arrKey, PhpOps.copyOnAssign(PhpClass.unwrapProp(rawVal)));
             }
-            if (obj.nativeState() != null) {
+            if (obj.nativeState() != null && !(obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState)) {
                 Map<String, Object> extra = obj.nativeState().debugProperties(obj);
                 if (extra != null) {
                     for (Map.Entry<String, Object> e : extra.entrySet()) {

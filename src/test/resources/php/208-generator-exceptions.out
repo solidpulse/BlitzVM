@@ -1,0 +1,4 @@
+ready|caught:inside|recovered|finally|cleanup|cleaned|finished
+ready|caught:injected|recovered|finally|cleanup|cleaned|finished
+fail-finally|boom|bool(false)
+end|[1,2]:7

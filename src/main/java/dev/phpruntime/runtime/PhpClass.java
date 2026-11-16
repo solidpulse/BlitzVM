@@ -142,6 +142,7 @@ public final class PhpClass {
     private MethodEntry cloneMethod;
 
     private final boolean isThrowable;
+    private final int splInterfaces;
 
     public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent, List<PhpClass> interfaces) {
         this(language, template, parent, interfaces, Map.of());
@@ -152,6 +153,14 @@ public final class PhpClass {
         this.template = template;
         this.parent = parent;
         this.interfaces = List.copyOf(interfaces);
+        int interfaceBits = template.isInterface() ? SplInterfaces.declared(template.lowerName()) : 0;
+        if (parent != null) {
+            interfaceBits |= parent.splInterfaces;
+        }
+        for (PhpClass iface : interfaces) {
+            interfaceBits |= iface.splInterfaces;
+        }
+        this.splInterfaces = interfaceBits;
         this.isThrowable = (parent != null && parent.isThrowable)
                 || "exception".equals(template.lowerName())
                 || "error".equals(template.lowerName());
@@ -422,6 +431,10 @@ public final class PhpClass {
 
     public boolean isThrowable() {
         return isThrowable;
+    }
+
+    public boolean hasSplInterface(int bit) {
+        return (splInterfaces & bit) != 0;
     }
 
     public MethodEntry methodById(int id) {

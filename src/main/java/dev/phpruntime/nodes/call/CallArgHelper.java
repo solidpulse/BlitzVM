@@ -247,6 +247,30 @@ public final class CallArgHelper {
                                       List<Object> positional, List<LValueNode> posRefs,
                                       List<Object[]> posKeys, List<PhpNode> posNodes,
                                       Map<String, Object> named, boolean alreadySeenNamed, Node site) {
+        if (unpacked instanceof dev.phpruntime.runtime.PhpObject obj
+                && dev.phpruntime.runtime.SplInterfaces.has(obj, dev.phpruntime.runtime.SplInterfaces.TRAVERSABLE)) {
+            boolean seenNamed = alreadySeenNamed || !named.isEmpty();
+            for (var entry : dev.phpruntime.runtime.SplIterators.entries(obj, site)) {
+                Object key = entry.getKey();
+                Object value = PhpOps.copyOnAssign(entry.getValue());
+                if (key instanceof String s) {
+                    seenNamed = true;
+                    checkDuplicateNamed(named, s, site);
+                    named.put(s, value);
+                } else if (key instanceof Long) {
+                    if (seenNamed) {
+                        throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
+                    }
+                    positional.add(value);
+                    posRefs.add(null);
+                    posKeys.add(null);
+                    posNodes.add(null);
+                } else {
+                    throw new PhpError(PhpError.TYPE_ERROR, "Keys must be of type int|string during argument unpacking", site);
+                }
+            }
+            return;
+        }
         if (!(unpacked instanceof PhpArray src)) {
             String given = unpacked == null || unpacked == PhpNull.INSTANCE ? "null" : PhpOps.typeName(unpacked);
             throw new PhpError(PhpError.TYPE_ERROR, "Only arrays and Traversables can be unpacked, " + given + " given", site);

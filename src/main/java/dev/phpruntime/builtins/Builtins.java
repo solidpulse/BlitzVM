@@ -45,6 +45,7 @@ public final class Builtins {
         HttpFunctions.register();
         MbConvertFunctions.register();
         MiscFunctions.register();
+        SplFunctions.register();
     }
 
     private Builtins() {

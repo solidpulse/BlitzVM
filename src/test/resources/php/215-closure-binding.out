@@ -1,0 +1,9 @@
+A:scope-a:scope-a:first:1
+B:scope-b:scope-b:second:2
+B:scope-b:scope-b:third:3
+A:scope-a:scope-a:original:4
+B:scope-b:scope-b:call:5
+A:scope-a:scope-a:invoke:6
+scope-b
+1|2:2:3:3
+4:5

@@ -1,0 +1,8 @@
+Cannot bind an instance to a static closure, this will be an error in PHP 9
+NULL
+Cannot unbind $this of closure using $this, this will be an error in PHP 9
+NULL
+Cannot bind closure to scope of internal class stdClass, this will be an error in PHP 9
+NULL
+Class "MissingScope" not found
+NULL

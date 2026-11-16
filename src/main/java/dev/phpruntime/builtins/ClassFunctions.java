@@ -184,11 +184,16 @@ final class ClassFunctions {
         Truffle.getRuntime().iterateFrames(frameInstance -> {
             if (frameInstance.getCallTarget() instanceof RootCallTarget rct
                     && rct.getRootNode() instanceof PhpRootNode root) {
-                if (root instanceof PhpFunctionRootNode fn) {
+                if (root instanceof PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                    PhpFunctionRootNode fn = root instanceof PhpFunctionRootNode f ? f
+                            : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
+                    com.oracle.truffle.api.frame.Frame runtimeFrame =
+                            frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
+                    if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                        runtimeFrame = ((dev.phpruntime.runtime.PhpGenerator) runtimeFrame.getArguments()[0]).frame;
+                    }
                     if (fn.traitSelfSlot() >= 0) {
-                        com.oracle.truffle.api.frame.Frame f =
-                                frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
-                        Object ts = f != null ? f.getObject(fn.traitSelfSlot()) : null;
+                        Object ts = runtimeFrame != null ? runtimeFrame.getObject(fn.traitSelfSlot()) : null;
                         found[0] = ts instanceof PhpClass c ? c.name() : fn.declaringClass();
                     } else {
                         found[0] = fn.declaringClass();

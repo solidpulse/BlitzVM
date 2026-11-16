@@ -71,7 +71,7 @@ final class JsonFunctions {
         if (depth <= 0) {
             throw new PhpError("ValueError", "json_encode(): Argument #3 ($depth) must be greater than 0", null);
         }
-        Encoder e = new Encoder(flags, depth);
+        Encoder e = new Encoder(ctx, flags, depth);
         e.value(a[0], 0);
         if ((flags & THROW_ON_ERROR) != 0) {
             if (e.error != ERROR_NONE) {
@@ -94,9 +94,13 @@ final class JsonFunctions {
         final StringBuilder sb = new StringBuilder();
         final long flags;
         final long maxDepth;
+        final PhpContext ctx;
+        final java.util.IdentityHashMap<Object, Boolean> active = new java.util.IdentityHashMap<>();
+        final java.util.IdentityHashMap<Object, Boolean> serializing = new java.util.IdentityHashMap<>();
         int error = ERROR_NONE;
 
-        Encoder(long flags, long maxDepth) {
+        Encoder(PhpContext ctx, long flags, long maxDepth) {
+            this.ctx = ctx;
             this.flags = flags;
             this.maxDepth = maxDepth;
         }
@@ -126,9 +130,40 @@ final class JsonFunctions {
                 }
                 string(s);
             } else if (v instanceof PhpArray arr) {
+                if (active.put(arr, true) != null) {
+                    error = 6;
+                    sb.append("null");
+                    return;
+                }
                 container(arr.entries(), has(FORCE_OBJECT) || !arr.isList(), depth);
+                active.remove(arr);
             } else if (v instanceof dev.phpruntime.runtime.PhpObject obj) {
-                // Public properties only; TODO: JsonSerializable once built-in interfaces exist.
+                if (active.containsKey(obj)) {
+                    error = 6;
+                    sb.append("null");
+                    return;
+                }
+                if (obj.phpClass().hasSplInterface(dev.phpruntime.runtime.SplInterfaces.JSON_SERIALIZABLE)
+                        && !serializing.containsKey(obj)) {
+                    serializing.put(obj, true);
+                    Object result = dev.phpruntime.runtime.SplIterators.call(obj, "jsonSerialize");
+                    if (result == obj) {
+                        value(obj, depth);
+                    } else {
+                        active.put(obj, true);
+                        value(result, depth);
+                        active.remove(obj);
+                    }
+                    serializing.remove(obj);
+                    return;
+                }
+                active.put(obj, true);
+                if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state) {
+                    container((state.flags & dev.phpruntime.runtime.SplArrayState.STD_PROP_LIST) == 0
+                            ? state.arrayCopy().entries() : dev.phpruntime.runtime.PhpClass.visibleEntries(ctx, obj, null), true, depth);
+                    active.remove(obj);
+                    return;
+                }
                 List<Map.Entry<Object, Object>> entries = new ArrayList<>(
                         dev.phpruntime.runtime.PhpClass.visibleEntries(null, obj, null));
                 if (obj.nativeState() != null) {
@@ -140,6 +175,7 @@ final class JsonFunctions {
                     }
                 }
                 container(entries, true, depth);
+                active.remove(obj);
             } else {
                 error = 8;
                 sb.append("null");

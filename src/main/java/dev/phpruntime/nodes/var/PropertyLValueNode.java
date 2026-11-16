@@ -14,6 +14,7 @@ import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
+import dev.phpruntime.runtime.SplArrayState;
 
 /** {@code $obj->prop} or {@code $obj->$name} lvalue. */
 public final class PropertyLValueNode extends LValueNode {
@@ -24,10 +25,13 @@ public final class PropertyLValueNode extends LValueNode {
     private final String callingClassLower;
     /** Frame slot holding the using class inside a trait method (the caller for visibility), else -1. */
     private final int traitSelfSlot;
+    private final com.oracle.truffle.api.profiles.CountingConditionProfile arrayPropertyProfile =
+            com.oracle.truffle.api.profiles.CountingConditionProfile.create();
 
     @Child private DynamicObject.GetNode getNode = DynamicObject.GetNode.create();
     @Child private DynamicObject.PutNode putNode = DynamicObject.PutNode.create();
     @Child private DynamicObject.RemoveKeyNode removeNode = DynamicObject.RemoveKeyNode.create();
+    @Child private ArrayAccessNode arrayAccess;
 
     /**
      * How {@link #staticName} resolves for one class hierarchy. Published as a single immutable
@@ -75,6 +79,9 @@ public final class PropertyLValueNode extends LValueNode {
                     "Attempt to read property " + '"' + name + '"' + " on " + PhpOps.typeName(target), line());
             return PhpNull.INSTANCE;
         }
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().get(obj, name);
+        }
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
@@ -97,6 +104,9 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().get(obj, name);
+        }
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
@@ -119,6 +129,9 @@ public final class PropertyLValueNode extends LValueNode {
             return false;
         }
         String name = (String) keys[1];
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().isSet(obj, name);
+        }
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
@@ -141,6 +154,9 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().readIfSet(obj, name);
+        }
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
@@ -171,6 +187,10 @@ public final class PropertyLValueNode extends LValueNode {
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+        }
+        if (arrayProperties(obj, name)) {
+            arrayAccess().set(obj, name, value);
+            return;
         }
         Resolution fast = fastResolution(frame, obj, name);
         if (fast != null) {
@@ -268,6 +288,9 @@ public final class PropertyLValueNode extends LValueNode {
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().cell(obj, name);
+        }
         checkNotReadonlyForIndirectWrite(frame, keys);
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey == null) {
@@ -296,6 +319,10 @@ public final class PropertyLValueNode extends LValueNode {
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
+        if (arrayProperties(obj, name)) {
+            arrayAccess().bindCell(obj, name, cell);
+            return;
+        }
         checkNotReadonlyForIndirectWrite(frame, keys);
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey == null) {
@@ -310,6 +337,10 @@ public final class PropertyLValueNode extends LValueNode {
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+        }
+        if (arrayProperties(obj, name)) {
+            arrayAccess().unset(obj, name);
+            return;
         }
         PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame));
         if (res.accessible() && res.isReadonly()) {
@@ -476,6 +507,30 @@ public final class PropertyLValueNode extends LValueNode {
             return c != null ? c.template().lowerName() : null;
         }
         return callingClassLower;
+    }
+
+    private boolean arrayProperties(PhpObject obj, String name) {
+        if (arrayPropertyProfile.profile(obj.nativeState() instanceof SplArrayState state
+                && (state.flags & SplArrayState.ARRAY_AS_PROPS) != 0)) {
+            return !obj.phpClass().hasDeclaredProperty(name);
+        }
+        return false;
+    }
+
+    private ArrayAccessNode arrayAccess() {
+        ArrayAccessNode access = arrayAccess;
+        if (access != null) { return access; }
+        CompilerDirectives.transferToInterpreterAndInvalidate();
+        java.util.concurrent.locks.Lock lock = getLock();
+        lock.lock();
+        try {
+            if (arrayAccess == null) {
+                arrayAccess = insert(new ArrayAccessNode(dev.phpruntime.PhpLanguage.get(this)));
+            }
+            return arrayAccess;
+        } finally {
+            lock.unlock();
+        }
     }
 
     private long callerHierarchyId(VirtualFrame frame) {

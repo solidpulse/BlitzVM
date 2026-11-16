@@ -23,8 +23,7 @@ public final class IssetNode extends PhpNode {
                     return false;
                 }
             } else if (t instanceof IndexReadNode ir) {
-                Object v = ir.readIfSet(frame);
-                if (v == null || v == PhpNull.INSTANCE) {
+                if (!ir.isSet(frame)) {
                     return false;
                 }
             }

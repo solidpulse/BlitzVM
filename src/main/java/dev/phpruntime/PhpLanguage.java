@@ -9,6 +9,7 @@ import dev.phpruntime.nodes.call.ClosureInvokeRootNode;
 import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpExceptions;
+import dev.phpruntime.runtime.SplClasses;
 import dev.phpruntime.runtime.Visibility;
 
 import java.io.IOException;
@@ -74,6 +75,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
                 if (m == null) {
                     Map<String, PhpClassTemplate> all = new java.util.LinkedHashMap<>(PhpExceptions.buildTemplates(this));
                     dev.phpruntime.builtins.DateTimeClasses.buildTemplates(this, all);
+                    all.putAll(SplClasses.buildTemplates(this));
                     m = Map.copyOf(all);
                     int max = -1;
                     for (String lower : m.keySet()) {
@@ -140,9 +142,17 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
                     PhpClassTemplate.MethodDecl invokeDecl = new PhpClassTemplate.MethodDecl(
                             "__invoke", "__invoke", methodId("__invoke"), Visibility.PUBLIC,
                             false, false, false, new ClosureInvokeRootNode(this).getCallTarget());
+                    Map<String, PhpClassTemplate.MethodDecl> methods = new java.util.LinkedHashMap<>();
+                    methods.put("__invoke", invokeDecl);
+                    for (String name : List.of("bind", "bindTo", "call", "fromCallable")) {
+                        String lower = name.toLowerCase();
+                        methods.put(lower, new PhpClassTemplate.MethodDecl(name, lower, methodId(name), Visibility.PUBLIC,
+                                name.equals("bind") || name.equals("fromCallable"), false, false,
+                                new dev.phpruntime.nodes.call.ClosureMethodRootNode(this, name).getCallTarget()));
+                    }
                     tpl = new PhpClassTemplate(
                             1L, "Closure", false, false, true, false, null,
-                            List.of(), List.of(), List.of(), Map.of("__invoke", invokeDecl));
+                            List.of(), List.of(), List.of(), methods);
                     closureTemplate = tpl;
                 }
             }

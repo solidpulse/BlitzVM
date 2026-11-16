@@ -14,6 +14,9 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpError;
+import dev.phpruntime.runtime.SplInterfaces;
+import dev.phpruntime.PhpLanguage;
 
 import java.util.List;
 import java.util.Map;
@@ -27,19 +30,30 @@ public final class ForeachNode extends PhpNode {
     @Child private LValueNode valueTarget;
     private final boolean byRef;
     @Child private PhpNode body;
+    @Child private IteratorNode iterator;
+    private final com.oracle.truffle.api.profiles.CountingConditionProfile iteratorProfile =
+            com.oracle.truffle.api.profiles.CountingConditionProfile.create();
+    private final com.oracle.truffle.api.profiles.CountingConditionProfile arrayProfile =
+            com.oracle.truffle.api.profiles.CountingConditionProfile.create();
 
     public ForeachNode(PhpNode subject, LValueNode keyTarget, LValueNode valueTarget, PhpNode body) {
         this(subject, null, keyTarget, valueTarget, false, body);
     }
 
     public ForeachNode(PhpNode subject, LValueNode subjectLValue, LValueNode keyTarget, LValueNode valueTarget,
-                       boolean byRef, PhpNode body) {
+                        boolean byRef, PhpNode body) {
         this.subject = subject;
         this.subjectLValue = subjectLValue;
         this.keyTarget = keyTarget;
         this.valueTarget = valueTarget;
         this.byRef = byRef;
         this.body = body;
+    }
+
+    public ForeachNode(PhpLanguage language, PhpNode subject, LValueNode subjectLValue, LValueNode keyTarget,
+                       LValueNode valueTarget, boolean byRef, PhpNode body) {
+        this(subject, subjectLValue, keyTarget, valueTarget, byRef, body);
+        this.iterator = new IteratorNode(language);
     }
 
     @Override
@@ -49,11 +63,18 @@ public final class ForeachNode extends PhpNode {
         }
         Object s = subject.execute(frame);
         List<Map.Entry<Object, Object>> entries;
-        if (s instanceof PhpArray arr) {
+        boolean isArray = arrayProfile.profile(s instanceof PhpArray);
+        if (isArray) {
+            PhpArray arr = (PhpArray) s;
             entries = arr.rawEntries();
         } else if (s instanceof PhpObject obj) {
+            if (iteratorProfile.profile(obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE))) {
+                return executeIterator(frame, iterator.resolve(obj));
+            }
             String caller = null;
-            if (getRootNode() instanceof PhpFunctionRootNode fn) {
+            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function
+                    : getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode root ? root.signature : null;
+            if (fn != null) {
                 if (fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts) {
                     caller = ts.name();
                 } else {
@@ -164,7 +185,13 @@ public final class ForeachNode extends PhpNode {
             return null;
         }
         if (s instanceof PhpObject obj) {
-            String caller = getRootNode() instanceof PhpFunctionRootNode fn ? fn.declaringClass() : null;
+            if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
+                throw new PhpError("An iterator cannot be used with foreach by reference", this);
+            }
+            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function
+                    : getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode root ? root.signature : null;
+            String caller = fn != null ? fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts
+                    ? ts.name() : fn.declaringClass() : null;
             List<Map.Entry<Object, PhpReference>> entries = PhpClass.visibleRefEntries(PhpContext.get(this), obj, caller);
             int count = 0;
             try {
@@ -194,6 +221,38 @@ public final class ForeachNode extends PhpNode {
             return null;
         }
         PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(s) + " given", line());
+        return null;
+    }
+
+    private Object executeIterator(VirtualFrame frame, PhpObject it) {
+        iterator.rewind(it);
+        int count = 0;
+        try {
+            while (iterator.valid(it)) {
+                TruffleSafepoint.poll(this);
+                count++;
+                Object value = iterator.current(it);
+                if (keyTarget != null) {
+                    keyTarget.write(frame, keyTarget.evalKeys(frame), iterator.key(it));
+                }
+                valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(value));
+                try {
+                    body.executeVoid(frame);
+                } catch (ControlFlow.Break b) {
+                    if (b.levels > 1) {
+                        throw new ControlFlow.Break(b.levels - 1);
+                    }
+                    break;
+                } catch (ControlFlow.Continue c) {
+                    if (c.levels > 1) {
+                        throw new ControlFlow.Continue(c.levels - 1);
+                    }
+                }
+                iterator.next(it);
+            }
+        } finally {
+            LoopNode.reportLoopCount(this, count);
+        }
         return null;
     }
 }

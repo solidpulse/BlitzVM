@@ -41,6 +41,21 @@ public final class ControlFlow {
     public static final class Exit extends ControlFlowException {
     }
 
+    /** Suspends a generator without unwinding its PHP finally blocks. */
+    public static final class Yield extends ControlFlowException {
+        public final Object key;
+        public final Object value;
+
+        public Yield(Object key, Object value) {
+            this.key = key;
+            this.value = value;
+        }
+    }
+
+    /** Explicit native generator close: runs finally, but cannot be caught by PHP. */
+    public static final class GeneratorClose extends ControlFlowException {
+    }
+
     /** {@code goto label;}: jumps to the matching label within the same function. */
     public static final class Goto extends ControlFlowException {
         public final int labelId;

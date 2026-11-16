@@ -15,6 +15,9 @@ import java.util.Map;
  * Values are represented as long, double, boolean, String, PhpArray, PhpNull.
  */
 public final class PhpOps {
+    public static String typeDescription(Object value) {
+        return value instanceof PhpObject obj ? obj.phpClass().name() : typeName(value);
+    }
 
     private PhpOps() {
     }
@@ -338,10 +341,15 @@ public final class PhpOps {
                 return true;
             }
             if (x.nativeState() != null && x.nativeState().supportsCompare()
-                    && y.nativeState() != null && y.nativeState().supportsCompare()) {
+                    && y.nativeState() != null && y.nativeState().supportsCompare()
+                    && !(x.nativeState() instanceof SplArrayState)) {
                 return x.nativeState().compareTo(y) == 0;
             }
             if (x.phpClass() != y.phpClass()) {
+                return false;
+            }
+            if (x.nativeState() instanceof SplArrayState xs && y.nativeState() instanceof SplArrayState ys
+                    && !looseEquals(xs.arrayCopy(), ys.arrayCopy(), seen)) {
                 return false;
             }
             if (seen == null) {

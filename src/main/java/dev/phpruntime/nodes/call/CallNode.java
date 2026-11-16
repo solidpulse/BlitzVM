@@ -39,6 +39,7 @@ public final class CallNode extends PhpNode {
     @Child private DirectCallNode callNode;
     @Child private IndirectCallNode indirectCall;
     @CompilationFinal private Builtins.Def builtin;
+    @Child private SplBuiltinNode spl;
 
     public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets) {
         this(null, -1, name, functionId, args, refTargets, null, null);
@@ -88,6 +89,13 @@ public final class CallNode extends PhpNode {
     @Override
     public Object execute(VirtualFrame frame) {
         return CallArgHelper.unwrapReturn(executeRaw(frame));
+    }
+
+    public CallNode withSpl(dev.phpruntime.PhpLanguage language) {
+        if (SplBuiltinNode.supports(name.toLowerCase())) {
+            spl = new SplBuiltinNode(language, name.toLowerCase());
+        }
+        return this;
     }
 
     @Override
@@ -240,7 +248,7 @@ public final class CallNode extends PhpNode {
             }
         }
         checkArity(def, values.length);
-        Object result = invoke(def, values);
+        Object result = spl != null ? spl.execute(values) : invoke(def, values);
         for (int i = 0; i < args.length; i++) {
             if (refKeys[i] != null) {
                 refTargets[i].write(frame, refKeys[i], values[i]);

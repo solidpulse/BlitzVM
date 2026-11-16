@@ -698,7 +698,7 @@ public final class Parser {
         } finally {
             scope.gotoScope().exitLoop();
         }
-        return new ForeachNode(subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
+        return new ForeachNode(language, subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
     }
 
     private LValueNode parseForeachTarget(boolean outerByRef) {
@@ -961,12 +961,18 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
+            if (scope.isGenerator()) {
+                body = new GeneratorLowering(scope, language).lower(body);
+            }
             PhpFunctionRootNode root = new PhpFunctionRootNode(
                     language, scope.build(), source, nameTok.line(),
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
                     params.defaults(), params.variadic(), body);
+            if (scope.isGenerator()) {
+                root.asGenerator(language, scope.generatorSlot());
+            }
             PhpFunction fn = new PhpFunction(name, root.getCallTarget());
             if (topLevel) {
                 functions.add(fn);
@@ -1048,6 +1054,9 @@ public final class Parser {
     }
 
     private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params, PhpNode body, int line, String fnName) {
+        if (scope.isGenerator()) {
+            body = new GeneratorLowering(scope, language).lower(body);
+        }
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -1068,9 +1077,13 @@ public final class Parser {
                 scope.closureObjSlot(), scope.traitSelfSlot(),
                 captureSlots, captureKinds, byRef,
                 params.names(), params.slots(), params.kinds(), params.byRef(),
-                params.defaults(), params.variadic(), body);
+                params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis());
+        if (scope.isGenerator()) {
+            root.asGenerator(language, scope.generatorSlot());
+        }
         return new ClosureNode(root.getCallTarget(), bindThis,
-                outer.thisSlot(), outer.calledClassSlot(), outer.traitSelfSlot(), outerReads, warn, byRef).at(line);
+                outer.thisSlot(), outer.calledClassSlot(), outer.traitSelfSlot(), outerReads, warn, byRef)
+                .inClass(currentClass != null ? language.classId(currentClass) : -1).at(line);
     }
 
     private PhpNode classDeclaration(boolean topLevel, int line) {
@@ -1332,12 +1345,18 @@ public final class Parser {
                     initStmts.add(body);
                     body = block(initStmts);
                 }
+                if (scope.isGenerator()) {
+                    body = new GeneratorLowering(scope, language).lower(body);
+                }
                 PhpFunctionRootNode root = new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
                         params.defaults(), params.variadic(), body);
+                if (scope.isGenerator()) {
+                    root.asGenerator(language, scope.generatorSlot());
+                }
                 callTarget = root.getCallTarget();
             }
             return new PhpClassTemplate.MethodDecl(
@@ -1523,6 +1542,28 @@ public final class Parser {
         }
         if (t.kind() == Kind.IDENT) {
             String kw = t.text().toLowerCase();
+            if (kw.equals("yield")) {
+                next();
+                if (scope.isGlobal()) {
+                    throw error("The \"yield\" expression can only be used inside a function");
+                }
+                int generatorSlot = scope.generatorSlot();
+                if (acceptKeyword("from")) {
+                    return new dev.phpruntime.nodes.generator.YieldFromNode(language, generatorSlot,
+                            scope.objectSlot(), binary(4)).at(line);
+                }
+                PhpNode key = null;
+                PhpNode value = null;
+                if (!peek().isOp(";") && !peek().isOp(")") && !peek().isOp("]") && !peek().isOp(",")
+                        && !peek().isOp("}") && !peek().isOp(":")) {
+                    value = binary(4);
+                    if (acceptOp("=>")) {
+                        key = value;
+                        value = binary(4);
+                    }
+                }
+                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value).at(line);
+            }
             if (kw.equals("print")) {
                 next();
                 return new PrintNode(binary(4), false).at(line);
@@ -1690,15 +1731,15 @@ public final class Parser {
                         if (keys.size() == 1) {
                             e = elem;
                         } else {
-                            e = new IndexLValueNode(elem, keys.subList(1, keys.size()).toArray(new PhpNode[0])).at(line);
+                            e = new IndexLValueNode(language, elem, keys.subList(1, keys.size()).toArray(new PhpNode[0])).at(line);
                         }
                     } else {
-                        e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                        e = new IndexLValueNode(language, lv, keys.toArray(new PhpNode[0])).at(line);
                     }
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
-                    e = new IndexReadNode(e, key).at(line);
+                    e = new IndexReadNode(language, e, key).at(line);
                 }
             } else if (acceptOp("?->")) {
                 nullsafeChain = true;
@@ -2135,11 +2176,11 @@ public final class Parser {
             ParsedCallArgs pca = parseCallArgDetails();
             if (rn.fallback() == null) {
                 return new CallNode(rn.primary(), language.functionId(rn.primary()), pca.args(), pca.refs(),
-                        pca.names(), pca.spreads()).at(line);
+                        pca.names(), pca.spreads()).withSpl(language).at(line);
             }
             return new CallNode(rn.primary(), language.functionId(rn.primary()),
                     rn.fallback(), language.functionId(rn.fallback()), pca.args(), pca.refs(),
-                    pca.names(), pca.spreads()).at(line);
+                    pca.names(), pca.spreads()).withSpl(language).at(line);
         }
         ResolvedName rn = resolveConstName(name);
         if (rn.fallback() == null) {
@@ -2259,7 +2300,7 @@ public final class Parser {
             refArr[i] = byRefs.get(i);
             spreadArr[i] = spreads.get(i);
         }
-        return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
+        return new ArrayLiteralNode(language, keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
     }
 
     private boolean isBracketDestructuringAt(int bracketPos) {
@@ -2398,7 +2439,7 @@ public final class Parser {
             idxArr[i] = autoIndices.get(i);
             refArr[i] = byRefs.get(i);
         }
-        return new DestructureLValueNode(
+        return new DestructureLValueNode(language,
                 keyNodes.toArray(new PhpNode[0]),
                 targets.toArray(new LValueNode[0]),
                 idxArr,

@@ -124,8 +124,13 @@ public final class PhpBacktrace {
                 }
             }
 
-            if (root instanceof PhpFunctionRootNode fnRoot) {
+            if (root instanceof PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                PhpFunctionRootNode fnRoot = root instanceof PhpFunctionRootNode fn ? fn
+                        : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
                 Frame f = fi.getFrame(FrameInstance.FrameAccess.READ_ONLY);
+                if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                    f = ((PhpGenerator) f.getArguments()[0]).frame;
+                }
                 Object[] rawArgs = f.getArguments();
                 if (fnRoot.isClosure()) {
                     Object thisObj = rawArgs.length > 0 ? rawArgs[0] : PhpNull.INSTANCE;

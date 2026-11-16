@@ -29,6 +29,15 @@ public final class PhpClassTemplate {
                              RootCallTarget callTarget) {
     }
 
+    /** Internal interface signature metadata; tentative PHP 8 return types are not enforced. */
+    public record MethodSignature(List<String> parameterNames, List<String> parameterTypes,
+                                  String returnType, boolean tentativeReturn) {
+        public MethodSignature {
+            parameterNames = List.copyOf(parameterNames);
+            parameterTypes = List.copyOf(parameterTypes);
+        }
+    }
+
     public record TraitPrecedence(String chosenTrait, String methodName, List<String> excludedTraits) {
     }
 
@@ -52,6 +61,7 @@ public final class PhpClassTemplate {
     private final List<PropertyDecl> properties;
     private final List<ConstantDecl> constants;
     private final Map<String, MethodDecl> methods;
+    private final Map<String, MethodSignature> methodSignatures;
     private final Shape rootShape;
 
     public PhpClassTemplate(long id, String name, boolean isInterface, boolean isAbstract, boolean isFinal,
@@ -67,6 +77,15 @@ public final class PhpClassTemplate {
                             String parentName, List<String> interfaceNames, List<TraitUse> traitUses,
                             List<PropertyDecl> properties, List<ConstantDecl> constants,
                             Map<String, MethodDecl> methods) {
+        this(id, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous, parentName, interfaceNames,
+                traitUses, properties, constants, methods, Map.of());
+    }
+
+    public PhpClassTemplate(long id, String name, boolean isInterface, boolean isTrait,
+                            boolean isAbstract, boolean isFinal, boolean isAnonymous,
+                            String parentName, List<String> interfaceNames, List<TraitUse> traitUses,
+                            List<PropertyDecl> properties, List<ConstantDecl> constants,
+                            Map<String, MethodDecl> methods, Map<String, MethodSignature> methodSignatures) {
         this.id = id;
         this.name = name;
         this.lowerName = name.toLowerCase();
@@ -82,6 +101,7 @@ public final class PhpClassTemplate {
         this.constants = List.copyOf(constants);
         // Declaration order matters for get_class_methods.
         this.methods = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(methods));
+        this.methodSignatures = Map.copyOf(methodSignatures);
         this.rootShape = Shape.newBuilder()
                 .layout(PhpObject.class, PhpObject.LOOKUP)
                 .dynamicType(this)
@@ -142,6 +162,10 @@ public final class PhpClassTemplate {
 
     public Map<String, MethodDecl> methods() {
         return methods;
+    }
+
+    public Map<String, MethodSignature> methodSignatures() {
+        return methodSignatures;
     }
 
     public Shape rootShape() {

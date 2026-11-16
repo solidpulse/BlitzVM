@@ -5,6 +5,8 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.nodes.PhpNode;
+import dev.phpruntime.PhpLanguage;
+import dev.phpruntime.nodes.stmt.IteratorNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
 import dev.phpruntime.runtime.PhpArray;
@@ -12,6 +14,8 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpObject;
+import dev.phpruntime.runtime.SplInterfaces;
 
 import java.util.Map;
 
@@ -22,6 +26,7 @@ public final class ArrayLiteralNode extends PhpNode {
     @Children private final PhpNode[] values;
     @CompilationFinal(dimensions = 1) private final boolean[] byRef;
     @CompilationFinal(dimensions = 1) private final boolean[] spread;
+    @Child private IteratorNode iterator;
 
     public ArrayLiteralNode(PhpNode[] keys, PhpNode[] values) {
         this(keys, values, new boolean[values.length], new boolean[values.length]);
@@ -32,6 +37,11 @@ public final class ArrayLiteralNode extends PhpNode {
         this.values = values;
         this.byRef = byRef;
         this.spread = spread;
+    }
+
+    public ArrayLiteralNode(PhpLanguage language, PhpNode[] keys, PhpNode[] values, boolean[] refs, boolean[] spreads) {
+        this(keys, values, refs, spreads);
+        iterator = new IteratorNode(language);
     }
 
     @Override
@@ -89,8 +99,25 @@ public final class ArrayLiteralNode extends PhpNode {
         }
     }
 
-    @TruffleBoundary
     private void unpackInto(PhpArray dest, Object unpacked) {
+        if (unpacked instanceof PhpObject obj && SplInterfaces.has(obj, SplInterfaces.TRAVERSABLE)) {
+            PhpObject it = iterator.resolve(obj);
+            iterator.rewind(it);
+            while (iterator.valid(it)) {
+                com.oracle.truffle.api.TruffleSafepoint.poll(this);
+                Object value = PhpOps.copyOnAssign(iterator.current(it));
+                Object key = iterator.key(it);
+                if (key instanceof String) {
+                    dest.put(key, value);
+                } else if (key instanceof Long) {
+                    dest.append(value);
+                } else {
+                    throw new PhpError("Keys must be of type int|string during array unpacking", this);
+                }
+                iterator.next(it);
+            }
+            return;
+        }
         if (!(unpacked instanceof PhpArray src)) {
             String given = unpacked == null || unpacked == PhpNull.INSTANCE ? "null" : PhpOps.typeName(unpacked);
             throw new PhpError("Only arrays and Traversables can be unpacked, " + given + " given", this);
