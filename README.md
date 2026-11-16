@@ -188,6 +188,19 @@ curl localhost:8080/__scheduler   # cpus, running, waiting, completed, preemptio
 scripts/demo.sh                   # the preemption demo end to end
 ```
 
+### WordPress in one command
+
+```bash
+scripts/wordpress.sh              # downloads WordPress to ./wordpress, starts MariaDB in Docker,
+                                  # writes wp-config.php, serves http://localhost:8080/
+```
+
+Like `frankenphp php-server`, `bin/php-truffle serve [dir]` needs no web server configuration:
+a directory with an `index.php` redirects to its trailing-slash URL, missing paths go to the
+root `index.php` (pretty permalinks), `/x.php/rest` sets `PATH_INFO`, and everything else is
+served as a static file. The installer and the install itself run on BlitzVM today; the front
+page is the current WordPress work.
+
 Requires JDK 21+ to build. Without GraalVM the same AST runs interpreter-only on any JDK.
 `bin/php-truffle` prefers `./.graalvm/current` over `JAVA_HOME` (override with
 `PHP_TRUFFLE_JAVA_HOME`).
