@@ -12,24 +12,31 @@ import dev.phpruntime.runtime.PhpOps;
 public final class EvalNode extends PhpNode {
     public static final Object EVAL_MODE = new Object();
     @Child private PhpNode code;
+    @Child private com.oracle.truffle.api.nodes.IndirectCallNode call = com.oracle.truffle.api.nodes.IndirectCallNode.create();
+    private final int tableSlot;
 
     public EvalNode(PhpNode code) {
+        this(code, -1);
+    }
+
+    public EvalNode(PhpNode code, int tableSlot) {
         this.code = code;
+        this.tableSlot = tableSlot;
     }
 
     @Override
     public Object execute(VirtualFrame frame) {
-        return evaluate(PhpOps.toStr(code.execute(frame)));
+        com.oracle.truffle.api.CallTarget target = prepare(PhpOps.toStr(code.execute(frame)));
+        return call.call(target, tableSlot < 0 ? new Object[]{EVAL_MODE}
+                : new Object[]{EVAL_MODE, frame.getObject(tableSlot)});
     }
 
     @TruffleBoundary
-    private Object evaluate(String code) {
+    private com.oracle.truffle.api.CallTarget prepare(String code) {
         PhpContext ctx = PhpContext.get(this);
         Source source = Source.newBuilder(PhpLanguage.ID, "<?php " + code, "eval()'d code").cached(true).build();
-        // Match the existing include implementation's global-scope execution. No request
-        // object or parsed target is stored in this shared AST node.
         try {
-            return ctx.language().parseBytes(source).call(new Object[]{EVAL_MODE});
+            return tableSlot < 0 ? ctx.language().parseEvalBytes(source) : ctx.language().parseLocalBytes(source);
         } catch (dev.phpruntime.parser.PhpParseError e) {
             throw new dev.phpruntime.runtime.PhpError(dev.phpruntime.runtime.PhpError.PARSE_ERROR, e.getMessage(), this);
         }

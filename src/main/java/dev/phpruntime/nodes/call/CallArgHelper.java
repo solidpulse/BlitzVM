@@ -56,6 +56,9 @@ public final class CallArgHelper {
             if (refTarget instanceof LocalVarNode lv && "this".equals(lv.varName())) {
                 throw cannotPassByRef(fnRoot, paramIdx, site);
             }
+            if (refTarget instanceof dev.phpruntime.nodes.var.ScopedVarNode sv && "this".equals(sv.varName())) {
+                throw cannotPassByRef(fnRoot, paramIdx, site);
+            }
             return refTarget.obtainCell(frame, refTarget.evalKeys(frame));
         }
         if (isFunctionOrNewResult(argNode)) {

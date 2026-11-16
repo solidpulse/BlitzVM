@@ -59,6 +59,11 @@ public final class Parser {
                 "", null, false, "", new HashMap<>(), new HashMap<>(), new HashMap<>());
     }
 
+    public Parser(PhpLanguage language, Source source, boolean localInclude) {
+        this(language, source);
+        if (localInclude) { scope = Scope.forInclude(language); }
+    }
+
     private static List<Token> lex(Source source) {
         try {
             return Lexer.tokenize(source.getCharacters().toString());
@@ -336,7 +341,7 @@ public final class Parser {
                     }
                 }
                 case "const" -> {
-                    if (!scope.isGlobal()) {
+                    if (!scope.isFileScope()) {
                         throw error("const declarations are only allowed at top level");
                     }
                     next();
@@ -346,7 +351,20 @@ public final class Parser {
                     next();
                     List<Integer> slots = new ArrayList<>();
                     List<Integer> globalIds = new ArrayList<>();
+                    List<LValueNode> dynamicTargets = new ArrayList<>();
+                    List<PhpNode> dynamicNames = new ArrayList<>();
                     do {
+                        if (peek().isOp("$") || scope.isFileScope() && !scope.isGlobal()) {
+                            PhpNode nameExpr;
+                            if (peek().kind() == Kind.VARIABLE) { nameExpr = new ConstNode(next().text()); }
+                            else {
+                                expectOp("$");
+                                nameExpr = variableNameOperand();
+                            }
+                            dynamicNames.add(nameExpr);
+                            dynamicTargets.add(new DynamicVarNode(new ConstNode(""), scope.dynamicSlot()));
+                            continue;
+                        }
                         Token v = next();
                         if (v.kind() != Kind.VARIABLE) {
                             throw error("expected variable after global");
@@ -362,6 +380,11 @@ public final class Parser {
                         }
                     } while (acceptOp(","));
                     endStatement();
+                    if (!dynamicTargets.isEmpty()) {
+                        PhpNode dynamic = new GlobalImportNode(dynamicTargets.toArray(new LValueNode[0]), dynamicNames.toArray(new PhpNode[0])).at(line);
+                        if (slots.isEmpty()) { return dynamic; }
+                        return new BlockNode(new PhpNode[]{new GlobalImportNode(toIntArray(slots), toIntArray(globalIds)), dynamic}).at(line);
+                    }
                     if (slots.isEmpty()) {
                         return null;
                     }
@@ -791,12 +814,14 @@ public final class Parser {
             inits.add(acceptOp("=") ? expression() : null);
         } while (acceptOp(","));
         endStatement();
-        return new StaticDeclNode(
+        StaticDeclNode node = new StaticDeclNode(
                 scope.isGlobal(), scope.closureObjSlot(),
                 names.toArray(new String[0]),
                 slots.stream().mapToInt(Integer::intValue).toArray(),
                 globalIds.stream().mapToInt(Integer::intValue).toArray(),
                 inits.toArray(new PhpNode[0])).at(line);
+        if (scope.isFileScope() && !scope.isGlobal()) { node.includedScope(scope.dynamicSlot()); }
+        return node;
     }
 
     private PhpNode tryStatement(int line) {
@@ -964,12 +989,12 @@ public final class Parser {
             if (scope.isGenerator()) {
                 body = new GeneratorLowering(scope, language).lower(body);
             }
-            PhpFunctionRootNode root = new PhpFunctionRootNode(
+            PhpFunctionRootNode root = DynamicScopeLowering.finish(new PhpFunctionRootNode(
                     language, scope.build(), source, nameTok.line(),
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
-                    params.defaults(), params.variadic(), body);
+                    params.defaults(), params.variadic(), body));
             if (scope.isGenerator()) {
                 root.asGenerator(language, scope.generatorSlot());
             }
@@ -1071,13 +1096,13 @@ public final class Parser {
             warn[i] = c.warnIfUndefined();
             byRef[i] = c.byRef();
         }
-        PhpFunctionRootNode root = new PhpFunctionRootNode(
+        PhpFunctionRootNode root = DynamicScopeLowering.finish(new PhpFunctionRootNode(
                 language, scope.build(), source, line,
                 currentClass, fnName, !bindThis, returnsRef, scope.thisSlot(), scope.calledClassSlot(),
                 scope.closureObjSlot(), scope.traitSelfSlot(),
                 captureSlots, captureKinds, byRef,
                 params.names(), params.slots(), params.kinds(), params.byRef(),
-                params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis());
+                params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis()));
         if (scope.isGenerator()) {
             root.asGenerator(language, scope.generatorSlot());
         }
@@ -1348,12 +1373,12 @@ public final class Parser {
                 if (scope.isGenerator()) {
                     body = new GeneratorLowering(scope, language).lower(body);
                 }
-                PhpFunctionRootNode root = new PhpFunctionRootNode(
+                PhpFunctionRootNode root = DynamicScopeLowering.finish(new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
-                        params.defaults(), params.variadic(), body);
+                        params.defaults(), params.variadic(), body));
                 if (scope.isGenerator()) {
                     root.asGenerator(language, scope.generatorSlot());
                 }
@@ -1579,7 +1604,8 @@ public final class Parser {
             IncludeNode.Kind inc = includeKind(kw);
             if (inc != null) {
                 next();
-                return new IncludeNode(inc, expression()).at(line);
+                int tableSlot = scope.dynamicSlot();
+                return new IncludeNode(inc, expression(), tableSlot).at(line);
             }
         }
         return postfix();
@@ -1645,6 +1671,9 @@ public final class Parser {
                         // typed operator nodes and an unboxed assignment.
                         return new AssignNode(target, makeBinary(arithmetic(compound), local.copyForRead(), value).at(line)).at(line);
                     }
+                    if (target instanceof IncludedVarNode local && arithmetic(compound) != null) {
+                        return new AssignNode(target, makeBinary(arithmetic(compound), local.copyForRead(), value).at(line)).at(line);
+                    }
                     return new CompoundAssignNode(target, compound, value).at(line);
                 }
                 if (t.text().equals("++") || t.text().equals("--")) {
@@ -1695,7 +1724,10 @@ public final class Parser {
         Token t = peek();
         int line = t.line();
         PhpNode e;
-        if (t.kind() == Kind.VARIABLE) {
+        if (acceptOp("$")) {
+            int tableSlot = scope.dynamicSlot();
+            e = new DynamicVarNode(variableNameOperand(), tableSlot).at(line);
+        } else if (t.kind() == Kind.VARIABLE) {
             next();
             LValueNode var = scope.variable(t.text());
             var.at(line);
@@ -1760,6 +1792,18 @@ public final class Parser {
             }
         }
         return e;
+    }
+
+    private PhpNode variableNameOperand() {
+        if (acceptOp("{")) {
+            PhpNode expr = expression();
+            expectOp("}");
+            return expr;
+        }
+        if (acceptOp("$")) { return new DynamicVarNode(variableNameOperand(), scope.dynamicSlot()); }
+        Token variable = next();
+        if (variable.kind() != Kind.VARIABLE) { throw error("expected variable or {expression} after $"); }
+        return scope.variable(variable.text()).at(variable.line());
     }
 
     private boolean consumeFirstClassCallableEllipsis() {
@@ -2126,7 +2170,7 @@ public final class Parser {
                 expectOp("(");
                 PhpNode code = expression();
                 expectOp(")");
-                return new EvalNode(code).at(line);
+                return new EvalNode(code, scope.dynamicSlot()).at(line);
             }
             case "match" -> {
                 if (peek().isOp("(")) {
@@ -2180,6 +2224,37 @@ public final class Parser {
                         rn.fallback(), language.functionId(rn.fallback())).at(line);
             }
             ParsedCallArgs pca = parseCallArgDetails();
+            String builtinName = rn.fallback() == null ? rn.primary() : rn.fallback();
+            if (builtinName.equalsIgnoreCase("extract") || builtinName.equalsIgnoreCase("get_defined_vars")) {
+                scope.dynamicSlot();
+            }
+            if (builtinName.equalsIgnoreCase("compact") && (pca.names() != null || pca.spreads() != null)) {
+                scope.dynamicSlot();
+            }
+            if (builtinName.equalsIgnoreCase("get_defined_vars") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length != 0) { throw error("get_defined_vars() expects exactly 0 arguments"); }
+                return scopeBuiltinFallback(rn, pca, new GetDefinedVarsNode(scope.dynamicSlot()), line);
+            }
+            if (builtinName.equalsIgnoreCase("compact") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length == 0) { throw error("compact() expects at least 1 argument"); }
+                PhpNode[] args = pca.args();
+                LValueNode[] reads = new LValueNode[args.length];
+                String[] names = new String[args.length];
+                boolean dynamic = false;
+                for (int i = 0; i < args.length; i++) {
+                    if (args[i] instanceof ConstNode constant && constant.value() instanceof String varName) {
+                        names[i] = varName;
+                        reads[i] = scope.compactVariable(varName);
+                    } else { dynamic = true; }
+                }
+                return scopeBuiltinFallback(rn, pca, new CompactNode(args, reads, names, dynamic ? scope.dynamicSlot() : -1), line);
+            }
+            if (builtinName.equalsIgnoreCase("extract") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length < 1 || pca.args().length > 3) { throw error("extract() expects 1 to 3 arguments"); }
+                PhpNode[] args = pca.args();
+                return scopeBuiltinFallback(rn, pca, new ExtractNode(args[0], pca.refs()[0], args.length > 1 ? args[1] : null,
+                        args.length > 2 ? args[2] : null, scope.dynamicSlot()), line);
+            }
             if (rn.fallback() == null) {
                 return new CallNode(rn.primary(), language.functionId(rn.primary()), pca.args(), pca.refs(),
                         pca.names(), pca.spreads()).withSpl(language).at(line);
@@ -2206,6 +2281,16 @@ public final class Parser {
             return new ReadConstantNode(rn.primary()).at(line);
         }
         return new ReadConstantNode(rn.fallback(), rn.primary()).at(line);
+    }
+
+    private PhpNode scopeBuiltinFallback(ResolvedName name, ParsedCallArgs args, PhpNode builtin, int line) {
+        if (name.fallback() == null) { return builtin.at(line); }
+        // Each branch owns its AST. Arguments must not have two different parents.
+        PhpNode call = new CallNode(name.primary(), language.functionId(name.primary()),
+                java.util.Arrays.stream(args.args()).map(com.oracle.truffle.api.nodes.NodeUtil::cloneNode).toArray(PhpNode[]::new),
+                java.util.Arrays.stream(args.refs()).map(n -> n == null ? null : com.oracle.truffle.api.nodes.NodeUtil.cloneNode(n)).toArray(LValueNode[]::new),
+                args.names(), args.spreads()).at(line);
+        return new ScopeFunctionFallbackNode(language.functionId(name.primary()), call, builtin.at(line)).at(line);
     }
 
     private PhpNode parseMatch(int line) {
@@ -2497,7 +2582,7 @@ public final class Parser {
                 throw new PhpParseError("syntax error in string interpolation", t.line());
             }
             if (part.kind() == Token.PartKind.DYNAMIC_VAR) {
-                e = new ReadDynamicVarNode(e, scope.isGlobal()).at(t.line());
+                e = new DynamicVarNode(e, scope.dynamicSlot()).at(t.line());
             }
             parts.add(e);
         }

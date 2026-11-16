@@ -30,10 +30,18 @@ public final class PhpMainRootNode extends PhpRootNode {
     private final List<PhpFunction> functions;
     private final List<PhpClassTemplate> topLevelClasses;
     private final int hoistedClassesSlot;
+    private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final String[] globalNames;
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final String[] includedNames;
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final int[] includedSlots;
 
     public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body,
                            List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses, int hoistedClassesSlot) {
         super(language, fd, source, 1);
+        scopeLayout = fd.getInfo() instanceof dev.phpruntime.runtime.PhpScopeLayout layout ? layout : null;
+        globalNames = fd.getInfo() instanceof dev.phpruntime.runtime.PhpGlobalLayout layout ? layout.names() : new String[0];
+        includedNames = scopeLayout == null ? new String[0] : scopeLayout.locals().keySet().toArray(new String[0]);
+        includedSlots = scopeLayout == null ? new int[0] : scopeLayout.locals().values().stream().mapToInt(Integer::intValue).toArray();
         for (String sg : INIT_GLOBALS) {
             language.globalId(sg);
         }
@@ -48,11 +56,20 @@ public final class PhpMainRootNode extends PhpRootNode {
         boolean isEntry = frame.getArguments().length == 0;
         PhpContext ctx = PhpContext.get(this);
         PhpRequest request = ctx.request();
+        if (scopeLayout != null) {
+            dev.phpruntime.runtime.PhpSymbolTable table = (dev.phpruntime.runtime.PhpSymbolTable) frame.getArguments()[1];
+            frame.setObject(scopeLayout.tableSlot(), table);
+            frame.setObject(scopeLayout.thisSlot(), table.thisValue);
+            frame.setObject(scopeLayout.calledClassSlot(), table.calledClass);
+            frame.setObject(scopeLayout.lexicalClassSlot(), table.lexicalClass);
+            initializeIncludedLocals(frame, table);
+        }
         Object result = !isEntry && frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE
                 ? PhpNull.INSTANCE : 1L;
         try {
             if (isEntry) {
                 start(ctx, request);
+                ctx.reserveGlobals(globalNames);
             }
             declareFunctions(ctx);
             if (hoistedClassesSlot >= 0) {
@@ -91,6 +108,13 @@ public final class PhpMainRootNode extends PhpRootNode {
             }
         }
         return isEntry ? PhpNull.INSTANCE : result;
+    }
+
+    @com.oracle.truffle.api.nodes.ExplodeLoop
+    private void initializeIncludedLocals(VirtualFrame frame, dev.phpruntime.runtime.PhpSymbolTable table) {
+        for (int i = 0; i < includedNames.length; i++) {
+            frame.setObject(includedSlots[i], table.access(includedNames[i]));
+        }
     }
 
     @TruffleBoundary
@@ -140,6 +164,7 @@ public final class PhpMainRootNode extends PhpRootNode {
             server.put("argc", (long) request.argv.length);
             ctx.writeGlobal("_SERVER", server);
         }
+        ctx.initializeGlobalOrder();
     }
 
     @TruffleBoundary

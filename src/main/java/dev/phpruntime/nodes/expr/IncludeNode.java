@@ -27,10 +27,16 @@ public final class IncludeNode extends PhpNode {
     private final Kind kind;
     @Child private PhpNode pathExpr;
     @Child private IndirectCallNode callNode = Truffle.getRuntime().createIndirectCallNode();
+    private final int tableSlot;
 
     public IncludeNode(Kind kind, PhpNode pathExpr) {
+        this(kind, pathExpr, -1);
+    }
+
+    public IncludeNode(Kind kind, PhpNode pathExpr, int tableSlot) {
         this.kind = kind;
         this.pathExpr = pathExpr;
+        this.tableSlot = tableSlot;
     }
 
     public Kind kind() {
@@ -43,10 +49,10 @@ public final class IncludeNode extends PhpNode {
     @Override
     public Object execute(VirtualFrame frame) {
         String path = PhpOps.toStr(pathExpr.execute(frame));
-        // TODO(dynamic-scope): PHP runs includes inside functions in the caller's local scope; we run in global scope.
         Object prepared = prepare(path);
         if (prepared instanceof PreparedInclude inc) {
-            return callNode.call(inc.target(), new Object[]{inc.canonicalPath()});
+            return callNode.call(inc.target(), tableSlot < 0 ? new Object[]{inc.canonicalPath()}
+                    : new Object[]{inc.canonicalPath(), frame.getObject(tableSlot)});
         }
         return prepared;
     }
@@ -58,6 +64,7 @@ public final class IncludeNode extends PhpNode {
         // Fast path: the same path string from the same file resolved recently. No stat,
         // realpath or parse-cache lookup; WordPress does ~500 includes per request.
         String cacheKey = includeKey(ctx, path);
+        if (cacheKey != null && tableSlot >= 0) { cacheKey += "\0local"; }
         PhpLanguage.ResolvedInclude hit = cacheKey == null ? null : ctx.language().cachedInclude(cacheKey);
         if (hit != null) {
             if (once && ctx.isIncluded(hit.canonicalPath())) {
@@ -90,7 +97,7 @@ public final class IncludeNode extends PhpNode {
         }
         CallTarget target;
         try {
-            target = env.parsePublic(source);
+            target = tableSlot >= 0 ? ctx.language().parseLocalBytes(source) : env.parsePublic(source);
         } catch (dev.phpruntime.parser.PhpParseError pe) {
             String msg = pe.getMessage();
             throw new PhpError(PhpError.PARSE_ERROR, msg != null ? msg : "syntax error",

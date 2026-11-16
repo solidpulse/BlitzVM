@@ -41,6 +41,8 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     private final ConcurrentHashMap<String, CachedSource> sources = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ResolvedInclude> includes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Source, CallTarget> localIncludes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Source, CallTarget> evals = new ConcurrentHashMap<>();
 
     /**
      * How long a resolved include stays trusted without touching the file system, like
@@ -299,6 +301,15 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     /** Internal sources (eval) already contain PHP bytes, unlike polyglot character sources. */
     public CallTarget parseBytes(Source source) {
         return new Parser(this, source).parseMain().getCallTarget();
+    }
+
+    /** A second engine-wide variant; its arguments supply the invocation's symbols/class scope. */
+    public CallTarget parseLocalBytes(Source source) {
+        return localIncludes.computeIfAbsent(source, s -> new Parser(this, s, true).parseMain().getCallTarget());
+    }
+
+    public CallTarget parseEvalBytes(Source source) {
+        return evals.computeIfAbsent(source, this::parseBytes);
     }
 
     @Override

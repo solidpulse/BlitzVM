@@ -22,6 +22,11 @@ public final class StaticDeclNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final int[] slots;
     @CompilationFinal(dimensions = 1) private final int[] globalIds;
     @Children private final PhpNode[] initExprs;
+    @CompilationFinal private int tableSlot = -1;
+    @CompilationFinal private boolean included;
+
+    public void dynamicScope(int tableSlot) { this.tableSlot = tableSlot; }
+    public void includedScope(int tableSlot) { this.tableSlot = tableSlot; this.included = true; }
 
     public StaticDeclNode(boolean global, int closureObjSlot, String[] names, int[] slots, int[] globalIds, PhpNode[] initExprs) {
         this.global = global;
@@ -49,12 +54,16 @@ public final class StaticDeclNode extends PhpNode {
         }
         Object owner = closureObjSlot >= 0 ? frame.getObject(closureObjSlot) : getRootNode();
         for (int i = 0; i < names.length; i++) {
-            PhpReference cell = ctx.getStaticLocal(owner, names[i]);
+            PhpReference cell = included ? null : ctx.getStaticLocal(owner, names[i]);
             if (cell == null) {
                 Object init = initExprs[i] != null ? PhpOps.copyOnAssign(initExprs[i].execute(frame)) : PhpNull.INSTANCE;
-                cell = ctx.initStaticLocal(owner, names[i], init);
+                cell = included ? new PhpReference(init) : ctx.initStaticLocal(owner, names[i], init);
             }
-            frame.setObject(slots[i], cell);
+            if (tableSlot >= 0) {
+                dev.phpruntime.runtime.PhpSymbolTable table = (dev.phpruntime.runtime.PhpSymbolTable) frame.getObject(tableSlot);
+                if (included) { table.bind(names[i], cell); }
+                else { table.cells[slots[i]] = cell; }
+            } else { frame.setObject(slots[i], cell); }
         }
         return null;
     }

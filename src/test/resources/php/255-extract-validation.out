@@ -1,0 +1,9 @@
+extract(): Argument #2 ($flags) must be a valid extract type
+extract(): Argument #2 ($flags) must be a valid extract type
+extract(): Argument #3 ($prefix) is required when using this extract type
+extract(): Argument #3 ($prefix) must be a valid identifier
+Cannot re-assign $this
+0
+1:0
+extract(): Argument #2 ($flags) must be of type int, array given
+extract(): Argument #3 ($prefix) must be of type string, array given
