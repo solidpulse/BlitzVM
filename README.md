@@ -245,9 +245,10 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
 
 ## Testing
 
-`mvn test` runs 152 tests (plus 8 live MariaDB tests in `MysqliConformanceTest` when `BLITZ_MYSQL_HOST` is set):
+`mvn test` runs 285 tests (2 skipped without a MySQL server; live MariaDB fixtures run
+when `BLITZ_MYSQL_HOST` is set):
 
-- `ConformanceTest`: 99 PHP scripts whose expected output came from real PHP 8.5, matched
+- `ConformanceTest`: 197 PHP scripts whose expected output came from real PHP 8.5, matched
   byte for byte.
 - `JsConformanceTest`: 16 JavaScript scripts whose expected output came from real Node.js.
 - `SchedulerTest`: a busy loop and a sleeping request must not starve a hello request on a
