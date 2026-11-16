@@ -288,22 +288,6 @@ public final class ParseDate {
     }
 
     /**
-     * timelib scans bytes: its grammar spells non-ASCII text (e.g. the micro sign) as UTF-8 bytes
-     * and reports byte offsets. Until PHP strings are byte strings (task 08), give the scanner
-     * the UTF-8 bytes of the input, one char per byte. TODO(task 08): remove; strings will
-     * already be bytes.
-     */
-    private static String asBytes(String input) {
-        for (int i = 0; i < input.length(); i++) {
-            if (input.charAt(i) >= 0x80) {
-                return new String(input.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                        java.nio.charset.StandardCharsets.ISO_8859_1);
-            }
-        }
-        return input;
-    }
-
-    /**
      * For each first character 0..255, the indices (in rule order) of the rules that can match
      * starting with it. Computed from the patterns themselves: a rule qualifies when it matches
      * the one-character input or would need more input ({@code hitEnd}). Trying only these rules
@@ -1902,7 +1886,6 @@ public final class ParseDate {
      */
     @TruffleBoundary
     public static TimelibTime strtotime(String input, TimelibErrorContainer[] errorsOut, ZoneinfoDb tzdb) {
-        input = asBytes(input);
         Scanner in = new Scanner();
         in.errors = new TimelibErrorContainer();
 

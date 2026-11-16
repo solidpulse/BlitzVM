@@ -4,6 +4,7 @@ import com.oracle.truffle.api.TruffleFile;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 
@@ -83,7 +84,7 @@ final class FileFunctions {
             return false;
         }
         try {
-            return pred.test(ctx.env().getPublicTruffleFile(path));
+            return pred.test(ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)));
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -93,11 +94,11 @@ final class FileFunctions {
         try {
             TruffleFile f = path.isEmpty()
                     ? ctx.env().getCurrentWorkingDirectory()
-                    : ctx.env().getPublicTruffleFile(path);
+                    : ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
             if (!f.exists()) {
                 return false;
             }
-            return f.getCanonicalFile().getPath();
+            return PhpStrings.fromJava(f.getCanonicalFile().getPath());
         } catch (IOException | SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -135,6 +136,28 @@ final class FileFunctions {
     private static void io() {
         Builtins.def("file_get_contents", 1, 5, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
+            if (PhpStrings.lower(path).startsWith("php://")) {
+                PhpStream stream = StreamFunctions.openStream(ctx, path, "rb", "file_get_contents");
+                if (stream == null) {
+                    return false;
+                }
+                try {
+                    StreamFunctions.consumeStreamId(ctx);
+                    long offset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
+                    if (offset != 0 && !stream.seek(offset < 0 ? stream.size() + offset : offset)) {
+                        return false;
+                    }
+                    return PhpStrings.of(a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE
+                            ? stream.readBytes((int) PhpOps.toLong(a[4])) : stream.readAll());
+                } catch (IOException e) {
+                    return false;
+                } finally {
+                    try {
+                        stream.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
             TruffleFile f = file(ctx, path);
             try {
                 if (f == null || !f.isRegularFile()) {
@@ -142,7 +165,8 @@ final class FileFunctions {
                 }
                 byte[] data = f.readAllBytes();
                 StreamFunctions.consumeStreamId(ctx);
-                int offset = a.length > 3 ? (int) Math.max(0, PhpOps.toLong(a[3])) : 0;
+                long requestedOffset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
+                int offset = (int) Math.max(0, Math.min(data.length, requestedOffset < 0 ? data.length + requestedOffset : requestedOffset));
                 int end = data.length;
                 if (a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE) {
                     end = (int) Math.min(data.length, offset + Math.max(0, PhpOps.toLong(a[4])));
@@ -150,7 +174,7 @@ final class FileFunctions {
                 if (offset >= end) {
                     return "";
                 }
-                return HashFunctions.fromBytes(java.util.Arrays.copyOfRange(data, offset, end));
+                return PhpStrings.of(data, offset, end - offset);
             } catch (IOException | SecurityException e) {
                 ctx.warning("file_get_contents(" + path + "): Failed to open stream: No such file or directory", 0);
                 return false;
@@ -169,7 +193,25 @@ final class FileFunctions {
                 data = PhpOps.toStr(a[1]);
             }
             boolean append = a.length > 2 && (PhpOps.toLong(a[2]) & 8) != 0;
-            byte[] bytes = data.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] bytes = PhpStrings.bytes(data);
+            if (PhpStrings.lower(path).startsWith("php://")) {
+                PhpStream stream = StreamFunctions.openStream(ctx, path, append ? "ab" : "wb", "file_put_contents");
+                if (stream == null || !stream.canWrite) {
+                    return false;
+                }
+                try {
+                    StreamFunctions.consumeStreamId(ctx);
+                    stream.write(bytes);
+                    return (long) bytes.length;
+                } catch (IOException e) {
+                    return false;
+                } finally {
+                    try {
+                        stream.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
             TruffleFile f = file(ctx, path);
             try {
                 if (f == null) {
@@ -204,7 +246,7 @@ final class FileFunctions {
                 names.add(".");
                 names.add("..");
                 for (TruffleFile child : dir.list()) {
-                    names.add(child.getName());
+                    names.add(PhpStrings.fromJava(child.getName()));
                 }
                 StreamFunctions.consumeStreamId(ctx);
                 if (order == 0) {
@@ -251,7 +293,7 @@ final class FileFunctions {
             return null;
         }
         try {
-            return ctx.env().getPublicTruffleFile(path);
+            return ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
         } catch (SecurityException | IllegalArgumentException e) {
             return null;
         }
@@ -296,7 +338,6 @@ final class FileFunctions {
 
     /** scandir sorts by bytes (strcmp), not by UTF-16 code units. */
     private static int compareBytes(String x, String y) {
-        return java.util.Arrays.compareUnsigned(x.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                y.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return x.compareTo(y);
     }
 }

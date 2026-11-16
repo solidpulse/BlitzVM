@@ -426,7 +426,7 @@ public final class CallArgHelper {
         Node prev = ctx.currentBuiltinCallSite();
         ctx.setCurrentBuiltinCallSite(site);
         try {
-            return def.impl().call(ctx, values);
+            return def.call(ctx, values);
         } catch (PhpError e) {
             throw e.withTrace(dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(site, def.name())).at(site);
         } finally {

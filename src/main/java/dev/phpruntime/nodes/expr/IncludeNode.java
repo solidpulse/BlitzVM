@@ -15,6 +15,7 @@ import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 
@@ -134,6 +135,7 @@ public final class IncludeNode extends PhpNode {
             return null;
         }
         try {
+            path = PhpStrings.toJava(path);
             TruffleFile direct = env.getPublicTruffleFile(path);
             if (direct.isAbsolute()) {
                 return isRegularFile(direct) ? direct : null;
@@ -201,6 +203,7 @@ public final class IncludeNode extends PhpNode {
             return null;
         }
         try {
+            path = PhpStrings.toJava(path);
             if (scriptFilename != null && !scriptFilename.isEmpty()) {
                 TruffleFile parent = env.getPublicTruffleFile(scriptFilename).getParent();
                 if (parent != null) {

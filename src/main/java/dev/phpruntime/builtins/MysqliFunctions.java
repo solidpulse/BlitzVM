@@ -9,14 +9,12 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
 import java.lang.reflect.Field;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -302,7 +300,7 @@ final class MysqliFunctions {
 
     private static String message(SQLException e) {
         String m = e.getMessage() == null ? "" : e.getMessage();
-        return CONN_PREFIX.matcher(m).replaceFirst("");
+        return PhpStrings.fromJava(CONN_PREFIX.matcher(m).replaceFirst(""));
     }
 
     private static void fail(PhpContext ctx, Link link, SQLException e, String fn) {
@@ -380,7 +378,7 @@ final class MysqliFunctions {
         });
         Builtins.def("mysqli_select_db", 2, 2, (ctx, a) -> {
             Link l = connected(ctx, a[0], "mysqli_select_db");
-            String db = PhpOps.toStr(a[1]);
+            String db = PhpStrings.toJava(PhpOps.toStr(a[1]));
             try {
                 blocking(ctx, () -> {
                     l.conn.setCatalog(db);
@@ -594,14 +592,15 @@ final class MysqliFunctions {
         if (tcpHost.startsWith("[") && tcpHost.endsWith("]")) {
             tcpHost = tcpHost.substring(1, tcpHost.length() - 1);
         }
-        String url = "jdbc:mariadb://" + (tcpHost.contains(":") ? "[" + tcpHost + "]" : tcpHost) + ":" + port + "/"
-                + (db == null ? "" : db);
+        String javaHost = PhpStrings.toJava(tcpHost);
+        String url = "jdbc:mariadb://" + (javaHost.contains(":") ? "[" + javaHost + "]" : javaHost) + ":" + port + "/"
+                + (db == null ? "" : PhpStrings.toJava(db));
         Properties props = new Properties();
         if (user != null) {
-            props.setProperty("user", user);
+            props.setProperty("user", PhpStrings.toJava(user));
         }
         if (password != null) {
-            props.setProperty("password", password);
+            props.setProperty("password", PhpStrings.toJava(password));
         }
         // Report changed rows (not matched rows) and leave every value as the server's text.
         props.setProperty("useAffectedRows", "true");
@@ -623,7 +622,7 @@ final class MysqliFunctions {
             l.closed = false;
             l.host = host;
             l.charset = "utf8mb4";
-            l.serverInfo = blocking(ctx, () -> conn.getMetaData().getDatabaseProductVersion());
+            l.serverInfo = PhpStrings.fromJava(blocking(ctx, () -> conn.getMetaData().getDatabaseProductVersion()));
             st.connectErrno = 0;
             st.connectError = null;
             clearError(l);
@@ -671,9 +670,10 @@ final class MysqliFunctions {
     // ------------------------------------------------------------------ queries
 
     private static void execute(PhpContext ctx, Link l, String sql) throws SQLException {
+        String javaSql = MysqliSql.toJava(sql);
         blocking(ctx, () -> {
             try (Statement st = l.conn.createStatement()) {
-                st.execute(sql);
+                st.execute(javaSql);
             }
             return null;
         });
@@ -691,9 +691,10 @@ final class MysqliFunctions {
             throw new PhpError("ValueError", "mysqli_query(): Argument #2 ($query) cannot be empty", null);
         }
         try {
+            String javaSql = MysqliSql.toJava(sql);
             Outcome out = blocking(ctx, () -> {
                 try (Statement st = l.conn.createStatement()) {
-                    boolean hasResult = st.execute(sql, Statement.RETURN_GENERATED_KEYS);
+                    boolean hasResult = st.execute(javaSql, Statement.RETURN_GENERATED_KEYS);
                     if (hasResult) {
                         try (ResultSet rs = st.getResultSet()) {
                             return new Outcome(read(rs), -1, 0);
@@ -763,15 +764,12 @@ final class MysqliFunctions {
         int n = md.getColumnCount();
         Object[] cols = driverColumns(rs);
         List<FieldInfo> fields = new ArrayList<>(n);
-        boolean[] binary = new boolean[n];
         boolean[] bit = new boolean[n];
         for (int i = 0; i < n; i++) {
             FieldInfo f = cols != null && cols.length == n && cols[i] instanceof org.mariadb.jdbc.client.Column c
                     ? field(c) : field(md, i + 1);
             fields.add(f);
             long t = f.type();
-            // Charset 63 is "binary"; numeric columns carry it too, so only string types count.
-            binary[i] = f.charsetnr() == 63 && (t == 15 || (t >= 249 && t <= 255));
             bit[i] = t == 16;
         }
         List<Object[]> rows = new ArrayList<>();
@@ -790,12 +788,9 @@ final class MysqliFunctions {
                         }
                         row[i] = Long.toUnsignedString(v);
                     }
-                } else if (binary[i]) {
-                    byte[] b = rs.getBytes(i + 1);
-                    row[i] = b == null ? PhpNull.INSTANCE : bytesToString(b);
                 } else {
-                    String s = rs.getString(i + 1);
-                    row[i] = s == null ? PhpNull.INSTANCE : s;
+                    byte[] b = rs.getBytes(i + 1);
+                    row[i] = b == null ? PhpNull.INSTANCE : PhpStrings.of(b);
                 }
             }
             rows.add(row);
@@ -818,7 +813,8 @@ final class MysqliFunctions {
         if (isNumericType(type, length)) {
             flags |= 32768; // mysqlnd sets NUM_FLAG itself
         }
-        return new FieldInfo(c.getColumnAlias(), c.getColumnName(), c.getTableAlias(), c.getTable(), c.getSchema(),
+        return new FieldInfo(PhpStrings.fromJava(c.getColumnAlias()), PhpStrings.fromJava(c.getColumnName()),
+                PhpStrings.fromJava(c.getTableAlias()), PhpStrings.fromJava(c.getTable()), PhpStrings.fromJava(c.getSchema()),
                 length, charset, flags, type, c.getDecimals());
     }
 
@@ -828,22 +824,10 @@ final class MysqliFunctions {
     }
 
     private static FieldInfo field(ResultSetMetaData md, int i) throws SQLException {
-        return new FieldInfo(md.getColumnLabel(i), md.getColumnName(i), md.getTableName(i), md.getTableName(i),
-                md.getCatalogName(i), md.getPrecision(i), 0, md.isNullable(i) == ResultSetMetaData.columnNoNulls ? 1 : 0,
+        return new FieldInfo(PhpStrings.fromJava(md.getColumnLabel(i)), PhpStrings.fromJava(md.getColumnName(i)),
+                PhpStrings.fromJava(md.getTableName(i)), PhpStrings.fromJava(md.getTableName(i)),
+                PhpStrings.fromJava(md.getCatalogName(i)), md.getPrecision(i), 0, md.isNullable(i) == ResultSetMetaData.columnNoNulls ? 1 : 0,
                 253, md.getScale(i));
-    }
-
-    /** Valid UTF-8 becomes text; anything else one char per byte (strings are not byte strings yet). */
-    private static String bytesToString(byte[] b) {
-        try {
-            return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(b)).toString();
-        } catch (CharacterCodingException e) {
-            StringBuilder sb = new StringBuilder(b.length);
-            for (byte x : b) {
-                sb.append((char) (x & 0xFF));
-            }
-            return sb.toString();
-        }
     }
 
     private static Object fetch(Result r, long mode) {

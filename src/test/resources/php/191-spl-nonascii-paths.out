@@ -1,0 +1,8 @@
+café.txt|9|txt|file
+sübdir|7||dir
+日本.php|10|php|file
+café.txt:5
+sübdir/ünï.md:5
+日本.php:6
+café.txt file 636166c3a9
+realpath ok

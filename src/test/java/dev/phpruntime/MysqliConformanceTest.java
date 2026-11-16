@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -50,10 +51,24 @@ class MysqliConformanceTest {
                 .map(p -> DynamicTest.dynamicTest(p.getFileName().toString(), () -> check(p)));
     }
 
-    private static void check(Path script) throws IOException {
-        String expected = Files.readString(Path.of(script.toString().replaceAll("\\.php$", ".out")));
+    private static void check(Path script) throws Exception {
+        byte[] expected;
+        if (script.getFileName().toString().equals("08-byte-roundtrip.php")) {
+            // Random BLOBs are checked inside the script, not printed. Generate the reference
+            // against the same live server rather than committing an unverified expected file.
+            Process php = new ProcessBuilder("/usr/bin/php", script.toString()).start();
+            if (!php.waitFor(30, TimeUnit.SECONDS)) {
+                php.destroyForcibly();
+                throw new AssertionError("reference PHP timed out");
+            }
+            expected = php.getInputStream().readAllBytes();
+            String errors = new String(php.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertEquals(0, php.exitValue(), errors);
+        } else {
+            expected = Files.readAllBytes(Path.of(script.toString().replaceAll("\\.php$", ".out")));
+        }
         PhpEngine.Result result = engine.execute(script, new PhpRequest());
-        assertEquals(expected, result.bodyText(), "output of " + script.getFileName() + "\nstderr: " + result.errors());
+        assertArrayEquals(expected, result.body(), "output of " + script.getFileName() + "\nstderr: " + result.errors());
     }
 
     /**

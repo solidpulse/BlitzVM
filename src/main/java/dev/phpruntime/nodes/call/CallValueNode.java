@@ -314,7 +314,7 @@ public final class CallValueNode extends PhpNode {
     @TruffleBoundary
     private Object invokeBuiltin(Builtins.Def def, Object[] values) {
         try {
-            return def.impl().call(PhpContext.get(this), values);
+            return def.call(PhpContext.get(this), values);
         } catch (PhpError e) {
             throw e.at(this);
         }

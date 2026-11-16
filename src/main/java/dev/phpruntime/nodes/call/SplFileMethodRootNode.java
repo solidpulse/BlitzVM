@@ -1,5 +1,7 @@
 package dev.phpruntime.nodes.call;
 
+import dev.phpruntime.runtime.PhpStrings;
+
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.RootNode;
@@ -52,7 +54,7 @@ public final class SplFileMethodRootNode extends RootNode {
         if (!(self.nativeState() instanceof SplFileState state)) {
             throw new PhpError("The parent constructor was not called: the object is in an invalid state", this);
         }
-        Path path = Path.of(state.pathname.isEmpty() ? "." : state.pathname);
+        Path path = Path.of(state.pathname.isEmpty() ? "." : PhpStrings.toJava(state.pathname));
         try {
             return switch (name) {
                 case "rewind" -> { state.position = 0; state.refreshPath(); yield PhpNull.INSTANCE; }
@@ -98,7 +100,7 @@ public final class SplFileMethodRootNode extends RootNode {
                 case "isReadable" -> Files.isReadable(path);
                 case "isWritable" -> Files.isWritable(path);
                 case "isExecutable" -> Files.isExecutable(path);
-                case "getRealPath" -> Files.exists(path) ? path.toRealPath().toString() : false;
+                case "getRealPath" -> Files.exists(path) ? PhpStrings.fromJava(path.toRealPath().toString()) : false;
                 case "getSize" -> Files.size(path);
                 case "getMTime" -> Files.getLastModifiedTime(path).toMillis() / 1000;
                 case "getATime" -> ((java.nio.file.attribute.FileTime) Files.getAttribute(path, "basic:lastAccessTime")).toMillis() / 1000;
@@ -108,7 +110,7 @@ public final class SplFileMethodRootNode extends RootNode {
                 case "getGroup" -> ((Number) Files.getAttribute(path, "unix:gid")).longValue();
                 case "getPerms" -> ((Number) Files.getAttribute(path, "unix:mode")).longValue();
                 case "getType" -> Files.isSymbolicLink(path) ? "link" : Files.isDirectory(path) ? "dir" : Files.isRegularFile(path) ? "file" : "unknown";
-                case "getLinkTarget" -> Files.readSymbolicLink(path).toString();
+                case "getLinkTarget" -> PhpStrings.fromJava(Files.readSymbolicLink(path).toString());
                 case "getFileInfo" -> info(ctx, args.length > 2 && args[2] != PhpNull.INSTANCE ? PhpOps.toStr(args[2]) : state.infoClass, state.pathname);
                 case "getPathInfo" -> state.path().isEmpty() ? PhpNull.INSTANCE
                         : info(ctx, args.length > 2 && args[2] != PhpNull.INSTANCE ? PhpOps.toStr(args[2]) : state.infoClass, state.path());

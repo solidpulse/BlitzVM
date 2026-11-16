@@ -42,13 +42,13 @@ public final class SplFileState implements PhpNativeState {
             state.entries.add(".");
             state.entries.add("..");
         }
-        try (var stream = Files.newDirectoryStream(Path.of(state.directory))) {
+        try (var stream = Files.newDirectoryStream(Path.of(PhpStrings.toJava(state.directory)))) {
             for (Path entry : stream) {
-                state.entries.add(entry.getFileName().toString());
+                state.entries.add(PhpStrings.fromJava(entry.getFileName().toString()));
             }
         } catch (IOException error) {
             throw new PhpError("UnexpectedValueException", "RecursiveDirectoryIterator::__construct(" + pathname
-                    + "): Failed to open directory: " + (Files.exists(Path.of(pathname)) ? "Not a directory" : "No such file or directory"), null);
+                    + "): Failed to open directory: " + (Files.exists(Path.of(PhpStrings.toJava(pathname))) ? "Not a directory" : "No such file or directory"), null);
         }
         state.refreshPath();
         return state;
@@ -83,8 +83,8 @@ public final class SplFileState implements PhpNativeState {
 
     @TruffleBoundary
     public boolean hasChildren(boolean allowLinks) {
-        return valid() && !isDot() && Files.isDirectory(Path.of(pathname))
-                && (allowLinks || (flags & FOLLOW_SYMLINKS) != 0 || !Files.isSymbolicLink(Path.of(pathname)));
+        return valid() && !isDot() && Files.isDirectory(Path.of(PhpStrings.toJava(pathname)))
+                && (allowLinks || (flags & FOLLOW_SYMLINKS) != 0 || !Files.isSymbolicLink(Path.of(PhpStrings.toJava(pathname))));
     }
 
     public String subPathname() {

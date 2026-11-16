@@ -12,7 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 /** Runs every src/test/resources/php/*.php and compares with the output real php produced. */
 class ConformanceTest {
@@ -40,8 +40,8 @@ class ConformanceTest {
 
     private static void check(Path script) throws IOException {
         Path expectedFile = Path.of(script.toString().replaceAll("\\.php$", ".out"));
-        String expected = Files.readString(expectedFile);
+        byte[] expected = Files.readAllBytes(expectedFile);
         PhpEngine.Result result = engine.execute(script, new PhpRequest());
-        assertEquals(expected, result.bodyText(), "output of " + script.getFileName() + "\nstderr: " + result.errors());
+        assertArrayEquals(expected, result.body(), "output of " + script.getFileName() + "\nstderr: " + result.errors());
     }
 }

@@ -123,7 +123,7 @@ final class CallableFunctions {
     }
 
     private static Object splAutoload(PhpContext ctx, Object[] a) {
-        String cls = PhpOps.toStr(a[0]).toLowerCase();
+        String cls = dev.phpruntime.runtime.PhpStrings.lower(PhpOps.toStr(a[0]));
         String exts = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpOps.toStr(a[1]) : ".php,.inc";
         for (String ext : exts.split(",")) {
             if (IncludeNode.tryIncludeOnce(ctx, cls + ext.trim())) {

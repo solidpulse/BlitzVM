@@ -7,10 +7,10 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpResource;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 import java.nio.channels.SeekableByteChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
 import java.nio.file.StandardCopyOption;
@@ -89,7 +89,7 @@ final class StreamFunctions {
                 SeekableByteChannel ch = f.newByteChannel(Set.of(StandardOpenOption.READ, StandardOpenOption.WRITE,
                         StandardOpenOption.DELETE_ON_CLOSE));
                 ContextState st = ContextState.of(ctx);
-                return new PhpResource(st.nextResourceId++, "stream", new PhpStream.FileStream(ch, "r+b", f.getPath()));
+                return new PhpResource(st.nextResourceId++, "stream", new PhpStream.FileStream(ch, "r+b", PhpStrings.fromJava(f.getPath())));
             } catch (IOException | SecurityException e) {
                 return false;
             }
@@ -112,14 +112,14 @@ final class StreamFunctions {
 
     /** Opens path with an fopen mode; warns and returns null on failure, as fopen does. */
     static PhpStream openStream(PhpContext ctx, String path, String mode, String fn) {
-        String lower = path.toLowerCase();
+        String lower = PhpStrings.lower(path);
         if (lower.startsWith("php://")) {
             String what = lower.substring(6);
             return switch (what.contains("/") ? what.substring(0, what.indexOf('/')) : what) {
                 case "memory" -> new PhpStream.MemoryStream("w+b", "php://memory", "MEMORY", null);
                 case "temp" -> new PhpStream.MemoryStream("w+b", "php://temp", "TEMP", null);
                 case "input" -> new PhpStream.MemoryStream("rb", "php://input", "Input",
-                        ctx.request().body.getBytes(StandardCharsets.UTF_8));
+                        PhpStrings.bytes(ctx.request().body));
                 case "output" -> new PhpStream.OutputStreamStream(ctx, null, "wb", "php://output");
                 case "stdout" -> new PhpStream.OutputStreamStream(ctx, ctx.env().out(), mode, "php://stdout");
                 case "stderr" -> new PhpStream.OutputStreamStream(ctx, ctx.env().err(), mode, "php://stderr");
@@ -157,7 +157,7 @@ final class StreamFunctions {
             opts.add(StandardOpenOption.READ);
         }
         try {
-            TruffleFile f = ctx.env().getPublicTruffleFile(path);
+            TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
             if (f.isDirectory() && m != 'r') {
                 ctx.warning(fn + "(" + path + "): Failed to open stream: Is a directory", 0);
                 return null;
@@ -206,7 +206,7 @@ final class StreamFunctions {
                 return false;
             }
             try {
-                return HashFunctions.fromBytes(s.readBytes((int) Math.min(n, Integer.MAX_VALUE - 8)));
+                return PhpStrings.of(s.readBytes((int) Math.min(n, Integer.MAX_VALUE - 8)));
             } catch (IOException e) {
                 return false;
             }
@@ -219,7 +219,7 @@ final class StreamFunctions {
             }
             try {
                 byte[] line = s.readLine(max);
-                return line.length == 0 ? false : HashFunctions.fromBytes(line);
+                return line.length == 0 ? false : PhpStrings.of(line);
             } catch (IOException e) {
                 return false;
             }
@@ -231,7 +231,7 @@ final class StreamFunctions {
             }
             try {
                 byte[] b = s.readBytes(1);
-                return b.length == 0 ? false : HashFunctions.fromBytes(b);
+                return b.length == 0 ? false : PhpStrings.of(b);
             } catch (IOException e) {
                 return false;
             }
@@ -331,7 +331,7 @@ final class StreamFunctions {
                     return false;
                 }
                 byte[] data = max < 0 ? s.readAll() : s.readBytes((int) max);
-                return HashFunctions.fromBytes(data);
+                return PhpStrings.of(data);
             } catch (IOException e) {
                 return false;
             }
@@ -340,7 +340,7 @@ final class StreamFunctions {
             PhpStream s = stream(a[0], "fpassthru");
             try {
                 byte[] data = s.readAll();
-                ctx.echo(HashFunctions.fromBytes(data));
+                ctx.echo(PhpStrings.of(data));
                 return (long) data.length;
             } catch (IOException e) {
                 return false;
@@ -374,7 +374,7 @@ final class StreamFunctions {
             if (a[0] instanceof PhpResource) {
                 return true;
             }
-            String p = PhpOps.toStr(a[0]).toLowerCase();
+            String p = PhpStrings.lower(PhpOps.toStr(a[0]));
             return !p.matches("^[a-z][a-z0-9+.-]+://.*") || p.startsWith("file://") || p.startsWith("php://");
         });
         // TODO: stream_socket_client and fsockopen (network streams, through scheduler.blocking).
@@ -382,7 +382,7 @@ final class StreamFunctions {
 
     private static Object fwrite(PhpContext ctx, Object[] a) {
         PhpStream s = stream(a[0], "fwrite");
-        byte[] data = PhpOps.toStr(a[1]).getBytes(StandardCharsets.UTF_8);
+        byte[] data = PhpStrings.bytes(PhpOps.toStr(a[1]));
         if (a.length > 2 && a[2] != PhpNull.INSTANCE) {
             long len = PhpOps.toLong(a[2]);
             if (len < data.length) {
@@ -406,7 +406,7 @@ final class StreamFunctions {
         Builtins.def("opendir", 1, 2, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
             try {
-                TruffleFile dir = ctx.env().getPublicTruffleFile(path);
+                TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
                 if (!dir.isDirectory()) {
                     throw new IOException();
                 }
@@ -414,7 +414,7 @@ final class StreamFunctions {
                 names.add(".");
                 names.add("..");
                 for (TruffleFile child : dir.list()) {
-                    names.add(child.getName());
+                    names.add(PhpStrings.fromJava(child.getName()));
                 }
                 PhpResource r = new PhpResource(streamId(ctx), "stream", new PhpStream.DirHandle(names));
                 ContextState.of(ctx).lastDir = r;
@@ -461,7 +461,7 @@ final class StreamFunctions {
             if (data == null) {
                 return false;
             }
-            String text = HashFunctions.fromBytes(data);
+            String text = PhpStrings.of(data);
             boolean ignoreNl = (flags & 2) != 0;
             boolean skipEmpty = (flags & 4) != 0;
             PhpArray out = new PhpArray();
@@ -488,7 +488,7 @@ final class StreamFunctions {
             if (data == null) {
                 return false;
             }
-            ctx.echo(HashFunctions.fromBytes(data));
+            ctx.echo(PhpStrings.of(data));
             return (long) data.length;
         });
         Builtins.def("md5_file", 1, 2, (ctx, a) -> hashFile(ctx, a, "md5", "md5_file"));
@@ -503,7 +503,7 @@ final class StreamFunctions {
         Builtins.def("filectime", 1, 1, (ctx, a) -> statField(ctx, PhpOps.toStr(a[0]), "filectime", 10));
         Builtins.def("is_link", 1, 1, (ctx, a) -> {
             try {
-                return ctx.env().getPublicTruffleFile(PhpOps.toStr(a[0])).isSymbolicLink();
+                return ctx.env().getPublicTruffleFile(PhpStrings.toJava(PhpOps.toStr(a[0]))).isSymbolicLink();
             } catch (SecurityException | IllegalArgumentException e) {
                 return false;
             }
@@ -512,7 +512,7 @@ final class StreamFunctions {
             String path = PhpOps.toStr(a[0]);
             long mode = PhpOps.toLong(a[1]);
             try {
-                ctx.env().getPublicTruffleFile(path).setPosixPermissions(permissions(mode));
+                ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)).setPosixPermissions(permissions(mode));
                 return true;
             } catch (IOException | SecurityException | IllegalArgumentException | UnsupportedOperationException e) {
                 ctx.warning("chmod(): No such file or directory", 0);
@@ -530,7 +530,7 @@ final class StreamFunctions {
         Builtins.def("touch", 1, 3, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
             try {
-                TruffleFile f = ctx.env().getPublicTruffleFile(path);
+                TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
                 if (!f.exists()) {
                     f.newByteChannel(Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE)).close();
                 }
@@ -549,13 +549,13 @@ final class StreamFunctions {
             String from = PhpOps.toStr(a[0]);
             String to = PhpOps.toStr(a[1]);
             try {
-                TruffleFile src = ctx.env().getPublicTruffleFile(from);
+                TruffleFile src = ctx.env().getPublicTruffleFile(PhpStrings.toJava(from));
                 if (!src.isRegularFile()) {
                     throw new IOException();
                 }
                 consumeStreamId(ctx);
                 consumeStreamId(ctx);
-                src.copy(ctx.env().getPublicTruffleFile(to), StandardCopyOption.REPLACE_EXISTING);
+                src.copy(ctx.env().getPublicTruffleFile(PhpStrings.toJava(to)), StandardCopyOption.REPLACE_EXISTING);
                 return true;
             } catch (IOException | SecurityException | IllegalArgumentException e) {
                 ctx.warning("copy(" + from + "): Failed to open stream: No such file or directory", 0);
@@ -566,11 +566,11 @@ final class StreamFunctions {
             String from = PhpOps.toStr(a[0]);
             String to = PhpOps.toStr(a[1]);
             try {
-                TruffleFile src = ctx.env().getPublicTruffleFile(from);
+                TruffleFile src = ctx.env().getPublicTruffleFile(PhpStrings.toJava(from));
                 if (!src.exists(LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException();
                 }
-                src.move(ctx.env().getPublicTruffleFile(to), StandardCopyOption.REPLACE_EXISTING);
+                src.move(ctx.env().getPublicTruffleFile(PhpStrings.toJava(to)), StandardCopyOption.REPLACE_EXISTING);
                 return true;
             } catch (IOException | SecurityException | IllegalArgumentException e) {
                 ctx.warning("rename(" + from + "," + to + "): No such file or directory", 0);
@@ -584,7 +584,7 @@ final class StreamFunctions {
                 prefix = prefix.substring(0, 63);
             }
             try {
-                TruffleFile dir = dirName.isEmpty() ? null : ctx.env().getPublicTruffleFile(dirName);
+                TruffleFile dir = dirName.isEmpty() ? null : ctx.env().getPublicTruffleFile(PhpStrings.toJava(dirName));
                 if (dir == null || !dir.isDirectory() || !dir.isWritable()) {
                     ctx.warning("tempnam(): file created in the system's temporary directory", 0);
                     dir = ctx.env().getPublicTruffleFile(EnvFunctions.tempDir());
@@ -601,10 +601,10 @@ final class StreamFunctions {
                     for (int i = 0; i < 6; i++) {
                         name.append(alphabet.charAt(rnd.nextInt(alphabet.length())));
                     }
-                    TruffleFile f = dir.resolve(name.toString());
+                    TruffleFile f = dir.resolve(PhpStrings.toJava(name.toString()));
                     try {
                         f.newByteChannel(Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)).close();
-                        return f.getPath();
+                        return PhpStrings.fromJava(f.getPath());
                     } catch (java.nio.file.FileAlreadyExistsException retry) {
                         // try another name
                     }
@@ -624,7 +624,7 @@ final class StreamFunctions {
     /** Reads a whole local file for file(), readfile() and friends; warns and returns null if missing. */
     static byte[] readFile(PhpContext ctx, String path, String fn) {
         try {
-            TruffleFile f = ctx.env().getPublicTruffleFile(path);
+            TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
             if (!f.isRegularFile()) {
                 throw new IOException();
             }
@@ -644,7 +644,7 @@ final class StreamFunctions {
         }
         byte[] digest = HashFunctions.digest(algo, data, fn);
         boolean binary = a.length > 1 && PhpOps.toBool(a[1]);
-        return binary ? HashFunctions.fromBytes(digest) : java.util.HexFormat.of().formatHex(digest);
+        return binary ? PhpStrings.of(digest) : java.util.HexFormat.of().formatHex(digest);
     }
 
     private static final List<TruffleFile.AttributeDescriptor<?>> STAT_ATTRS = List.of(
@@ -655,7 +655,7 @@ final class StreamFunctions {
     /** stat()/lstat(): PHP's 26-entry array, or false with a warning when fn is not null. */
     static Object stat(PhpContext ctx, String path, boolean noFollow, String fn) {
         try {
-            TruffleFile f = ctx.env().getPublicTruffleFile(path);
+            TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
             LinkOption[] opts = noFollow ? new LinkOption[]{LinkOption.NOFOLLOW_LINKS} : new LinkOption[0];
             TruffleFile.Attributes at = f.getAttributes(STAT_ATTRS, opts);
             long size = num(at.get(TruffleFile.SIZE));
@@ -719,7 +719,7 @@ final class StreamFunctions {
     }
 
     private static Object space(String path, boolean free) {
-        java.io.File f = new java.io.File(path);
+        java.io.File f = new java.io.File(PhpStrings.toJava(path));
         if (!f.exists()) {
             return false;
         }
@@ -744,7 +744,7 @@ final class StreamFunctions {
                 kept.add((flags & GLOB_MARK) != 0 && isDir ? m + "/" : m);
             }
             if ((flags & GLOB_NOSORT) == 0) {
-                kept.sort((x, y) -> java.util.Arrays.compareUnsigned(x.getBytes(StandardCharsets.UTF_8), y.getBytes(StandardCharsets.UTF_8)));
+                kept.sort(String::compareTo);
             }
             for (String k : kept) {
                 out.append(k);
@@ -780,13 +780,13 @@ final class StreamFunctions {
         Pattern re = segmentRegex(seg, escape);
         String dirPath = prefix.isEmpty() ? "." : prefix;
         try {
-            TruffleFile dir = ctx.env().getPublicTruffleFile(dirPath);
+            TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(dirPath));
             if (!dir.isDirectory()) {
                 return;
             }
             List<String> names = new ArrayList<>();
             for (TruffleFile child : dir.list()) {
-                names.add(child.getName());
+                names.add(PhpStrings.fromJava(child.getName()));
             }
             names.sort(String::compareTo);
             for (String name : names) {
@@ -892,7 +892,7 @@ final class StreamFunctions {
 
     private static boolean exists(PhpContext ctx, String path) {
         try {
-            return ctx.env().getPublicTruffleFile(path).exists();
+            return ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)).exists();
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -900,7 +900,7 @@ final class StreamFunctions {
 
     private static boolean isDir(PhpContext ctx, String path) {
         try {
-            return ctx.env().getPublicTruffleFile(path).isDirectory();
+            return ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)).isDirectory();
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }

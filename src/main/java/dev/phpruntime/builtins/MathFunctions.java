@@ -69,7 +69,7 @@ final class MathFunctions {
         Builtins.def("decoct", 1, 1, (ctx, a) -> Long.toOctalString(PhpOps.toLong(a[0])));
         Builtins.def("octdec", 1, 1, (ctx, a) -> parseBase(PhpOps.toStr(a[0]), 8));
         Builtins.def("base_convert", 3, 3, (ctx, a) -> {
-            long v = parseBase(PhpOps.toStr(a[0]).toLowerCase(), (int) PhpOps.toLong(a[1]));
+            long v = parseBase(dev.phpruntime.runtime.PhpStrings.lower(PhpOps.toStr(a[0])), (int) PhpOps.toLong(a[1]));
             return Long.toString(v, (int) PhpOps.toLong(a[2]));
         });
         Builtins.def("rand", 0, 2, (ctx, a) -> random(a, false));
@@ -94,7 +94,21 @@ final class MathFunctions {
             lo = hi;
             hi = tmp;
         }
-        return lo + ThreadLocalRandom.current().nextLong(hi - lo + 1);
+        if (lo == hi) {
+            return lo;
+        }
+        if (!strictOrder && hi - lo + 1 > 0) {
+            return lo + ThreadLocalRandom.current().nextLong(hi - lo + 1);
+        }
+        long range = hi - lo + 1;
+        if (range > 0) {
+            return lo + HashFunctions.RANDOM.nextLong(range);
+        }
+        long value;
+        do {
+            value = HashFunctions.RANDOM.nextLong();
+        } while (value < lo || value > hi);
+        return value;
     }
 
     /** max()/min() over either a single array or the argument list. */

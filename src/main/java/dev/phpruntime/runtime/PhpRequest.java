@@ -14,16 +14,21 @@ public final class PhpRequest {
 
     private static final ThreadLocal<PhpRequest> CURRENT = new ThreadLocal<>();
 
+    /** HTTP protocol data below is PHP bytes; scriptFilename alone is a Java path. */
     public String method = "GET";
     public String uri = "/";
     public String queryString = "";
     public String scriptFilename = "";
     public String remoteAddr = "";
     public String body = "";
+    /** PHP byte strings; file names outside these guest-facing fields remain Java paths. */
+    public String[] argv = new String[0];
     public final Map<String, String> headers = new LinkedHashMap<>();
     public final Map<String, String> get = new LinkedHashMap<>();
     public final Map<String, String> post = new LinkedHashMap<>();
     public final Map<String, String> server = new LinkedHashMap<>();
+    /** Java OS environment text supplied by an embedder; empty by default, like php-cli. */
+    public final Map<String, String> environment = new LinkedHashMap<>();
 
     /** True when serving HTTP (a JS module's exported handler is then called with req/res). */
     public boolean http;

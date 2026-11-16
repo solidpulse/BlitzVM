@@ -1,5 +1,6 @@
 package dev.phpruntime.builtins;
 
+import dev.phpruntime.runtime.PhpStrings;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -45,12 +46,16 @@ final class PcreTranslator {
         final int[][] javaGroups;
         /** For PHP group g, its name or null. */
         final String[] names;
+        final boolean utf;
+        final String decodedPattern;
 
-        Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names) {
+        Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names, boolean utf, String decodedPattern) {
             this.pattern = pattern;
             this.groupCount = groupCount;
             this.javaGroups = javaGroups;
             this.names = names;
+            this.utf = utf;
+            this.decodedPattern = decodedPattern;
         }
 
         int start(Matcher m, int g) {
@@ -193,7 +198,7 @@ final class PcreTranslator {
 
     // ------------------------------------------------------------------ translator state
 
-    private final String src;
+    private String src;
     private int pos;
     private final StringBuilder out = new StringBuilder();
 
@@ -243,6 +248,15 @@ final class PcreTranslator {
     private final Deque<Frame> frames = new ArrayDeque<>();
 
     private Compiled translate() throws PatternError {
+        if (src.startsWith("(*UTF)") || src.startsWith("(*UTF8)")) {
+            utf = true;
+        }
+        if (utf) {
+            if (!PhpStrings.isUtf8(src)) {
+                throw new PatternError("Compilation failed: UTF-8 error: illegal byte at offset 0");
+            }
+            src = PhpStrings.toJava(src);
+        }
         Matcher cm = COND_REF.matcher(src);
         while (cm.find()) {
             String ref = cm.group(1);
@@ -306,7 +320,7 @@ final class PcreTranslator {
             map[g] = userToJava.get(g).stream().mapToInt(Integer::intValue).toArray();
             names[g] = userNames.get(g);
         }
-        return new Compiled(pattern, userGroups, map, names);
+        return new Compiled(pattern, userGroups, map, names, utf, src);
     }
 
     // ------------------------------------------------------------------ structure

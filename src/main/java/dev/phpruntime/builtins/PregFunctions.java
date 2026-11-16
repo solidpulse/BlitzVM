@@ -6,6 +6,7 @@ import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,12 +18,9 @@ import java.util.regex.Matcher;
  * preg_match, preg_match_all, preg_replace, preg_split, preg_quote, preg_grep.
  *
  * <p>Patterns go through {@link PcreTranslator} to java.util.regex. Offsets reported to
- * PHP (PREG_OFFSET_CAPTURE, preg_split's offsets) and the offset argument are UTF-8 byte
- * offsets, as in PHP; internally strings are Java strings. Without the {@code u}
- * modifier PHP matches bytes while this matches characters, so {@code .} consumes a whole
- * multi-byte character here.
- *
- * <p>TODO(callables): preg_replace_callback and preg_replace_callback_array need closures.
+ * PHP (PREG_OFFSET_CAPTURE, preg_split's offsets) and the offset argument are always
+ * byte offsets. Only {@code /u} decodes the pattern/subject; captured text is encoded
+ * back to PHP bytes. Each Unicode call builds its byte-offset map in one linear pass.
  */
 final class PregFunctions {
 
@@ -52,20 +50,26 @@ final class PregFunctions {
         Builtins.def("preg_quote", 1, 2, (ctx, a) -> quote(PhpOps.toStr(a[0]),
                 a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpOps.toStr(a[1]) : ""));
         Builtins.def("preg_grep", 2, 3, PregFunctions::grep);
-        Builtins.def("preg_last_error", 0, 0, (ctx, a) -> 0L);
-        Builtins.def("preg_last_error_msg", 0, 0, (ctx, a) -> "No error");
+        Builtins.def("preg_last_error", 0, 0, (ctx, a) -> (long) ContextState.of(ctx).pregLastError);
+        Builtins.def("preg_last_error_msg", 0, 0, (ctx, a) -> switch (ContextState.of(ctx).pregLastError) {
+            case 0 -> "No error";
+            case 4 -> "Malformed UTF-8 characters, possibly incorrectly encoded";
+            case 5 -> "The offset did not correspond to the beginning of a valid UTF-8 code point";
+            default -> "Internal error";
+        });
     }
 
     // ------------------------------------------------------------------ compiling
 
     /** The compiled pattern, or null after emitting PHP's warning. */
     static PcreTranslator.Compiled compile(PhpContext ctx, String fn, String regex) {
+        ContextState.of(ctx).pregLastError = 0;
         Object cached = CACHE.get(regex);
         if (cached == null) {
             try {
                 cached = PcreTranslator.compile(regex);
             } catch (PcreTranslator.PatternError e) {
-                cached = e.getMessage();
+                cached = PhpStrings.fromJava(e.getMessage());
             }
             if (CACHE.size() >= CACHE_LIMIT) {
                 CACHE.clear();
@@ -73,6 +77,7 @@ final class PregFunctions {
             CACHE.put(regex, cached);
         }
         if (cached instanceof String error) {
+            ContextState.of(ctx).pregLastError = 1;
             ctx.warning(fn + "(): " + error, 0);
             return null;
         }
@@ -83,43 +88,62 @@ final class PregFunctions {
 
     /** Converts between char indexes and UTF-8 byte offsets of one subject string. */
     static final class Offsets {
-        private final String s;
-        private int[] bytes;
+        final String text;
+        private PhpStrings.Utf8Offsets offsets;
+        private final int byteLength;
+        final boolean utf;
 
-        Offsets(String s) {
-            this.s = s;
-            for (int i = 0; i < s.length(); i++) {
-                if (s.charAt(i) >= 0x80) {
-                    bytes = new int[s.length() + 1];
-                    for (int k = 0; k < s.length(); k++) {
-                        char c = s.charAt(k);
-                        int w = c < 0x80 ? 1 : c < 0x800 ? 2 : Character.isHighSurrogate(c) ? 4 : Character.isLowSurrogate(c) ? 0 : 3;
-                        bytes[k + 1] = bytes[k] + w;
-                    }
-                    return;
-                }
-            }
+        Offsets(String s, boolean utf, String text) {
+            this.utf = utf;
+            this.text = text;
+            byteLength = s.length();
         }
 
         long toBytes(int charIndex) {
-            return bytes == null ? charIndex : bytes[charIndex];
+            if (!utf || charIndex == 0) {
+                return charIndex;
+            }
+            return offsets().toBytes(charIndex);
         }
 
         int byteLength() {
-            return bytes == null ? s.length() : bytes[s.length()];
+            return byteLength;
         }
 
-        /** The char index at or after a byte offset. */
         int toChars(long byteOffset) {
-            if (bytes == null) {
-                return (int) byteOffset;
-            }
-            int i = 0;
-            while (i < s.length() && bytes[i] < byteOffset) {
-                i++;
-            }
-            return i;
+            return !utf || byteOffset == 0 ? (int) byteOffset : offsets().toChars((int) byteOffset);
         }
+
+        private PhpStrings.Utf8Offsets offsets() {
+            if (offsets == null) {
+                offsets = new PhpStrings.Utf8Offsets(text);
+            }
+            return offsets;
+        }
+
+        String php(String s) {
+            return utf ? PhpStrings.fromJava(s) : s;
+        }
+    }
+
+    private static Offsets subject(PhpContext ctx, PcreTranslator.Compiled re, String s) {
+        String text = re.utf ? PhpStrings.toJavaUtf8OrNull(s) : s;
+        if (text == null) {
+            ContextState.of(ctx).pregLastError = 4;
+            return null;
+        }
+        return new Offsets(s, re.utf, text);
+    }
+
+    /** Java advances empty matches by UTF-16 units; PCRE /u advances by code points. */
+    private static boolean find(Matcher matcher, Offsets off) {
+        while (matcher.find()) {
+            int start = matcher.start();
+            if (!off.utf || start == off.text.length() || !Character.isLowSurrogate(off.text.charAt(start))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ preg_match(_all)
@@ -132,7 +156,14 @@ final class PregFunctions {
         }
         String subject = PhpOps.toStr(a[1]);
         long flags = a.length > 3 && a[3] != PhpNull.INSTANCE ? PhpOps.toLong(a[3]) : 0;
-        Offsets off = new Offsets(subject);
+        Offsets off = subject(ctx, re, subject);
+        if (off == null) {
+            if (a.length > 2) {
+                a[2] = new PhpArray();
+            }
+            return false;
+        }
+        subject = off.text;
         long offset = a.length > 4 ? PhpOps.toLong(a[4]) : 0;
         if (offset < 0) {
             offset = -offset > off.byteLength() ? 0 : off.byteLength() + offset;
@@ -143,12 +174,20 @@ final class PregFunctions {
             }
             return false;
         }
+        int charOffset = off.toChars(offset);
+        if (charOffset < 0) {
+            ContextState.of(ctx).pregLastError = 5;
+            if (a.length > 2) {
+                a[2] = new PhpArray();
+            }
+            return false;
+        }
         Matcher m = re.pattern.matcher(subject);
-        m.useTransparentBounds(true).useAnchoringBounds(false).region(off.toChars(offset), subject.length());
+        m.useTransparentBounds(true).useAnchoringBounds(false).region(charOffset, subject.length());
         boolean offsetCapture = (flags & OFFSET_CAPTURE) != 0;
         boolean unmatchedNull = (flags & UNMATCHED_AS_NULL) != 0;
         if (!all) {
-            boolean found = m.find();
+            boolean found = find(m, off);
             if (a.length > 2) {
                 a[2] = found ? matchArray(re, m, subject, off, offsetCapture, unmatchedNull) : new PhpArray();
             }
@@ -165,7 +204,7 @@ final class PregFunctions {
             columns[g] = new PhpArray();
         }
         long count = 0;
-        while (m.find()) {
+        while (find(m, off)) {
             count++;
             if (setOrder) {
                 sets.add(matchArray(re, m, subject, off, offsetCapture, unmatchedNull));
@@ -210,7 +249,7 @@ final class PregFunctions {
     private static Object groupValue(PcreTranslator.Compiled re, Matcher m, int g, String subject, Offsets off,
                                      boolean offsetCapture, boolean unmatchedNull) {
         int start = re.start(m, g);
-        Object text = start < 0 ? (unmatchedNull ? PhpNull.INSTANCE : "") : subject.substring(start, re.end(m, g));
+        Object text = start < 0 ? (unmatchedNull ? PhpNull.INSTANCE : "") : off.php(subject.substring(start, re.end(m, g)));
         if (!offsetCapture) {
             return text;
         }
@@ -274,17 +313,22 @@ final class PregFunctions {
         if (re == null) {
             return null;
         }
+        Offsets off = subject(ctx, re, subject);
+        if (off == null) {
+            return null;
+        }
+        subject = off.text;
         Matcher m = re.pattern.matcher(subject);
         StringBuilder sb = new StringBuilder();
         int last = 0;
         long done = 0;
-        while ((limit < 0 || done < limit) && m.find()) {
-            sb.append(subject, last, m.start());
-            expand(sb, replacement, re, m, subject);
+        while ((limit < 0 || done < limit) && find(m, off)) {
+            sb.append(off.php(subject.substring(last, m.start())));
+            expand(sb, replacement, re, m, subject, off);
             last = m.end();
             done++;
         }
-        sb.append(subject, last, subject.length());
+        sb.append(off.php(subject.substring(last)));
         count[0] += done;
         return sb.toString();
     }
@@ -384,25 +428,29 @@ final class PregFunctions {
         }
         boolean offsetCapture = (flags & OFFSET_CAPTURE) != 0;
         boolean unmatchedNull = (flags & UNMATCHED_AS_NULL) != 0;
-        Offsets off = offsetCapture ? new Offsets(subject) : null;
+        Offsets off = subject(ctx, re, subject);
+        if (off == null) {
+            return null;
+        }
+        subject = off.text;
         Matcher m = re.pattern.matcher(subject);
         StringBuilder sb = new StringBuilder();
         int last = 0;
         long done = 0;
-        while ((limit < 0 || done < limit) && m.find()) {
-            sb.append(subject, last, m.start());
+        while ((limit < 0 || done < limit) && find(m, off)) {
+            sb.append(off.php(subject.substring(last, m.start())));
             PhpArray matches = matchArray(re, m, subject, off, offsetCapture, unmatchedNull);
             sb.append(PhpOps.toStr(cb.call(ctx, null, null, matches)));
             last = m.end();
             done++;
         }
-        sb.append(subject, last, subject.length());
+        sb.append(off.php(subject.substring(last)));
         count[0] += done;
         return sb.toString();
     }
 
     /** PHP's replacement syntax: \n, $n and ${n} with one or two digits; \\ and \$ escape. */
-    private static void expand(StringBuilder sb, String rep, PcreTranslator.Compiled re, Matcher m, String subject) {
+    private static void expand(StringBuilder sb, String rep, PcreTranslator.Compiled re, Matcher m, String subject, Offsets off) {
         int n = rep.length();
         char last = 0;
         for (int i = 0; i < n; ) {
@@ -432,7 +480,7 @@ final class PregFunctions {
                     if (g <= re.groupCount) {
                         int s = re.start(m, g);
                         if (s >= 0) {
-                            sb.append(subject, s, re.end(m, g));
+                            sb.append(off.php(subject.substring(s, re.end(m, g))));
                         }
                     }
                     i = j;
@@ -462,12 +510,16 @@ final class PregFunctions {
         boolean noEmpty = (flags & SPLIT_NO_EMPTY) != 0;
         boolean delim = (flags & SPLIT_DELIM_CAPTURE) != 0;
         boolean offsets = (flags & SPLIT_OFFSET_CAPTURE) != 0;
-        Offsets off = new Offsets(subject);
+        Offsets off = subject(ctx, re, subject);
+        if (off == null) {
+            return false;
+        }
+        subject = off.text;
         PhpArray out = new PhpArray();
         int last = 0;
         if (limit != 1) {
             Matcher m = re.pattern.matcher(subject);
-            while ((limit == -1 || limit > 1) && m.find()) {
+            while ((limit == -1 || limit > 1) && find(m, off)) {
                 if (!noEmpty || m.start() != last) {
                     out.append(piece(subject, last, m.start(), off, offsets));
                     if (limit != -1) {
@@ -494,7 +546,7 @@ final class PregFunctions {
     }
 
     private static Object piece(String s, int start, int end, Offsets off, boolean withOffset) {
-        String text = s.substring(start, end);
+        String text = off.php(s.substring(start, end));
         if (!withOffset) {
             return text;
         }
@@ -538,7 +590,11 @@ final class PregFunctions {
         boolean invert = a.length > 2 && (PhpOps.toLong(a[2]) & GREP_INVERT) != 0;
         PhpArray out = new PhpArray();
         for (Map.Entry<Object, Object> e : input.entries()) {
-            boolean found = re.pattern.matcher(PhpOps.toStr(e.getValue())).find();
+            Offsets off = subject(ctx, re, PhpOps.toStr(e.getValue()));
+            if (off == null) {
+                return false;
+            }
+            boolean found = re.pattern.matcher(off.text).find();
             if (found != invert) {
                 out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
             }

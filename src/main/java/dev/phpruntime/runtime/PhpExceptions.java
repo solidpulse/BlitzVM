@@ -104,6 +104,13 @@ public final class PhpExceptions {
         addSubclass(language, out, "DateObjectError", "DateError");
         addSubclass(language, out, "DateRangeError", "DateError");
 
+        Map<String, PhpClassTemplate.MethodDecl> hashMethods = new LinkedHashMap<>();
+        addMethod(language, hashMethods, "__construct", Visibility.PRIVATE, true, (ctx, self, args) -> {
+            throw new PhpError("Cannot directly construct HashContext, use hash_init() instead");
+        });
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "HashContext", false, false, true, false,
+                null, List.of(), List.of(), List.of(), hashMethods));
+
         return Map.copyOf(out);
     }
 
@@ -121,7 +128,7 @@ public final class PhpExceptions {
     private static void addAbstractMethod(PhpLanguage language,
                                           Map<String, PhpClassTemplate.MethodDecl> map,
                                           String name) {
-        String lower = name.toLowerCase();
+        String lower = PhpStrings.lower(name);
         map.put(lower, new PhpClassTemplate.MethodDecl(
                 name, lower, language.methodId(name), Visibility.PUBLIC, false, true, false, null));
     }
@@ -129,7 +136,7 @@ public final class PhpExceptions {
     private static void addMethod(PhpLanguage language,
                                   Map<String, PhpClassTemplate.MethodDecl> map,
                                   String name, Visibility vis, boolean isFinal, BuiltinMethod impl) {
-        String lower = name.toLowerCase();
+        String lower = PhpStrings.lower(name);
         RootNode root = new BuiltinMethodRootNode(language, name, impl);
         map.put(lower, new PhpClassTemplate.MethodDecl(
                 name, lower, language.methodId(name), vis, false, false, isFinal, root.getCallTarget()));
@@ -520,7 +527,11 @@ public final class PhpExceptions {
 
         @TruffleBoundary
         private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs) {
-            return impl.invoke(ctx, self, callArgs);
+            Object value = impl.invoke(ctx, self, callArgs);
+            if (PhpStrings.CHECK) {
+                PhpStrings.checkValue(value, (self != null ? self.phpClass().name() + "::" : "static ") + name + "()");
+            }
+            return value;
         }
 
         @Override

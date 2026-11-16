@@ -114,7 +114,7 @@ public final class Parser {
     }
 
     private String currentClassLower() {
-        return currentClass == null ? null : currentClass.toLowerCase();
+        return currentClass == null ? null : dev.phpruntime.runtime.PhpStrings.lower(currentClass);
     }
 
     // =================================================================== tokens
@@ -251,7 +251,7 @@ public final class Parser {
             return null;
         }
         if (t.kind() == Kind.IDENT) {
-            String kw = t.text().toLowerCase();
+            String kw = dev.phpruntime.runtime.PhpStrings.lower(t.text());
             if (peek(1).isOp(":") && !kw.equals("default") && !kw.equals("case") && !kw.equals("goto")) {
                 next();
                 next();
@@ -809,7 +809,7 @@ public final class Parser {
             List<Boolean> matchAll = new ArrayList<>();
             do {
                 String typeName = resolveClassName(expectIdent().text());
-                String lower = typeName.toLowerCase();
+                String lower = dev.phpruntime.runtime.PhpStrings.lower(typeName);
                 ids.add(language.classId(lower));
                 matchAll.add("throwable".equals(lower));
             } while (acceptOp("|"));
@@ -885,7 +885,7 @@ public final class Parser {
             boolean promReadonly = false;
             boolean parsingMods = true;
             while (parsingMods && peek().kind() == Kind.IDENT) {
-                switch (peek().text().toLowerCase()) {
+                switch (dev.phpruntime.runtime.PhpStrings.lower(peek().text())) {
                     case "public" -> { next(); promVis = Visibility.PUBLIC; }
                     case "protected" -> { next(); promVis = Visibility.PROTECTED; }
                     case "private" -> { next(); promVis = Visibility.PRIVATE; }
@@ -1092,7 +1092,7 @@ public final class Parser {
         boolean isReadonly = false;
         boolean mods = true;
         while (mods && peek().kind() == Kind.IDENT) {
-            switch (peek().text().toLowerCase()) {
+            switch (dev.phpruntime.runtime.PhpStrings.lower(peek().text())) {
                 case "abstract" -> { next(); isAbstract = true; }
                 case "final" -> { next(); isFinal = true; }
                 case "readonly" -> { next(); isReadonly = true; }
@@ -1164,7 +1164,7 @@ public final class Parser {
                 boolean explicitReadonly = false;
                 boolean parsingMods = true;
                 while (parsingMods && peek().kind() == Kind.IDENT) {
-                    switch (peek().text().toLowerCase()) {
+                    switch (dev.phpruntime.runtime.PhpStrings.lower(peek().text())) {
                         case "public", "var" -> { next(); vis = Visibility.PUBLIC; }
                         case "protected" -> { next(); vis = Visibility.PROTECTED; }
                         case "private" -> { next(); vis = Visibility.PRIVATE; }
@@ -1305,7 +1305,7 @@ public final class Parser {
         boolean returnsRef = acceptOp("&");
         Token nameTok = expectIdent();
         String mName = nameTok.text();
-        String lower = mName.toLowerCase();
+        String lower = dev.phpruntime.runtime.PhpStrings.lower(mName);
         boolean isCtor = "__construct".equals(lower);
         Scope outerScope = scope;
         String outerFunction = currentFunction;
@@ -1399,7 +1399,7 @@ public final class Parser {
     /** Binding power of an infix operator; higher binds tighter. 0 means "not infix". */
     private static int infixPower(Token t) {
         if (t.kind() == Kind.IDENT) {
-            return switch (t.text().toLowerCase()) {
+            return switch (dev.phpruntime.runtime.PhpStrings.lower(t.text())) {
                 case "or" -> 1;
                 case "xor" -> 2;
                 case "and" -> 3;
@@ -1441,7 +1441,7 @@ public final class Parser {
             }
             next();
             int line = op.line();
-            String text = op.kind() == Kind.IDENT ? op.text().toLowerCase() : op.text();
+            String text = op.kind() == Kind.IDENT ? dev.phpruntime.runtime.PhpStrings.lower(op.text()) : op.text();
             if (text.equals("instanceof")) {
                 ClassRefNode rightRef = parseClassRef(true);
                 left = new InstanceofNode(left, rightRef).at(line);
@@ -1541,7 +1541,7 @@ public final class Parser {
             }
         }
         if (t.kind() == Kind.IDENT) {
-            String kw = t.text().toLowerCase();
+            String kw = dev.phpruntime.runtime.PhpStrings.lower(t.text());
             if (kw.equals("yield")) {
                 next();
                 if (scope.isGlobal()) {
@@ -1599,7 +1599,7 @@ public final class Parser {
         if (peek(1).kind() != Kind.IDENT || !peek(2).isOp(")")) {
             return null;
         }
-        return switch (peek(1).text().toLowerCase()) {
+        return switch (dev.phpruntime.runtime.PhpStrings.lower(peek(1).text())) {
             case "int", "integer" -> CastNode.Kind.INT;
             case "float", "double", "real" -> CastNode.Kind.FLOAT;
             case "string" -> CastNode.Kind.STRING;
@@ -1923,7 +1923,7 @@ public final class Parser {
     }
 
     private ClassRefNode makeClassRefFromName(String name) {
-        String lower = name.toLowerCase();
+        String lower = dev.phpruntime.runtime.PhpStrings.lower(name);
         String cur = currentClass != null ? currentClass : "<global>";
         return switch (lower) {
             case "self" -> scope.traitSelfSlot() >= 0
@@ -2031,7 +2031,7 @@ public final class Parser {
     private PhpNode identifier(Token t) {
         int line = t.line();
         String name = t.text();
-        String lower = name.toLowerCase();
+        String lower = dev.phpruntime.runtime.PhpStrings.lower(name);
         if (lower.equals("new")) {
             return parseNew(line);
         }
@@ -2121,6 +2121,12 @@ public final class Parser {
                 } while (acceptOp(","));
                 expectOp(")");
                 return new IssetNode(targets.toArray(new PhpNode[0])).at(line);
+            }
+            case "eval" -> {
+                expectOp("(");
+                PhpNode code = expression();
+                expectOp(")");
+                return new EvalNode(code).at(line);
             }
             case "match" -> {
                 if (peek().isOp("(")) {
@@ -2241,7 +2247,7 @@ public final class Parser {
         if (path == null || path.isEmpty()) {
             return "";
         }
-        return Path.of(path).toAbsolutePath().normalize().toString();
+        return dev.phpruntime.runtime.PhpStrings.fromJava(Path.of(path).toAbsolutePath().normalize().toString());
     }
 
     private String magicDir() {
@@ -2249,8 +2255,8 @@ public final class Parser {
         if (file.isEmpty()) {
             return "";
         }
-        Path parent = Path.of(file).getParent();
-        return parent == null ? "" : parent.toString();
+        Path parent = Path.of(dev.phpruntime.runtime.PhpStrings.toJava(file)).getParent();
+        return parent == null ? "" : dev.phpruntime.runtime.PhpStrings.fromJava(parent.toString());
     }
 
     private PhpNode arrayLiteral(String closing) {
@@ -2591,8 +2597,8 @@ public final class Parser {
 
     private void registerUse(UseKind kind, String fqn, String alias) {
         switch (kind) {
-            case CLASS -> classAliases.put(alias.toLowerCase(), fqn);
-            case FUNCTION -> functionAliases.put(alias.toLowerCase(), fqn);
+            case CLASS -> classAliases.put(dev.phpruntime.runtime.PhpStrings.lower(alias), fqn);
+            case FUNCTION -> functionAliases.put(dev.phpruntime.runtime.PhpStrings.lower(alias), fqn);
             case CONST -> constAliases.put(alias, fqn);
         }
     }
@@ -2619,7 +2625,7 @@ public final class Parser {
         if (raw.startsWith("\\")) {
             return raw.substring(1);
         }
-        String lower = raw.toLowerCase();
+        String lower = dev.phpruntime.runtime.PhpStrings.lower(raw);
         if (lower.startsWith("namespace\\")) {
             return resolveRelative(raw);
         }
@@ -2631,7 +2637,7 @@ public final class Parser {
             String aliased = classAliases.get(lower);
             return aliased != null ? aliased : qualifyDeclaration(raw);
         }
-        String first = raw.substring(0, sep).toLowerCase();
+        String first = dev.phpruntime.runtime.PhpStrings.lower(raw.substring(0, sep));
         String rest = raw.substring(sep + 1);
         String aliased = classAliases.get(first);
         return aliased != null ? aliased + "\\" + rest : qualifyDeclaration(raw);
@@ -2641,12 +2647,12 @@ public final class Parser {
         if (raw.startsWith("\\")) {
             return new ResolvedName(raw.substring(1), null);
         }
-        if (raw.toLowerCase().startsWith("namespace\\")) {
+        if (dev.phpruntime.runtime.PhpStrings.lower(raw).startsWith("namespace\\")) {
             return new ResolvedName(resolveRelative(raw), null);
         }
         int sep = raw.indexOf('\\');
         if (sep < 0) {
-            String aliased = functionAliases.get(raw.toLowerCase());
+            String aliased = functionAliases.get(dev.phpruntime.runtime.PhpStrings.lower(raw));
             if (aliased != null) {
                 return new ResolvedName(aliased, null);
             }
@@ -2655,7 +2661,7 @@ public final class Parser {
             }
             return new ResolvedName(currentNamespace + "\\" + raw, raw);
         }
-        String first = raw.substring(0, sep).toLowerCase();
+        String first = dev.phpruntime.runtime.PhpStrings.lower(raw.substring(0, sep));
         String rest = raw.substring(sep + 1);
         String aliased = classAliases.get(first);
         String fqn = aliased != null ? aliased + "\\" + rest : qualifyDeclaration(raw);
@@ -2666,7 +2672,7 @@ public final class Parser {
         if (raw.startsWith("\\")) {
             return new ResolvedName(raw.substring(1), null);
         }
-        if (raw.toLowerCase().startsWith("namespace\\")) {
+        if (dev.phpruntime.runtime.PhpStrings.lower(raw).startsWith("namespace\\")) {
             return new ResolvedName(resolveRelative(raw), null);
         }
         int sep = raw.indexOf('\\');
@@ -2680,7 +2686,7 @@ public final class Parser {
             }
             return new ResolvedName(currentNamespace + "\\" + raw, raw);
         }
-        String first = raw.substring(0, sep).toLowerCase();
+        String first = dev.phpruntime.runtime.PhpStrings.lower(raw.substring(0, sep));
         String rest = raw.substring(sep + 1);
         String aliased = classAliases.get(first);
         String fqn = aliased != null ? aliased + "\\" + rest : qualifyDeclaration(raw);

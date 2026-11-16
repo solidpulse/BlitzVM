@@ -1,5 +1,8 @@
 package dev.phpruntime.builtins;
 
+import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.PhpStrings;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,6 +17,31 @@ public final class Builtins {
     public record Def(String name, int minArgs, int maxArgs, int refMask, Builtin impl) {
         public boolean isRef(int i) {
             return i < 31 && (refMask & (1 << i)) != 0;
+        }
+
+        /** All builtin dispatch paths use this boundary, including callbacks and unpacked calls. */
+        public Object call(PhpContext ctx, Object[] args) {
+            if (!PhpStrings.CHECK) {
+                return impl.call(ctx, args);
+            }
+            String previous = ctx == null ? null : ctx.byteStringOrigin();
+            if (ctx != null) {
+                ctx.setByteStringOrigin(name);
+            }
+            try {
+                Object value = impl.call(ctx, args);
+                PhpStrings.checkValue(value, name + "()");
+                for (int i = 0; i < args.length; i++) {
+                    if (isRef(i)) {
+                        PhpStrings.checkValue(args[i], name + "() reference argument");
+                    }
+                }
+                return value;
+            } finally {
+                if (ctx != null) {
+                    ctx.setByteStringOrigin(previous);
+                }
+            }
         }
     }
 
@@ -46,6 +74,7 @@ public final class Builtins {
         MbConvertFunctions.register();
         MiscFunctions.register();
         SplFunctions.register();
+        BinaryFunctions.register();
     }
 
     private Builtins() {
@@ -56,10 +85,10 @@ public final class Builtins {
     }
 
     public static void defRef(String name, int minArgs, int maxArgs, int refMask, Builtin impl) {
-        TABLE.put(name.toLowerCase(), new Def(name, minArgs, maxArgs, refMask, impl));
+        TABLE.put(PhpStrings.lower(name), new Def(name, minArgs, maxArgs, refMask, impl));
     }
 
     public static Def lookup(String name) {
-        return TABLE.get(name.toLowerCase());
+        return TABLE.get(PhpStrings.lower(name));
     }
 }

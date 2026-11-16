@@ -126,7 +126,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
             return false;
         }
         if (slot.visibility == Visibility.PRIVATE) {
-            return slot.declaringClass.name().equalsIgnoreCase(callingClassLower);
+            return dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(slot.declaringClass.name(), callingClassLower);
         }
         PhpClass caller = PhpContext.get(this).lookupClass(callingClassLower);
         return caller != null && (targetClass.isInstanceOf(caller) || caller.isInstanceOf(slot.declaringClass));

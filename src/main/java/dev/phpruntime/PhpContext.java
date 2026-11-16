@@ -19,6 +19,7 @@ import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpRequest;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -79,12 +80,13 @@ public final class PhpContext {
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
     private Node currentBuiltinCallSite;
+    private String byteStringOrigin;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
         this.env = env;
         this.globalsById = new PhpReference[Math.max(32, language.globalIdCount() + 8)];
-        this.err = new PrintStream(env.err(), true, StandardCharsets.UTF_8);
+        this.err = new PrintStream(env.err(), true, StandardCharsets.ISO_8859_1);
         this.stdClass = declareClass(language.stdClassTemplate());
         this.closureClass = declareClass(language.closureTemplate());
     }
@@ -135,6 +137,14 @@ public final class PhpContext {
 
     public void setCurrentBuiltinCallSite(Node site) {
         currentBuiltinCallSite = site;
+    }
+
+    public String byteStringOrigin() {
+        return byteStringOrigin;
+    }
+
+    public void setByteStringOrigin(String origin) {
+        byteStringOrigin = origin;
     }
 
     // ------------------------------------------------------------ globals
@@ -365,12 +375,12 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpFunction lookupFunction(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
-        return functions.get(n.toLowerCase());
+        return functions.get(PhpStrings.lower(n));
     }
 
     @TruffleBoundary
     public void declareFunction(PhpFunction fn) {
-        if (Builtins.lookup(fn.name()) != null || functions.putIfAbsent(fn.name().toLowerCase(), fn) != null) {
+        if (Builtins.lookup(fn.name()) != null || functions.putIfAbsent(PhpStrings.lower(fn.name()), fn) != null) {
             throw PhpError.fatal("Cannot redeclare function " + fn.name() + "()");
         }
         int id = language.functionId(fn.name());
@@ -408,7 +418,7 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
-        String lower = n.toLowerCase();
+        String lower = PhpStrings.lower(n);
         PhpClass existing = classes.get(lower);
         if (existing != null) {
             return existing;
@@ -424,7 +434,7 @@ public final class PhpContext {
     @TruffleBoundary
     public boolean aliasClass(String alias, PhpClass cls) {
         String n = alias.startsWith("\\") ? alias.substring(1) : alias;
-        String lower = n.toLowerCase();
+        String lower = PhpStrings.lower(n);
         if (classes.containsKey(lower) || language.builtinClassTemplate(lower) != null) {
             return false;
         }
@@ -446,7 +456,7 @@ public final class PhpContext {
     public PhpClass lookupOrAutoloadClass(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
         PhpClass cls = lookupClass(n);
-        String lower = n.toLowerCase();
+        String lower = PhpStrings.lower(n);
         if (cls != null || autoloaders.isEmpty() || !autoloadingInProgress.add(lower)) {
             return cls;
         }
@@ -507,7 +517,7 @@ public final class PhpContext {
             return true;
         }
         if (a instanceof String sa && b instanceof String sb) {
-            return sa.equalsIgnoreCase(sb);
+            return PhpStrings.lower(sa).equals(PhpStrings.lower(sb));
         }
         if (a instanceof PhpArray aa && b instanceof PhpArray ab) {
             return PhpOps.strictEquals(aa, ab);
@@ -580,7 +590,7 @@ public final class PhpContext {
         Map<String, PhpClass> resolvedTraits = template.traitUses().isEmpty() ? Map.of() : new HashMap<>();
         for (PhpClassTemplate.TraitUse use : template.traitUses()) {
             for (String traitName : use.traitNames()) {
-                String tLower = traitName.toLowerCase();
+                String tLower = PhpStrings.lower(traitName);
                 if (!resolvedTraits.containsKey(tLower)) {
                     PhpClass tr = lookupOrAutoloadClass(traitName);
                     if (tr == null) {
@@ -738,6 +748,9 @@ public final class PhpContext {
     /** Appends to the innermost output buffer, or to the response when none is open. */
     @TruffleBoundary
     public void echo(String s) {
+        if (PhpStrings.CHECK) {
+            PhpStrings.check(s, byteStringOrigin == null ? "echo/output" : "echo/output in " + byteStringOrigin + "()");
+        }
         if (!outputBuffers.isEmpty()) {
             outputBuffers.get(outputBuffers.size() - 1).text.append(s);
             return;
@@ -787,10 +800,10 @@ public final class PhpContext {
         }
         try {
             OutputStream out = env.out();
-            out.write(output.toString().getBytes(StandardCharsets.UTF_8));
+            out.write(PhpStrings.bytes(output.toString()));
             out.flush();
         } catch (IOException e) {
-            throw new dev.phpruntime.runtime.PhpError("Failed writing output: " + e.getMessage());
+            throw new dev.phpruntime.runtime.PhpError("Failed writing output: " + PhpStrings.fromJava(e.getMessage()));
         }
         output.setLength(0);
     }
@@ -874,7 +887,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     private void emitDiagnostic(long errno, String label, String message, int line) {
-        String file = request().scriptFilename;
+        String file = PhpStrings.fromJava(request().scriptFilename);
         ErrorHandlerEntry handler = errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
                 && (handler.errorLevels() & errno) != 0) {

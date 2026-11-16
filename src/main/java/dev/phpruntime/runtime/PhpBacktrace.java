@@ -175,7 +175,7 @@ public final class PhpBacktrace {
                 if (rawArgs.length > 0) {
                     Object incPath = rawArgs[0];
                     pending[0] = new PendingCall(null, null, null, null,
-                            includeArgs ? new Object[]{incPath} : null);
+                            includeArgs ? new Object[]{incPath instanceof String s ? PhpStrings.fromJava(s) : incPath} : null);
                 } else {
                     // Entry {main} reached.
                     return Boolean.TRUE;
@@ -380,11 +380,11 @@ public final class PhpBacktrace {
         }
         SourceSection ss = location.getEncapsulatingSourceSection();
         if (ss != null && ss.getSource() != null && ss.getSource().getPath() != null) {
-            return ss.getSource().getPath();
+            return PhpStrings.fromJava(ss.getSource().getPath());
         }
         RootNode root = location.getRootNode();
         if (root instanceof PhpRootNode pr && pr.source() != null && pr.source().getPath() != null) {
-            return pr.source().getPath();
+            return PhpStrings.fromJava(pr.source().getPath());
         }
         return "";
     }

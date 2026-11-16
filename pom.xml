@@ -88,7 +88,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>-Dpolyglot.engine.WarnInterpreterOnly=false</argLine>
+                    <argLine>-Dpolyglot.engine.WarnInterpreterOnly=false -Dblitz.checkBytes=true</argLine>
                 </configuration>
             </plugin>
             <plugin>

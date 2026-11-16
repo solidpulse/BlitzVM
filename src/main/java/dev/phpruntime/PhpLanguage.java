@@ -10,6 +10,7 @@ import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.SplClasses;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
 import java.io.IOException;
@@ -189,15 +190,15 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
      * finds the current context's function with one array load instead of a map lookup.
      */
     public int functionId(String name) {
-        return functionIds.computeIfAbsent(name.toLowerCase(), n -> nextFunctionId.getAndIncrement());
+        return functionIds.computeIfAbsent(PhpStrings.lower(name), n -> nextFunctionId.getAndIncrement());
     }
 
     public int methodId(String name) {
-        return methodIds.computeIfAbsent(name.toLowerCase(), k -> nextMethodId.getAndIncrement());
+        return methodIds.computeIfAbsent(PhpStrings.lower(name), k -> nextMethodId.getAndIncrement());
     }
 
     public int classId(String name) {
-        return classIds.computeIfAbsent(name.toLowerCase(), k -> nextClassId.getAndIncrement());
+        return classIds.computeIfAbsent(PhpStrings.lower(name), k -> nextClassId.getAndIncrement());
     }
 
     public int globalId(String name) {
@@ -273,7 +274,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
         if (cached != null && cached.modified() == modified) {
             return cached.source();
         }
-        Source src = Source.newBuilder(ID, canonical).cached(true).build();
+        Source src = Source.newBuilder(ID, canonical).encoding(java.nio.charset.StandardCharsets.ISO_8859_1).cached(true).build();
         sources.put(key, new CachedSource(modified, src));
         return src;
     }
@@ -287,8 +288,17 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     @Override
     protected CallTarget parse(ParsingRequest request) {
         Source source = request.getSource();
-        PhpMainRootNode root = new Parser(this, source).parseMain();
-        return root.getCallTarget();
+        // Polyglot character sources are Java text; files are explicitly read as bytes.
+        if (source.getPath() == null) {
+            source = Source.newBuilder(ID, PhpStrings.fromJava(source.getCharacters().toString()), source.getName())
+                    .uri(source.getURI()).cached(source.isCached()).build();
+        }
+        return parseBytes(source);
+    }
+
+    /** Internal sources (eval) already contain PHP bytes, unlike polyglot character sources. */
+    public CallTarget parseBytes(Source source) {
+        return new Parser(this, source).parseMain().getCallTarget();
     }
 
     @Override

@@ -13,10 +13,10 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
 import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -38,12 +38,13 @@ final class MiscFunctions {
         network();
         introspection();
         Builtins.def("get_html_translation_table", 0, 3, (ctx, a) -> translationTable(
-                a.length > 0 ? PhpOps.toLong(a[0]) : 0, a.length > 1 ? PhpOps.toLong(a[1]) : HtmlEntities.DEFAULT_FLAGS));
+                a.length > 0 ? PhpOps.toLong(a[0]) : 0, a.length > 1 ? PhpOps.toLong(a[1]) : HtmlEntities.DEFAULT_FLAGS,
+                a.length > 2 ? PhpOps.toStr(a[2]) : "UTF-8"));
         Builtins.def("session_status", 0, 0, (ctx, a) -> 1L); // PHP_SESSION_NONE: sessions are not supported
         Builtins.def("opcache_get_status", 0, 1, (ctx, a) -> false);
         Builtins.def("getcwd", 0, 0, (ctx, a) -> {
             try {
-                return ctx.env().getCurrentWorkingDirectory().getPath();
+                return PhpStrings.fromJava(ctx.env().getCurrentWorkingDirectory().getPath());
             } catch (SecurityException e) {
                 return false;
             }
@@ -51,11 +52,11 @@ final class MiscFunctions {
         Builtins.def("array_rand", 1, 2, (ctx, a) -> arrayRand(a));
         Builtins.def("normalizer_normalize", 1, 2, (ctx, a) -> {
             java.text.Normalizer.Form form = form(a.length > 1 ? PhpOps.toLong(a[1]) : 16);
-            return form == null ? false : java.text.Normalizer.normalize(PhpOps.toStr(a[0]), form);
+            return form == null ? false : PhpStrings.fromJava(java.text.Normalizer.normalize(PhpStrings.toJava(PhpOps.toStr(a[0])), form));
         });
         Builtins.def("normalizer_is_normalized", 1, 2, (ctx, a) -> {
             java.text.Normalizer.Form form = form(a.length > 1 ? PhpOps.toLong(a[1]) : 16);
-            return form != null && java.text.Normalizer.isNormalized(PhpOps.toStr(a[0]), form);
+            return form != null && java.text.Normalizer.isNormalized(PhpStrings.toJava(PhpOps.toStr(a[0])), form);
         });
     }
 
@@ -68,9 +69,9 @@ final class MiscFunctions {
             if (type == 3) {
                 String dest = a.length > 2 ? PhpOps.toStr(a[2]) : "";
                 try {
-                    ctx.env().getPublicTruffleFile(dest).newByteChannel(Set.of(java.nio.file.StandardOpenOption.CREATE,
+                    ctx.env().getPublicTruffleFile(PhpStrings.toJava(dest)).newByteChannel(Set.of(java.nio.file.StandardOpenOption.CREATE,
                             java.nio.file.StandardOpenOption.WRITE, java.nio.file.StandardOpenOption.APPEND))
-                            .write(java.nio.ByteBuffer.wrap(message.getBytes(StandardCharsets.UTF_8)));
+                            .write(java.nio.ByteBuffer.wrap(PhpStrings.bytes(message)));
                     return true;
                 } catch (java.io.IOException | SecurityException | IllegalArgumentException e) {
                     ctx.warning("error_log(" + dest + "): Failed to open stream: No such file or directory", 0);
@@ -82,7 +83,7 @@ final class MiscFunctions {
             }
             try {
                 java.io.OutputStream err = ctx.env().err();
-                err.write((message + "\n").getBytes(StandardCharsets.UTF_8));
+                err.write(PhpStrings.bytes(message + "\n"));
                 err.flush();
             } catch (java.io.IOException e) {
                 return false;
@@ -122,10 +123,10 @@ final class MiscFunctions {
     private static void network() {
         Builtins.def("inet_pton", 1, 1, (ctx, a) -> {
             byte[] packed = packAddress(PhpOps.toStr(a[0]));
-            return packed == null ? false : HashFunctions.fromBytes(packed);
+            return packed == null ? false : PhpStrings.of(packed);
         });
         Builtins.def("inet_ntop", 1, 1, (ctx, a) -> {
-            byte[] b = BinaryStrings.bytes(PhpOps.toStr(a[0]));
+            byte[] b = PhpStrings.bytes(PhpOps.toStr(a[0]));
             if (b.length != 4 && b.length != 16) {
                 return false;
             }
@@ -142,7 +143,7 @@ final class MiscFunctions {
             // DNS is network I/O: give up the CPU slot while waiting.
             ctx.request().scheduler.blocking(null, () -> {
                 try {
-                    for (InetAddress addr : InetAddress.getAllByName(host)) {
+                    for (InetAddress addr : InetAddress.getAllByName(PhpStrings.toJava(host))) {
                         if (addr instanceof java.net.Inet4Address) {
                             result[0] = addr.getHostAddress();
                             return;
@@ -164,7 +165,7 @@ final class MiscFunctions {
             String[] result = {ip};
             ctx.request().scheduler.blocking(null, () -> {
                 try {
-                    result[0] = InetAddress.getByAddress(packed).getCanonicalHostName();
+                    result[0] = PhpStrings.fromJava(InetAddress.getByAddress(packed).getCanonicalHostName());
                 } catch (java.net.UnknownHostException | SecurityException e) {
                     // keep the address
                 }
@@ -368,7 +369,7 @@ final class MiscFunctions {
     // ------------------------------------------------------------------ misc helpers
 
     /** HTML_SPECIALCHARS (0) or HTML_ENTITIES (1) for the HTML 4.01 doctype. */
-    private static PhpArray translationTable(long table, long flags) {
+    private static PhpArray translationTable(long table, long flags, String encoding) {
         List<Map.Entry<Integer, String>> rows = new ArrayList<>();
         boolean doubleQuote = (flags & 2) != 0;
         boolean singleQuote = (flags & 1) != 0;
@@ -388,12 +389,16 @@ final class MiscFunctions {
             rows.add(Map.entry((int) '>', "&gt;"));
         }
         if (singleQuote) {
-            rows.add(Map.entry((int) '\'', "&#039;"));
+            rows.add(Map.entry((int) '\'', (flags & 48) == HtmlEntities.ENT_HTML401 ? "&#039;" : "&apos;"));
         }
         rows.sort(Map.Entry.comparingByKey());
         PhpArray out = new PhpArray();
+        java.nio.charset.Charset charset = HtmlEntities.charset(encoding);
         for (Map.Entry<Integer, String> r : rows) {
-            out.put(new String(Character.toChars(r.getKey())), r.getValue());
+            String text = new String(Character.toChars(r.getKey()));
+            if (PhpStrings.canEncode(text, charset)) {
+                out.put(PhpStrings.encode(text, charset, "?"), r.getValue());
+            }
         }
         return out;
     }

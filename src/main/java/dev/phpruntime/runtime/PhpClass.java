@@ -169,7 +169,7 @@ public final class PhpClass {
         Set<String> seenTraits = new HashSet<>();
         for (PhpClassTemplate.TraitUse use : template.traitUses()) {
             for (String tn : use.traitNames()) {
-                String tl = tn.toLowerCase();
+                String tl = PhpStrings.lower(tn);
                 if (seenTraits.add(tl)) {
                     directTraits.add(resolvedTraits.get(tl));
                 }
@@ -275,16 +275,16 @@ public final class PhpClass {
         for (PhpClassTemplate.TraitUse use : template.traitUses()) {
             Set<String> excluded = new HashSet<>();
             for (PhpClassTemplate.TraitPrecedence prec : use.precedences()) {
-                String mLower = prec.methodName().toLowerCase();
+                String mLower = PhpStrings.lower(prec.methodName());
                 for (String ex : prec.excludedTraits()) {
-                    excluded.add(ex.toLowerCase() + "\0" + mLower);
+                    excluded.add(PhpStrings.lower(ex) + "\0" + mLower);
                 }
             }
             for (String tName : use.traitNames()) {
-                String tLower = tName.toLowerCase();
+                String tLower = PhpStrings.lower(tName);
                 PhpClass tCls = resolvedTraits.get(tLower);
                 for (MethodEntry tm : tCls.methods.values()) {
-                    String mLower = tm.name().toLowerCase();
+                    String mLower = PhpStrings.lower(tm.name());
                     if (excluded.contains(tLower + "\0" + mLower)) {
                         continue;
                     }
@@ -308,14 +308,14 @@ public final class PhpClass {
                 }
             }
             for (PhpClassTemplate.TraitAlias al : use.aliases()) {
-                String mLower = al.methodName().toLowerCase();
+                String mLower = PhpStrings.lower(al.methodName());
                 MethodEntry src = findAliasSource(al, use.traitNames(), resolvedTraits, composed);
                 if (src == null) {
                     throw PhpError.fatal("An alias was defined for method " + al.methodName() + ", which does not exist");
                 }
                 Visibility vis = al.visibility() != null ? al.visibility() : src.visibility();
                 if (al.aliasName() != null) {
-                    String aLower = al.aliasName().toLowerCase();
+                    String aLower = PhpStrings.lower(al.aliasName());
                     composed.put(aLower, new MethodEntry(
                             al.aliasName(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
                 } else {
@@ -341,9 +341,9 @@ public final class PhpClass {
     private static MethodEntry findAliasSource(PhpClassTemplate.TraitAlias al, List<String> traitNames,
                                              Map<String, PhpClass> resolvedTraits,
                                              Map<String, MethodEntry> composed) {
-        String mLower = al.methodName().toLowerCase();
+        String mLower = PhpStrings.lower(al.methodName());
         if (al.traitName() != null) {
-            PhpClass tr = resolvedTraits.get(al.traitName().toLowerCase());
+            PhpClass tr = resolvedTraits.get(PhpStrings.lower(al.traitName()));
             return tr == null ? null : tr.methods.get(mLower);
         }
         MethodEntry direct = composed.get(mLower);
@@ -351,7 +351,7 @@ public final class PhpClass {
             return direct;
         }
         for (String tn : traitNames) {
-            PhpClass tr = resolvedTraits.get(tn.toLowerCase());
+            PhpClass tr = resolvedTraits.get(PhpStrings.lower(tn));
             if (tr != null) {
                 MethodEntry m = tr.methods.get(mLower);
                 if (m != null) {
@@ -443,7 +443,7 @@ public final class PhpClass {
 
     @TruffleBoundary
     public MethodEntry lookupMethod(String name) {
-        return methods.get(name.toLowerCase());
+        return methods.get(PhpStrings.lower(name));
     }
 
     public boolean hasMethod(String name) {
@@ -630,7 +630,7 @@ public final class PhpClass {
     /** Collects visible property entries for an object from {@code callerClassName} scope. */
     @TruffleBoundary
     public static List<Map.Entry<Object, Object>> visibleEntries(PhpContext ctx, PhpObject obj, String callerClassName) {
-        String callerLower = callerClassName == null ? null : callerClassName.toLowerCase();
+        String callerLower = callerClassName == null ? null : PhpStrings.lower(callerClassName);
         PhpClass caller = callerLower == null ? null : ctx.lookupClass(callerLower);
         PhpClass cls = obj.phpClass();
         Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
@@ -646,7 +646,7 @@ public final class PhpClass {
                 int sep = k.indexOf('\0', 1);
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
-                if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
+                if (callerLower != null && PhpStrings.equalsIgnoreCase(declaring, callerLower)) {
                     out.add(Map.entry(prop, unwrapProp(rawVal)));
                 }
                 continue;
@@ -666,7 +666,7 @@ public final class PhpClass {
     /** Collects visible property entries backed by {@link PhpReference} cells for {@code foreach ($obj as &$v)}. */
     @TruffleBoundary
     public static List<Map.Entry<Object, PhpReference>> visibleRefEntries(PhpContext ctx, PhpObject obj, String callerClassName) {
-        String callerLower = callerClassName == null ? null : callerClassName.toLowerCase();
+        String callerLower = callerClassName == null ? null : PhpStrings.lower(callerClassName);
         PhpClass caller = callerLower == null ? null : ctx.lookupClass(callerLower);
         PhpClass cls = obj.phpClass();
         Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
@@ -679,7 +679,7 @@ public final class PhpClass {
                 int sep = k.indexOf('\0', 1);
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
-                if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
+                if (callerLower != null && PhpStrings.equalsIgnoreCase(declaring, callerLower)) {
                     out.add(Map.entry(prop, ensurePropRef(obj, k, get, put)));
                 }
                 continue;
@@ -713,7 +713,7 @@ public final class PhpClass {
     public boolean isReadonlyStorageKey(String storageKey) {
         if (storageKey.startsWith("\0")) {
             int sep = storageKey.indexOf('\0', 1);
-            String declaring = storageKey.substring(1, sep).toLowerCase();
+            String declaring = PhpStrings.lower(storageKey.substring(1, sep));
             String prop = storageKey.substring(sep + 1);
             InstanceProp priv = privateProps.get(declaring + "\0" + prop);
             return priv != null && priv.isReadonly();

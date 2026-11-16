@@ -103,7 +103,7 @@ public final class PhpError extends AbstractTruffleException {
             return materialized;
         }
         Node loc = getLocation() != null ? getLocation() : fallbackLocation;
-        String file = customFile != null ? customFile : PhpBacktrace.sourcePath(loc);
+        String file = customFile != null ? PhpStrings.fromJava(customFile) : PhpBacktrace.sourcePath(loc);
         int line = customLine > 0 ? customLine : PhpBacktrace.sourceLine(loc);
         PhpBacktrace.LazyTrace trace = capturedTrace != null
                 ? capturedTrace

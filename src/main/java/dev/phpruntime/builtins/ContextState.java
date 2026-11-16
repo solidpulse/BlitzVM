@@ -21,6 +21,12 @@ final class ContextState {
 
     /** Last errors/warnings from date parsing (date_get_last_errors, DateTime::getLastErrors). */
     dev.phpruntime.timelib.TimelibErrorContainer lastDateErrors;
+    /** mbstring settings are request-local, never cached on AST nodes. */
+    String mbEncoding = "UTF-8";
+    Object mbSubstitute = 63L;
+    java.util.List<String> mbDetectOrder = java.util.List.of("ASCII", "UTF-8");
+    int pregLastError;
+    final java.util.Map<Long, HashFunctions.HashContext> hashContexts = new java.util.HashMap<>();
 
     /** mysqli: per-object state keyed by object id, the last connect error and the report mode. */
     MysqliFunctions.State mysqli;

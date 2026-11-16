@@ -3,6 +3,7 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.util.List;
 import java.util.Map;
@@ -45,17 +46,17 @@ final class EnvFunctions {
         Builtins.def("getenv", 0, 2, (ctx, a) -> {
             if (a.length == 0 || a[0] == PhpNull.INSTANCE) {
                 PhpArray out = new PhpArray();
-                System.getenv().forEach(out::put);
+                System.getenv().forEach((k, v) -> out.put(PhpStrings.fromJava(k), PhpStrings.fromJava(v)));
                 return out;
             }
-            String v = System.getenv(PhpOps.toStr(a[0]));
-            return v == null ? false : v;
+            String v = System.getenv(PhpStrings.toJava(PhpOps.toStr(a[0])));
+            return v == null ? false : PhpStrings.fromJava(v);
         });
         Builtins.def("ini_get", 1, 1, (ctx, a) -> {
             String v = INI.get(PhpOps.toStr(a[0]));
             return v == null ? false : v;
         });
-        Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> tempDir());
+        Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> PhpStrings.fromJava(tempDir()));
         Builtins.def("extension_loaded", 1, 1, (ctx, a) -> {
             String name = PhpOps.toStr(a[0]);
             return EXTENSIONS.stream().anyMatch(e -> e.equalsIgnoreCase(name));

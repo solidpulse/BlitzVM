@@ -4,9 +4,9 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
+import dev.phpruntime.runtime.PhpQuery;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /** URL encoding, parse_url and http_build_query. */
@@ -36,10 +36,10 @@ final class UrlFunctions {
         });
     }
 
-    /** urlencode (space as '+') or rawurlencode (RFC 3986, '~' kept), byte by byte over UTF-8. */
+    /** urlencode (space as '+') or rawurlencode (RFC 3986, '~' kept), byte by byte. */
     static String encode(String s, boolean raw) {
         StringBuilder sb = new StringBuilder(s.length());
-        for (byte b : s.getBytes(StandardCharsets.UTF_8)) {
+        for (byte b : PhpStrings.bytes(s)) {
             int c = b & 0xFF;
             if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
                     || c == '-' || c == '_' || c == '.' || (raw && c == '~')) {
@@ -54,20 +54,7 @@ final class UrlFunctions {
     }
 
     static String decode(String s, boolean plusIsSpace) {
-        byte[] in = s.getBytes(StandardCharsets.UTF_8);
-        ByteArrayOutputStream out = new ByteArrayOutputStream(in.length);
-        for (int i = 0; i < in.length; i++) {
-            byte b = in[i];
-            if (b == '+' && plusIsSpace) {
-                out.write(' ');
-            } else if (b == '%' && i + 2 < in.length && Character.digit(in[i + 1], 16) >= 0 && Character.digit(in[i + 2], 16) >= 0) {
-                out.write(Character.digit(in[i + 1], 16) * 16 + Character.digit(in[i + 2], 16));
-                i += 2;
-            } else {
-                out.write(b);
-            }
-        }
-        return out.toString(StandardCharsets.UTF_8);
+        return PhpQuery.urldecode(s, plusIsSpace);
     }
 
     // ------------------------------------------------------------ parse_url

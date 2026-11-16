@@ -10,7 +10,6 @@ import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
-import java.nio.charset.StandardCharsets;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -25,6 +24,20 @@ final class OutputFunctions {
             for (Object v : a) {
                 StringBuilder sb = new StringBuilder();
                 varDump(sb, v, 0);
+                ctx.echo(sb.toString());
+            }
+            return PhpNull.INSTANCE;
+        });
+        Builtins.def("debug_zval_dump", 1, -1, (ctx, a) -> {
+            for (Object v : a) {
+                StringBuilder sb = new StringBuilder();
+                varDump(sb, v, 0);
+                if (v instanceof String) {
+                    int end = sb.length() - 1;
+                    // Java strings have no Zend refcount; literals and shared values are
+                    // immutable. Keep the byte length/text correct and report interned.
+                    sb.insert(end, " interned");
+                }
                 ctx.echo(sb.toString());
             }
             return PhpNull.INSTANCE;
@@ -50,7 +63,7 @@ final class OutputFunctions {
         Builtins.def("printf", 1, -1, (ctx, a) -> {
             String s = StringFunctions.sprintf(a);
             ctx.echo(s);
-            return (long) s.getBytes(StandardCharsets.UTF_8).length;
+            return (long) s.length();
         });
         Builtins.def("flush", 0, 0, (ctx, a) -> {
             ctx.flushOutput();
@@ -59,7 +72,7 @@ final class OutputFunctions {
     }
 
     static int byteLength(String s) {
-        return s.getBytes(StandardCharsets.UTF_8).length;
+        return s.length();
     }
 
     static void varDump(StringBuilder sb, Object v, int indent) {

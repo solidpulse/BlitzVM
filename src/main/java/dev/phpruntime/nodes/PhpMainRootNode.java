@@ -48,7 +48,8 @@ public final class PhpMainRootNode extends PhpRootNode {
         boolean isEntry = frame.getArguments().length == 0;
         PhpContext ctx = PhpContext.get(this);
         PhpRequest request = ctx.request();
-        Object result = 1L;
+        Object result = !isEntry && frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE
+                ? PhpNull.INSTANCE : 1L;
         try {
             if (isEntry) {
                 start(ctx, request);
@@ -109,7 +110,7 @@ public final class PhpMainRootNode extends PhpRootNode {
         PhpArray get = request.queryString.isEmpty() ? toArray(request.get) : PhpQuery.parseQuery(request.queryString);
         String contentType = PhpQuery.header(request.headers, "Content-Type");
         PhpArray post = !request.body.isEmpty() && contentType != null
-                && contentType.toLowerCase().startsWith("application/x-www-form-urlencoded")
+                && dev.phpruntime.runtime.PhpStrings.lower(contentType).startsWith("application/x-www-form-urlencoded")
                 ? PhpQuery.parseQuery(request.body) : toArray(request.post);
         ctx.writeGlobal("_GET", get);
         ctx.writeGlobal("_POST", post);
@@ -120,8 +121,25 @@ public final class PhpMainRootNode extends PhpRootNode {
         ctx.writeGlobal("_REQUEST", all);
         ctx.writeGlobal("_COOKIE", PhpQuery.parseCookies(PhpQuery.header(request.headers, "Cookie")));
         ctx.writeGlobal("_FILES", new PhpArray());
-        ctx.writeGlobal("_ENV", new PhpArray());
+        PhpArray environment = new PhpArray();
+        request.environment.forEach((key, value) -> environment.put(dev.phpruntime.runtime.PhpStrings.fromJava(key),
+                dev.phpruntime.runtime.PhpStrings.fromJava(value)));
+        ctx.writeGlobal("_ENV", environment);
         ctx.writeGlobal("_SERVER", toArray(request.server));
+        if (!request.scriptFilename.isEmpty() && !request.server.containsKey("SCRIPT_FILENAME")) {
+            PhpArray server = toArray(request.server);
+            server.put("SCRIPT_FILENAME", dev.phpruntime.runtime.PhpStrings.fromJava(request.scriptFilename));
+            ctx.writeGlobal("_SERVER", server);
+        }
+        if (request.argv.length > 0) {
+            PhpArray argv = PhpArray.ofList(java.util.Arrays.asList(request.argv));
+            ctx.writeGlobal("argv", argv);
+            ctx.writeGlobal("argc", (long) request.argv.length);
+            PhpArray server = toArray(request.server);
+            server.put("argv", argv.share());
+            server.put("argc", (long) request.argv.length);
+            ctx.writeGlobal("_SERVER", server);
+        }
     }
 
     @TruffleBoundary

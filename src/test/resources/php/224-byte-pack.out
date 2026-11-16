@@ -1,0 +1,38 @@
+007f80c3a9ff
+c3a9f09f9880:c3a9202020202020c3a9000000000000
+cafe12345678feca78563412
+00c3a9ff1032
+array(3) {
+  [1]=>
+  int(0)
+  [2]=>
+  int(128)
+  [3]=>
+  int(255)
+}
+array(4) {
+  ["first"]=>
+  int(51966)
+  ["second"]=>
+  int(305419896)
+  ["third"]=>
+  int(51966)
+  ["fourth"]=>
+  int(305419896)
+}
+array(2) {
+  ["text"]=>
+  string(2) "é"
+  ["hex"]=>
+  string(4) "00ff"
+}
+array(2) {
+  ["float"]=>
+  float(1.5)
+  ["double"]=>
+  float(2.25)
+}
+010204
+bool(true)
+int(256)
+bool(true)

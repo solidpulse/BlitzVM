@@ -14,6 +14,6 @@ public final class PhpFileDetector implements TruffleFile.FileTypeDetector {
 
     @Override
     public Charset findEncoding(TruffleFile file) {
-        return null;
+        return java.nio.charset.StandardCharsets.ISO_8859_1;
     }
 }
