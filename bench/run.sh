@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Compares php-truffle with php-fpm (behind nginx) and Swoole on the same scenarios.
 #   [SCENARIO=compute] bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit swoole swoole-preempt (default: all)
+#   SCENARIO=wordpress WP_DIR=../blitz-wp/wordpress WP_HOST=localhost:8080 bench/run.sh truffle fpm-jit
 # Needs: php-fpm8.5 on the host, docker (nginx:alpine, phpswoole/swoole:latest).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,23 +13,24 @@ HTTP_PORT=18402
 FPM_PORT=9101
 THROUGHPUT_WORKERS="${THROUGHPUT_WORKERS:-4}"
 LOAD_SECONDS="${LOAD_SECONDS:-10}"
+WWW="$ROOT/www"   # document root; the wordpress scenario points it at WP_DIR
 
 wait_up() { for _ in $(seq 1 100); do curl -fs "$1" >/dev/null 2>&1 && return 0; sleep 0.2; done; echo "server did not come up: $1" >&2; return 1; }
 
 start_truffle() { # $1 workers, $2 http front end (netty|jdk)
-  "$ROOT/bin/php-truffle" serve --port 18401 --cpus "$1" --quantum-ms 10 --max-exec-ms 30000 --http "${2:-netty}" "$ROOT/www" > "$RUN/truffle.log" 2>&1 &
-  PIDS=$!; BASE=http://127.0.0.1:18401; wait_up "$BASE/hello.php"
+  "$ROOT/bin/php-truffle" serve --port 18401 --cpus "$1" --quantum-ms 10 --max-exec-ms 30000 --http "${2:-netty}" "$WWW" > "$RUN/truffle.log" 2>&1 &
+  PIDS=$!; BASE=http://127.0.0.1:18401; wait_up "$BASE/${PROBE:-hello.php}"
 }
 start_fpm() { # $1 workers, $2 jit mode
   sed -e "s|__RUN__|$RUN|g" -e "s|__FPM_PORT__|$FPM_PORT|g" -e "s|__WORKERS__|$1|g" -e "s|__JIT__|$2|g" \
     "$ROOT/bench/fpm/php-fpm.conf.tmpl" > "$RUN/php-fpm.conf"
-  sed -e "s|__HTTP_PORT__|$HTTP_PORT|g" -e "s|__FPM_PORT__|$FPM_PORT|g" -e "s|__WWW__|$ROOT/www|g" \
+  sed -e "s|__HTTP_PORT__|$HTTP_PORT|g" -e "s|__FPM_PORT__|$FPM_PORT|g" -e "s|__WWW__|$WWW|g" \
     "$ROOT/bench/fpm/nginx.conf.tmpl" > "$RUN/nginx.conf"
   # JIT settings only take effect at process start, so they go on the master's command line.
   php-fpm8.5 -d opcache.enable=1 -d opcache.jit="$2" -d opcache.jit_buffer_size=64M -F -y "$RUN/php-fpm.conf" -p "$RUN" > "$RUN/fpm.out" 2>&1 &
   PIDS=$!
-  docker run -d --rm --name bench-nginx --network host -v "$RUN/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$ROOT/www:/www:ro" nginx:alpine >/dev/null
-  BASE=http://127.0.0.1:$HTTP_PORT; wait_up "$BASE/hello.php"
+  docker run -d --rm --name bench-nginx --network host -v "$RUN/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$WWW:/www:ro" nginx:alpine >/dev/null
+  BASE=http://127.0.0.1:$HTTP_PORT; wait_up "$BASE/${PROBE:-hello.php}"
 }
 start_swoole() { # $1 workers, $2 preempt 0|1
   docker run -d --rm --name bench-swoole --network host -e PORT=18403 -e WORKERS="$1" -e PREEMPT="$2" \
@@ -154,8 +156,27 @@ js() { # $1 target (truffle or node): the JavaScript handlers in www/*.js
   stop_all
 }
 
+wordpress() { # $1 target (truffle, fpm or fpm-jit): an installed WordPress, see scripts/wordpress.sh
+  local t="$1" wl="java -Dwarmup=${WP_WARMUP:-60} -Dhost=$WP_HOST $ROOT/bench/LoadGen.java"
+  echo "################ $t wordpress"
+  start "$t" "$THROUGHPUT_WORKERS"
+  for path in "/" "/?p=1" "/wp-login.php" "/wp-includes/css/dashicons.min.css"; do
+    echo "== throughput: $path, $THROUGHPUT_WORKERS workers, 16 connections, ${LOAD_SECONDS}s after ${WP_WARMUP:-60}s warm-up"
+    $wl load "$BASE$path" 16 "$LOAD_SECONDS"
+  done
+  echo "== latency: /, 1 connection"
+  java -Dwarmup=5 -Dhost="$WP_HOST" "$ROOT/bench/LoadGen.java" load "$BASE/" 1 "$LOAD_SECONDS"
+  echo "== memory after load: $(rss_mb "$t") MB"
+  stop_all
+}
+
+if [[ "${SCENARIO:-}" == wordpress ]]; then
+  WWW="$(cd "${WP_DIR:-$ROOT/wordpress}" && pwd)"
+  WP_HOST="${WP_HOST:-localhost:8080}"   # must match the site URL WordPress was installed with
+  PROBE="wp-login.php"
+fi
 trap stop_all EXIT
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
-for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed or js
+for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed, js or wordpress

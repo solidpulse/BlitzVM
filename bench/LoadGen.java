@@ -81,7 +81,9 @@ public class LoadGen {
         String host = uri.getHost();
         int port = uri.getPort() < 0 ? 80 : uri.getPort();
         String target = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
-        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + host + ":" + port + "\r\nUser-Agent: loadgen\r\n\r\n")
+        // -Dhost overrides the Host header (WordPress renders and redirects by its configured site URL).
+        String hostHeader = System.getProperty("host", host + ":" + port);
+        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + hostHeader + "\r\nUser-Agent: loadgen\r\n\r\n")
                 .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < concurrency; i++) {
