@@ -1,0 +1,14 @@
+Demo\Sub\Widget|Demo\Sub\Widget
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+Demo\Sub\Widget:a|Demo\Sub\Widget:b|Demo\Sub\Widget:c
+bool(false)
+Lazy\Item
+Missing\Nope,Lazy\Item
+object(Lazy\Item)#4 (0) {
+}

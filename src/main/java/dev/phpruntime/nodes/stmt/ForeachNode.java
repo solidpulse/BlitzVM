@@ -38,7 +38,14 @@ public final class ForeachNode extends PhpNode {
         if (s instanceof PhpArray arr) {
             entries = arr.entries();
         } else if (s instanceof PhpObject obj) {
-            String caller = getRootNode() instanceof PhpFunctionRootNode fn ? fn.declaringClass() : null;
+            String caller = null;
+            if (getRootNode() instanceof PhpFunctionRootNode fn) {
+                if (fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts) {
+                    caller = ts.name();
+                } else {
+                    caller = fn.declaringClass();
+                }
+            }
             entries = PhpClass.visibleEntries(PhpContext.get(this), obj, caller);
         } else {
             PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(s) + " given", line());

@@ -31,7 +31,7 @@ import dev.phpruntime.runtime.PhpObject;
  *       the pending throwable is linked at the tail of the new throwable's {@code previous} chain.</li>
  * </ul>
  */
-public final class TryCatchNode extends PhpNode {
+public final class TryCatchNode extends PhpNode implements GotoEnterable {
 
     public static final class CatchClause extends Node {
         @CompilationFinal(dimensions = 1) private final int[] classIds;
@@ -94,18 +94,40 @@ public final class TryCatchNode extends PhpNode {
     }
 
     @Override
+    public int[] exportedLabelIds() {
+        return tryBlock instanceof GotoEnterable ge ? ge.exportedLabelIds() : new int[0];
+    }
+
+    @Override
     public Object execute(VirtualFrame frame) {
         if (finallyBlock == null) {
-            executeTryCatchOnly(frame);
+            executeTryCatchOnly(frame, -1);
             return null;
         }
-        executeWithFinally(frame);
+        executeWithFinally(frame, -1);
         return null;
     }
 
-    private void executeTryCatchOnly(VirtualFrame frame) {
-        try {
+    @Override
+    public void executeEnter(VirtualFrame frame, int labelId) {
+        if (finallyBlock == null) {
+            executeTryCatchOnly(frame, labelId);
+        } else {
+            executeWithFinally(frame, labelId);
+        }
+    }
+
+    private void runTryBlock(VirtualFrame frame, int enterLabel) {
+        if (enterLabel >= 0 && tryBlock instanceof GotoEnterable ge) {
+            ge.executeEnter(frame, enterLabel);
+        } else {
             tryBlock.executeVoid(frame);
+        }
+    }
+
+    private void executeTryCatchOnly(VirtualFrame frame, int enterLabel) {
+        try {
+            runTryBlock(frame, enterLabel);
         } catch (PhpException ex) {
             if (!dispatchCatch(frame, ex.exceptionObject())) {
                 throw ex;
@@ -124,11 +146,11 @@ public final class TryCatchNode extends PhpNode {
         }
     }
 
-    private void executeWithFinally(VirtualFrame frame) {
+    private void executeWithFinally(VirtualFrame frame, int enterLabel) {
         Throwable pending = null;
         try {
             try {
-                tryBlock.executeVoid(frame);
+                runTryBlock(frame, enterLabel);
             } catch (PhpException ex) {
                 if (!dispatchCatch(frame, ex.exceptionObject())) {
                     pending = ex;
@@ -186,7 +208,8 @@ public final class TryCatchNode extends PhpNode {
     }
 
     private static boolean shouldRunFinallyFor(Throwable t) {
-        if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break || t instanceof ControlFlow.Continue) {
+        if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break
+                || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto) {
             return true;
         }
         if (t instanceof PhpException) {

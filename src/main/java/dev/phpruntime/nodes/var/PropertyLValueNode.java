@@ -21,6 +21,7 @@ public final class PropertyLValueNode extends LValueNode {
     private final String staticName;
     @Child private PhpNode dynamicNameExpr;
     private final String callingClassLower;
+    private final int traitSelfSlot;
 
     @Child private DynamicObject.GetNode getNode = DynamicObject.GetNode.create();
     @Child private DynamicObject.PutNode putNode = DynamicObject.PutNode.create();
@@ -39,10 +40,16 @@ public final class PropertyLValueNode extends LValueNode {
     @CompilationFinal private Resolution cache;
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
+        this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1);
+    }
+
+    public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr,
+                              String callingClassLower, int traitSelfSlot) {
         this.targetExpr = targetExpr;
         this.staticName = staticName;
         this.dynamicNameExpr = dynamicNameExpr;
         this.callingClassLower = callingClassLower;
+        this.traitSelfSlot = traitSelfSlot;
     }
 
     @Override
@@ -65,14 +72,14 @@ public final class PropertyLValueNode extends LValueNode {
                     "Attempt to read property \"" + name + "\" on " + PhpOps.typeName(target), line());
             return PhpNull.INSTANCE;
         }
-        String storageKey = resolveKeyIfAccessible(obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
         }
-        return readFallback(obj, name, storageKey == null, true);
+        return readFallback(obj, name, storageKey == null, true, effectiveCallerLower(frame));
     }
 
     @Override
@@ -81,14 +88,14 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
-        String storageKey = resolveKeyIfAccessible(obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
         }
-        return readFallback(obj, name, storageKey == null, false);
+        return readFallback(obj, name, storageKey == null, false, effectiveCallerLower(frame));
     }
 
     @Override
@@ -97,7 +104,7 @@ public final class PropertyLValueNode extends LValueNode {
             return false;
         }
         String name = (String) keys[1];
-        String storageKey = resolveKeyIfAccessible(obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v != null) {
@@ -113,7 +120,7 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
-        String storageKey = resolveKeyIfAccessible(obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v != null) {
@@ -134,13 +141,13 @@ public final class PropertyLValueNode extends LValueNode {
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to assign property \"" + name + "\" on " + PhpOps.typeName(target), this);
         }
-        String storageKey = resolveKeyIfAccessible(obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null && (getNode.execute(obj, storageKey, null) != null
                 || obj.phpClass().setMethod() == null)) {
             putNode.execute(obj, storageKey, value);
             return;
         }
-        writeFallback(obj, name, value, storageKey == null);
+        writeFallback(obj, name, value, storageKey == null, effectiveCallerLower(frame));
     }
 
     @Override
@@ -150,22 +157,30 @@ public final class PropertyLValueNode extends LValueNode {
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to modify property \"" + name + "\" on " + PhpOps.typeName(target), this);
         }
-        String storageKey = resolveKeyIfAccessible(obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null && getNode.execute(obj, storageKey, null) != null) {
             removeNode.execute(obj, storageKey);
             return;
         }
-        unsetFallback(obj, name, storageKey == null);
+        unsetFallback(obj, name, storageKey == null, effectiveCallerLower(frame));
+    }
+
+    private String effectiveCallerLower(VirtualFrame frame) {
+        if (traitSelfSlot >= 0) {
+            PhpClass c = (PhpClass) frame.getObject(traitSelfSlot);
+            return c != null ? c.template().lowerName() : null;
+        }
+        return callingClassLower;
     }
 
     @TruffleBoundary
-    private Object readFallback(PhpObject obj, String name, boolean inaccessible, boolean warnMissing) {
+    private Object readFallback(PhpObject obj, String name, boolean inaccessible, boolean warnMissing, String callerLower) {
         PhpClass.MethodEntry get = obj.phpClass().getMethod();
         if (get != null && get.callTarget() != null) {
-            return get.callTarget().call(obj, obj.phpClass(), name);
+            return callMagic1(get, obj, name);
         }
         if (inaccessible) {
-            throw inaccessibleError(obj, name);
+            throw inaccessibleError(obj, name, callerLower);
         }
         if (warnMissing) {
             PhpContext.get(this).warning("Undefined property: " + obj.phpClass().name() + "::$" + name, line());
@@ -178,75 +193,82 @@ public final class PropertyLValueNode extends LValueNode {
     private boolean checkMagicIsset(PhpObject obj, String name) {
         PhpClass.MethodEntry isset = obj.phpClass().issetMethod();
         if (isset != null && isset.callTarget() != null) {
-            return PhpOps.toBool(isset.callTarget().call(obj, obj.phpClass(), name));
+            return PhpOps.toBool(callMagic1(isset, obj, name));
         }
         return false;
     }
 
     @TruffleBoundary
     private Object callMagic1(PhpClass.MethodEntry entry, PhpObject obj, String name) {
+        if (entry.fromTrait()) {
+            return entry.callTarget().call(obj, obj.phpClass(), entry.declaringClass(), name);
+        }
         return entry.callTarget().call(obj, obj.phpClass(), name);
     }
 
     @TruffleBoundary
-    private void writeFallback(PhpObject obj, String name, Object value, boolean inaccessible) {
+    private void writeFallback(PhpObject obj, String name, Object value, boolean inaccessible, String callerLower) {
         PhpClass.MethodEntry set = obj.phpClass().setMethod();
         if (set != null && set.callTarget() != null) {
-            set.callTarget().call(obj, obj.phpClass(), name, value);
+            if (set.fromTrait()) {
+                set.callTarget().call(obj, obj.phpClass(), set.declaringClass(), name, value);
+            } else {
+                set.callTarget().call(obj, obj.phpClass(), name, value);
+            }
             return;
         }
         if (inaccessible) {
-            throw inaccessibleError(obj, name);
+            throw inaccessibleError(obj, name, callerLower);
         }
     }
 
     @TruffleBoundary
-    private void unsetFallback(PhpObject obj, String name, boolean inaccessible) {
+    private void unsetFallback(PhpObject obj, String name, boolean inaccessible, String callerLower) {
         PhpClass.MethodEntry unset = obj.phpClass().unsetMethod();
         if (unset != null && unset.callTarget() != null) {
-            unset.callTarget().call(obj, obj.phpClass(), name);
+            callMagic1(unset, obj, name);
             return;
         }
         if (inaccessible) {
-            throw inaccessibleError(obj, name);
+            throw inaccessibleError(obj, name, callerLower);
         }
     }
 
-    private String resolveKeyIfAccessible(PhpObject obj, String name) {
+    private String resolveKeyIfAccessible(VirtualFrame frame, PhpObject obj, String name) {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
             Resolution c = cache;
-            if (c != null && h == c.hierarchyId() && (!c.isProtected() || c.callerHierarchyId() == callerHierarchyId())) {
+            if (c != null && h == c.hierarchyId() && (!c.isProtected() || c.callerHierarchyId() == callerHierarchyId(frame))) {
                 return c.accessible() ? c.storageKey() : null;
             }
             if (c != MEGAMORPHIC) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                PhpClass.PropertyResolution res = cacheResolution(cls, h);
+                PhpClass.PropertyResolution res = cacheResolution(cls, h, effectiveCallerLower(frame), callerHierarchyId(frame));
                 return res.accessible() ? res.storageKey() : null;
             }
         }
-        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callingClassLower);
+        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(
+                PhpContext.get(this), name, effectiveCallerLower(frame));
         return res.accessible() ? res.storageKey() : null;
     }
 
     @TruffleBoundary
-    private PhpError inaccessibleError(PhpObject obj, String name) {
-        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callingClassLower);
+    private PhpError inaccessibleError(PhpObject obj, String name, String callerLower) {
+        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
         return inaccessibleError(res.visibility(), res.declaringClass(), name);
     }
 
     @TruffleBoundary
-    private PhpClass.PropertyResolution cacheResolution(PhpClass cls, long h) {
+    private PhpClass.PropertyResolution cacheResolution(PhpClass cls, long h, String callerLower, long callerH) {
         PhpContext ctx = PhpContext.get(this);
-        PhpClass.PropertyResolution res = cls.resolveProperty(ctx, staticName, callingClassLower);
-        long callerH = callerHierarchyIdBoundary(ctx);
+        PhpClass.PropertyResolution res = cls.resolveProperty(ctx, staticName, callerLower);
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
             if (cache == null) {
                 cache = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED, res.accessible());
-            } else if (cache.hierarchyId() != h) {
+            } else if (cache.hierarchyId() != h || cache.callerHierarchyId() != callerH) {
                 cache = MEGAMORPHIC;
             }
         } finally {
@@ -255,7 +277,11 @@ public final class PropertyLValueNode extends LValueNode {
         return res;
     }
 
-    private long callerHierarchyId() {
+    private long callerHierarchyId(VirtualFrame frame) {
+        if (traitSelfSlot >= 0) {
+            PhpClass c = (PhpClass) frame.getObject(traitSelfSlot);
+            return c != null ? c.hierarchyId() : -1;
+        }
         if (callingClassLower == null) {
             return -1;
         }

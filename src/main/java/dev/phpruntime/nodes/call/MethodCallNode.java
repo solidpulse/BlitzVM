@@ -54,7 +54,7 @@ public final class MethodCallNode extends PhpNode {
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
         try {
-            return dispatch.call(entry.callTarget(), evalArgs(frame, thisArg, cls));
+            return dispatch.callMethod(entry, evalArgs(frame, thisArg, cls));
         } catch (PhpError e) {
             throw e.at(this);
         }
@@ -70,4 +70,5 @@ public final class MethodCallNode extends PhpNode {
         }
         return values;
     }
+
 }

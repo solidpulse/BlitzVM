@@ -33,7 +33,10 @@ public final class CloneNode extends PhpNode {
         PhpClass.MethodEntry cloneMethod = obj.phpClass().cloneMethod();
         if (cloneMethod != null && cloneMethod.callTarget() != null) {
             try {
-                dispatch.call(cloneMethod.callTarget(), new Object[]{copy, obj.phpClass()});
+                Object[] callArgs = cloneMethod.fromTrait()
+                        ? new Object[]{copy, obj.phpClass(), cloneMethod.declaringClass()}
+                        : new Object[]{copy, obj.phpClass()};
+                dispatch.call(cloneMethod.callTarget(), callArgs);
             } catch (PhpError e) {
                 throw e.at(this);
             }

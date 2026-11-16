@@ -17,13 +17,27 @@ public record Token(Kind kind, String text, int offset, int line, List<Part> par
         INT,
         FLOAT,
         STRING,        // fully literal string
-        TEMPLATE,      // double-quoted string with interpolation
+        TEMPLATE,      // double-quoted string or heredoc with interpolation
         OP,            // operators and punctuation
         EOF
     }
 
-    /** Piece of an interpolated string: either literal text or PHP expression source. */
-    public record Part(boolean isExpr, String value) {}
+    public enum PartKind {
+        LITERAL,
+        EXPR,
+        DYNAMIC_VAR
+    }
+
+    /** Piece of an interpolated string: literal text, PHP expression source, or ${expr} variable name. */
+    public record Part(PartKind kind, String value) {
+        public Part(boolean isExpr, String value) {
+            this(isExpr ? PartKind.EXPR : PartKind.LITERAL, value);
+        }
+
+        public boolean isExpr() {
+            return kind != PartKind.LITERAL;
+        }
+    }
 
     public Token(Kind kind, String text, int offset, int line) {
         this(kind, text, offset, line, List.of());

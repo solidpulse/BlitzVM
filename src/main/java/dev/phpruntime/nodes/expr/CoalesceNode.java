@@ -2,6 +2,7 @@ package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
+import dev.phpruntime.nodes.var.IndexReadNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.runtime.PhpNull;
 
@@ -21,6 +22,8 @@ public final class CoalesceNode extends PhpNode {
         Object v;
         if (left instanceof LValueNode lv) {
             v = lv.readIfSet(frame, lv.evalKeys(frame));
+        } else if (left instanceof IndexReadNode ir) {
+            v = ir.readIfSet(frame);
         } else {
             v = left.execute(frame);
         }

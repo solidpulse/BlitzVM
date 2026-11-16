@@ -1,5 +1,9 @@
 package dev.phpruntime.nodes.call;
 
+import com.oracle.truffle.api.CallTarget;
+import dev.phpruntime.nodes.PhpFunctionRootNode;
+import dev.phpruntime.runtime.PhpClass;
+
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.RootCallTarget;
@@ -33,6 +37,33 @@ public final class DispatchCallNode extends Node {
             return indirect.call(target, args);
         }
         return callDynamic(target, args);
+    }
+
+    /**
+     * Calls a method given the usual {@code [this, calledClass, args...]} layout. Trait methods
+     * also need the using class at index 2; whether the target is one is a compile-time
+     * constant on the cached path, so ordinary method calls pay nothing for traits.
+     */
+    public Object callMethod(PhpClass.MethodEntry entry, Object[] args) {
+        RootCallTarget target = entry.callTarget();
+        DirectCallNode direct = directCall;
+        if (direct != null && direct.getCallTarget() == target) {
+            return direct.call(isTraitMethod(direct.getCallTarget()) ? withTraitSelf(args, entry.declaringClass()) : args);
+        }
+        return call(target, isTraitMethod(target) ? withTraitSelf(args, entry.declaringClass()) : args);
+    }
+
+    private static boolean isTraitMethod(CallTarget target) {
+        return ((RootCallTarget) target).getRootNode() instanceof PhpFunctionRootNode r && r.traitSelfSlot() >= 0;
+    }
+
+    private static Object[] withTraitSelf(Object[] args, PhpClass usingClass) {
+        Object[] out = new Object[args.length + 1];
+        out[0] = args[0];
+        out[1] = args[1];
+        out[2] = usingClass;
+        System.arraycopy(args, 2, out, 3, args.length - 2);
+        return out;
     }
 
     private Object callDynamic(RootCallTarget target, Object[] args) {

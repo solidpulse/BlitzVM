@@ -39,12 +39,14 @@ final class Scope {
     private final int thisSlot;
     private final int calledClassSlot;
     private final int closureObjSlot;
+    private final int traitSelfSlot;
+    private GotoScope gotoScope;
 
     Scope(boolean global) {
-        this(global, false, null, false, false);
+        this(global, false, null, false, false, false);
     }
 
-    private Scope(boolean global, boolean hasThis, Scope outer, boolean isClosure, boolean isArrow) {
+    private Scope(boolean global, boolean hasThis, Scope outer, boolean isClosure, boolean isArrow, boolean isTraitMethod) {
         this.global = global;
         this.outer = outer;
         this.isArrow = isArrow;
@@ -56,14 +58,20 @@ final class Scope {
             this.calledClassSlot = isClosure ? slot("@calledClass") : -1;
         }
         this.closureObjSlot = isClosure ? slot("@closureObj") : -1;
+        boolean needsTraitSelf = isTraitMethod || (isClosure && outer != null && outer.traitSelfSlot() >= 0);
+        this.traitSelfSlot = needsTraitSelf ? slot("@traitSelf") : -1;
     }
 
     static Scope forMethod() {
-        return new Scope(false, true, null, false, false);
+        return new Scope(false, true, null, false, false, false);
+    }
+
+    static Scope forTraitMethod() {
+        return new Scope(false, true, null, false, false, true);
     }
 
     static Scope forClosure(Scope outer, boolean bindThis, boolean isArrow) {
-        return new Scope(false, bindThis, outer, true, isArrow);
+        return new Scope(false, bindThis, outer, true, isArrow, false);
     }
 
     int thisSlot() {
@@ -78,12 +86,16 @@ final class Scope {
         return closureObjSlot;
     }
 
+    int traitSelfSlot() {
+        return traitSelfSlot;
+    }
+
     /** Frame argument prefix length for this function/method/closure, or -1 in global scope. */
     int argOffset() {
         if (global) {
             return -1;
         }
-        if (closureObjSlot >= 0) {
+        if (closureObjSlot >= 0 || traitSelfSlot >= 0) {
             return 3;
         }
         return thisSlot >= 0 ? 2 : 0;
@@ -139,6 +151,102 @@ final class Scope {
 
     int slot(String name) {
         return slots.computeIfAbsent(name, n -> frame.addSlot(FrameSlotKind.Illegal, n, null));
+    }
+
+    int intSlot(String name) {
+        return slots.computeIfAbsent(name, n -> frame.addSlot(FrameSlotKind.Int, n, null));
+    }
+
+    GotoScope gotoScope() {
+        if (gotoScope == null) {
+            gotoScope = new GotoScope();
+        }
+        return gotoScope;
+    }
+
+    void validateGotos() {
+        if (gotoScope != null) {
+            gotoScope.validate();
+        }
+    }
+
+    static final class GotoScope {
+        private record LabelInfo(int id, List<Integer> loopPath, List<Integer> finallyPath, int line) {}
+        private record GotoUse(String name, List<Integer> loopPath, List<Integer> finallyPath, int line) {}
+
+        private final Map<String, Integer> labelIds = new HashMap<>();
+        private final Map<String, LabelInfo> labels = new HashMap<>();
+        private final List<GotoUse> gotos = new ArrayList<>();
+        private final List<Integer> loopStack = new ArrayList<>();
+        private final List<Integer> finallyStack = new ArrayList<>();
+        private int nextLabelId;
+        private int nextLoopId;
+        private int nextFinallyId;
+        private int nextDispatchId;
+
+        int nextDispatchId() {
+            return nextDispatchId++;
+        }
+
+        void enterLoop() {
+            loopStack.add(nextLoopId++);
+        }
+
+        void exitLoop() {
+            loopStack.remove(loopStack.size() - 1);
+        }
+
+        void enterFinally() {
+            finallyStack.add(nextFinallyId++);
+        }
+
+        void exitFinally() {
+            finallyStack.remove(finallyStack.size() - 1);
+        }
+
+        int defineLabel(String name, int line) {
+            if (labels.containsKey(name)) {
+                throw new PhpParseError("Label '" + name + "' already defined", line);
+            }
+            int id = labelIds.computeIfAbsent(name, k -> nextLabelId++);
+            labels.put(name, new LabelInfo(id, List.copyOf(loopStack), List.copyOf(finallyStack), line));
+            return id;
+        }
+
+        int useGoto(String name, int line) {
+            gotos.add(new GotoUse(name, List.copyOf(loopStack), List.copyOf(finallyStack), line));
+            return labelIds.computeIfAbsent(name, k -> nextLabelId++);
+        }
+
+        void validate() {
+            for (GotoUse g : gotos) {
+                LabelInfo lbl = labels.get(g.name());
+                if (lbl == null) {
+                    throw new PhpParseError("'goto' to undefined label '" + g.name() + "'", g.line());
+                }
+                if (!isPrefix(lbl.loopPath(), g.loopPath())) {
+                    throw new PhpParseError("'goto' into loop or switch statement is disallowed", g.line());
+                }
+                if (!isPrefix(g.finallyPath(), lbl.finallyPath())) {
+                    throw new PhpParseError("jump out of a finally block is disallowed", g.line());
+                }
+                if (!isPrefix(lbl.finallyPath(), g.finallyPath())) {
+                    throw new PhpParseError("jump into a finally block is disallowed", g.line());
+                }
+            }
+        }
+
+        private static boolean isPrefix(List<Integer> prefix, List<Integer> full) {
+            if (prefix.size() > full.size()) {
+                return false;
+            }
+            for (int i = 0; i < prefix.size(); i++) {
+                if (!prefix.get(i).equals(full.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     void importGlobal(String name) {

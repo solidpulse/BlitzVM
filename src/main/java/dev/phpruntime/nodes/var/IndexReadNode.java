@@ -36,6 +36,20 @@ public final class IndexReadNode extends PhpNode {
         return v;
     }
 
+    /** Silent lookup for {@code isset()} / {@code empty()} / {@code ??}; returns null if absent. */
+    public Object readIfSet(VirtualFrame frame) {
+        Object t = target instanceof IndexReadNode ir ? ir.readIfSet(frame) : target.execute(frame);
+        Object k = key.execute(frame);
+        if (t == null || t == PhpNull.INSTANCE) {
+            return null;
+        }
+        try {
+            return index(t, k);
+        } catch (dev.phpruntime.runtime.PhpError e) {
+            throw e.at(this);
+        }
+    }
+
     @TruffleBoundary
     private void warn(Object k) {
         PhpContext.get(this).warning("Undefined array key " + PhpOps.toStr(k), line());
@@ -48,7 +62,22 @@ public final class IndexReadNode extends PhpNode {
             return a.get(k);
         }
         if (container instanceof String s) {
-            long i = PhpOps.toLong(k);
+            long i;
+            if (k instanceof Long l) {
+                i = l;
+            } else if (k instanceof String ks) {
+                Object norm = PhpArray.normalizeKey(ks);
+                if (!(norm instanceof Long l)) {
+                    return null;
+                }
+                i = l;
+            } else if (k instanceof Boolean b) {
+                i = b ? 1L : 0L;
+            } else if (k instanceof Double d) {
+                i = (long) d.doubleValue();
+            } else {
+                return null;
+            }
             if (i < 0) {
                 i += s.length();
             }

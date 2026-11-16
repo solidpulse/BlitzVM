@@ -29,6 +29,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     private final int thisSlot;
     private final int calledClassSlot;
     private final int closureObjSlot;
+    private final int traitSelfSlot;
     @CompilationFinal(dimensions = 1) private final int[] captureSlots;
     @CompilationFinal(dimensions = 1) private final VarKind[] captureKinds;
     @CompilationFinal(dimensions = 1) private final boolean[] captureByRef;
@@ -41,20 +42,28 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
-        this(language, fd, source, line, null, name, false, -1, -1, -1, new int[0], new VarKind[0], new boolean[0],
+        this(language, fd, source, line, null, name, false, -1, -1, -1, -1, new int[0], new VarKind[0], new boolean[0],
                 paramSlots, paramKinds, defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
                                String declaringClass, String name, boolean isStatic, int thisSlot, int calledClassSlot,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
-        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1,
+        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1, -1,
+                new int[0], new VarKind[0], new boolean[0], paramSlots, paramKinds, defaults, variadic, body);
+    }
+
+    public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
+                               String declaringClass, String name, boolean isStatic, int thisSlot, int calledClassSlot,
+                               int traitSelfSlot, int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults,
+                               boolean variadic, PhpNode body) {
+        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1, traitSelfSlot,
                 new int[0], new VarKind[0], new boolean[0], paramSlots, paramKinds, defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
                                String declaringClass, String name, boolean isStatic,
-                               int thisSlot, int calledClassSlot, int closureObjSlot,
+                               int thisSlot, int calledClassSlot, int closureObjSlot, int traitSelfSlot,
                                int[] captureSlots, VarKind[] captureKinds, boolean[] captureByRef,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
         super(language, fd, source, line);
@@ -64,6 +73,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         this.thisSlot = thisSlot;
         this.calledClassSlot = calledClassSlot;
         this.closureObjSlot = closureObjSlot;
+        this.traitSelfSlot = traitSelfSlot;
         this.captureSlots = captureSlots;
         this.captureKinds = captureKinds;
         this.captureByRef = captureByRef;
@@ -86,8 +96,12 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return declaringClass;
     }
 
+    public int traitSelfSlot() {
+        return traitSelfSlot;
+    }
+
     public int argOffset() {
-        if (closureObjSlot >= 0) {
+        if (closureObjSlot >= 0 || traitSelfSlot >= 0) {
             return 3;
         }
         return thisSlot >= 0 ? 2 : 0;
@@ -128,6 +142,9 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         if (closureObjSlot >= 0) {
             PhpObject closureObj = (PhpObject) args[2];
             frame.setObject(closureObjSlot, closureObj);
+            if (traitSelfSlot >= 0) {
+                frame.setObject(traitSelfSlot, closureObj.closure().traitSelf());
+            }
             Object[] caps = closureObj.closure().captures();
             for (int i = 0; i < captureSlots.length; i++) {
                 if (captureByRef[i]) {
@@ -136,6 +153,8 @@ public final class PhpFunctionRootNode extends PhpRootNode {
                     writeSlot(frame, captureSlots[i], captureKinds[i], PhpOps.copyOnAssign(caps[i]));
                 }
             }
+        } else if (traitSelfSlot >= 0) {
+            frame.setObject(traitSelfSlot, args[2]);
         }
         int normalParams = variadic ? paramSlots.length - 1 : paramSlots.length;
         for (int i = 0; i < normalParams; i++) {

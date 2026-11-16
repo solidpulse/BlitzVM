@@ -1,0 +1,12 @@
+bee|root->yes|1|2
+root->yes|42
+1/0/0:yes
+0/1/0:missing
+1/0/1:arr
+1/0/0:arr
+1/0/1:arr
+1/0/0:arr
+bool(true)
+bool(false)
+bool(true)
+fallback

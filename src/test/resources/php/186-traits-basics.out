@@ -1,0 +1,4 @@
+CounterTrait|UserA|CounterTrait::describe|UserA|ChildA|Base|UserA|BaseCls|t_priv|a_priv|lblA|CounterTrait/UserA/UserA
+CounterTrait|UserB|CounterTrait::describe|UserB|UserB|Base|UserB|BaseCls|t_priv|b_priv|lblB|CounterTrait/UserB/UserB
+UserA:UserA:1|UserA:ChildA:2|UserB:UserB:1
+2|1|tr
