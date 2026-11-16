@@ -37,3 +37,13 @@ set_error_handler(function ($errno, $message) { echo "notice:$errno:$message\n";
 $d = new Dictionary;
 $d['a']++;
 echo $d['a'], '\n';
+class NestedValueAccess implements ArrayAccess {
+    public $value = ['n' => 1];
+    public function offsetExists($k): bool { return true; }
+    public function offsetGet($k): mixed { echo 'nested-get|'; return $this->value; }
+    public function offsetSet($k, $v): void { echo 'unexpected-set|'; }
+    public function offsetUnset($k): void {}
+}
+$nested = new NestedValueAccess;
+$nested['a']['n'] += 4;
+echo json_encode($nested->value), "\n";

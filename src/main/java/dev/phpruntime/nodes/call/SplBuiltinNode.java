@@ -30,7 +30,7 @@ public final class SplBuiltinNode extends Node {
     public Object execute(Object[] args) {
         Object subject = args[0];
         if (name.equals("count") || name.equals("sizeof")) {
-            long mode = args.length > 1 ? PhpOps.toLong(args[1]) : 0;
+            long mode = args.length > 1 ? args[1] instanceof Long n ? n : PhpOps.toLong(args[1]) : 0;
             if (mode != 0 && mode != 1) {
                 throw new PhpError(PhpError.VALUE_ERROR, name + "(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE", this);
             }
@@ -38,7 +38,8 @@ public final class SplBuiltinNode extends Node {
                 return mode == 1 ? countRecursive(array) : (long) array.size();
             }
             if (subject instanceof PhpObject obj && obj.phpClass().hasSplInterface(SplInterfaces.COUNTABLE)) {
-                return PhpOps.toLong(CallArgHelper.unwrapReturn(count.call(obj)));
+                Object value = CallArgHelper.unwrapReturn(count.call(obj));
+                return value instanceof Long n ? n : PhpOps.toLong(value);
             }
             throw new PhpError(PhpError.TYPE_ERROR, name + "(): Argument #1 ($value) must be of type Countable|array, "
                     + PhpOps.typeDescription(subject) + " given", this);

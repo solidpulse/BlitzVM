@@ -104,6 +104,7 @@ public final class ArrayLiteralNode extends PhpNode {
             PhpObject it = iterator.resolve(obj);
             iterator.rewind(it);
             while (iterator.valid(it)) {
+                com.oracle.truffle.api.TruffleSafepoint.poll(this);
                 Object value = PhpOps.copyOnAssign(iterator.current(it));
                 Object key = iterator.key(it);
                 if (key instanceof String) {

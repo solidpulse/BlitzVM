@@ -31,6 +31,10 @@ public final class ForeachNode extends PhpNode {
     private final boolean byRef;
     @Child private PhpNode body;
     @Child private IteratorNode iterator;
+    private final com.oracle.truffle.api.profiles.CountingConditionProfile iteratorProfile =
+            com.oracle.truffle.api.profiles.CountingConditionProfile.create();
+    private final com.oracle.truffle.api.profiles.CountingConditionProfile arrayProfile =
+            com.oracle.truffle.api.profiles.CountingConditionProfile.create();
 
     public ForeachNode(PhpNode subject, LValueNode keyTarget, LValueNode valueTarget, PhpNode body) {
         this(subject, null, keyTarget, valueTarget, false, body);
@@ -59,14 +63,18 @@ public final class ForeachNode extends PhpNode {
         }
         Object s = subject.execute(frame);
         List<Map.Entry<Object, Object>> entries;
-        if (s instanceof PhpArray arr) {
+        boolean isArray = arrayProfile.profile(s instanceof PhpArray);
+        if (isArray) {
+            PhpArray arr = (PhpArray) s;
             entries = arr.rawEntries();
         } else if (s instanceof PhpObject obj) {
-            if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
+            if (iteratorProfile.profile(obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE))) {
                 return executeIterator(frame, iterator.resolve(obj));
             }
             String caller = null;
-            if (getRootNode() instanceof PhpFunctionRootNode fn) {
+            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function
+                    : getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode root ? root.signature : null;
+            if (fn != null) {
                 if (fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts) {
                     caller = ts.name();
                 } else {
@@ -180,7 +188,10 @@ public final class ForeachNode extends PhpNode {
             if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
                 throw new PhpError("An iterator cannot be used with foreach by reference", this);
             }
-            String caller = getRootNode() instanceof PhpFunctionRootNode fn ? fn.declaringClass() : null;
+            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function
+                    : getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode root ? root.signature : null;
+            String caller = fn != null ? fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts
+                    ? ts.name() : fn.declaringClass() : null;
             List<Map.Entry<Object, PhpReference>> entries = PhpClass.visibleRefEntries(PhpContext.get(this), obj, caller);
             int count = 0;
             try {

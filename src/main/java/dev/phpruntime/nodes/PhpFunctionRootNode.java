@@ -221,6 +221,10 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return variadic ? paramSlots.length - 1 : paramSlots.length;
     }
 
+    public int requiredArgs() {
+        return requiredArgs;
+    }
+
     public String qualifiedCallableName() {
         if (isClosure()) {
             String f = source() != null && source().getPath() != null && !source().getPath().isEmpty()

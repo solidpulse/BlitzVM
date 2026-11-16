@@ -158,6 +158,12 @@ final class JsonFunctions {
                     return;
                 }
                 active.put(obj, true);
+                if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state) {
+                    container((state.flags & dev.phpruntime.runtime.SplArrayState.STD_PROP_LIST) == 0
+                            ? state.arrayCopy().entries() : dev.phpruntime.runtime.PhpClass.visibleEntries(ctx, obj, null), true, depth);
+                    active.remove(obj);
+                    return;
+                }
                 List<Map.Entry<Object, Object>> entries = new ArrayList<>(
                         dev.phpruntime.runtime.PhpClass.visibleEntries(null, obj, null));
                 if (obj.nativeState() != null) {

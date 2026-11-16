@@ -65,7 +65,7 @@ public final class IndexReadNode extends PhpNode {
         Object t = target instanceof IndexReadNode ir ? ir.readIfSet(frame) : target.execute(frame);
         Object k = key.execute(frame);
         if (t instanceof PhpObject obj) {
-            return access.exists(obj, k);
+            return access.isSet(obj, k);
         }
         Object value = index(t, k);
         return value != null && value != PhpNull.INSTANCE;

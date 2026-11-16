@@ -45,7 +45,7 @@ public final class IteratorNode extends Node {
     }
 
     private PhpError invalidAggregate(PhpObject object) {
-        return new PhpError("Objects returned by " + object.phpClass().name()
+        return new PhpError("Exception", "Objects returned by " + object.phpClass().name()
                 + "::getIterator() must be traversable or implement interface Iterator", this);
     }
 

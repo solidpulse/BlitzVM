@@ -18,8 +18,10 @@ public final class ArrayAccessNode extends Node {
     @Child private ObjectMethodNode set;
     @Child private ObjectMethodNode exists;
     @Child private ObjectMethodNode unset;
+    private final int getId;
 
     public ArrayAccessNode(PhpLanguage language) {
+        getId = language.methodId("offsetGet");
         get = new ObjectMethodNode(language, "offsetGet");
         set = new ObjectMethodNode(language, "offsetSet");
         exists = new ObjectMethodNode(language, "offsetExists");
@@ -34,16 +36,56 @@ public final class ArrayAccessNode extends Node {
 
     public Object getRaw(PhpObject obj, Object key) {
         check(obj);
+        if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state && isNativeGet(obj)) {
+            if (key == dev.phpruntime.runtime.PhpNull.INSTANCE) { return state.cell(key); }
+            Object value = state.get(key);
+            if (value instanceof dev.phpruntime.runtime.PhpObject) { return value; }
+            return state.cell(key);
+        }
         return get.call(obj, key);
     }
 
+    public void bindCell(PhpObject obj, Object key, PhpReference cell) {
+        check(obj);
+        if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state && isNativeGet(obj)) {
+            if (state.storage.array != null) {
+                state.storage.array = state.storage.array.forWrite();
+                if (key == dev.phpruntime.runtime.PhpNull.INSTANCE) { state.storage.array.appendRef(cell); }
+                else { state.storage.array.putRef(key, cell); }
+                state.storage.size = state.storage.array.size();
+                state.storage.version++;
+                return;
+            }
+        }
+        throw new PhpError("Cannot assign by reference to an array dimension of an object", this);
+    }
+
     public Object get(PhpObject obj, Object key) {
-        return CallArgHelper.unwrapReturn(getRaw(obj, key));
+        check(obj);
+        return CallArgHelper.unwrapReturn(get.call(obj, key));
     }
 
     public boolean exists(PhpObject obj, Object key) {
         check(obj);
-        return PhpOps.toBool(CallArgHelper.unwrapReturn(exists.call(obj, key)));
+        return dev.phpruntime.nodes.expr.CondNode.toBool(CallArgHelper.unwrapReturn(exists.call(obj, key)));
+    }
+
+    public Object readIfSet(PhpObject obj, Object key) {
+        if (!exists(obj, key)) { return null; }
+        return get(obj, key);
+    }
+
+    public boolean isSet(PhpObject obj, Object key) {
+        if (!exists(obj, key)) { return false; }
+        if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state && isNativeGet(obj)) {
+            Object value = state.get(key);
+            return value != null && value != dev.phpruntime.runtime.PhpNull.INSTANCE;
+        }
+        return true;
+    }
+
+    private boolean isNativeGet(PhpObject obj) {
+        return obj.phpClass().methodById(getId).callTarget().getRootNode() instanceof dev.phpruntime.nodes.call.SplMethodRootNode;
     }
 
     public void set(PhpObject obj, Object key, Object value) {

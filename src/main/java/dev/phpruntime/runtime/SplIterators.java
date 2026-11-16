@@ -40,13 +40,13 @@ public final class SplIterators {
         int depth = 0;
         while (!it.phpClass().hasSplInterface(SplInterfaces.ITERATOR)) {
             if (!it.phpClass().hasSplInterface(SplInterfaces.AGGREGATE) || depth++ > 256) {
-                throw new PhpError("Objects returned by " + object.phpClass().name()
-                        + "::getIterator() must be traversable or implement interface Iterator");
+                throw new PhpError("Exception", "Objects returned by " + object.phpClass().name()
+                        + "::getIterator() must be traversable or implement interface Iterator", null);
             }
             Object result = call(it, "getIterator");
             if (!(result instanceof PhpObject returned) || !SplInterfaces.has(returned, SplInterfaces.TRAVERSABLE)) {
-                throw new PhpError("Objects returned by " + it.phpClass().name()
-                        + "::getIterator() must be traversable or implement interface Iterator");
+                throw new PhpError("Exception", "Objects returned by " + it.phpClass().name()
+                        + "::getIterator() must be traversable or implement interface Iterator", null);
             }
             it = returned;
         }

@@ -29,3 +29,8 @@ echo iterator_count($h), '\n';
 $n = 0;
 echo iterator_apply($h, function () use (&$n) { $n++; return $n < 2; }), ':', $n, '\n';
 try { foreach ($h as &$v) {} } catch (Error $e) { echo $e->getMessage(), '\n'; }
+require __DIR__ . '/inc/spl-hooks.php';
+$hook = new FixtureHook;
+$hook->add(20, fn($value) => $value . 'B', 1);
+$hook->add(10, fn($value, $extra) => $value . $extra, 2);
+echo $hook->apply('x', 'A'), ':', count($hook), ':', isset($hook[10]) ? 'yes' : 'no', "\n";

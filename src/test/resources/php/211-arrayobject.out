@@ -1,0 +1,22 @@
+2:{"a":1,"b":2}:{"a":1,"b":2}
+{"a":9,"b":2}
+{"a":9,"b":2}:{"x":4}
+{"x":4}
+{"x":4,"0":7}
+4:11:11:{"x":4,"0":7,"z":11}
+bool(true)
+{"0":7,"z":11}
+[]
+ArrayObjectIterator:[11,12]
+object(ArrayObject)#id (1) {
+  ["storage":"ArrayObject":private]=>
+  array(1) {
+    ["v"]=>
+    int(3)
+  }
+}
+bool(false)
+bool(true)
+string(8) "fallback"
+11|18:{"x":8}
+7:7

@@ -133,7 +133,9 @@ final class OutputFunctions {
             }
             if (extra != null) {
                 for (Map.Entry<String, Object> e : extra.entrySet()) {
-                    sb.append(" ".repeat(indent + 2)).append("[\"").append(e.getKey()).append("\"]=>").append((char) 10);
+                    sb.append(" ".repeat(indent + 2));
+                    appendVarDumpObjectKey(sb, obj.phpClass(), e.getKey());
+                    sb.append("=>").append((char) 10);
                     varDump(sb, e.getValue(), indent + 2, seen, false);
                 }
             }
@@ -187,7 +189,9 @@ final class OutputFunctions {
                 Map<String, Object> extra = obj.nativeState().debugProperties(obj);
                 if (extra != null) {
                     for (Map.Entry<String, Object> e : extra.entrySet()) {
-                        sb.append(" ".repeat(indent + 4)).append('[').append(e.getKey()).append("] => ");
+                        sb.append(" ".repeat(indent + 4)).append('[');
+                        appendPrintRObjectKey(sb, obj.phpClass(), e.getKey());
+                        sb.append("] => ");
                         printR(sb, e.getValue(), indent + 8, seen);
                         sb.append('\n');
                     }

@@ -19,11 +19,15 @@ final class SplFunctions {
         Builtins.def("is_countable", 1, 1, (ctx, a) -> a[0] instanceof PhpArray || SplInterfaces.has(a[0], SplInterfaces.COUNTABLE));
         for (String name : new String[]{"count", "sizeof"}) {
             Builtins.def(name, 1, 2, (ctx, a) -> {
+                long mode = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
+                if (mode != 0 && mode != 1) {
+                    throw new PhpError(PhpError.VALUE_ERROR, name + "(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE", null);
+                }
                 if (a[0] instanceof PhpObject obj && SplInterfaces.has(obj, SplInterfaces.COUNTABLE)) {
                     return PhpOps.toLong(SplIterators.call(obj, "count"));
                 }
                 if (a[0] instanceof PhpArray array) {
-                    return (long) array.size();
+                    return mode == 1 ? countRecursive(array) : (long) array.size();
                 }
                 throw new PhpError(PhpError.TYPE_ERROR, name + "(): Argument #1 ($value) must be of type Countable|array, "
                         + PhpOps.typeDescription(a[0]) + " given", null);
@@ -43,15 +47,30 @@ final class SplFunctions {
             }
             return out;
         });
-        Builtins.def("iterator_count", 1, 1, (ctx, a) -> a[0] instanceof PhpArray array ? (long) array.size()
-                : (long) SplIterators.entries(requireIterator("iterator_count", a[0], true), ctx.currentBuiltinCallSite()).size());
+        Builtins.def("iterator_count", 1, 1, (ctx, a) -> {
+            if (a[0] instanceof PhpArray array) { return (long) array.size(); }
+            PhpObject iterator = SplIterators.resolve(requireIterator("iterator_count", a[0], true));
+            SplIterators.call(iterator, "rewind");
+            long count = 0;
+            while (PhpOps.toBool(SplIterators.call(iterator, "valid"))) {
+                count++;
+                com.oracle.truffle.api.TruffleSafepoint.poll(ctx.currentBuiltinCallSite());
+                SplIterators.call(iterator, "next");
+            }
+            return count;
+        });
         Builtins.def("iterator_apply", 2, 3, (ctx, a) -> {
             PhpObject it = SplIterators.resolve(requireIterator("iterator_apply", a[0], false));
             PhpCallable cb = PhpCallable.resolve(ctx, a[1], ctx.currentBuiltinCallSite());
+            if (a.length > 2 && a[2] != dev.phpruntime.runtime.PhpNull.INSTANCE && !(a[2] instanceof PhpArray)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "iterator_apply(): Argument #3 ($args) must be of type ?array, "
+                        + PhpOps.typeDescription(a[2]) + " given", null);
+            }
             Object[] args = a.length > 2 && a[2] instanceof PhpArray arr ? arr.values().toArray() : new Object[0];
             SplIterators.call(it, "rewind");
             long n = 0;
             while (PhpOps.toBool(SplIterators.call(it, "valid"))) {
+                com.oracle.truffle.api.TruffleSafepoint.poll(ctx.currentBuiltinCallSite());
                 n++;
                 if (!PhpOps.toBool(cb.call(ctx, null, ctx.currentBuiltinCallSite(), args))) {
                     break;
@@ -103,8 +122,17 @@ final class SplFunctions {
             collectInterfaces(cls.parent(), out);
         }
         for (PhpClass iface : cls.interfaces()) {
-            out.put(iface.name(), iface.name());
+            if (!cls.isInterface()) { out.put(iface.name(), iface.name()); }
             collectInterfaces(iface, out);
+            if (cls.isInterface()) { out.put(iface.name(), iface.name()); }
         }
+    }
+
+    private static long countRecursive(PhpArray array) {
+        long count = array.size();
+        for (Object value : array.values()) {
+            if (value instanceof PhpArray nested) { count += countRecursive(nested); }
+        }
+        return count;
     }
 }
