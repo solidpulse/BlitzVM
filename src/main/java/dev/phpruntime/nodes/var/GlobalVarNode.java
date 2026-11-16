@@ -94,6 +94,14 @@ public final class GlobalVarNode extends LValueNode {
     }
 
     @Override
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        if (globalId < 0) { return super.appendString(frame, keys, suffix, resultNeeded); }
+        PhpContext ctx = PhpContext.get(this);
+        if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
+        return ctx.appendGlobalById(globalId, suffix, resultNeeded);
+    }
+
+    @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         if (globalId < 0) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);

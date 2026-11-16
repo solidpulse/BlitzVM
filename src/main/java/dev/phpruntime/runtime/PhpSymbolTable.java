@@ -40,6 +40,11 @@ public final class PhpSymbolTable {
             if (cell == null) { bind(PhpReference.local(value)); }
             else { cell.setValue(value); }
         }
+        public String appendString(String suffix, boolean resultNeeded) {
+            PhpReference cell = get();
+            if (cell == null) { bind(cell = PhpReference.local(null)); }
+            return cell.appendString(suffix, resultNeeded);
+        }
         public PhpReference obtain() {
             PhpReference cell = get();
             if (cell == null) { bind(cell = new PhpReference(PhpNull.INSTANCE)); }

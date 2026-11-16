@@ -28,6 +28,12 @@ public final class SplIteratorMethodRootNode extends RootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (!PhpStrings.CHECK) { return executeMethod(frame); }
+        PhpStrings.checkArguments(frame.getArguments(), "SPL iterator method");
+        return PhpStrings.checkReturn(executeMethod(frame), "SPL iterator method");
+    }
+
+    private Object executeMethod(VirtualFrame frame) {
         Object[] args = frame.getArguments();
         PhpObject self = (PhpObject) args[0];
         if (name.equals("__construct")) {

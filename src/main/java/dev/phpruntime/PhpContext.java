@@ -238,6 +238,13 @@ public final class PhpContext {
         createGlobalCellById(id, value);
     }
 
+    public String appendGlobalById(int id, String suffix, boolean resultNeeded) {
+        PhpReference[] table = globalsById;
+        PhpReference cell = id < table.length ? table[id] : null;
+        if (cell == null) { cell = createGlobalCellById(id, null); }
+        return cell.appendString(suffix, resultNeeded);
+    }
+
     @TruffleBoundary
     private PhpReference createGlobalCellById(int id, Object value) {
         if (id >= globalsById.length) {

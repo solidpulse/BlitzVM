@@ -395,6 +395,17 @@ public final class PhpStrings {
         checkNoBuffer(value, origin, new IdentityHashMap<>());
     }
 
+    public static void checkArguments(Object[] args, String origin) {
+        if (CHECK) {
+            for (Object arg : args) { checkNoBuffer(arg, origin + " argument"); }
+        }
+    }
+
+    public static Object checkReturn(Object value, String origin) {
+        if (CHECK) { checkNoBuffer(value, origin + " return"); }
+        return value;
+    }
+
     private static void checkNoBuffer(Object value, String origin, IdentityHashMap<Object, Boolean> seen) {
         if (value instanceof PhpStringBuffer) {
             throw new IllegalStateException("PHP string append buffer escaped storage into " + origin);

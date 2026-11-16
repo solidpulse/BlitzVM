@@ -29,6 +29,12 @@ public final class SplMethodRootNode extends RootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (!PhpStrings.CHECK) { return executeMethod(frame); }
+        PhpStrings.checkArguments(frame.getArguments(), owner + "::" + method);
+        return PhpStrings.checkReturn(executeMethod(frame), owner + "::" + method);
+    }
+
+    private Object executeMethod(VirtualFrame frame) {
         Object[] raw = frame.getArguments();
         PhpObject self = (PhpObject) raw[0];
         int n = raw.length - 2;

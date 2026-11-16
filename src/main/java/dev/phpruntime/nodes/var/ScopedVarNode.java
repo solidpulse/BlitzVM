@@ -69,6 +69,14 @@ public final class ScopedVarNode extends LValueNode {
         return cell.alias();
     }
 
+    @Override public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        writable();
+        PhpReference[] cells = table(frame).cells;
+        PhpReference cell = cells[slot];
+        if (cell == null) { cells[slot] = cell = PhpReference.local(null); }
+        return cell.appendString(suffix, resultNeeded);
+    }
+
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         writable();
         table(frame).cells[slot] = cell.alias();

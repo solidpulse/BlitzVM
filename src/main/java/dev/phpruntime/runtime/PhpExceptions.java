@@ -527,6 +527,7 @@ public final class PhpExceptions {
 
         @TruffleBoundary
         private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs) {
+            PhpStrings.checkArguments(callArgs, name + "()");
             Object value = impl.invoke(ctx, self, callArgs);
             if (PhpStrings.CHECK) {
                 PhpStrings.checkValue(value, (self != null ? self.phpClass().name() + "::" : "static ") + name + "()");

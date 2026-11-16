@@ -1,0 +1,9 @@
+abcd|abcd|ab
+abcde|abcde
+abcde|abcdef|abcde|abcdef
+{"s":"abcdefg"}|a:1:{s:1:"s";s:7:"abcdefg";}
+abcdefgh|abcdefgh
+Zbcdefgh!
+newvalue
+separate!|newvalue
+xyxz|xyx

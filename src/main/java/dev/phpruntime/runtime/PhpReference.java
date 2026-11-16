@@ -20,14 +20,28 @@ public final class PhpReference {
     public PhpReference alias() { aliased = true; return this; }
     public boolean isAliased() { return aliased; }
 
-    public Object getValue() { return value; }
-    public void setValue(Object value) { this.value = value; }
+    /** Ordinary reads never expose location-owned append storage. */
+    public Object getValue() { return PhpStringBuffer.flatten(value); }
+    public void setValue(Object value) { this.value = PhpStringBuffer.flatten(value); }
+
+    /** Only .= may create or mutate a buffer, and it stays in this cell. */
+    public String appendString(String suffix, boolean resultNeeded) {
+        PhpStringBuffer buffer;
+        if (value instanceof PhpStringBuffer existing) { buffer = existing; }
+        else {
+            buffer = new PhpStringBuffer(value instanceof String s ? s
+                    : PhpOps.toStr(value == null ? PhpNull.INSTANCE : value));
+            value = buffer;
+        }
+        buffer.append(suffix);
+        return resultNeeded ? buffer.asString() : null;
+    }
 
     public PhpReference() {
         this(PhpNull.INSTANCE);
     }
 
     public PhpReference(Object value) {
-        this.value = value;
+        setValue(value);
     }
 }

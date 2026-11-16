@@ -101,7 +101,9 @@ public final class LocalVarNode extends LValueNode {
     @Override
     public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
         if (kind.isCell()) {
-            return super.appendString(frame, keys, suffix, resultNeeded);
+            PhpReference cell = getOrMigrateCell(frame);
+            if (cell == null) { frame.setObject(slot, cell = new PhpReference(null)); }
+            return cell.appendString(suffix, resultNeeded);
         }
         Object current = frame.isObject(slot) ? frame.getObject(slot)
                 : frame.isLong(slot) ? frame.getLong(slot) : frame.isDouble(slot) ? frame.getDouble(slot) : null;

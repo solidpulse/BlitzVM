@@ -115,6 +115,25 @@ public final class DynamicVarNode extends LValueNode {
         return cell.alias();
     }
 
+    @Override public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
+        String name = (String) keys[0];
+        writable(name);
+        if (tableSlot < 0) {
+            if (name.equals("GLOBALS")) {
+                return PhpContext.get(this).globalSymbolRef(name).appendString(suffix, resultNeeded);
+            }
+            return PhpContext.get(this).appendGlobalById(PhpContext.get(this).language().globalId(name), suffix, resultNeeded);
+        }
+        PhpSymbolTable table = table(frame);
+        int slot = slot(table, name);
+        PhpReference cell;
+        if (slot >= 0) {
+            cell = table.cells[slot];
+            if (cell == null) { table.cells[slot] = cell = PhpReference.local(null); }
+        } else { cell = table.cell(name, true); }
+        return cell.appendString(suffix, resultNeeded);
+    }
+
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         String name = (String) keys[0];
         writable(name);
