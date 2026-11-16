@@ -1,0 +1,58 @@
+array(2) {
+  ["x"]=>
+  array(1) {
+    [0]=>
+    int(1)
+  }
+  ["z"]=>
+  array(1) {
+    [0]=>
+    int(3)
+  }
+}
+array(3) {
+  ["x"]=>
+  array(2) {
+    [0]=>
+    int(1)
+    [1]=>
+    int(4)
+  }
+  ["z"]=>
+  array(1) {
+    [0]=>
+    int(5)
+  }
+  ["tail"]=>
+  array(1) {
+    [0]=>
+    int(6)
+  }
+}
+int(7)
+array(2) {
+  ["ref"]=>
+  &int(7)
+  ["value"]=>
+  int(2)
+}
+array(2) {
+  ["ref"]=>
+  &int(7)
+  ["value"]=>
+  int(8)
+}
+ref:7
+value:2
+array(2) {
+  ["ref"]=>
+  &int(9)
+  ["value"]=>
+  int(10)
+}
+array(2) {
+  ["ref"]=>
+  &int(9)
+  ["value"]=>
+  int(8)
+}

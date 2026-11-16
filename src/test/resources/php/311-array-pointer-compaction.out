@@ -1,0 +1,22 @@
+string(3) "k60"
+int(60)
+string(3) "k59"
+int(59)
+string(3) "k60"
+int(60)
+string(3) "k56"
+int(56)
+int(2)
+int(30)
+int(2)
+int(30)
+array(3) {
+  [0]=>
+  int(30)
+  ["s"]=>
+  int(40)
+  [1]=>
+  int(50)
+}
+int(0)
+int(30)

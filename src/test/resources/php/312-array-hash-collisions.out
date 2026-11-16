@@ -1,0 +1,46 @@
+array(6) {
+  ["Aa"]=>
+  int(1)
+  ["BBBB"]=>
+  int(4)
+  ["AaBB"]=>
+  int(5)
+  ["BBAa"]=>
+  int(6)
+  ["BB"]=>
+  int(7)
+  ["AaAa"]=>
+  int(8)
+}
+array(6) {
+  ["Aa"]=>
+  int(1)
+  ["BBBB"]=>
+  int(4)
+  ["AaBB"]=>
+  int(5)
+  ["BBAa"]=>
+  int(6)
+  ["BB"]=>
+  int(7)
+  ["AaAa"]=>
+  int(8)
+}
+array(6) {
+  ["Aa"]=>
+  int(9)
+  ["BBBB"]=>
+  int(4)
+  ["AaBB"]=>
+  int(5)
+  ["BB"]=>
+  int(7)
+  ["AaAa"]=>
+  int(8)
+  ["new"]=>
+  int(10)
+}
+array(1) {
+  ["last"]=>
+  int(1000)
+}

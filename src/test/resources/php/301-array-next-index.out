@@ -1,0 +1,71 @@
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [3]=>
+  string(1) "d"
+}
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [3]=>
+  string(1) "e"
+}
+array(1) {
+  [6]=>
+  string(1) "c"
+}
+array(3) {
+  [0]=>
+  string(1) "a"
+  [5]=>
+  string(1) "b"
+  [6]=>
+  string(1) "d"
+}
+array(2) {
+  [0]=>
+  string(1) "a"
+  [6]=>
+  string(1) "d"
+}
+array(2) {
+  [-5]=>
+  string(1) "a"
+  [-4]=>
+  string(1) "c"
+}
+array(2) {
+  [-1]=>
+  string(1) "a"
+  [0]=>
+  string(1) "b"
+}
+array(1) {
+  [-4]=>
+  string(1) "b"
+}
+array(1) {
+  [-5]=>
+  string(1) "b"
+}
+Cannot add element to the array as the next element is already occupied
+array(2) {
+  [9223372036854775806]=>
+  string(1) "a"
+  [9223372036854775807]=>
+  string(5) "again"
+}
+array(2) {
+  [9223372036854775806]=>
+  string(1) "a"
+  [9223372036854775807]=>
+  string(5) "reuse"
+}
+array(1) {
+  [9223372036854775807]=>
+  string(1) "b"
+}

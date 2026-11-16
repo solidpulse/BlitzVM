@@ -1,0 +1,38 @@
+array(5) {
+  [0]=>
+  string(1) "a"
+  [2]=>
+  string(1) "c"
+  [3]=>
+  string(1) "d"
+  [1]=>
+  string(5) "again"
+  [4]=>
+  string(4) "tail"
+}
+bool(false)
+array(5) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "c"
+  [2]=>
+  string(1) "d"
+  [3]=>
+  string(5) "again"
+  [4]=>
+  string(4) "tail"
+}
+bool(true)
+array(4) {
+  [0]=>
+  string(4) "zero"
+  [2]=>
+  string(7) "updated"
+  [1]=>
+  string(3) "one"
+  ["s"]=>
+  string(10) "reinserted"
+}
+251 69625
+k397,k398,k399,k1
