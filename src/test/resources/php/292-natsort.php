@@ -26,4 +26,5 @@ $b = ["x" => "A", "y" => "a", "z" => "B"];
 natcasesort($b);
 var_export($b);
 echo "\n";
-var_dump(natsort($empty = []));
+$empty = [];
+var_dump(natsort($empty));
