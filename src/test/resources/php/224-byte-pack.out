@@ -33,3 +33,6 @@ array(2) {
   float(2.25)
 }
 010204
+bool(true)
+int(256)
+bool(true)
