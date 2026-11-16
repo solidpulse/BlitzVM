@@ -159,10 +159,31 @@ public final class PhpContext {
         }
     }
 
+    public boolean isReservedGlobal(String name) { return reservedGlobals.contains(name); }
+
+    @TruffleBoundary
+    public void initializeGlobalOrder() {
+        globalOrder.clear();
+        for (String name : new String[]{"argv", "argc", "_GET", "_POST", "_COOKIE", "_FILES", "_SERVER"}) {
+            Integer id = language.lookupGlobalId(name);
+            if (id != null && readGlobalById(id) != null) { globalOrder.put(name, id); }
+        }
+    }
+
+    @TruffleBoundary
+    private void exposeAutoGlobal(String name) {
+        if (name.equals("_ENV") || name.equals("_REQUEST")) {
+            Integer id = language.lookupGlobalId(name);
+            if (id != null) { globalOrder.putIfAbsent(name, id); }
+        }
+    }
+
+    public void exposeAutoGlobalById(int id) { exposeAutoGlobal(language.globalName(id)); }
+
     /** extract can create an ordinary symbol called GLOBALS; literal $GLOBALS remains special. */
     @TruffleBoundary
     public void bindExtractedGlobal(String name, PhpReference cell) {
-        if (name.equals("GLOBALS")) { dynamicGlobals.put(name, cell); }
+        if (name.equals("GLOBALS")) { dynamicGlobals.put(name, cell.alias()); }
         else { bindGlobal(name, cell); }
     }
 
@@ -170,7 +191,7 @@ public final class PhpContext {
     public void writeExtractedGlobal(String name, Object value) {
         if (name.equals("GLOBALS")) {
             PhpReference cell = dynamicGlobals.get(name);
-            if (cell == null) { dynamicGlobals.put(name, new PhpReference(value)); }
+            if (cell == null) { dynamicGlobals.put(name, PhpReference.local(value)); }
             else { cell.value = value; }
         } else { writeGlobal(name, value); }
     }
@@ -224,7 +245,7 @@ public final class PhpContext {
         }
         PhpReference cell = globalsById[id];
         if (cell == null) {
-            cell = new PhpReference(value);
+            cell = PhpReference.local(value);
             globalsById[id] = cell;
             globalOrder.put(language.globalName(id), id);
         } else {
@@ -241,10 +262,10 @@ public final class PhpContext {
                 if (cell.value == null) {
                     cell.value = PhpNull.INSTANCE;
                 }
-                return cell;
+                return cell.alias();
             }
         }
-        return createGlobalCellById(id, PhpNull.INSTANCE);
+        return createGlobalCellById(id, PhpNull.INSTANCE).alias();
     }
 
     public void bindGlobalById(int id, PhpReference cell) {
@@ -252,7 +273,7 @@ public final class PhpContext {
             growGlobalsTable(id);
         }
         if (globalsById[id] == null) { recordGlobal(id); }
-        globalsById[id] = cell;
+        globalsById[id] = cell.alias();
     }
 
     @TruffleBoundary
@@ -284,6 +305,7 @@ public final class PhpContext {
         }
         Integer id = language.lookupGlobalId(name);
         if (id != null) {
+            exposeAutoGlobal(name);
             return readGlobalById(id);
         }
         PhpReference cell = dynamicGlobals.get(name);
@@ -354,14 +376,16 @@ public final class PhpContext {
             if (cell != null && cell.value != null) {
                 String name = entry.getKey();
                 if (name != null && !"GLOBALS".equals(name)) {
-                    snap.put(name, PhpOps.copyOnAssign(cell.value));
+                    if (cell.isAliased()) { snap.putRef(name, cell); }
+                    else { snap.put(name, PhpOps.copyOnAssign(cell.value)); }
                 }
             }
         }
         for (Map.Entry<String, PhpReference> e : dynamicGlobals.entrySet()) {
             PhpReference cell = e.getValue();
             if (cell != null && cell.value != null && !"GLOBALS".equals(e.getKey())) {
-                snap.put(e.getKey(), PhpOps.copyOnAssign(cell.value));
+                if (cell.isAliased()) { snap.putRef(e.getKey(), cell); }
+                else { snap.put(e.getKey(), PhpOps.copyOnAssign(cell.value)); }
             }
         }
         return snap;

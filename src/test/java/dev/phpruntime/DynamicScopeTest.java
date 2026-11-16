@@ -12,6 +12,40 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DynamicScopeTest {
     @Test
+    void ordinaryFunctionsAndLiteralCompactKeepTypedFrames() {
+        String code = """
+                <?php
+                function ordinary($n) { $x = 0; for ($i = 0; $i < $n; $i++) { $x += $i; } return $x; }
+                function literal($a) { $b = 2; return compact('a', 'b'); }
+                function nested() { $c = function () { extract(['x' => 1]); }; return 1; }
+                function dynamic($a) { extract(['b' => 2]); return $a + $b; }
+                __scope_shape_check();
+                """;
+        dev.phpruntime.builtins.Builtins.def("__scope_shape_check", 0, 0, (ctx, args) -> {
+            for (String name : new String[]{"ordinary", "literal", "nested", "dynamic"}) {
+                var function = ctx.lookupFunction(name);
+                var functionRoot = function.callTarget().getRootNode();
+                functionRoot.adoptChildren();
+                boolean dynamic = function.name().equals("dynamic");
+                assertEquals(dynamic, functionRoot.getFrameDescriptor().getInfo() instanceof dev.phpruntime.runtime.PhpScopeLayout);
+                int[] counts = new int[2];
+                countLocalNodes(functionRoot, counts);
+                assertTrue(dynamic ? counts[1] > 0 && counts[0] == 0 : counts[1] == 0, function.name());
+            }
+            return dev.phpruntime.runtime.PhpNull.INSTANCE;
+        });
+        try (var context = org.graalvm.polyglot.Context.newBuilder("php").option("engine.WarnInterpreterOnly", "false").build()) {
+            context.eval("php", code);
+        }
+    }
+
+    private static void countLocalNodes(com.oracle.truffle.api.nodes.Node node, int[] counts) {
+        if (node instanceof dev.phpruntime.nodes.var.LocalVarNode) { counts[0]++; }
+        if (node instanceof dev.phpruntime.nodes.var.ScopedVarNode) { counts[1]++; }
+        for (var child : node.getChildren()) { countLocalNodes(child, counts); }
+    }
+
+    @Test
     void includesExtractAndClassScopeAreIsolatedAcrossSharedAsts(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("view.php"), """
                 <?php

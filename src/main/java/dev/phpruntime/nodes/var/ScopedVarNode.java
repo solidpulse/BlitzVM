@@ -18,6 +18,8 @@ public final class ScopedVarNode extends LValueNode {
         this.name = name;
     }
 
+    public String varName() { return name; }
+
     private PhpSymbolTable table(VirtualFrame frame) { return (PhpSymbolTable) frame.getObject(tableSlot); }
 
     @Override public Object read(VirtualFrame frame, Object[] keys) {
@@ -30,6 +32,22 @@ public final class ScopedVarNode extends LValueNode {
         return cell == null ? null : cell.value;
     }
 
+    @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
+        if (name.equals("this")) {
+            Object value = table(frame).thisValue;
+            return value != null && value != PhpNull.INSTANCE;
+        }
+        return super.isSet(frame, keys);
+    }
+
+    @Override public Object readIfSet(VirtualFrame frame, Object[] keys) {
+        if (name.equals("this")) {
+            Object value = table(frame).thisValue;
+            return value == PhpNull.INSTANCE ? null : value;
+        }
+        return read(frame, keys);
+    }
+
     private void writable() {
         if (name.equals("this")) { throw new PhpError("Cannot re-assign $this", this); }
     }
@@ -38,7 +56,7 @@ public final class ScopedVarNode extends LValueNode {
         writable();
         PhpReference[] cells = table(frame).cells;
         PhpReference cell = cells[slot];
-        if (cell == null) { cells[slot] = new PhpReference(value); }
+        if (cell == null) { cells[slot] = PhpReference.local(value); }
         else { cell.value = value; }
     }
 
@@ -48,12 +66,12 @@ public final class ScopedVarNode extends LValueNode {
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = cell = new PhpReference(PhpNull.INSTANCE); }
         else if (cell.value == null) { cell.value = PhpNull.INSTANCE; }
-        return cell;
+        return cell.alias();
     }
 
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         writable();
-        table(frame).cells[slot] = cell;
+        table(frame).cells[slot] = cell.alias();
     }
 
     @Override public void unset(VirtualFrame frame, Object[] keys) {

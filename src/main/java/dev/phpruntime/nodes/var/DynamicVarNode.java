@@ -12,12 +12,18 @@ import dev.phpruntime.runtime.*;
 public final class DynamicVarNode extends LValueNode {
     @Child private PhpNode nameExpr;
     private final int tableSlot;
+    private final boolean literal;
     private record Resolution(PhpScopeLayout layout, String name, int slot) {}
     @CompilationFinal private Resolution resolution;
 
     public DynamicVarNode(PhpNode nameExpr, int tableSlot) {
+        this(nameExpr, tableSlot, false);
+    }
+
+    public DynamicVarNode(PhpNode nameExpr, int tableSlot, boolean literal) {
         this.nameExpr = nameExpr;
         this.tableSlot = tableSlot;
+        this.literal = literal;
     }
 
     public int tableSlot() { return tableSlot; }
@@ -51,6 +57,9 @@ public final class DynamicVarNode extends LValueNode {
         if (tableSlot < 0) { return PhpContext.get(this).readGlobalSymbol(name); }
         PhpSymbolTable table = table(frame);
         if (name.equals("this")) {
+            if (literal && (table.thisValue == null || table.thisValue == PhpNull.INSTANCE)) {
+                throw new PhpError("Using $this when not in object context", this);
+            }
             return table.thisValue == PhpNull.INSTANCE ? null : table.thisValue;
         }
         int slot = slot(table, name);
@@ -59,11 +68,19 @@ public final class DynamicVarNode extends LValueNode {
     }
 
     @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
-        return !keys[0].equals("this") && super.isSet(frame, keys);
+        if (literal && keys[0].equals("this")) {
+            Object value = table(frame).thisValue;
+            return value != null && value != PhpNull.INSTANCE;
+        }
+        return (literal || !keys[0].equals("this")) && super.isSet(frame, keys);
     }
 
     @Override public Object readIfSet(VirtualFrame frame, Object[] keys) {
-        return keys[0].equals("this") ? null : read(frame, keys);
+        if (literal && keys[0].equals("this")) {
+            Object value = table(frame).thisValue;
+            return value == PhpNull.INSTANCE ? null : value;
+        }
+        return !literal && keys[0].equals("this") ? null : read(frame, keys);
     }
 
     private void writable(String name) {
@@ -78,7 +95,7 @@ public final class DynamicVarNode extends LValueNode {
         int slot = slot(table, name);
         if (slot >= 0) {
             PhpReference cell = table.cells[slot];
-            if (cell == null) { table.cells[slot] = new PhpReference(value); }
+            if (cell == null) { table.cells[slot] = PhpReference.local(value); }
             else { cell.value = value; }
         } else { table.cell(name, true).value = value; }
     }
@@ -95,7 +112,7 @@ public final class DynamicVarNode extends LValueNode {
             if (cell == null) { table.cells[slot] = cell = new PhpReference(null); }
         } else { cell = table.cell(name, true); }
         if (cell.value == null) { cell.value = PhpNull.INSTANCE; }
-        return cell;
+        return cell.alias();
     }
 
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
@@ -103,6 +120,7 @@ public final class DynamicVarNode extends LValueNode {
         writable(name);
         if (tableSlot < 0) { PhpContext.get(this).bindExtractedGlobal(name, cell); return; }
         PhpSymbolTable table = table(frame);
+        cell.alias();
         int slot = slot(table, name);
         if (slot >= 0) { table.cells[slot] = cell; }
         else { table.bind(name, cell); }
@@ -110,7 +128,10 @@ public final class DynamicVarNode extends LValueNode {
 
     @Override public void unset(VirtualFrame frame, Object[] keys) {
         String name = (String) keys[0];
-        if (name.equals("this")) { return; }
+        if (name.equals("this")) {
+            if (literal) { throw new PhpError("Cannot unset $this", this); }
+            return;
+        }
         writable(name);
         if (tableSlot < 0) { PhpContext.get(this).unsetGlobalSymbol(name); }
         else { table(frame).unset(name); }

@@ -38,7 +38,9 @@ public final class CompactNode extends PhpNode {
     }
 
     @TruffleBoundary private void put(PhpArray result, String name, Object value) {
-        if (value == null) { PhpContext.get(this).warning("compact(): Undefined variable $" + name, line()); }
+        if (value == null) {
+            if (!name.equals("this")) { PhpContext.get(this).warning("compact(): Undefined variable $" + name, line()); }
+        }
         else { result.put(name, PhpOps.copyOnAssign(value)); }
     }
 
@@ -50,7 +52,8 @@ public final class CompactNode extends PhpNode {
             if (table == null) { value = PhpContext.get(this).readGlobalSymbol(name); }
             else {
                 PhpReference cell = table.cell(name, false);
-                value = cell == null ? null : cell.value;
+                value = name.equals("this") ? table.thisValue == PhpNull.INSTANCE ? null : table.thisValue
+                        : cell == null ? null : cell.value;
             }
             put(result, name, value);
         } else {

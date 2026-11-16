@@ -12,6 +12,7 @@ import dev.phpruntime.runtime.PhpOps;
 public final class EvalNode extends PhpNode {
     public static final Object EVAL_MODE = new Object();
     @Child private PhpNode code;
+    @Child private com.oracle.truffle.api.nodes.IndirectCallNode call = com.oracle.truffle.api.nodes.IndirectCallNode.create();
     private final int tableSlot;
 
     public EvalNode(PhpNode code) {
@@ -25,16 +26,17 @@ public final class EvalNode extends PhpNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        return evaluate(PhpOps.toStr(code.execute(frame)), tableSlot >= 0 ? frame.getObject(tableSlot) : null);
+        com.oracle.truffle.api.CallTarget target = prepare(PhpOps.toStr(code.execute(frame)));
+        return call.call(target, tableSlot < 0 ? new Object[]{EVAL_MODE}
+                : new Object[]{EVAL_MODE, frame.getObject(tableSlot)});
     }
 
     @TruffleBoundary
-    private Object evaluate(String code, Object symbols) {
+    private com.oracle.truffle.api.CallTarget prepare(String code) {
         PhpContext ctx = PhpContext.get(this);
         Source source = Source.newBuilder(PhpLanguage.ID, "<?php " + code, "eval()'d code").cached(true).build();
         try {
-            return symbols == null ? ctx.language().parseBytes(source).call(new Object[]{EVAL_MODE})
-                    : ctx.language().parseLocalBytes(source).call(new Object[]{EVAL_MODE, symbols});
+            return tableSlot < 0 ? ctx.language().parseEvalBytes(source) : ctx.language().parseLocalBytes(source);
         } catch (dev.phpruntime.parser.PhpParseError e) {
             throw new dev.phpruntime.runtime.PhpError(dev.phpruntime.runtime.PhpError.PARSE_ERROR, e.getMessage(), this);
         }

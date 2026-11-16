@@ -21,3 +21,7 @@ class SpecialThis {
     }
 }
 (new SpecialThis)->f();
+$name = 'GLOBALS'; $$name = ['dynamic' => 7];
+$$name['dynamic']++;
+echo json_encode($$name), ':', $GLOBALS['g'], "\n";
+unset($$name); echo isset($$name) ? 'set' : 'unset', "\n";

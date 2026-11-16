@@ -26,8 +26,17 @@ public final class ExtractNode extends PhpNode {
     @Override public Object execute(VirtualFrame frame) {
         Object[] keys = arrayTarget == null ? null : arrayTarget.evalKeys(frame);
         Object value = arrayTarget == null ? array.execute(frame) : arrayTarget.read(frame, keys);
-        long flag = flags == null ? 0 : PhpOps.toLong(flags.execute(frame));
-        String pre = prefix == null ? "" : PhpOps.toStr(prefix.execute(frame));
+        Object rawFlags = flags == null ? 0L : flags.execute(frame);
+        Object rawPrefix = prefix == null ? "" : prefix.execute(frame);
+        if (!(rawFlags == PhpNull.INSTANCE || rawFlags instanceof Long || rawFlags instanceof Double
+                || rawFlags instanceof Boolean || rawFlags instanceof String s && PhpOps.isNumericString(s))) {
+            throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #2 ($flags) must be of type int, " + PhpOps.typeName(rawFlags) + " given", this);
+        }
+        if (rawPrefix instanceof PhpArray || rawPrefix instanceof PhpObject) {
+            throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #3 ($prefix) must be of type string, " + PhpOps.typeName(rawPrefix) + " given", this);
+        }
+        long flag = PhpOps.toLong(rawFlags);
+        String pre = PhpOps.toStr(rawPrefix);
         validate(flag, pre);
         if (!(value instanceof PhpArray input)) {
             throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #1 ($array) must be of type array, " + PhpOps.typeName(value) + " given", this);
@@ -60,7 +69,7 @@ public final class ExtractNode extends PhpNode {
         if ((type == 2 || type == 3 || type == 4 || type == 5) && this.prefix == null) {
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #3 ($prefix) is required when using this extract type", this);
         }
-        if (!prefix.isEmpty() && !identifier(prefix)) {
+        if ((type == 2 || type == 3 || type == 4 || type == 5) && !prefix.isEmpty() && !identifier(prefix)) {
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #3 ($prefix) must be a valid identifier", this);
         }
     }
@@ -82,7 +91,7 @@ public final class ExtractNode extends PhpNode {
                 case 4 -> { if (!identifier(original) || original.equals("this")) { name = prefix + "_" + original; } }
                 case 5 -> {
                     if (exists) { name = prefix + "_" + original; }
-                    else if (table == null || !table.layout.locals().containsKey(original)) { continue; }
+                    else if (table == null ? !ctx.isReservedGlobal(original) : !table.layout.locals().containsKey(original)) { continue; }
                 }
                 case 6 -> { if (!exists) { continue; } }
                 default -> { }

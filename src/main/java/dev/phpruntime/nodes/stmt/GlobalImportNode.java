@@ -41,7 +41,7 @@ public final class GlobalImportNode extends PhpNode {
         if (targets != null) {
             for (int i = 0; i < targets.length; i++) {
                 String name = dev.phpruntime.runtime.PhpOps.toStr(names[i].execute(frame));
-                targets[i].bindCell(frame, new Object[]{name}, ctx.globalRef(name));
+                targets[i].bindCell(frame, new Object[]{name}, ctx.globalSymbolRef(name));
             }
             return null;
         }

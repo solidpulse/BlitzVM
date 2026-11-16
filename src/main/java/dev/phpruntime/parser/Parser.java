@@ -1671,6 +1671,9 @@ public final class Parser {
                         // typed operator nodes and an unboxed assignment.
                         return new AssignNode(target, makeBinary(arithmetic(compound), local.copyForRead(), value).at(line)).at(line);
                     }
+                    if (target instanceof IncludedVarNode local && arithmetic(compound) != null) {
+                        return new AssignNode(target, makeBinary(arithmetic(compound), local.copyForRead(), value).at(line)).at(line);
+                    }
                     return new CompoundAssignNode(target, compound, value).at(line);
                 }
                 if (t.text().equals("++") || t.text().equals("--")) {
@@ -2221,11 +2224,18 @@ public final class Parser {
                         rn.fallback(), language.functionId(rn.fallback())).at(line);
             }
             ParsedCallArgs pca = parseCallArgDetails();
-            if (rn.primary().equalsIgnoreCase("get_defined_vars") && pca.names() == null && pca.spreads() == null) {
-                if (pca.args().length != 0) { throw error("get_defined_vars() expects exactly 0 arguments"); }
-                return new GetDefinedVarsNode(scope.dynamicSlot()).at(line);
+            String builtinName = rn.fallback() == null ? rn.primary() : rn.fallback();
+            if (builtinName.equalsIgnoreCase("extract") || builtinName.equalsIgnoreCase("get_defined_vars")) {
+                scope.dynamicSlot();
             }
-            if (rn.primary().equalsIgnoreCase("compact") && pca.names() == null && pca.spreads() == null) {
+            if (builtinName.equalsIgnoreCase("compact") && (pca.names() != null || pca.spreads() != null)) {
+                scope.dynamicSlot();
+            }
+            if (builtinName.equalsIgnoreCase("get_defined_vars") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length != 0) { throw error("get_defined_vars() expects exactly 0 arguments"); }
+                return scopeBuiltinFallback(rn, pca, new GetDefinedVarsNode(scope.dynamicSlot()), line);
+            }
+            if (builtinName.equalsIgnoreCase("compact") && pca.names() == null && pca.spreads() == null) {
                 if (pca.args().length == 0) { throw error("compact() expects at least 1 argument"); }
                 PhpNode[] args = pca.args();
                 LValueNode[] reads = new LValueNode[args.length];
@@ -2237,13 +2247,13 @@ public final class Parser {
                         reads[i] = scope.compactVariable(varName);
                     } else { dynamic = true; }
                 }
-                return new CompactNode(args, reads, names, dynamic ? scope.dynamicSlot() : -1).at(line);
+                return scopeBuiltinFallback(rn, pca, new CompactNode(args, reads, names, dynamic ? scope.dynamicSlot() : -1), line);
             }
-            if (rn.primary().equalsIgnoreCase("extract") && pca.names() == null && pca.spreads() == null) {
+            if (builtinName.equalsIgnoreCase("extract") && pca.names() == null && pca.spreads() == null) {
                 if (pca.args().length < 1 || pca.args().length > 3) { throw error("extract() expects 1 to 3 arguments"); }
                 PhpNode[] args = pca.args();
-                return new ExtractNode(args[0], pca.refs()[0], args.length > 1 ? args[1] : null,
-                        args.length > 2 ? args[2] : null, scope.dynamicSlot()).at(line);
+                return scopeBuiltinFallback(rn, pca, new ExtractNode(args[0], pca.refs()[0], args.length > 1 ? args[1] : null,
+                        args.length > 2 ? args[2] : null, scope.dynamicSlot()), line);
             }
             if (rn.fallback() == null) {
                 return new CallNode(rn.primary(), language.functionId(rn.primary()), pca.args(), pca.refs(),
@@ -2271,6 +2281,16 @@ public final class Parser {
             return new ReadConstantNode(rn.primary()).at(line);
         }
         return new ReadConstantNode(rn.fallback(), rn.primary()).at(line);
+    }
+
+    private PhpNode scopeBuiltinFallback(ResolvedName name, ParsedCallArgs args, PhpNode builtin, int line) {
+        if (name.fallback() == null) { return builtin.at(line); }
+        // Each branch owns its AST. Arguments must not have two different parents.
+        PhpNode call = new CallNode(name.primary(), language.functionId(name.primary()),
+                java.util.Arrays.stream(args.args()).map(com.oracle.truffle.api.nodes.NodeUtil::cloneNode).toArray(PhpNode[]::new),
+                java.util.Arrays.stream(args.refs()).map(n -> n == null ? null : com.oracle.truffle.api.nodes.NodeUtil.cloneNode(n)).toArray(LValueNode[]::new),
+                args.names(), args.spreads()).at(line);
+        return new ScopeFunctionFallbackNode(language.functionId(name.primary()), call, builtin.at(line)).at(line);
     }
 
     private PhpNode parseMatch(int line) {

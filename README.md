@@ -116,7 +116,8 @@ always pointed at your feet: miss one lock and you get a bug that only shows up 
 and never on your laptop. BlitzVM requests work like classic php-fpm: they don't share
 anything, so there's nothing for them to race on.
 
-Laravel and WordPress don't run yet. They need general references, namespaces and SPL interfaces, which are next on the list.
+Laravel and WordPress don't run end to end yet. The runtime supports references, namespaces,
+SPL and template-local includes; compatibility work and full application validation continue.
 
 ## Architecture
 
@@ -261,6 +262,8 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
   fatals and scheduler timeouts, `debug_print_backtrace`, and concurrent `try`/`catch`.
 - `HttpFunctionsTest`: `setcookie`, `header_remove`, `headers_list`, `headers_sent` and
   `$_GET`/`$_POST`/`$_COOKIE` query and cookie parsing.
+- `DynamicScopeTest`: typed-frame preservation and 16-thread isolation of include/extract
+  with method class scope. Fixtures 250–269 cover dynamic-scope and variable-variable syntax.
 
 ## PHP support
 
@@ -280,10 +283,15 @@ exceptions (`try`/`catch`/`finally`, `throw` expressions, full `Throwable`/`Exce
 hierarchy, catchable engine `Error`s, `debug_backtrace`), `preg_*`, `json_*`, `mysqli_*`,
 streams and file handles, `password_hash`, and `gz*`.
 
-Not yet: general references (`&$param`, `$a = &$b`, `foreach ... as &$v`), `include` inside a
-function (it runs in global scope), heredoc/nowdoc, namespaces, generators, `match`, `goto`,
-and sessions. Strings are Java strings rather than byte strings, so `strlen` counts UTF-8
-bytes while `substr` works on characters.
+Includes and `eval` inside functions/methods share the caller's locals, references and class
+scope. Direct positional `extract` (all flags), `compact` (including nested/computed names)
+and `get_defined_vars` are supported, as are `$$name`/`${expression}` lvalues. Literal-name
+`compact` calls compile to direct local reads. Indirect callable and spread/named forms of
+these scope-sensitive builtins are not yet implemented.
+
+Also supported: general references, destructuring, heredoc/nowdoc, namespaces, generators,
+`match`, `goto`, traits, SPL interfaces/collections and PHP byte-string semantics.
+Sessions and full WordPress/Laravel application compatibility remain work in progress.
 
 ## Roadmap
 
@@ -295,7 +303,8 @@ bytes while `substr` works on characters.
 | working | `include`/`require`, runtime constants, conditional function declarations |
 | working | Classes, interfaces, static members, magic methods, anonymous classes |
 | working | Closures, callables, static locals, exceptions, `preg_*`, `json_*`, `mysqli_*`, `ob_*`, streams |
-| next | General references, dynamic scope, byte strings, namespaces and SPL interfaces so WordPress and Laravel can run |
+| working | References, dynamic scope, byte strings, namespaces, generators and SPL interfaces |
+| next | Complete WordPress/Laravel compatibility and end-to-end validation |
 | next | Hot builtins (`strlen`, `count`, `microtime`) as nodes the JIT can inline |
 | next | Fast paths for large array writes |
 | planned | Node.js- and Bun-compatible environments |

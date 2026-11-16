@@ -24,3 +24,17 @@ class DefinedScope {
     function f($p) { $a = 1; echo implode(',', array_keys(get_defined_vars())), "\n"; }
 }
 (new DefinedScope)->f(3);
+$v = 9;
+$capture_order = function ($param) use ($v) {
+    $a = 1; echo implode(',', array_keys(get_defined_vars())), "\n";
+};
+$capture_order(8);
+function defined_references() {
+    $a = 1; $b = &$a; $plain = 3;
+    $vars = get_defined_vars();
+    $vars['a'] = 5; $vars['plain'] = 7;
+    echo "$a:$b:$plain\n";
+    $copy = compact('a', 'b'); $copy['a'] = 9;
+    echo "$a:$b\n";
+}
+defined_references();

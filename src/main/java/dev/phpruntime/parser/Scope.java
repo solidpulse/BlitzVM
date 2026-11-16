@@ -8,6 +8,7 @@ import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
 import dev.phpruntime.nodes.var.VarKind;
 import dev.phpruntime.nodes.var.DynamicVarNode;
+import dev.phpruntime.nodes.var.IncludedVarNode;
 import dev.phpruntime.nodes.expr.ConstNode;
 import dev.phpruntime.runtime.PhpScopeLayout;
 
@@ -22,6 +23,8 @@ import java.util.Set;
  * Variable resolution at parse time. Function locals get frame slots, so reading
  * {@code $i} compiles to a frame load. Top-level variables and superglobals live in
  * the context's global symbol table; {@code global $x} inside a function binds a cell.
+ * Bodies requiring by-name access are marked while parsing and specialized once the
+ * whole body is known. Literal compact reads alone do not require a symbol table.
  */
 final class Scope {
 
@@ -38,6 +41,7 @@ final class Scope {
     private final Map<String, Integer> slots = new java.util.LinkedHashMap<>();
     private final Map<Integer, VarKind> kinds = new HashMap<>();
     private final Set<String> ownParams = new HashSet<>();
+    private final List<String> paramOrder = new ArrayList<>();
     private final Map<String, Integer> capturedVars = new HashMap<>();
     private final List<Capture> captures = new ArrayList<>();
     private final int thisSlot;
@@ -54,8 +58,14 @@ final class Scope {
     private final Set<String> globalNames = new java.util.LinkedHashSet<>();
 
     LValueNode compactVariable(String name) {
-        if (global) { return new GlobalVarNode(name, name.equals("GLOBALS") ? -1 : language.globalId(name)); }
-        if (included) { return variable(name); }
+        if (global) {
+            return name.equals("GLOBALS") ? new DynamicVarNode(new ConstNode(name), -1)
+                    : new GlobalVarNode(name, language.globalId(name));
+        }
+        if (included) {
+            if (name.equals("this") || SUPERGLOBALS.contains(name)) { return new DynamicVarNode(new ConstNode(name), tableSlot); }
+            return variable(name);
+        }
         Integer existing = slots.get(name);
         int slot = existing != null ? existing : literalSlots.computeIfAbsent(name,
                 n -> frame.addSlot(FrameSlotKind.Illegal, n, null));
@@ -71,6 +81,7 @@ final class Scope {
 
     int dynamicSlot() {
         if (global) { return -1; }
+        if (closureObjSlot >= 0) { usesThis = true; }
         if (tableSlot < 0) { tableSlot = slot("@symbols"); }
         return tableSlot;
     }
@@ -140,6 +151,7 @@ final class Scope {
 
     void declareParam(String name) {
         ownParams.add(name);
+        paramOrder.add(name);
     }
 
     void markCell(String name) {
@@ -178,7 +190,10 @@ final class Scope {
             if (global && !SUPERGLOBALS.contains(name)) { globalNames.add(name); }
             return new GlobalVarNode(name, language.globalId(name));
         }
-        if (included) { return new DynamicVarNode(new ConstNode(name), tableSlot); }
+        if (included) {
+            if (name.equals("this")) { return new DynamicVarNode(new ConstNode(name), tableSlot, true); }
+            return new IncludedVarNode(slot(name), name);
+        }
         if (isArrow && !name.equals("this") && !ownParams.contains(name) && !capturedVars.containsKey(name) && outer != null) {
             LValueNode outerTarget = outer.variable(name);
             int localSlot = slot(name);
@@ -328,6 +343,7 @@ final class Scope {
         if (global) { frame.info(new dev.phpruntime.runtime.PhpGlobalLayout(globalNames.toArray(new String[0]))); }
         if (tableSlot >= 0) {
             Map<String, Integer> locals = new java.util.LinkedHashMap<>();
+            for (String param : paramOrder) { locals.put(param, slots.get(param)); }
             for (var entry : slots.entrySet()) {
                 if (!entry.getKey().startsWith("@") && !entry.getKey().equals("this")) {
                     locals.put(entry.getKey(), entry.getValue());
