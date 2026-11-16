@@ -4,6 +4,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -40,7 +41,7 @@ final class StringFunctions {
     }
 
     private static void basics() {
-        Builtins.def("strlen", 1, 1, (ctx, a) -> (long) s(a, 0).getBytes(StandardCharsets.UTF_8).length);
+        Builtins.def("strlen", 1, 1, (ctx, a) -> (long) s(a, 0).length());
         Builtins.def("mb_strlen", 1, 2, (ctx, a) -> (long) s(a, 0).codePointCount(0, s(a, 0).length()));
         Builtins.def("strtoupper", 1, 1, (ctx, a) -> s(a, 0).toUpperCase());
         Builtins.def("strtolower", 1, 1, (ctx, a) -> s(a, 0).toLowerCase());
@@ -90,8 +91,8 @@ final class StringFunctions {
             return (long) Integer.signum(x.substring(0, Math.min(n, x.length())).compareTo(y.substring(0, Math.min(n, y.length()))));
         });
         Builtins.def("ord", 1, 1, (ctx, a) -> {
-            byte[] b = s(a, 0).getBytes(StandardCharsets.UTF_8);
-            return b.length == 0 ? 0L : (long) (b[0] & 0xff);
+            String str = s(a, 0);
+            return str.isEmpty() ? 0L : (long) (str.charAt(0) & 0xff);
         });
         Builtins.def("chr", 1, 1, (ctx, a) -> String.valueOf((char) Math.floorMod(l(a, 0), 256)));
         Builtins.def("nl2br", 1, 2, (ctx, a) -> s(a, 0).replace("\r\n", "<br />\r\n").replaceAll("(?<!\r)\n", "<br />\n"));
@@ -193,7 +194,7 @@ final class StringFunctions {
         Builtins.def("htmlentities", 1, 4, (ctx, a) -> htmlspecialchars(s(a, 0)));
         Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(a, 0).replaceAll("<[^>]*>", ""));
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
-        Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(s(a, 0).getBytes(StandardCharsets.UTF_8)));
+        Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(PhpStrings.bytes(s(a, 0))));
         Builtins.def("base64_decode", 1, 2, (ctx, a) -> {
             // Output is often binary: keep every byte (see HashFunctions.fromBytes). Non-strict
             // mode skips characters outside the alphabet, as PHP does.
@@ -201,17 +202,17 @@ final class StringFunctions {
             try {
                 byte[] raw = strict ? java.util.Base64.getDecoder().decode(s(a, 0))
                         : java.util.Base64.getMimeDecoder().decode(s(a, 0));
-                return HashFunctions.fromBytes(raw);
+                return PhpStrings.of(raw);
             } catch (IllegalArgumentException e) {
                 return false;
             }
         });
-        Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(s(a, 0).getBytes(StandardCharsets.UTF_8)));
-        Builtins.def("md5", 1, 1, (ctx, a) -> digest("MD5", s(a, 0)));
-        Builtins.def("sha1", 1, 1, (ctx, a) -> digest("SHA-1", s(a, 0)));
+        Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(PhpStrings.bytes(s(a, 0))));
+        Builtins.def("md5", 1, 2, (ctx, a) -> digest("md5", s(a, 0), a.length > 1 && PhpOps.toBool(a[1])));
+        Builtins.def("sha1", 1, 2, (ctx, a) -> digest("sha1", s(a, 0), a.length > 1 && PhpOps.toBool(a[1])));
         Builtins.def("crc32", 1, 1, (ctx, a) -> {
             java.util.zip.CRC32 c = new java.util.zip.CRC32();
-            c.update(s(a, 0).getBytes(StandardCharsets.UTF_8));
+            c.update(PhpStrings.bytes(s(a, 0)));
             return c.getValue();
         });
     }
@@ -402,12 +403,9 @@ final class StringFunctions {
         return sb.toString();
     }
 
-    private static String digest(String algorithm, String str) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance(algorithm).digest(str.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new PhpError(algorithm + " unavailable");
-        }
+    private static String digest(String algorithm, String str, boolean raw) {
+        byte[] digest = HashFunctions.digest(algorithm, PhpStrings.bytes(str), algorithm);
+        return raw ? PhpStrings.of(digest) : HexFormat.of().formatHex(digest);
     }
 
     /** PHP rounding: half away from zero. */
@@ -875,7 +873,7 @@ final class StringFunctions {
     /** addcslashes works on bytes, as PHP does, so multi-byte characters are escaped byte by byte. */
     private static String addcslashes(String str, String charlist) {
         boolean[] mask = new boolean[256];
-        byte[] list = charlist.getBytes(StandardCharsets.UTF_8);
+        byte[] list = PhpStrings.bytes(charlist);
         for (int i = 0; i < list.length; i++) {
             int c = list[i] & 0xFF;
             if (i + 3 < list.length && list[i + 1] == '.' && list[i + 2] == '.' && (list[i + 3] & 0xFF) >= c) {
@@ -888,7 +886,7 @@ final class StringFunctions {
             }
         }
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        for (byte b : str.getBytes(StandardCharsets.UTF_8)) {
+        for (byte b : PhpStrings.bytes(str)) {
             int c = b & 0xFF;
             if (!mask[c]) {
                 out.write(c);
@@ -911,11 +909,11 @@ final class StringFunctions {
                 out.write(c);
             }
         }
-        return out.toString(StandardCharsets.UTF_8);
+        return PhpStrings.of(out.toByteArray());
     }
 
     private static String stripcslashes(String str) {
-        byte[] in = str.getBytes(StandardCharsets.UTF_8);
+        byte[] in = PhpStrings.bytes(str);
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
         for (int i = 0; i < in.length; i++) {
             if (in[i] != '\\') {
@@ -958,7 +956,7 @@ final class StringFunctions {
                 }
             }
         }
-        return out.toString(StandardCharsets.UTF_8);
+        return PhpStrings.of(out.toByteArray());
     }
 
     // strnatcmp, ported from ext/standard/strnatcmp.c

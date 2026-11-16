@@ -5,6 +5,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -38,7 +39,7 @@ final class SerializeFunctions {
         } else if (v instanceof Double d) {
             sb.append("d:").append(PhpOps.formatDouble(d, 17)).append(';');
         } else if (v instanceof String s) {
-            sb.append("s:").append(s.getBytes(StandardCharsets.UTF_8).length).append(":\"").append(s).append("\";");
+            sb.append("s:").append(s.length()).append(":\"").append(s).append("\";");
         } else if (v instanceof PhpArray arr) {
             sb.append("a:").append(arr.size()).append(":{");
             for (Map.Entry<Object, Object> e : arr.entries()) {
@@ -63,7 +64,7 @@ final class SerializeFunctions {
     }
 
     private static Object unserialize(PhpContext ctx, String str) {
-        byte[] in = str.getBytes(StandardCharsets.UTF_8);
+        byte[] in = PhpStrings.bytes(str);
         int[] pos = {0};
         try {
             return value(in, pos);
@@ -127,7 +128,7 @@ final class SerializeFunctions {
                 expect(in, from + len, '"', start);
                 expect(in, from + len + 1, ';', start);
                 pos[0] = from + len + 2;
-                return HashFunctions.fromBytes(Arrays.copyOfRange(in, from, from + len));
+                return PhpStrings.of(in, from, len);
             }
             case 'a' -> {
                 int n = length(in, pos, start);
@@ -167,7 +168,7 @@ final class SerializeFunctions {
         if (i >= in.length || i == pos[0]) {
             throw new Malformed(errorOffset);
         }
-        String t = new String(in, pos[0], i - pos[0], StandardCharsets.US_ASCII);
+        String t = PhpStrings.of(in, pos[0], i - pos[0]);
         pos[0] = i + 1;
         return t;
     }

@@ -50,7 +50,7 @@ final class OutputFunctions {
         Builtins.def("printf", 1, -1, (ctx, a) -> {
             String s = StringFunctions.sprintf(a);
             ctx.echo(s);
-            return (long) s.getBytes(StandardCharsets.UTF_8).length;
+            return (long) s.length();
         });
         Builtins.def("flush", 0, 0, (ctx, a) -> {
             ctx.flushOutput();
@@ -59,7 +59,7 @@ final class OutputFunctions {
     }
 
     static int byteLength(String s) {
-        return s.getBytes(StandardCharsets.UTF_8).length;
+        return s.length();
     }
 
     static void varDump(StringBuilder sb, Object v, int indent) {

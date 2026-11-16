@@ -4,6 +4,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -101,10 +102,10 @@ final class MbConvertFunctions {
         if (source == null) {
             source = from.get(0);
         }
-        byte[] in = source.charset().equals(StandardCharsets.UTF_8) ? s.getBytes(StandardCharsets.UTF_8) : BinaryStrings.bytes(s);
+        byte[] in = PhpStrings.bytes(s);
         String text = decode(in, source.charset());
         byte[] out = encode(text, to.charset());
-        return HashFunctions.fromBytes(out);
+        return PhpStrings.of(out);
     }
 
     /** Decodes, replacing each invalid sequence with '?', as mbstring's default substitute does. */

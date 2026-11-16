@@ -124,10 +124,10 @@ final class MiscFunctions {
     private static void network() {
         Builtins.def("inet_pton", 1, 1, (ctx, a) -> {
             byte[] packed = packAddress(PhpOps.toStr(a[0]));
-            return packed == null ? false : HashFunctions.fromBytes(packed);
+            return packed == null ? false : PhpStrings.of(packed);
         });
         Builtins.def("inet_ntop", 1, 1, (ctx, a) -> {
-            byte[] b = BinaryStrings.bytes(PhpOps.toStr(a[0]));
+            byte[] b = PhpStrings.bytes(PhpOps.toStr(a[0]));
             if (b.length != 4 && b.length != 16) {
                 return false;
             }
@@ -144,7 +144,7 @@ final class MiscFunctions {
             // DNS is network I/O: give up the CPU slot while waiting.
             ctx.request().scheduler.blocking(null, () -> {
                 try {
-                    for (InetAddress addr : InetAddress.getAllByName(host)) {
+                    for (InetAddress addr : InetAddress.getAllByName(PhpStrings.toJava(host))) {
                         if (addr instanceof java.net.Inet4Address) {
                             result[0] = addr.getHostAddress();
                             return;
@@ -166,7 +166,7 @@ final class MiscFunctions {
             String[] result = {ip};
             ctx.request().scheduler.blocking(null, () -> {
                 try {
-                    result[0] = InetAddress.getByAddress(packed).getCanonicalHostName();
+                    result[0] = PhpStrings.fromJava(InetAddress.getByAddress(packed).getCanonicalHostName());
                 } catch (java.net.UnknownHostException | SecurityException e) {
                     // keep the address
                 }

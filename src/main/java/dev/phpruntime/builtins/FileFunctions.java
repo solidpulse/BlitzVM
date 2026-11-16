@@ -151,7 +151,7 @@ final class FileFunctions {
                 if (offset >= end) {
                     return "";
                 }
-                return HashFunctions.fromBytes(java.util.Arrays.copyOfRange(data, offset, end));
+                return PhpStrings.of(data, offset, end - offset);
             } catch (IOException | SecurityException e) {
                 ctx.warning("file_get_contents(" + path + "): Failed to open stream: No such file or directory", 0);
                 return false;
@@ -170,7 +170,7 @@ final class FileFunctions {
                 data = PhpOps.toStr(a[1]);
             }
             boolean append = a.length > 2 && (PhpOps.toLong(a[2]) & 8) != 0;
-            byte[] bytes = data.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] bytes = PhpStrings.bytes(data);
             TruffleFile f = file(ctx, path);
             try {
                 if (f == null) {

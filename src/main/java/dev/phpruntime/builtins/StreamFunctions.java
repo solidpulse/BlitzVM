@@ -120,7 +120,7 @@ final class StreamFunctions {
                 case "memory" -> new PhpStream.MemoryStream("w+b", "php://memory", "MEMORY", null);
                 case "temp" -> new PhpStream.MemoryStream("w+b", "php://temp", "TEMP", null);
                 case "input" -> new PhpStream.MemoryStream("rb", "php://input", "Input",
-                        ctx.request().body.getBytes(StandardCharsets.UTF_8));
+                        PhpStrings.bytes(ctx.request().body));
                 case "output" -> new PhpStream.OutputStreamStream(ctx, null, "wb", "php://output");
                 case "stdout" -> new PhpStream.OutputStreamStream(ctx, ctx.env().out(), mode, "php://stdout");
                 case "stderr" -> new PhpStream.OutputStreamStream(ctx, ctx.env().err(), mode, "php://stderr");
@@ -207,7 +207,7 @@ final class StreamFunctions {
                 return false;
             }
             try {
-                return HashFunctions.fromBytes(s.readBytes((int) Math.min(n, Integer.MAX_VALUE - 8)));
+                return PhpStrings.of(s.readBytes((int) Math.min(n, Integer.MAX_VALUE - 8)));
             } catch (IOException e) {
                 return false;
             }
@@ -220,7 +220,7 @@ final class StreamFunctions {
             }
             try {
                 byte[] line = s.readLine(max);
-                return line.length == 0 ? false : HashFunctions.fromBytes(line);
+                return line.length == 0 ? false : PhpStrings.of(line);
             } catch (IOException e) {
                 return false;
             }
@@ -232,7 +232,7 @@ final class StreamFunctions {
             }
             try {
                 byte[] b = s.readBytes(1);
-                return b.length == 0 ? false : HashFunctions.fromBytes(b);
+                return b.length == 0 ? false : PhpStrings.of(b);
             } catch (IOException e) {
                 return false;
             }
@@ -332,7 +332,7 @@ final class StreamFunctions {
                     return false;
                 }
                 byte[] data = max < 0 ? s.readAll() : s.readBytes((int) max);
-                return HashFunctions.fromBytes(data);
+                return PhpStrings.of(data);
             } catch (IOException e) {
                 return false;
             }
@@ -341,7 +341,7 @@ final class StreamFunctions {
             PhpStream s = stream(a[0], "fpassthru");
             try {
                 byte[] data = s.readAll();
-                ctx.echo(HashFunctions.fromBytes(data));
+                ctx.echo(PhpStrings.of(data));
                 return (long) data.length;
             } catch (IOException e) {
                 return false;
@@ -383,7 +383,7 @@ final class StreamFunctions {
 
     private static Object fwrite(PhpContext ctx, Object[] a) {
         PhpStream s = stream(a[0], "fwrite");
-        byte[] data = PhpOps.toStr(a[1]).getBytes(StandardCharsets.UTF_8);
+        byte[] data = PhpStrings.bytes(PhpOps.toStr(a[1]));
         if (a.length > 2 && a[2] != PhpNull.INSTANCE) {
             long len = PhpOps.toLong(a[2]);
             if (len < data.length) {
@@ -462,7 +462,7 @@ final class StreamFunctions {
             if (data == null) {
                 return false;
             }
-            String text = HashFunctions.fromBytes(data);
+            String text = PhpStrings.of(data);
             boolean ignoreNl = (flags & 2) != 0;
             boolean skipEmpty = (flags & 4) != 0;
             PhpArray out = new PhpArray();
@@ -489,7 +489,7 @@ final class StreamFunctions {
             if (data == null) {
                 return false;
             }
-            ctx.echo(HashFunctions.fromBytes(data));
+            ctx.echo(PhpStrings.of(data));
             return (long) data.length;
         });
         Builtins.def("md5_file", 1, 2, (ctx, a) -> hashFile(ctx, a, "md5", "md5_file"));
@@ -645,7 +645,7 @@ final class StreamFunctions {
         }
         byte[] digest = HashFunctions.digest(algo, data, fn);
         boolean binary = a.length > 1 && PhpOps.toBool(a[1]);
-        return binary ? HashFunctions.fromBytes(digest) : java.util.HexFormat.of().formatHex(digest);
+        return binary ? PhpStrings.of(digest) : java.util.HexFormat.of().formatHex(digest);
     }
 
     private static final List<TruffleFile.AttributeDescriptor<?>> STAT_ATTRS = List.of(

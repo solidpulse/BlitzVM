@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.ByteArrayOutputStream;
 import java.util.zip.CRC32;
@@ -35,7 +36,7 @@ final class ZlibFunctions {
     }
 
     private static Object encode(Object[] a, int encoding, String fn) {
-        byte[] data = BinaryStrings.bytes(PhpOps.toStr(a[0]));
+        byte[] data = PhpStrings.bytes(PhpOps.toStr(a[0]));
         int level = a.length > 1 ? (int) PhpOps.toLong(a[1]) : -1;
         if (level < -1 || level > 9) {
             throw new PhpError("ValueError", fn + "(): Argument #2 ($level) must be between -1 and 9", null);
@@ -68,14 +69,14 @@ final class ZlibFunctions {
                 writeLe(out, (int) crc.getValue());
                 writeLe(out, data.length);
             }
-            return HashFunctions.fromBytes(out.toByteArray());
+            return PhpStrings.of(out.toByteArray());
         } finally {
             d.end();
         }
     }
 
     private static Object decode(dev.phpruntime.PhpContext ctx, Object[] a, int encoding, String fn) {
-        byte[] data = BinaryStrings.bytes(PhpOps.toStr(a[0]));
+        byte[] data = PhpStrings.bytes(PhpOps.toStr(a[0]));
         long max = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
         if (encoding == 0) {
             encoding = data.length >= 2 && (data[0] & 0xff) == 0x1f && (data[1] & 0xff) == 0x8b ? GZIP
@@ -106,7 +107,7 @@ final class ZlibFunctions {
                     return false;
                 }
             }
-            return HashFunctions.fromBytes(out.toByteArray());
+            return PhpStrings.of(out.toByteArray());
         } catch (DataFormatException e) {
             ctx.warning(fn + "(): data error", 0);
             return false;

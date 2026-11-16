@@ -3,11 +3,8 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -49,17 +46,17 @@ final class HashFunctions {
 
     static void register() {
         Builtins.def("hash", 2, 4, (ctx, a) -> {
-            String algo = PhpOps.toStr(a[0]).toLowerCase();
-            byte[] digest = digest(algo, bytes(PhpOps.toStr(a[1])), "hash");
+            String algo = PhpStrings.lower(PhpOps.toStr(a[0]));
+            byte[] digest = digest(algo, PhpStrings.bytes(PhpOps.toStr(a[1])), "hash");
             return output(digest, a.length > 2 && PhpOps.toBool(a[2]));
         });
         Builtins.def("hash_hmac", 3, 4, (ctx, a) -> {
-            String algo = PhpOps.toStr(a[0]).toLowerCase();
+            String algo = PhpStrings.lower(PhpOps.toStr(a[0]));
             Algo spec = ALGOS.get(algo);
             if (spec == null || spec.javaName() == null) {
                 throw new PhpError(PhpError.VALUE_ERROR, "hash_hmac(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm", null);
             }
-            byte[] mac = hmac(algo, spec, bytes(PhpOps.toStr(a[2])), bytes(PhpOps.toStr(a[1])));
+            byte[] mac = hmac(algo, spec, PhpStrings.bytes(PhpOps.toStr(a[2])), PhpStrings.bytes(PhpOps.toStr(a[1])));
             return output(mac, a.length > 3 && PhpOps.toBool(a[3]));
         });
         Builtins.def("hash_equals", 2, 2, (ctx, a) -> {
@@ -69,7 +66,7 @@ final class HashFunctions {
             if (!(a[1] instanceof String user)) {
                 throw new PhpError(PhpError.TYPE_ERROR, "hash_equals(): Argument #2 ($user_string) must be of type string, " + PhpOps.typeName(a[1]) + " given", null);
             }
-            return MessageDigest.isEqual(bytes(known), bytes(user));
+            return MessageDigest.isEqual(PhpStrings.bytes(known), PhpStrings.bytes(user));
         });
         Builtins.def("hash_algos", 0, 0, (ctx, a) -> PhpArray.ofList(ALGOS.keySet().stream().toList()));
         Builtins.def("hash_hmac_algos", 0, 0, (ctx, a) ->
@@ -81,16 +78,16 @@ final class HashFunctions {
                 return false;
             }
             try {
-                return fromBytes(HexFormat.of().parseHex(hex));
+                return PhpStrings.of(HexFormat.of().parseHex(hex));
             } catch (IllegalArgumentException e) {
                 ctx.warning("hex2bin(): Input string must be hexadecimal string", 0);
                 return false;
             }
         });
         Builtins.def("sodium_crypto_generichash", 1, 3, (ctx, a) -> {
-            byte[] msg = BinaryStrings.bytes(PhpOps.toStr(a[0]));
+            byte[] msg = PhpStrings.bytes(PhpOps.toStr(a[0]));
             byte[] key = a.length > 1 && a[1] != dev.phpruntime.runtime.PhpNull.INSTANCE
-                    ? BinaryStrings.bytes(PhpOps.toStr(a[1])) : new byte[0];
+                    ? PhpStrings.bytes(PhpOps.toStr(a[1])) : new byte[0];
             long len = a.length > 2 ? PhpOps.toLong(a[2]) : 32L;
             if (key.length != 0 && (key.length < 16 || key.length > 64)) {
                 throw new PhpError("SodiumException", "sodium_crypto_generichash(): Argument #2 ($key) must be at least 16 bytes long and at most 64 bytes long", null);
@@ -98,31 +95,23 @@ final class HashFunctions {
             if (len < 16 || len > 64) {
                 throw new PhpError("SodiumException", "sodium_crypto_generichash(): Argument #3 ($length) must be at least 16 and at most 64", null);
             }
-            return fromBytes(Blake2b.hash(msg, key, (int) len));
+            return PhpStrings.of(Blake2b.hash(msg, key, (int) len));
+        });
+        Builtins.def("random_bytes", 1, 1, (ctx, a) -> {
+            long length = PhpOps.toLong(a[0]);
+            if (length < 1 || length > Integer.MAX_VALUE - 8) {
+                throw new PhpError(PhpError.VALUE_ERROR, "random_bytes(): Argument #1 ($length) must be greater than 0", null);
+            }
+            byte[] raw = new byte[(int) length];
+            RANDOM.nextBytes(raw);
+            return PhpStrings.of(raw);
         });
     }
 
-    static byte[] bytes(String s) {
-        return s.getBytes(StandardCharsets.UTF_8);
-    }
-
-    /**
-     * Turns raw bytes into a PHP string. Strings are Java strings until byte strings land, so
-     * valid UTF-8 decodes as text and anything else maps each byte to one char (ISO-8859-1).
-     */
-    static String fromBytes(byte[] b) {
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(b)).toString();
-        } catch (CharacterCodingException e) {
-            return new String(b, StandardCharsets.ISO_8859_1);
-        }
-    }
+    static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
 
     private static Object output(byte[] digest, boolean binary) {
-        return binary ? fromBytes(digest) : HexFormat.of().formatHex(digest);
+        return binary ? PhpStrings.of(digest) : HexFormat.of().formatHex(digest);
     }
 
     static byte[] digest(String algo, byte[] data, String fn) {

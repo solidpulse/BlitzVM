@@ -94,7 +94,21 @@ final class MathFunctions {
             lo = hi;
             hi = tmp;
         }
-        return lo + ThreadLocalRandom.current().nextLong(hi - lo + 1);
+        if (lo == hi) {
+            return lo;
+        }
+        if (!strictOrder && hi - lo + 1 > 0) {
+            return lo + ThreadLocalRandom.current().nextLong(hi - lo + 1);
+        }
+        long range = hi - lo + 1;
+        if (range > 0) {
+            return lo + HashFunctions.RANDOM.nextLong(range);
+        }
+        long value;
+        do {
+            value = HashFunctions.RANDOM.nextLong();
+        } while (value < lo || value > hi);
+        return value;
     }
 
     /** max()/min() over either a single array or the argument list. */

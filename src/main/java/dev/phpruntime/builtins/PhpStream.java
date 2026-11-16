@@ -306,7 +306,7 @@ abstract class PhpStream {
         @Override
         void write(byte[] bytes) throws IOException {
             if (raw == null) {
-                ctx.echo(new String(bytes, StandardCharsets.UTF_8));
+                ctx.echo(dev.phpruntime.runtime.PhpStrings.of(bytes));
             } else {
                 // Keep order with echo output already waiting in the context.
                 ctx.flushOutput();
