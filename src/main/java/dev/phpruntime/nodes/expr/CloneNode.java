@@ -53,6 +53,9 @@ public final class CloneNode extends PhpNode {
                 src.phpClass(),
                 ctx.nextObjectId(),
                 src.closure() != null ? src.closure().copy() : null);
+        if (src.nativeState() != null) {
+            copy.setNativeState(src.nativeState().copy());
+        }
         Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(src);
         DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();

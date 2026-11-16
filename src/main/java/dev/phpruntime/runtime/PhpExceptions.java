@@ -485,15 +485,15 @@ public final class PhpExceptions {
     }
 
     @FunctionalInterface
-    private interface BuiltinMethod {
+    public interface BuiltinMethod {
         Object invoke(PhpContext ctx, PhpObject self, Object[] args);
     }
 
-    private static final class BuiltinMethodRootNode extends RootNode {
+    public static final class BuiltinMethodRootNode extends RootNode {
         private final String name;
         private final BuiltinMethod impl;
 
-        BuiltinMethodRootNode(PhpLanguage language, String name, BuiltinMethod impl) {
+        public BuiltinMethodRootNode(PhpLanguage language, String name, BuiltinMethod impl) {
             super(language);
             this.name = name;
             this.impl = impl;

@@ -71,6 +71,14 @@ public final class CastNode extends PhpNode {
                 }
                 a.put(arrKey, PhpOps.copyOnAssign(PhpClass.unwrapProp(rawVal)));
             }
+            if (obj.nativeState() != null) {
+                Map<String, Object> extra = obj.nativeState().debugProperties(obj);
+                if (extra != null) {
+                    for (Map.Entry<String, Object> e : extra.entrySet()) {
+                        a.put(e.getKey(), e.getValue());
+                    }
+                }
+            }
             return a;
         }
         if (v != PhpNull.INSTANCE) {
