@@ -1,0 +1,986 @@
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(45)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(45)
+  ["fraction"]=>
+  float(0.123456)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(3)
+  ["day"]=>
+  int(5)
+  ["hour"]=>
+  int(9)
+  ["minute"]=>
+  int(5)
+  ["second"]=>
+  int(7)
+  ["fraction"]=>
+  float(0.789)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(1)
+  ["day"]=>
+  int(2)
+  ["hour"]=>
+  int(0)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(1)
+  ["day"]=>
+  int(2)
+  ["hour"]=>
+  int(0)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(1970)
+  ["month"]=>
+  int(1)
+  ["day"]=>
+  int(1)
+  ["hour"]=>
+  int(12)
+  ["minute"]=>
+  int(34)
+  ["second"]=>
+  int(56)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(1)
+  ["day"]=>
+  int(2)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(1)
+  ["warnings"]=>
+  array(1) {
+    [10]=>
+    string(13) "Trailing data"
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(1)
+  ["day"]=>
+  int(2)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(1)
+  ["errors"]=>
+  array(1) {
+    [10]=>
+    string(13) "Trailing data"
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(1)
+  ["errors"]=>
+  array(1) {
+    [11]=>
+    string(22) "Unexpected data found."
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(13) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+  ["relative"]=>
+  array(7) {
+    ["year"]=>
+    int(0)
+    ["month"]=>
+    int(0)
+    ["day"]=>
+    int(0)
+    ["hour"]=>
+    int(0)
+    ["minute"]=>
+    int(0)
+    ["second"]=>
+    int(0)
+    ["weekday"]=>
+    int(3)
+  }
+}
+array(13) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+  ["relative"]=>
+  array(7) {
+    ["year"]=>
+    int(0)
+    ["month"]=>
+    int(0)
+    ["day"]=>
+    int(0)
+    ["hour"]=>
+    int(0)
+    ["minute"]=>
+    int(0)
+    ["second"]=>
+    int(0)
+    ["weekday"]=>
+    int(3)
+  }
+}
+array(12) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(15)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(0)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(12)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(25)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(1)
+  ["warnings"]=>
+  array(1) {
+    [5]=>
+    string(27) "The parsed time was invalid"
+  }
+  ["error_count"]=>
+  int(1)
+  ["errors"]=>
+  array(1) {
+    [0]=>
+    string(29) "Hour cannot be higher than 12"
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(15) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(12)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(1)
+  ["zone"]=>
+  int(0)
+  ["is_dst"]=>
+  bool(false)
+}
+array(15) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(12)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0.123456)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(1)
+  ["zone"]=>
+  int(0)
+  ["is_dst"]=>
+  bool(false)
+}
+array(15) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(1)
+  ["zone"]=>
+  int(7200)
+  ["is_dst"]=>
+  bool(false)
+}
+array(15) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(1)
+  ["zone"]=>
+  int(-14400)
+  ["is_dst"]=>
+  bool(false)
+}
+array(16) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(2)
+  ["zone"]=>
+  int(3600)
+  ["is_dst"]=>
+  bool(true)
+  ["tz_abbr"]=>
+  string(4) "CEST"
+}
+array(14) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(3)
+  ["tz_id"]=>
+  string(13) "Europe/Berlin"
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(-44)
+  ["month"]=>
+  int(3)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(1)
+  ["errors"]=>
+  array(1) {
+    [7]=>
+    string(43) "Not enough data available to satisfy format"
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(4)
+  ["errors"]=>
+  array(2) {
+    [4]=>
+    string(22) "Unexpected data found."
+    [7]=>
+    string(22) "Unexpected data found."
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(1)
+  ["errors"]=>
+  array(1) {
+    [0]=>
+    string(51) "Meridian can only come after an hour has been found"
+  }
+  ["is_localtime"]=>
+  bool(false)
+}
+array(12) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(2)
+  ["day"]=>
+  int(30)
+  ["hour"]=>
+  int(25)
+  ["minute"]=>
+  int(61)
+  ["second"]=>
+  int(61)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(2)
+  ["warnings"]=>
+  array(1) {
+    [19]=>
+    string(27) "The parsed date was invalid"
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+}

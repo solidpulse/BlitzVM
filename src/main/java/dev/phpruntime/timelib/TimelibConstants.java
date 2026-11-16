@@ -77,6 +77,49 @@ public final class TimelibConstants {
     public static final int TIMELIB_ERR_MIX_ISO_WITH_NATURAL = 0x225;
     public static final int TIMELIB_ERR_NUMBER_OUT_OF_RANGE = 0x226;
 
+    // Format specifier codes (from timelib.h)
+    public static final int TIMELIB_FORMAT_ALLOW_EXTRA_CHARACTERS = 0;
+    public static final int TIMELIB_FORMAT_ANY_SEPARATOR = 1;
+    public static final int TIMELIB_FORMAT_DAY_TWO_DIGIT = 2;
+    public static final int TIMELIB_FORMAT_DAY_TWO_DIGIT_PADDED = 3;
+    public static final int TIMELIB_FORMAT_DAY_OF_WEEK_ISO = 4;
+    public static final int TIMELIB_FORMAT_DAY_OF_WEEK = 5;
+    public static final int TIMELIB_FORMAT_DAY_OF_YEAR = 6;
+    public static final int TIMELIB_FORMAT_DAY_SUFFIX = 7;
+    public static final int TIMELIB_FORMAT_END = 8;
+    public static final int TIMELIB_FORMAT_EPOCH_SECONDS = 9;
+    public static final int TIMELIB_FORMAT_ESCAPE = 10;
+    public static final int TIMELIB_FORMAT_HOUR_TWO_DIGIT_12_MAX = 11;
+    public static final int TIMELIB_FORMAT_HOUR_TWO_DIGIT_12_MAX_PADDED = 12;
+    public static final int TIMELIB_FORMAT_HOUR_TWO_DIGIT_24_MAX = 13;
+    public static final int TIMELIB_FORMAT_HOUR_TWO_DIGIT_24_MAX_PADDED = 14;
+    public static final int TIMELIB_FORMAT_LITERAL = 15;
+    public static final int TIMELIB_FORMAT_MERIDIAN = 16;
+    public static final int TIMELIB_FORMAT_MICROSECOND_SIX_DIGIT = 17;
+    public static final int TIMELIB_FORMAT_MILLISECOND_THREE_DIGIT = 18;
+    public static final int TIMELIB_FORMAT_MINUTE_TWO_DIGIT = 19;
+    public static final int TIMELIB_FORMAT_MONTH_TWO_DIGIT = 20;
+    public static final int TIMELIB_FORMAT_MONTH_TWO_DIGIT_PADDED = 21;
+    public static final int TIMELIB_FORMAT_RANDOM_CHAR = 22;
+    public static final int TIMELIB_FORMAT_RESET_ALL = 23;
+    public static final int TIMELIB_FORMAT_RESET_ALL_WHEN_NOT_SET = 24;
+    public static final int TIMELIB_FORMAT_SECOND_TWO_DIGIT = 25;
+    public static final int TIMELIB_FORMAT_SEPARATOR = 26;
+    public static final int TIMELIB_FORMAT_SKIP_TO_SEPARATOR = 27;
+    public static final int TIMELIB_FORMAT_TEXTUAL_DAY_3_LETTER = 28;
+    public static final int TIMELIB_FORMAT_TEXTUAL_DAY_FULL = 29;
+    public static final int TIMELIB_FORMAT_TEXTUAL_MONTH_3_LETTER = 30;
+    public static final int TIMELIB_FORMAT_TEXTUAL_MONTH_FULL = 31;
+    public static final int TIMELIB_FORMAT_TIMEZONE_OFFSET = 32;
+    public static final int TIMELIB_FORMAT_TIMEZONE_OFFSET_MINUTES = 33;
+    public static final int TIMELIB_FORMAT_WEEK_OF_YEAR_ISO = 34;
+    public static final int TIMELIB_FORMAT_WEEK_OF_YEAR = 35;
+    public static final int TIMELIB_FORMAT_WHITESPACE = 36;
+    public static final int TIMELIB_FORMAT_YEAR_TWO_DIGIT = 37;
+    public static final int TIMELIB_FORMAT_YEAR_FOUR_DIGIT = 38;
+    public static final int TIMELIB_FORMAT_YEAR_EXPANDED = 39;
+    public static final int TIMELIB_FORMAT_YEAR_ISO = 40;
+
     // Tzfile parsing error codes (from timelib.h)
     public static final int TIMELIB_ERROR_NO_ERROR = 0x00;
     public static final int TIMELIB_ERROR_CANNOT_ALLOCATE = 0x01;

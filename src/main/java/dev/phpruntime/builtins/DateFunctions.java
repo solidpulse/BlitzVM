@@ -97,6 +97,7 @@ final class DateFunctions {
         Builtins.def("date_default_timezone_get", 0, 0, (ctx, a) -> ContextState.of(ctx).timezoneName);
         Builtins.def("strtotime", 1, 2, (ctx, a) -> strtotime(ctx, a));
         Builtins.def("date_parse", 1, 1, (ctx, a) -> dateParse(PhpOps.toStr(a[0])));
+        Builtins.def("date_parse_from_format", 2, 2, (ctx, a) -> dateParseFromFormat(PhpOps.toStr(a[0]), PhpOps.toStr(a[1])));
     }
 
     /** C: {@code get_timezone_info} */
@@ -551,6 +552,13 @@ final class DateFunctions {
     private static PhpArray dateParse(String datetime) {
         TimelibErrorContainer[] errors = new TimelibErrorContainer[1];
         TimelibTime parsed = ParseDate.strtotime(datetime, errors, ZoneinfoDb.instance());
+        return returnParsedTime(parsed, errors[0]);
+    }
+
+    @TruffleBoundary
+    private static PhpArray dateParseFromFormat(String format, String datetime) {
+        TimelibErrorContainer[] errors = new TimelibErrorContainer[1];
+        TimelibTime parsed = ParseDate.parseFromFormat(format, datetime, errors, ZoneinfoDb.instance());
         return returnParsedTime(parsed, errors[0]);
     }
 

@@ -1875,4 +1875,621 @@ public final class ParseDate {
         }
         return in.time;
     }
+
+    // ------------------------------------------------------------------ parse_from_format (Phase D)
+
+    private static void addPbfError(TimelibErrorContainer errors, int errorCode, String message, String str, int pos) {
+        if (errors != null) {
+            char ch = (pos >= 0 && pos < str.length()) ? str.charAt(pos) : '\0';
+            errors.addError(errorCode, pos, ch, message);
+        }
+    }
+
+    private static void addPbfWarning(TimelibErrorContainer errors, int errorCode, String message, String str, int pos) {
+        if (errors != null) {
+            char ch = (pos >= 0 && pos < str.length()) ? str.charAt(pos) : '\0';
+            errors.addWarning(errorCode, pos, ch, message);
+        }
+    }
+
+    public static int lookupFormat(char input) {
+        return switch (input) {
+            case '+' -> TIMELIB_FORMAT_ALLOW_EXTRA_CHARACTERS;
+            case '#' -> TIMELIB_FORMAT_ANY_SEPARATOR;
+            case 'j' -> TIMELIB_FORMAT_DAY_TWO_DIGIT;
+            case 'd' -> TIMELIB_FORMAT_DAY_TWO_DIGIT_PADDED;
+            case 'z' -> TIMELIB_FORMAT_DAY_OF_YEAR;
+            case 'S' -> TIMELIB_FORMAT_DAY_SUFFIX;
+            case 'U' -> TIMELIB_FORMAT_EPOCH_SECONDS;
+            case '\\' -> TIMELIB_FORMAT_ESCAPE;
+            case 'h' -> TIMELIB_FORMAT_HOUR_TWO_DIGIT_12_MAX;
+            case 'g' -> TIMELIB_FORMAT_HOUR_TWO_DIGIT_12_MAX_PADDED;
+            case 'H' -> TIMELIB_FORMAT_HOUR_TWO_DIGIT_24_MAX;
+            case 'G' -> TIMELIB_FORMAT_HOUR_TWO_DIGIT_24_MAX_PADDED;
+            case 'a', 'A' -> TIMELIB_FORMAT_MERIDIAN;
+            case 'u' -> TIMELIB_FORMAT_MICROSECOND_SIX_DIGIT;
+            case 'v' -> TIMELIB_FORMAT_MILLISECOND_THREE_DIGIT;
+            case 'i' -> TIMELIB_FORMAT_MINUTE_TWO_DIGIT;
+            case 'n' -> TIMELIB_FORMAT_MONTH_TWO_DIGIT;
+            case 'm' -> TIMELIB_FORMAT_MONTH_TWO_DIGIT_PADDED;
+            case '?' -> TIMELIB_FORMAT_RANDOM_CHAR;
+            case '!' -> TIMELIB_FORMAT_RESET_ALL;
+            case '|' -> TIMELIB_FORMAT_RESET_ALL_WHEN_NOT_SET;
+            case 's' -> TIMELIB_FORMAT_SECOND_TWO_DIGIT;
+            case ';', ':', '/', '.', ',', '-', '(', ')' -> TIMELIB_FORMAT_SEPARATOR;
+            case '*' -> TIMELIB_FORMAT_SKIP_TO_SEPARATOR;
+            case 'D' -> TIMELIB_FORMAT_TEXTUAL_DAY_3_LETTER;
+            case 'l' -> TIMELIB_FORMAT_TEXTUAL_DAY_FULL;
+            case 'M' -> TIMELIB_FORMAT_TEXTUAL_MONTH_3_LETTER;
+            case 'F' -> TIMELIB_FORMAT_TEXTUAL_MONTH_FULL;
+            case 'e', 'P', 'p', 'T', 'O' -> TIMELIB_FORMAT_TIMEZONE_OFFSET;
+            case ' ' -> TIMELIB_FORMAT_WHITESPACE;
+            case 'y' -> TIMELIB_FORMAT_YEAR_TWO_DIGIT;
+            case 'Y' -> TIMELIB_FORMAT_YEAR_FOUR_DIGIT;
+            case 'x', 'X' -> TIMELIB_FORMAT_YEAR_EXPANDED;
+            default -> TIMELIB_FORMAT_LITERAL;
+        };
+    }
+
+    public static void resetFields(TimelibTime time) {
+        time.y = 1970;
+        time.m = 1;
+        time.d = 1;
+        time.h = 0;
+        time.i = 0;
+        time.s = 0;
+        time.us = 0;
+        time.tzInfo = null;
+    }
+
+    public static void resetUnsetFields(TimelibTime time) {
+        if (time.y == TIMELIB_UNSET) time.y = 1970;
+        if (time.m == TIMELIB_UNSET) time.m = 1;
+        if (time.d == TIMELIB_UNSET) time.d = 1;
+        if (time.h == TIMELIB_UNSET) time.h = 0;
+        if (time.i == TIMELIB_UNSET) time.i = 0;
+        if (time.s == TIMELIB_UNSET) time.s = 0;
+        if (time.us == TIMELIB_UNSET) time.us = 0;
+    }
+
+    public static long timelibGetSignedNr(Cursor ptr, int maxLength, TimelibErrorContainer errors, String string) {
+        while (ptr.ch() != '\0' && (ptr.ch() < '0' || ptr.ch() > '9') && ptr.ch() != '+' && ptr.ch() != '-') {
+            ptr.pos++;
+        }
+        if (ptr.ch() == '\0') {
+            addPbfError(errors, TIMELIB_ERR_UNEXPECTED_DATA, "Found unexpected data", string, 0);
+            return 0;
+        }
+        int sign = 1;
+        while (ptr.ch() == '+' || ptr.ch() == '-') {
+            if (ptr.ch() == '-') {
+                sign = -sign;
+            }
+            ptr.pos++;
+        }
+        while (ptr.ch() != '\0' && (ptr.ch() < '0' || ptr.ch() > '9')) {
+            ptr.pos++;
+        }
+        if (ptr.ch() == '\0') {
+            addPbfError(errors, TIMELIB_ERR_UNEXPECTED_DATA, "Found unexpected data", string, 0);
+            return 0;
+        }
+        int begin = ptr.pos;
+        int len = 0;
+        while (ptr.ch() >= '0' && ptr.ch() <= '9' && len < maxLength) {
+            ptr.pos++;
+            len++;
+        }
+        String numStr = ptr.s.substring(begin, ptr.pos);
+        try {
+            java.math.BigInteger bi = new java.math.BigInteger((sign < 0 ? "-" : "") + numStr);
+            if (bi.compareTo(java.math.BigInteger.valueOf(Long.MAX_VALUE)) > 0 ||
+                    bi.compareTo(java.math.BigInteger.valueOf(Long.MIN_VALUE)) < 0) {
+                addPbfError(errors, TIMELIB_ERR_NUMBER_OUT_OF_RANGE, "Number out of range", string, 0);
+                return 0;
+            }
+            return bi.longValue();
+        } catch (Exception e) {
+            addPbfError(errors, TIMELIB_ERR_NUMBER_OUT_OF_RANGE, "Number out of range", string, 0);
+            return 0;
+        }
+    }
+
+    public static long timelibMeridianWithCheck(Cursor ptr, long h) {
+        long retval = 0;
+        while (ptr.ch() != '\0' && "AaPp".indexOf(ptr.ch()) < 0) {
+            ptr.pos++;
+        }
+        if (ptr.ch() == '\0') {
+            return TIMELIB_UNSET;
+        }
+        char c = ptr.ch();
+        if (c == 'a' || c == 'A') {
+            if (h == 12) {
+                retval = -12;
+            }
+        } else if (h != 12) {
+            retval = 12;
+        }
+        ptr.pos++;
+        if (ptr.ch() == '.') {
+            ptr.pos++;
+            if (ptr.ch() != 'm' && ptr.ch() != 'M') {
+                return TIMELIB_UNSET;
+            }
+            ptr.pos++;
+            if (ptr.ch() != '.') {
+                return TIMELIB_UNSET;
+            }
+            ptr.pos++;
+        } else if (ptr.ch() == 'm' || ptr.ch() == 'M') {
+            ptr.pos++;
+        } else {
+            return TIMELIB_UNSET;
+        }
+        return retval;
+    }
+
+    public static void timelibEatUntilSeparator(Cursor ptr) {
+        if (ptr.pos < ptr.s.length()) {
+            ptr.pos++;
+        }
+        while (ptr.pos < ptr.s.length()) {
+            char c = ptr.ch();
+            if (c == ' ' || c == '\t' || c == '.' || c == ',' || c == ':' || c == ';' ||
+                    c == '/' || c == '-' || (c >= '0' && c <= '9')) {
+                break;
+            }
+            ptr.pos++;
+        }
+    }
+
+    public static int timelibParseTzMinutes(Cursor ptr, TimelibTime t) {
+        int retval = TIMELIB_UNSET;
+        if (ptr.ch() != '+' && ptr.ch() != '-') {
+            return retval;
+        }
+        char sign = ptr.ch();
+        ptr.pos++;
+        int start = ptr.pos;
+        while (Character.isDigit(ptr.ch())) {
+            ptr.pos++;
+        }
+        if (ptr.pos == start) {
+            return retval;
+        }
+        try {
+            long minutes = Long.parseLong(ptr.s.substring(start, ptr.pos));
+            t.isLocaltime = 1;
+            t.zoneType = TIMELIB_ZONETYPE_OFFSET;
+            t.dst = 0;
+            retval = (int) (minutes * 60);
+            if (sign == '-') {
+                retval = -retval;
+            }
+        } catch (NumberFormatException e) {
+            return TIMELIB_UNSET;
+        }
+        return retval;
+    }
+
+    /** C: {@code timelib_parse_from_format} */
+    @TruffleBoundary
+    public static TimelibTime parseFromFormat(String format, String string, TimelibErrorContainer[] errors, ZoneinfoDb tzdb) {
+        if (format == null) format = "";
+        if (string == null) string = "";
+
+        TimelibErrorContainer err = new TimelibErrorContainer();
+        if (errors != null && errors.length > 0) {
+            errors[0] = err;
+        }
+
+        TimelibTime time = new TimelibTime();
+        time.y = TIMELIB_UNSET;
+        time.d = TIMELIB_UNSET;
+        time.m = TIMELIB_UNSET;
+        time.h = TIMELIB_UNSET;
+        time.i = TIMELIB_UNSET;
+        time.s = TIMELIB_UNSET;
+        time.us = TIMELIB_UNSET;
+        time.z = TIMELIB_UNSET;
+        time.dst = TIMELIB_UNSET;
+        time.isLocaltime = 0;
+        time.zoneType = 0;
+        time.relative.days = TIMELIB_UNSET;
+
+        Cursor ptr = new Cursor(string);
+        int fidx = 0;
+        boolean allowExtra = false;
+        long isoYear = TIMELIB_UNSET;
+        long isoWeekOfYear = TIMELIB_UNSET;
+        long isoDayOfWeek = TIMELIB_UNSET;
+
+        while (fidx < format.length() && ptr.pos < string.length()) {
+            int begin = ptr.pos;
+            char fchar = format.charAt(fidx);
+            int spec = lookupFormat(fchar);
+
+            switch (spec) {
+                case TIMELIB_FORMAT_TEXTUAL_DAY_3_LETTER, TIMELIB_FORMAT_TEXTUAL_DAY_FULL -> {
+                    RelunitEntry relunit = timelibLookupRelunit(ptr);
+                    if (relunit == null) {
+                        addPbfError(err, TIMELIB_ERR_NO_TEXTUAL_DAY, "A textual day could not be found", string, begin);
+                    } else {
+                        time.haveRelative = 1;
+                        time.relative.haveWeekdayRelative = 1;
+                        time.relative.weekday = relunit.multiplier;
+                        time.relative.weekdayBehavior = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_DAY_TWO_DIGIT, TIMELIB_FORMAT_DAY_TWO_DIGIT_PADDED -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long val = timelibGetNr(ptr, 2);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_DAY, "A two digit day could not be found", string, begin);
+                    } else {
+                        time.d = val;
+                        time.haveDate = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_DAY_SUFFIX -> timelibSkipDaySuffix(ptr);
+                case TIMELIB_FORMAT_DAY_OF_YEAR -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    if (time.y == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_MERIDIAN_BEFORE_HOUR, "A 'day of year' can only come after a year has been found", string, begin);
+                    }
+                    long tmp = timelibGetNr(ptr, 3);
+                    if (tmp == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_THREE_DIGIT_DAY_OF_YEAR, "A three digit day-of-year could not be found", string, begin);
+                    } else if (time.y != TIMELIB_UNSET) {
+                        time.haveDate = 1;
+                        time.m = 1;
+                        time.d = tmp + 1;
+                        Tm2Unixtime.doNormalize(time);
+                    }
+                }
+                case TIMELIB_FORMAT_MONTH_TWO_DIGIT, TIMELIB_FORMAT_MONTH_TWO_DIGIT_PADDED -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long val = timelibGetNr(ptr, 2);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_MONTH, "A two digit month could not be found", string, begin);
+                    } else {
+                        time.m = val;
+                        time.haveDate = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_TEXTUAL_MONTH_3_LETTER, TIMELIB_FORMAT_TEXTUAL_MONTH_FULL -> {
+                    long tmp = timelibLookupMonth(ptr);
+                    if (tmp == 0) {
+                        addPbfError(err, TIMELIB_ERR_NO_TEXTUAL_MONTH, "A textual month could not be found", string, begin);
+                    } else {
+                        time.haveDate = 1;
+                        time.m = tmp;
+                    }
+                }
+                case TIMELIB_FORMAT_YEAR_TWO_DIGIT -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    int[] length = new int[1];
+                    long val = timelibGetNrEx(ptr, 2, length);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_YEAR, "A two digit year could not be found", string, begin);
+                    } else {
+                        time.haveDate = 1;
+                        time.y = timelibProcessYear(val, length[0]);
+                    }
+                }
+                case TIMELIB_FORMAT_YEAR_FOUR_DIGIT -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long val = timelibGetNr(ptr, 4);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_FOUR_DIGIT_YEAR, "A four digit year could not be found", string, begin);
+                    } else {
+                        time.haveDate = 1;
+                        time.y = val;
+                    }
+                }
+                case TIMELIB_FORMAT_YEAR_EXPANDED -> {
+                    if (ptr.ch() != '+' && ptr.ch() != '-' && (ptr.ch() < '0' || ptr.ch() > '9')) {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long val = timelibGetSignedNr(ptr, 19, err, string);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_FOUR_DIGIT_YEAR, "An expanded digit year could not be found", string, begin);
+                    } else {
+                        time.haveDate = 1;
+                        time.y = val;
+                    }
+                }
+                case TIMELIB_FORMAT_HOUR_TWO_DIGIT_12_MAX, TIMELIB_FORMAT_HOUR_TWO_DIGIT_12_MAX_PADDED -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long val = timelibGetNr(ptr, 2);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_HOUR, "A two digit hour could not be found", string, begin);
+                    } else if (val > 12) {
+                        time.h = val;
+                        addPbfError(err, TIMELIB_ERR_HOUR_LARGER_THAN_12, "Hour cannot be higher than 12", string, begin);
+                    } else {
+                        time.h = val;
+                        time.haveTime = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_HOUR_TWO_DIGIT_24_MAX_PADDED, TIMELIB_FORMAT_HOUR_TWO_DIGIT_24_MAX -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long val = timelibGetNr(ptr, 2);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_HOUR, "A two digit hour could not be found", string, begin);
+                    } else {
+                        time.h = val;
+                        time.haveTime = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_MERIDIAN -> {
+                    if (time.h == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_MERIDIAN_BEFORE_HOUR, "Meridian can only come after an hour has been found", string, begin);
+                    }
+                    long tmp = timelibMeridianWithCheck(ptr, time.h);
+                    if (tmp == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_MERIDIAN, "A meridian could not be found", string, begin);
+                    } else {
+                        time.haveTime = 1;
+                        if (time.h != TIMELIB_UNSET) {
+                            time.h += tmp;
+                        }
+                    }
+                }
+                case TIMELIB_FORMAT_MINUTE_TWO_DIGIT -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    int[] length = new int[1];
+                    long min = timelibGetNrEx(ptr, 2, length);
+                    if (min == TIMELIB_UNSET || length[0] != 2) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_MINUTE, "A two digit minute could not be found", string, begin);
+                    } else {
+                        time.haveTime = 1;
+                        time.i = min;
+                    }
+                }
+                case TIMELIB_FORMAT_SECOND_TWO_DIGIT -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    int[] length = new int[1];
+                    long sec = timelibGetNrEx(ptr, 2, length);
+                    if (sec == TIMELIB_UNSET || length[0] != 2) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_SECOND, "A two digit second could not be found", string, begin);
+                    } else {
+                        time.haveTime = 1;
+                        time.s = sec;
+                    }
+                }
+                case TIMELIB_FORMAT_MICROSECOND_SIX_DIGIT -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    int tpos = ptr.pos;
+                    long f = timelibGetNr(ptr, 6);
+                    int advanced = ptr.pos - tpos;
+                    if (f == TIMELIB_UNSET || advanced < 1) {
+                        addPbfError(err, TIMELIB_ERR_NO_SIX_DIGIT_MICROSECOND, "A six digit microsecond could not be found", string, begin);
+                    } else {
+                        time.us = (long) (f * Math.pow(10, 6 - advanced));
+                    }
+                }
+                case TIMELIB_FORMAT_MILLISECOND_THREE_DIGIT -> {
+                    if (ptr.ch() < '0' || ptr.ch() > '9') {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    int tpos = ptr.pos;
+                    long f = timelibGetNr(ptr, 3);
+                    int advanced = ptr.pos - tpos;
+                    if (f == TIMELIB_UNSET || advanced < 1) {
+                        addPbfError(err, TIMELIB_ERR_NO_THREE_DIGIT_MILLISECOND, "A three digit millisecond could not be found", string, begin);
+                    } else {
+                        time.us = (long) (f * Math.pow(10, 3 - advanced) * 1000);
+                    }
+                }
+                case TIMELIB_FORMAT_WHITESPACE -> timelibEatSpaces(ptr);
+                case TIMELIB_FORMAT_EPOCH_SECONDS -> {
+                    if (ptr.ch() != '+' && ptr.ch() != '-' && (ptr.ch() < '0' || ptr.ch() > '9')) {
+                        addPbfError(err, TIMELIB_ERR_UNEXPECTED_DATA, "Unexpected data found.", string, begin);
+                    }
+                    long tmp = timelibGetSignedNr(ptr, 24, err, string);
+                    time.haveZone = 1;
+                    time.sse = tmp;
+                    time.isLocaltime = 1;
+                    time.zoneType = TIMELIB_ZONETYPE_OFFSET;
+                    time.z = 0;
+                    time.dst = 0;
+                    Unixtime2Tm.updateFromSse(time);
+                }
+                case TIMELIB_FORMAT_ANY_SEPARATOR -> {
+                    if (lookupFormat(ptr.ch()) != TIMELIB_FORMAT_SEPARATOR) {
+                        addPbfError(err, TIMELIB_ERR_NO_SEP_SYMBOL, "The separation symbol ([;:/.,-]) could not be found", string, begin);
+                    } else {
+                        ptr.pos++;
+                    }
+                }
+                case TIMELIB_FORMAT_SEPARATOR -> {
+                    if (ptr.ch() != fchar) {
+                        addPbfError(err, TIMELIB_ERR_NO_SEP_SYMBOL, "The separation symbol could not be found", string, begin);
+                    } else {
+                        ptr.pos++;
+                    }
+                }
+                case TIMELIB_FORMAT_RESET_ALL -> resetFields(time);
+                case TIMELIB_FORMAT_RESET_ALL_WHEN_NOT_SET -> resetUnsetFields(time);
+                case TIMELIB_FORMAT_RANDOM_CHAR -> ptr.pos++;
+                case TIMELIB_FORMAT_ESCAPE -> {
+                    if (fidx + 1 >= format.length()) {
+                        addPbfError(err, TIMELIB_ERR_EXPECTED_ESCAPE_CHAR, "Escaped character expected", string, begin);
+                    } else {
+                        fidx++;
+                        char escaped = format.charAt(fidx);
+                        if (ptr.ch() != escaped) {
+                            addPbfError(err, TIMELIB_ERR_NO_ESCAPED_CHAR, "The escaped character could not be found", string, begin);
+                        } else {
+                            ptr.pos++;
+                        }
+                    }
+                }
+                case TIMELIB_FORMAT_SKIP_TO_SEPARATOR -> timelibEatUntilSeparator(ptr);
+                case TIMELIB_FORMAT_ALLOW_EXTRA_CHARACTERS -> allowExtra = true;
+                case TIMELIB_FORMAT_YEAR_ISO -> {
+                    long val = timelibGetNr(ptr, 4);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_FOUR_DIGIT_YEAR_ISO, "A four digit ISO year could not be found", string, begin);
+                    } else {
+                        isoYear = val;
+                        time.haveDate = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_WEEK_OF_YEAR_ISO -> {
+                    long val = timelibGetNr(ptr, 2);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_TWO_DIGIT_WEEK, "A two digit ISO week could not be found", string, begin);
+                    } else if (val < 1 || val > 53) {
+                        isoWeekOfYear = val;
+                        addPbfError(err, TIMELIB_ERR_INVALID_WEEK, "ISO Week must be between 1 and 53", string, begin);
+                    } else {
+                        isoWeekOfYear = val;
+                        time.haveDate = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_DAY_OF_WEEK_ISO -> {
+                    long val = timelibGetNr(ptr, 1);
+                    if (val == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_NO_DAY_OF_WEEK, "A single digit day of week could not be found", string, begin);
+                    } else if (val < 1 || val > 7) {
+                        isoDayOfWeek = val;
+                        addPbfError(err, TIMELIB_ERR_INVALID_DAY_OF_WEEK, "Day of week must be between 1 and 7", string, begin);
+                    } else {
+                        isoDayOfWeek = val;
+                        time.haveDate = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_TIMEZONE_OFFSET -> {
+                    int[] tzNotFound = new int[1];
+                    int[] dst = new int[1];
+                    time.z = timelibParseZone(ptr, dst, time, tzNotFound, tzdb);
+                    time.dst = dst[0];
+                    if (tzNotFound[0] != 0) {
+                        addPbfError(err, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database", string, begin);
+                    } else {
+                        time.haveZone = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_TIMEZONE_OFFSET_MINUTES -> {
+                    int z = timelibParseTzMinutes(ptr, time);
+                    if (z == TIMELIB_UNSET) {
+                        addPbfError(err, TIMELIB_ERR_INVALID_TZ_OFFSET, "Invalid timezone offset in minutes", string, begin);
+                    } else {
+                        time.z = z;
+                        time.haveZone = 1;
+                    }
+                }
+                case TIMELIB_FORMAT_LITERAL -> {
+                    if (fchar != ptr.ch()) {
+                        addPbfError(err, TIMELIB_ERR_WRONG_FORMAT_SEP, "The format separator does not match", string, begin);
+                    }
+                    ptr.pos++;
+                }
+                default -> {
+                    if (fchar != ptr.ch()) {
+                        addPbfError(err, TIMELIB_ERR_WRONG_FORMAT_SEP, "The format separator does not match", string, begin);
+                    }
+                    ptr.pos++;
+                }
+            }
+            fidx++;
+        }
+
+        if (ptr.pos < string.length()) {
+            if (allowExtra) {
+                addPbfWarning(err, TIMELIB_WARN_TRAILING_DATA, "Trailing data", string, ptr.pos);
+            } else {
+                addPbfError(err, TIMELIB_ERR_TRAILING_DATA, "Trailing data", string, ptr.pos);
+            }
+        }
+
+        if (fidx < format.length()) {
+            boolean done = false;
+            while (fidx < format.length() && !done) {
+                char ch = format.charAt(fidx);
+                switch (lookupFormat(ch)) {
+                    case TIMELIB_FORMAT_RESET_ALL -> resetFields(time);
+                    case TIMELIB_FORMAT_RESET_ALL_WHEN_NOT_SET -> resetUnsetFields(time);
+                    case TIMELIB_FORMAT_ALLOW_EXTRA_CHARACTERS -> {}
+                    default -> {
+                        addPbfError(err, TIMELIB_ERR_DATA_MISSING, "Not enough data available to satisfy format", string, ptr.pos);
+                        done = true;
+                    }
+                }
+                fidx++;
+            }
+        }
+
+        // clean up a bit
+        if (time.h != TIMELIB_UNSET || time.i != TIMELIB_UNSET || time.s != TIMELIB_UNSET || time.us != TIMELIB_UNSET) {
+            if (time.h == TIMELIB_UNSET) time.h = 0;
+            if (time.i == TIMELIB_UNSET) time.i = 0;
+            if (time.s == TIMELIB_UNSET) time.s = 0;
+            if (time.us == TIMELIB_UNSET) time.us = 0;
+        }
+
+        // Check for mixing of ISO dates with natural dates
+        if (time.y != TIMELIB_UNSET && (isoWeekOfYear != TIMELIB_UNSET || isoYear != TIMELIB_UNSET || isoDayOfWeek != TIMELIB_UNSET)) {
+            addPbfError(err, TIMELIB_ERR_MIX_ISO_WITH_NATURAL, "Mixing of ISO dates with natural dates is not allowed", string, ptr.pos);
+        }
+        if (isoYear != TIMELIB_UNSET && (time.y != TIMELIB_UNSET || time.m != TIMELIB_UNSET || time.d != TIMELIB_UNSET)) {
+            addPbfError(err, TIMELIB_ERR_MIX_ISO_WITH_NATURAL, "Mixing of ISO dates with natural dates is not allowed", string, ptr.pos);
+        }
+
+        // Convert ISO values
+        if (isoYear != TIMELIB_UNSET) {
+            if (isoWeekOfYear == TIMELIB_UNSET) {
+                isoWeekOfYear = 1;
+            }
+            if (isoDayOfWeek == TIMELIB_UNSET) {
+                isoDayOfWeek = 1;
+            }
+            long[] y = new long[1];
+            long[] m = new long[1];
+            long[] d = new long[1];
+            Dow.dateFromIsodate(isoYear, isoWeekOfYear, isoDayOfWeek, y, m, d);
+            time.y = y[0];
+            time.m = m[0];
+            time.d = d[0];
+        } else if (isoWeekOfYear != TIMELIB_UNSET || isoDayOfWeek != TIMELIB_UNSET) {
+            addPbfWarning(err, TIMELIB_WARN_INVALID_DATE, "The parsed date was invalid", string, ptr.pos);
+        }
+
+        // valid time check
+        if (time.h != TIMELIB_UNSET && time.i != TIMELIB_UNSET && time.s != TIMELIB_UNSET &&
+                Dow.validTime(time.h, time.i, time.s) == 0) {
+            addPbfWarning(err, TIMELIB_WARN_INVALID_TIME, "The parsed time was invalid", string, ptr.pos);
+        }
+
+        // valid date check
+        if (time.y != TIMELIB_UNSET && time.m != TIMELIB_UNSET && time.d != TIMELIB_UNSET &&
+                Dow.validDate(time.y, time.m, time.d) == 0) {
+            addPbfWarning(err, TIMELIB_WARN_INVALID_DATE, "The parsed date was invalid", string, ptr.pos);
+        }
+
+        return time;
+    }
 }
