@@ -12,8 +12,12 @@ import java.util.Map;
  */
 public final class PhpClassTemplate {
 
-    public record PropertyDecl(String name, Visibility visibility, boolean isStatic,
+    public record PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
                                Object constDefault, RootCallTarget defaultTarget) {
+        public PropertyDecl(String name, Visibility visibility, boolean isStatic,
+                            Object constDefault, RootCallTarget defaultTarget) {
+            this(name, visibility, isStatic, false, constDefault, defaultTarget);
+        }
     }
 
     public record ConstantDecl(String name, Visibility visibility, boolean isFinal,

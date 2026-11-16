@@ -107,9 +107,32 @@ final class OutputFunctions {
             }
             seen.put(obj, Boolean.TRUE);
             Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
-            sb.append("object(").append(obj.phpClass().name()).append(")#").append(obj.id())
-                    .append(" (").append(keys.length).append(") {\n");
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+            int initCount = 0;
+            for (Object rawKey : keys) {
+                if (get.execute(obj, rawKey, PhpNull.INSTANCE) != PhpClass.UNINITIALIZED) {
+                    initCount++;
+                }
+            }
+            sb.append("object(").append(obj.phpClass().name()).append(")#").append(obj.id())
+                    .append(" (").append(initCount).append(") {").append((char) 10);
+            for (Object rawKey : keys) {
+                String k = (String) rawKey;
+                Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (propVal == PhpClass.UNINITIALIZED) {
+                    continue;
+                }
+                sb.append(" ".repeat(indent + 2));
+                appendVarDumpObjectKey(sb, obj.phpClass(), k);
+                sb.append("=>").append((char) 10);
+                if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
+                    propVal = lt.toPhpArray();
+                }
+                varDump(sb, propVal, indent + 2, seen, false);
+            }
+            if (false) {
+                    sb.append(" (");
+                    sb.append(keys.length).append(") {\n");
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
                 sb.append(" ".repeat(indent + 2));
@@ -121,7 +144,8 @@ final class OutputFunctions {
                 }
                 varDump(sb, propVal, indent + 2, seen, false);
             }
-            sb.append(" ".repeat(indent)).append("}\n");
+            }
+            sb.append(" ".repeat(indent)).append("}").append((char) 10);
             seen.remove(obj);
         } else if (v instanceof dev.phpruntime.runtime.PhpResource r) {
             sb.append("resource(").append(r.id()).append(") of type (").append(r.type()).append(")\n");
@@ -156,12 +180,16 @@ final class OutputFunctions {
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
+                Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (rawVal == PhpClass.UNINITIALIZED) {
+                    continue;
+                }
                 sb.append(" ".repeat(indent + 4)).append('[');
                 appendPrintRObjectKey(sb, obj.phpClass(), k);
                 sb.append("] => ");
-                Object propVal = PhpClass.unwrapProp(get.execute(obj, k, PhpNull.INSTANCE));
+                Object propVal = PhpClass.unwrapProp(rawVal);
                 printR(sb, propVal, indent + 8, seen);
-                sb.append('\n');
+                sb.append((char) 10);
             }
             sb.append(" ".repeat(indent)).append(")\n");
             seen.remove(obj);
@@ -218,8 +246,12 @@ final class OutputFunctions {
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
+                Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (rawVal == PhpClass.UNINITIALIZED) {
+                    continue;
+                }
                 String prop = plainPropertyName(k);
-                Object val = PhpClass.unwrapProp(get.execute(obj, k, PhpNull.INSTANCE));
+                Object val = PhpClass.unwrapProp(rawVal);
                 sb.append(" ".repeat(indent + 3))
                         .append('\'').append(prop.replace("\\", "\\\\").replace("'", "\\'")).append('\'')
                         .append(" => ");

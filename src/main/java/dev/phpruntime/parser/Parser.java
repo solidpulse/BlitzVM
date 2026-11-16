@@ -697,21 +697,51 @@ public final class Parser {
         return new DefineConstantNode(names.toArray(new String[0]), values.toArray(new PhpNode[0])).at(line);
     }
 
-    private record ParsedParams(String[] names, int[] slots, VarKind[] kinds, boolean[] byRef, PhpNode[] defaults, boolean variadic) {}
+    private record PromotedProp(String name, Visibility visibility, boolean isReadonly, boolean byRef, int line) {
+    }
+
+    private record ParsedParams(String[] names, int[] slots, VarKind[] kinds, boolean[] byRef,
+                                PhpNode[] defaults, boolean variadic, List<PromotedProp> promoted) {}
 
     private ParsedParams parseParams() {
+        return parseParams(false);
+    }
+
+    private ParsedParams parseParams(boolean allowPromotion) {
         expectOp("(");
         List<String> names = new ArrayList<>();
         List<Integer> slots = new ArrayList<>();
         List<Boolean> byRef = new ArrayList<>();
         List<PhpNode> defaults = new ArrayList<>();
+        List<PromotedProp> promoted = new ArrayList<>();
         boolean variadic = false;
         while (!acceptOp(")")) {
             skipAttributes();
+            Visibility promVis = null;
+            boolean promReadonly = false;
+            boolean parsingMods = true;
+            while (parsingMods && peek().kind() == Kind.IDENT) {
+                switch (peek().text().toLowerCase()) {
+                    case "public" -> { next(); promVis = Visibility.PUBLIC; }
+                    case "protected" -> { next(); promVis = Visibility.PROTECTED; }
+                    case "private" -> { next(); promVis = Visibility.PRIVATE; }
+                    case "readonly" -> { next(); promReadonly = true; }
+                    default -> parsingMods = false;
+                }
+            }
+            if (promVis == null && promReadonly) {
+                promVis = Visibility.PUBLIC;
+            }
+            if (promVis != null && !allowPromotion) {
+                throw error("Cannot declare promoted property outside a constructor");
+            }
             skipType();
             boolean isRef = acceptOp("&");
             boolean isVarArg = acceptOp("...");
             if (isVarArg) {
+                if (promVis != null) {
+                    throw error("Cannot declare variadic promoted property");
+                }
                 variadic = true;
             }
             Token v = next();
@@ -727,6 +757,9 @@ public final class Parser {
             slots.add(scope.slot(pName));
             byRef.add(isRef);
             defaults.add(acceptOp("=") ? expression() : null);
+            if (promVis != null) {
+                promoted.add(new PromotedProp(pName, promVis, promReadonly, isRef, v.line()));
+            }
             if (!peek().isOp(")")) {
                 expectOp(",");
             }
@@ -738,7 +771,8 @@ public final class Parser {
             kindArray[i] = scope.kind(slotArray[i]);
             refArray[i] = byRef.get(i);
         }
-        return new ParsedParams(names.toArray(new String[0]), slotArray, kindArray, refArray, defaults.toArray(new PhpNode[0]), variadic);
+        return new ParsedParams(names.toArray(new String[0]), slotArray, kindArray, refArray,
+                defaults.toArray(new PhpNode[0]), variadic, promoted);
     }
 
     private PhpNode functionDeclaration(boolean topLevel, int line) {
@@ -872,12 +906,13 @@ public final class Parser {
     private PhpNode classDeclaration(boolean topLevel, int line) {
         boolean isAbstract = false;
         boolean isFinal = false;
+        boolean isReadonly = false;
         boolean mods = true;
         while (mods && peek().kind() == Kind.IDENT) {
             switch (peek().text().toLowerCase()) {
                 case "abstract" -> { next(); isAbstract = true; }
                 case "final" -> { next(); isFinal = true; }
-                case "readonly" -> next();
+                case "readonly" -> { next(); isReadonly = true; }
                 default -> mods = false;
             }
         }
@@ -887,7 +922,7 @@ public final class Parser {
         }
         String name = expectIdent().text();
         PhpClassTemplate template = parseClassTemplate(
-                language.nextTemplateId(), name, isInterface, isAbstract, isFinal, false);
+                language.nextTemplateId(), name, isInterface, isAbstract, isFinal, isReadonly, false);
         if (topLevel) {
             int idx = topLevelClasses.size();
             topLevelClasses.add(template);
@@ -898,6 +933,12 @@ public final class Parser {
 
     private PhpClassTemplate parseClassTemplate(long templateId, String name, boolean isInterface,
                                                   boolean isAbstract, boolean isFinal, boolean isAnonymous) {
+        return parseClassTemplate(templateId, name, isInterface, isAbstract, isFinal, false, isAnonymous);
+    }
+
+    private PhpClassTemplate parseClassTemplate(long templateId, String name, boolean isInterface,
+                                                  boolean isAbstract, boolean isFinal, boolean classReadonly,
+                                                  boolean isAnonymous) {
         String parentName = null;
         List<String> interfaceNames = new ArrayList<>();
         if (acceptKeyword("extends")) {
@@ -933,6 +974,8 @@ public final class Parser {
                 boolean isStatic = false;
                 boolean mAbstract = false;
                 boolean mFinal = false;
+                boolean pReadonly = classReadonly;
+                boolean explicitReadonly = false;
                 boolean parsingMods = true;
                 while (parsingMods && peek().kind() == Kind.IDENT) {
                     switch (peek().text().toLowerCase()) {
@@ -942,7 +985,7 @@ public final class Parser {
                         case "static" -> { next(); isStatic = true; }
                         case "abstract" -> { next(); mAbstract = true; }
                         case "final" -> { next(); mFinal = true; }
-                        case "readonly" -> next();
+                        case "readonly" -> { next(); pReadonly = true; explicitReadonly = true; }
                         default -> parsingMods = false;
                     }
                 }
@@ -958,9 +1001,13 @@ public final class Parser {
                     } while (acceptOp(","));
                     expectOp(";");
                 } else if (acceptKeyword("function")) {
-                    PhpClassTemplate.MethodDecl m = parseMethod(vis, isStatic, isInterface || mAbstract, mFinal);
+                    PhpClassTemplate.MethodDecl m = parseMethod(vis, isStatic, isInterface || mAbstract, mFinal,
+                            classReadonly, properties);
                     methods.put(m.lowerName(), m);
                 } else {
+                    if (isStatic && (explicitReadonly || classReadonly)) {
+                        throw error("Static property cannot be readonly");
+                    }
                     skipType();
                     do {
                         Token propTok = next();
@@ -968,11 +1015,14 @@ public final class Parser {
                             throw new PhpParseError("syntax error, expected property variable", propTok.line());
                         }
                         PhpNode expr = acceptOp("=") ? expression() : null;
+                        if (pReadonly && expr != null) {
+                            throw new PhpParseError("Readonly property " + name + "::$" + propTok.text() + " cannot have default value", propTok.line());
+                        }
                         Object constVal = expr == null ? PhpNull.INSTANCE
                                 : (expr instanceof ConstNode c ? c.value() : null);
                         RootCallTarget valTarget = expr == null || expr instanceof ConstNode ? null
                                 : new PhpExprRootNode(language, source, expr).getCallTarget();
-                        properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, constVal, valTarget));
+                        properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, pReadonly, constVal, valTarget));
                     } while (acceptOp(","));
                     expectOp(";");
                 }
@@ -985,11 +1035,13 @@ public final class Parser {
                 parentName, interfaceNames, properties, constants, methods);
     }
 
-    private PhpClassTemplate.MethodDecl parseMethod(Visibility vis, boolean isStatic, boolean isAbstract, boolean isFinal) {
+    private PhpClassTemplate.MethodDecl parseMethod(Visibility vis, boolean isStatic, boolean isAbstract, boolean isFinal,
+                                                    boolean classReadonly, List<PhpClassTemplate.PropertyDecl> classProps) {
         boolean returnsRef = acceptOp("&");
         Token nameTok = expectIdent();
         String mName = nameTok.text();
         String lower = mName.toLowerCase();
+        boolean isCtor = "__construct".equals(lower);
         Scope outerScope = scope;
         String outerFunction = currentFunction;
         boolean outerReturnsRef = currentReturnsRef;
@@ -997,7 +1049,7 @@ public final class Parser {
         currentFunction = mName;
         currentReturnsRef = returnsRef;
         try {
-            ParsedParams params = parseParams();
+            ParsedParams params = parseParams(isCtor && !isAbstract);
             if (acceptOp(":")) {
                 skipType();
             }
@@ -1008,6 +1060,24 @@ public final class Parser {
             } else {
                 expectOp("{");
                 PhpNode body = blockUntil("}");
+                if (!params.promoted().isEmpty()) {
+                    List<PhpNode> initStmts = new ArrayList<>(params.promoted().size() + 1);
+                    for (PromotedProp pp : params.promoted()) {
+                        boolean propRo = pp.isReadonly() || classReadonly;
+                        classProps.add(new PhpClassTemplate.PropertyDecl(
+                                pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null));
+                        LValueNode thisVar = scope.variable("this").at(pp.line());
+                        LValueNode propLv = new PropertyLValueNode(thisVar, pp.name(), null, currentClassLower()).at(pp.line());
+                        LValueNode paramVar = scope.variable(pp.name()).at(pp.line());
+                        if (pp.byRef() && !propRo) {
+                            initStmts.add(new AssignRefNode(propLv, paramVar).at(pp.line()));
+                        } else {
+                            initStmts.add(new AssignNode(propLv, paramVar).at(pp.line()));
+                        }
+                    }
+                    initStmts.add(body);
+                    body = block(initStmts);
+                }
                 PhpFunctionRootNode root = new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
@@ -1584,12 +1654,17 @@ public final class Parser {
 
     private PhpNode parseNew(int line) {
         skipAttributes();
+        boolean anonReadonly = false;
+        if (peek().isKeyword("readonly") && peek(1).isKeyword("class")) {
+            next();
+            anonReadonly = true;
+        }
         if (acceptKeyword("class")) {
             ParsedCallArgs pca = acceptOp("(") ? parseCallArgDetails()
                     : new ParsedCallArgs(new PhpNode[0], new LValueNode[0], null, null);
             long tid = language.nextTemplateId();
             String anonName = "class@anonymous\0" + magicFile() + ":" + line + "$" + tid;
-            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, true);
+            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, anonReadonly, true);
             ClassRefNode ref = ClassRefNode.anonymous(tpl, language.classId(anonName));
             return new NewNode(ref, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
         }

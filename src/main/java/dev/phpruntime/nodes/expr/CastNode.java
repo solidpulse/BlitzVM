@@ -58,6 +58,10 @@ public final class CastNode extends PhpNode {
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
+                Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (rawVal == PhpClass.UNINITIALIZED) {
+                    continue;
+                }
                 String arrKey = k;
                 if (!k.startsWith("\0")) {
                     PhpClass.InstanceProp p = cls.findVisibleProp(k);
@@ -65,7 +69,7 @@ public final class CastNode extends PhpNode {
                         arrKey = "\0*\0" + k;
                     }
                 }
-                a.put(arrKey, PhpOps.copyOnAssign(PhpClass.unwrapProp(get.execute(obj, k, PhpNull.INSTANCE))));
+                a.put(arrKey, PhpOps.copyOnAssign(PhpClass.unwrapProp(rawVal)));
             }
             return a;
         }

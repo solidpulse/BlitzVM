@@ -76,6 +76,9 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
         Object root = base.read(frame, bk);
         try {
             base.write(frame, bk, writePath(root, arrayKeys(keys), value));
@@ -87,6 +90,9 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
         Object root = base.read(frame, bk);
         try {
             PhpReference[] outRef = new PhpReference[1];
@@ -101,6 +107,9 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
         Object root = base.read(frame, bk);
         try {
             PhpReference[] outRef = new PhpReference[1];
@@ -192,6 +201,9 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
         Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
         Object root = base.read(frame, bk);
         if (!(root instanceof PhpArray)) {
             return;
