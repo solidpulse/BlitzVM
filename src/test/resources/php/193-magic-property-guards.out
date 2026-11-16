@@ -1,0 +1,11 @@
+set(color) 
+RED
+isset(size) bool(false)
+get(size) isset(size) default
+get(hidden) h
+unset(hidden) 
+isset(hidden) bool(false)
+object(Proxy)#2 (1) {
+  ["a"]=>
+  int(3)
+}

@@ -163,7 +163,7 @@ public final class PropertyLValueNode extends LValueNode {
             if (v == PhpClass.UNINITIALIZED) {
                 if (checkMagicIsset(obj, name)) {
                     PhpClass.MethodEntry get = obj.phpClass().getMethod();
-                    return get != null && get.callTarget() != null ? callMagic1(get, obj, name) : PhpNull.INSTANCE;
+                    return magicUsable(get, obj, name, PhpObject.GUARD_GET) ? callMagicGuarded(get, obj, name, PhpObject.GUARD_GET) : PhpNull.INSTANCE;
                 }
                 return null;
             }
@@ -176,7 +176,7 @@ public final class PropertyLValueNode extends LValueNode {
         }
         if (checkMagicIsset(obj, name)) {
             PhpClass.MethodEntry get = obj.phpClass().getMethod();
-            return get != null && get.callTarget() != null ? callMagic1(get, obj, name) : PhpNull.INSTANCE;
+            return magicUsable(get, obj, name, PhpObject.GUARD_GET) ? callMagicGuarded(get, obj, name, PhpObject.GUARD_GET) : PhpNull.INSTANCE;
         }
         return null;
     }
@@ -208,7 +208,7 @@ public final class PropertyLValueNode extends LValueNode {
                 ref.setValue(value);
                 return;
             }
-            if (existing != null || obj.phpClass().setMethod() == null) {
+            if (existing != null || !magicUsable(obj.phpClass().setMethod(), obj, name, PhpObject.GUARD_SET)) {
                 putNode.execute(obj, storageKey, value);
                 return;
             }
@@ -234,7 +234,7 @@ public final class PropertyLValueNode extends LValueNode {
             ref.setValue(value);
             return;
         }
-        if (existing != null || obj.phpClass().setMethod() == null) {
+        if (existing != null || !magicUsable(obj.phpClass().setMethod(), obj, name, PhpObject.GUARD_SET)) {
             putNode.execute(obj, storageKey, value);
             return;
         }
@@ -301,8 +301,8 @@ public final class PropertyLValueNode extends LValueNode {
             ref.ensureDefined();
             return ref;
         }
-        if (existing == null && obj.phpClass().getMethod() != null && obj.phpClass().getMethod().callTarget() != null) {
-            Object val = callMagic1(obj.phpClass().getMethod(), obj, name);
+        if (existing == null && magicUsable(obj.phpClass().getMethod(), obj, name, PhpObject.GUARD_GET)) {
+            Object val = callMagicGuarded(obj.phpClass().getMethod(), obj, name, PhpObject.GUARD_GET);
             return new PhpReference(PhpOps.copyOnAssign(val));
         }
         PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);
@@ -363,8 +363,8 @@ public final class PropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private Object readUninitialized(PhpObject obj, String name, String callerLower) {
         PhpClass.MethodEntry get = obj.phpClass().getMethod();
-        if (get != null && get.callTarget() != null) {
-            return callMagic1(get, obj, name);
+        if (magicUsable(get, obj, name, PhpObject.GUARD_GET)) {
+            return callMagicGuarded(get, obj, name, PhpObject.GUARD_GET);
         }
         PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
         String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
@@ -379,8 +379,8 @@ public final class PropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private Object readFallback(PhpObject obj, String name, boolean inaccessible, boolean warnMissing, String callerLower) {
         PhpClass.MethodEntry get = obj.phpClass().getMethod();
-        if (get != null && get.callTarget() != null) {
-            return callMagic1(get, obj, name);
+        if (magicUsable(get, obj, name, PhpObject.GUARD_GET)) {
+            return callMagicGuarded(get, obj, name, PhpObject.GUARD_GET);
         }
         if (inaccessible) {
             throw inaccessibleError(obj, name, callerLower);
@@ -395,10 +395,25 @@ public final class PropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private boolean checkMagicIsset(PhpObject obj, String name) {
         PhpClass.MethodEntry isset = obj.phpClass().issetMethod();
-        if (isset != null && isset.callTarget() != null) {
-            return PhpOps.toBool(callMagic1(isset, obj, name));
+        if (magicUsable(isset, obj, name, PhpObject.GUARD_ISSET)) {
+            return PhpOps.toBool(callMagicGuarded(isset, obj, name, PhpObject.GUARD_ISSET));
         }
         return false;
+    }
+
+    /** A magic method applies unless it is already running for this property (php's guards). */
+    private static boolean magicUsable(PhpClass.MethodEntry entry, PhpObject obj, String name, int kind) {
+        return entry != null && entry.callTarget() != null && !obj.inMagic(name, kind);
+    }
+
+    @TruffleBoundary
+    private Object callMagicGuarded(PhpClass.MethodEntry entry, PhpObject obj, String name, int kind) {
+        obj.enterMagic(name, kind);
+        try {
+            return callMagic1(entry, obj, name);
+        } finally {
+            obj.exitMagic(name, kind);
+        }
     }
 
     @TruffleBoundary
@@ -412,11 +427,16 @@ public final class PropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private void writeFallback(PhpObject obj, String name, Object value, boolean inaccessible, String callerLower) {
         PhpClass.MethodEntry set = obj.phpClass().setMethod();
-        if (set != null && set.callTarget() != null) {
-            if (set.fromTrait()) {
-                set.callTarget().call(obj, obj.phpClass(), set.declaringClass(), name, value);
-            } else {
-                set.callTarget().call(obj, obj.phpClass(), name, value);
+        if (magicUsable(set, obj, name, PhpObject.GUARD_SET)) {
+            obj.enterMagic(name, PhpObject.GUARD_SET);
+            try {
+                if (set.fromTrait()) {
+                    set.callTarget().call(obj, obj.phpClass(), set.declaringClass(), name, value);
+                } else {
+                    set.callTarget().call(obj, obj.phpClass(), name, value);
+                }
+            } finally {
+                obj.exitMagic(name, PhpObject.GUARD_SET);
             }
             return;
         }
@@ -428,8 +448,8 @@ public final class PropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private void unsetFallback(PhpObject obj, String name, boolean inaccessible, String callerLower) {
         PhpClass.MethodEntry unset = obj.phpClass().unsetMethod();
-        if (unset != null && unset.callTarget() != null) {
-            callMagic1(unset, obj, name);
+        if (magicUsable(unset, obj, name, PhpObject.GUARD_UNSET)) {
+            callMagicGuarded(unset, obj, name, PhpObject.GUARD_UNSET);
             return;
         }
         if (inaccessible) {

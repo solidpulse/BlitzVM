@@ -22,6 +22,37 @@ public final class PhpObject extends DynamicObject {
     private final long id;
     private final PhpClosure closure;
     private boolean cloning;
+    /** php's property guards: name -> bits of the magic methods running for it (zend_get_property_guard). */
+    private java.util.HashMap<String, Integer> magicGuards;
+
+    public static final int GUARD_GET = 1;
+    public static final int GUARD_SET = 2;
+    public static final int GUARD_UNSET = 4;
+    public static final int GUARD_ISSET = 8;
+
+    /** True while the magic method {@code kind} runs for property {@code name} on this object. */
+    public boolean inMagic(String name, int kind) {
+        return magicGuards != null && (magicGuards.getOrDefault(name, 0) & kind) != 0;
+    }
+
+    public void enterMagic(String name, int kind) {
+        if (magicGuards == null) {
+            magicGuards = new java.util.HashMap<>();
+        }
+        magicGuards.merge(name, kind, (a, b) -> a | b);
+    }
+
+    public void exitMagic(String name, int kind) {
+        Integer bits = magicGuards.get(name);
+        if (bits != null) {
+            int rest = bits & ~kind;
+            if (rest == 0) {
+                magicGuards.remove(name);
+            } else {
+                magicGuards.put(name, rest);
+            }
+        }
+    }
     private PhpNativeState nativeState;
 
     public PhpObject(PhpClass phpClass, long id) {
