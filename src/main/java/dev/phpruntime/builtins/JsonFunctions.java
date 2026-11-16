@@ -304,9 +304,8 @@ final class JsonFunctions {
         if (depth <= 0) {
             throw new PhpError("ValueError", "json_decode(): Argument #3 ($depth) must be greater than 0", null);
         }
-        // TODO(objects): without $assoc, JSON objects should decode to stdClass. Until objects
-        // exist they decode to arrays either way.
-        Decoder d = new Decoder(json, depth, (flags & BIGINT_AS_STRING) != 0);
+        // Without $assoc (or JSON_OBJECT_AS_ARRAY), JSON objects decode to stdClass.
+        Decoder d = new Decoder(json, depth, (flags & BIGINT_AS_STRING) != 0, assoc ? null : ctx);
         Object result;
         try {
             d.skipSpace();
@@ -352,12 +351,19 @@ final class JsonFunctions {
         final String s;
         final long maxDepth;
         final boolean bigintAsString;
+        /** Non-null when JSON objects become stdClass instances rather than arrays. */
+        final dev.phpruntime.PhpContext objects;
         int pos;
 
-        Decoder(String s, long maxDepth, boolean bigintAsString) {
+        Decoder(String s, long maxDepth, boolean bigintAsString, dev.phpruntime.PhpContext objects) {
             this.s = s;
             this.maxDepth = maxDepth;
             this.bigintAsString = bigintAsString;
+            this.objects = objects;
+        }
+
+        Object finish(PhpArray arr) {
+            return objects == null ? arr : dev.phpruntime.nodes.expr.CastNode.toObject(objects, arr);
         }
 
         void skipSpace() {
@@ -425,7 +431,7 @@ final class JsonFunctions {
             }
         }
 
-        PhpArray object(int depth) {
+        Object object(int depth) {
             if (depth >= maxDepth) {
                 throw new Fail(ERROR_DEPTH);
             }
@@ -434,7 +440,7 @@ final class JsonFunctions {
             skipSpace();
             if (peek() == '}') {
                 pos++;
-                return arr;
+                return finish(arr);
             }
             while (true) {
                 skipSpace();
@@ -453,7 +459,7 @@ final class JsonFunctions {
                 char c = peek();
                 pos++;
                 if (c == '}') {
-                    return arr;
+                    return finish(arr);
                 }
                 if (c != ',') {
                     throw new Fail(ERROR_SYNTAX);
