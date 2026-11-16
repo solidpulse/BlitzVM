@@ -59,6 +59,8 @@ path and a separate interpreter-only JFR for benchmark 2 (same workload, 150 out
 three-second delay to exclude startup). Traces, recording and full sample data stay under
 `/tmp/opencode/bytecode-spike`; small summaries are checked in here. Profiling timings do
 not enter the performance table.
+Use `--trace-only` to repeat just CodeSize measurements, or `--summarize-existing` to
+reclassify the existing JFR JSON without running another guest process.
 
 ## Supported subset and limitations
 
