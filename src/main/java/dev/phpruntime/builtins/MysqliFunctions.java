@@ -765,12 +765,14 @@ final class MysqliFunctions {
         Object[] cols = driverColumns(rs);
         List<FieldInfo> fields = new ArrayList<>(n);
         boolean[] bit = new boolean[n];
+        boolean[] bytes = new boolean[n];
         for (int i = 0; i < n; i++) {
             FieldInfo f = cols != null && cols.length == n && cols[i] instanceof org.mariadb.jdbc.client.Column c
                     ? field(c) : field(md, i + 1);
             fields.add(f);
             long t = f.type();
             bit[i] = t == 16;
+            bytes[i] = isByteType(t);
         }
         List<Object[]> rows = new ArrayList<>();
         while (rs.next()) {
@@ -788,9 +790,13 @@ final class MysqliFunctions {
                         }
                         row[i] = Long.toUnsignedString(v);
                     }
-                } else {
+                } else if (bytes[i]) {
                     byte[] b = rs.getBytes(i + 1);
                     row[i] = b == null ? PhpNull.INSTANCE : PhpStrings.of(b);
+                } else {
+                    // Numbers, dates and decimals: the text protocol's ASCII form, as mysqlnd returns.
+                    String v = rs.getString(i + 1);
+                    row[i] = v == null ? PhpNull.INSTANCE : PhpStrings.fromJava(v);
                 }
             }
             rows.add(row);
@@ -819,6 +825,11 @@ final class MysqliFunctions {
     }
 
     /** When mysqlnd adds NUM_FLAG: types up to INT24 except modern TIMESTAMP, and YEAR(4). */
+    /** String, blob, JSON, enum, set and geometry columns: read as raw bytes (binary-safe). */
+    private static boolean isByteType(long t) {
+        return t == 15 || t == 245 || (t >= 247 && t <= 255);
+    }
+
     private static boolean isNumericType(long t, long length) {
         return (t <= 9 && (t != 7 || length == 14 || length == 8)) || (t == 13 && length == 4);
     }
