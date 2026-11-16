@@ -1,37 +1,101 @@
 package dev.phpruntime.nodes.var;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.PhpError;
+import dev.phpruntime.runtime.PhpReference;
 
 /**
- * A variable in the global symbol table: top-level script variables, variables
- * imported with {@code global $x}, and superglobals such as $_GET.
+ * A variable in the global symbol table: top-level script variables and superglobals.
+ * Indexed by dense {@link dev.phpruntime.PhpLanguage#globalId} with no hash lookup.
+ * {@code $GLOBALS} (id &lt; 0) returns a read-only snapshot on read and forbids whole-variable writes.
  */
 public final class GlobalVarNode extends LValueNode {
 
     private final String name;
+    private final int globalId;
 
-    public GlobalVarNode(String name) {
+    public GlobalVarNode(String name, int globalId) {
         this.name = name;
+        this.globalId = globalId;
     }
 
     public String name() {
         return name;
     }
 
+    public int globalId() {
+        return globalId;
+    }
+
+    public boolean isGlobalsSuperglobal() {
+        return globalId < 0;
+    }
+
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
-        return PhpContext.get(this).readGlobal(name);
+        PhpContext ctx = PhpContext.get(this);
+        if (globalId < 0) {
+            return ctx.buildGlobalsSnapshot();
+        }
+        return ctx.readGlobalById(globalId);
+    }
+
+    @Override
+    public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
+        if (globalId >= 0) {
+            Object v = PhpContext.get(this).readGlobalById(globalId);
+            if (v instanceof Long l) {
+                return l;
+            }
+            throw new UnexpectedResultException(v == null ? undefined() : v);
+        }
+        throw new UnexpectedResultException(execute(frame));
+    }
+
+    @Override
+    public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
+        if (globalId >= 0) {
+            Object v = PhpContext.get(this).readGlobalById(globalId);
+            if (v instanceof Double d) {
+                return d;
+            }
+            throw new UnexpectedResultException(v == null ? undefined() : v);
+        }
+        throw new UnexpectedResultException(execute(frame));
     }
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
-        PhpContext.get(this).writeGlobal(name, value);
+        if (globalId < 0) {
+            throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
+        }
+        PhpContext.get(this).writeGlobalById(globalId, value);
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        if (globalId < 0) {
+            throw PhpError.fatal("Cannot acquire reference to $GLOBALS").at(this);
+        }
+        return PhpContext.get(this).globalRefById(globalId);
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        if (globalId < 0) {
+            throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
+        }
+        PhpContext.get(this).bindGlobalById(globalId, cell);
     }
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
-        PhpContext.get(this).unsetGlobal(name);
+        if (globalId < 0) {
+            throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
+        }
+        PhpContext.get(this).unsetGlobalById(globalId);
     }
 
     @Override

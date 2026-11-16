@@ -51,6 +51,9 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     private final AtomicInteger nextMethodId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> classIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextClassId = new AtomicInteger();
+    private final ConcurrentHashMap<String, Integer> globalIds = new ConcurrentHashMap<>();
+    private volatile String[] globalNamesById = new String[64];
+    private final AtomicInteger nextGlobalId = new AtomicInteger();
     private final AtomicLong nextTemplateId = new AtomicLong(2);
     private final ConcurrentHashMap<List<PhpClassTemplate>, Long> hierarchyIds = new ConcurrentHashMap<>();
     private final AtomicLong nextHierarchyId = new AtomicLong(1);
@@ -183,6 +186,41 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     public int classId(String name) {
         return classIds.computeIfAbsent(name.toLowerCase(), k -> nextClassId.getAndIncrement());
+    }
+
+    public int globalId(String name) {
+        Integer existing = globalIds.get(name);
+        if (existing != null) {
+            return existing;
+        }
+        synchronized (globalIds) {
+            existing = globalIds.get(name);
+            if (existing != null) {
+                return existing;
+            }
+            int id = nextGlobalId.getAndIncrement();
+            String[] names = globalNamesById;
+            if (id >= names.length) {
+                names = java.util.Arrays.copyOf(names, Math.max(id + 1, names.length * 2));
+            }
+            names[id] = name;
+            globalNamesById = names;
+            globalIds.put(name, id);
+            return id;
+        }
+    }
+
+    public Integer lookupGlobalId(String name) {
+        return globalIds.get(name);
+    }
+
+    public int globalIdCount() {
+        return nextGlobalId.get();
+    }
+
+    public String globalName(int id) {
+        String[] names = globalNamesById;
+        return id >= 0 && id < names.length ? names[id] : null;
     }
 
     public long nextTemplateId() {

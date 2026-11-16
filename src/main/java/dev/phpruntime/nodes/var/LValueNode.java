@@ -2,6 +2,7 @@ package dev.phpruntime.nodes.var;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
+import dev.phpruntime.runtime.PhpReference;
 
 /**
  * Something that can be assigned to: a variable or an array element path.
@@ -30,6 +31,21 @@ public abstract class LValueNode extends PhpNode {
     }
 
     public abstract void write(VirtualFrame frame, Object[] keys, Object value);
+
+    /**
+     * Obtains (or creates) a {@link PhpReference} cell backing this lvalue so writes to the
+     * returned cell mutate this variable, array element, or property in place.
+     */
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        throw new dev.phpruntime.runtime.PhpError("Cannot take reference to " + describe(), this);
+    }
+
+    /**
+     * Binds this lvalue directly to {@code cell} (for {@code $lhs = &$rhs} and {@code foreach (... as &$v)}).
+     */
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        throw new dev.phpruntime.runtime.PhpError("Cannot assign by reference to " + describe(), this);
+    }
 
     /** Typed writes; variables store these unboxed, everything else boxes. */
     public void writeLong(VirtualFrame frame, Object[] keys, long value) {

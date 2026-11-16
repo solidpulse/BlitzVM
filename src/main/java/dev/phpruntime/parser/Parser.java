@@ -48,7 +48,7 @@ public final class Parser {
     private int pos;
 
     public Parser(PhpLanguage language, Source source) {
-        this(language, source, lex(source), new Scope(true), new ArrayList<>(), new ArrayList<>(), "", null);
+        this(language, source, lex(source), new Scope(language, true), new ArrayList<>(), new ArrayList<>(), "", null);
     }
 
     private static List<Token> lex(Source source) {
@@ -304,15 +304,30 @@ public final class Parser {
                 }
                 case "global" -> {
                     next();
+                    List<Integer> slots = new ArrayList<>();
+                    List<Integer> globalIds = new ArrayList<>();
                     do {
                         Token v = next();
                         if (v.kind() != Kind.VARIABLE) {
                             throw error("expected variable after global");
                         }
-                        scope.importGlobal(v.text());
+                        String name = v.text();
+                        if ("GLOBALS".equals(name)) {
+                            throw error("Cannot use $GLOBALS as global variable");
+                        }
+                        if (!scope.isGlobal()) {
+                            scope.markCell(name);
+                            slots.add(scope.slot(name));
+                            globalIds.add(language.globalId(name));
+                        }
                     } while (acceptOp(","));
                     endStatement();
-                    return null;
+                    if (slots.isEmpty()) {
+                        return null;
+                    }
+                    return new GlobalImportNode(
+                            slots.stream().mapToInt(Integer::intValue).toArray(),
+                            globalIds.stream().mapToInt(Integer::intValue).toArray()).at(line);
                 }
                 case "static" -> {
                     if (peek(1).kind() == Kind.VARIABLE) {
@@ -561,6 +576,7 @@ public final class Parser {
     private PhpNode staticStatement(int line) {
         List<String> names = new ArrayList<>();
         List<Integer> slots = new ArrayList<>();
+        List<Integer> globalIds = new ArrayList<>();
         List<PhpNode> inits = new ArrayList<>();
         do {
             Token v = next();
@@ -572,8 +588,10 @@ public final class Parser {
             if (!scope.isGlobal()) {
                 scope.markCell(name);
                 slots.add(scope.slot(name));
+                globalIds.add(-1);
             } else {
                 slots.add(-1);
+                globalIds.add(language.globalId(name));
             }
             inits.add(acceptOp("=") ? expression() : null);
         } while (acceptOp(","));
@@ -582,6 +600,7 @@ public final class Parser {
                 scope.isGlobal(), scope.closureObjSlot(),
                 names.toArray(new String[0]),
                 slots.stream().mapToInt(Integer::intValue).toArray(),
+                globalIds.stream().mapToInt(Integer::intValue).toArray(),
                 inits.toArray(new PhpNode[0])).at(line);
     }
 
@@ -682,7 +701,7 @@ public final class Parser {
         Scope outer = scope;
         String outerFunction = currentFunction;
         String outerClass = currentClass;
-        scope = new Scope(false);
+        scope = new Scope(language, false);
         currentFunction = name;
         currentClass = null;
         try {
@@ -710,7 +729,7 @@ public final class Parser {
     private PhpNode parseClosure(int line, boolean isStatic) {
         Scope outer = scope;
         String outerFunction = currentFunction;
-        scope = Scope.forClosure(outer, !isStatic, false);
+        scope = Scope.forClosure(language, outer, !isStatic, false);
         currentFunction = "{closure}";
         try {
             ParsedParams params = parseParams();
@@ -743,7 +762,7 @@ public final class Parser {
     private PhpNode parseArrowFunction(int line, boolean isStatic) {
         Scope outer = scope;
         String outerFunction = currentFunction;
-        scope = Scope.forClosure(outer, !isStatic, true);
+        scope = Scope.forClosure(language, outer, !isStatic, true);
         currentFunction = "{closure}";
         try {
             ParsedParams params = parseParams();
@@ -905,7 +924,7 @@ public final class Parser {
         String lower = mName.toLowerCase();
         Scope outerScope = scope;
         String outerFunction = currentFunction;
-        scope = Scope.forMethod();
+        scope = Scope.forMethod(language);
         currentFunction = mName;
         try {
             ParsedParams params = parseParams();
@@ -1244,7 +1263,27 @@ public final class Parser {
                         keys.add(peek().isOp("]") ? null : expression());
                         expectOp("]");
                     }
-                    e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                    if (lv instanceof GlobalVarNode gv && gv.isGlobalsSuperglobal()) {
+                        PhpNode firstKey = keys.get(0);
+                        String constName = null;
+                        int constId = -1;
+                        if (firstKey instanceof ConstNode cn && cn.value() instanceof String s) {
+                            Object norm = dev.phpruntime.runtime.PhpArray.normalizeKey(s);
+                            constName = norm instanceof String ns ? ns : String.valueOf(norm);
+                            constId = "GLOBALS".equals(constName) ? -1 : language.globalId(constName);
+                        } else if (firstKey instanceof ConstNode cn && cn.value() instanceof Long l) {
+                            constName = Long.toString(l);
+                            constId = language.globalId(constName);
+                        }
+                        LValueNode elem = new GlobalsElementLValueNode(firstKey, constName, constId).at(line);
+                        if (keys.size() == 1) {
+                            e = elem;
+                        } else {
+                            e = new IndexLValueNode(elem, keys.subList(1, keys.size()).toArray(new PhpNode[0])).at(line);
+                        }
+                    } else {
+                        e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                    }
                 } else {
                     PhpNode key = expression();
                     expectOp("]");

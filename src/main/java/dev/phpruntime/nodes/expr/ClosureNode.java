@@ -52,14 +52,7 @@ public final class ClosureNode extends PhpNode {
         Object[] caps = new Object[captureReads.length];
         for (int i = 0; i < captureReads.length; i++) {
             if (byRef[i]) {
-                if (captureReads[i] instanceof LocalVarNode lv) {
-                    caps[i] = lv.readOrCreateCell(frame);
-                } else if (captureReads[i] instanceof GlobalVarNode gv) {
-                    caps[i] = ctx.globalRef(gv.name());
-                } else {
-                    Object v = captureReads[i].read(frame, NO_KEYS);
-                    caps[i] = new PhpReference(v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v));
-                }
+                caps[i] = captureReads[i].obtainCell(frame, NO_KEYS);
             } else {
                 Object v = warnIfUndefined[i]
                         ? captureReads[i].execute(frame)

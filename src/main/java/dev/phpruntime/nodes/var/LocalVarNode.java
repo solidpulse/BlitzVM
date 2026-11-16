@@ -24,17 +24,29 @@ public final class LocalVarNode extends LValueNode {
         this.kind = kind;
     }
 
+    public int slot() {
+        return slot;
+    }
+
+    public String varName() {
+        return name;
+    }
+
+    public VarKind kind() {
+        return kind;
+    }
+
     /** A second node for the same variable, e.g. the read in {@code $x = $x + 1}. */
     public LocalVarNode copyForRead() {
         return new LocalVarNode(slot, name, kind).at(line());
     }
 
     public boolean holdsLong(VirtualFrame frame) {
-        return frame.isLong(slot);
+        return !kind.isCell() && frame.isLong(slot);
     }
 
     public boolean holdsDouble(VirtualFrame frame) {
-        return frame.isDouble(slot);
+        return !kind.isCell() && frame.isDouble(slot);
     }
 
     public long getLong(VirtualFrame frame) {
@@ -65,8 +77,43 @@ public final class LocalVarNode extends LValueNode {
         if (ref == null) {
             ref = new PhpReference(PhpNull.INSTANCE);
             frame.setObject(slot, ref);
+        } else if (ref.value == null) {
+            ref.value = PhpNull.INSTANCE;
         }
         return ref;
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        if ("this".equals(name)) {
+            throw new dev.phpruntime.runtime.PhpError("Cannot re-assign $this", this);
+        }
+        if (kind.isCell()) {
+            return readOrCreateCell(frame);
+        }
+        kind.markCell();
+        Object cur;
+        if (frame.isLong(slot)) {
+            cur = frame.getLong(slot);
+        } else if (frame.isDouble(slot)) {
+            cur = frame.getDouble(slot);
+        } else {
+            cur = frame.getObject(slot);
+        }
+        PhpReference ref = new PhpReference(cur == null ? PhpNull.INSTANCE : cur);
+        frame.setObject(slot, ref);
+        return ref;
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        if ("this".equals(name)) {
+            throw new dev.phpruntime.runtime.PhpError("Cannot re-assign $this", this);
+        }
+        if (!kind.isCell()) {
+            kind.markCell();
+        }
+        frame.setObject(slot, cell);
     }
 
     @Override
@@ -163,7 +210,11 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
-        frame.setObject(slot, null);
+        if (kind.isCell()) {
+            frame.setObject(slot, new PhpReference(null));
+        } else {
+            frame.setObject(slot, null);
+        }
     }
 
     @Override
