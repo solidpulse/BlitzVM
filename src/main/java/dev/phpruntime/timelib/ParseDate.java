@@ -276,6 +276,40 @@ public final class ParseDate {
 
     private static final Rule[] RULES = buildRules();
 
+    /**
+     * For each first character 0..255, the indices (in rule order) of the rules that can match
+     * starting with it. Computed from the patterns themselves: a rule qualifies when it matches
+     * the one-character input or would need more input ({@code hitEnd}). Trying only these rules
+     * at a position gives the same longest match as trying all of them.
+     */
+    private static final int[][] RULES_BY_FIRST_CHAR = buildFirstCharDispatch();
+    private static final int[] ALL_RULES = buildAllRules();
+
+    private static int[][] buildFirstCharDispatch() {
+        int[][] out = new int[256][];
+        for (int c = 0; c < 256; c++) {
+            String one = String.valueOf((char) c);
+            int[] tmp = new int[RULES.length];
+            int n = 0;
+            for (int i = 0; i < RULES.length; i++) {
+                Matcher m = RULES[i].pattern.matcher(one);
+                if (m.lookingAt() || m.hitEnd()) {
+                    tmp[n++] = i;
+                }
+            }
+            out[c] = java.util.Arrays.copyOf(tmp, n);
+        }
+        return out;
+    }
+
+    private static int[] buildAllRules() {
+        int[] all = new int[RULES.length];
+        for (int i = 0; i < all.length; i++) {
+            all[i] = i;
+        }
+        return all;
+    }
+
     private static Rule[] buildRules() {
         List<Rule> r = new ArrayList<>(55);
 
@@ -1729,8 +1763,14 @@ public final class ParseDate {
 
             int bestLen = -1;
             Rule bestRule = null;
-            for (int i = 0; i < RULES.length; i++) {
+            char first = s.str.charAt(cursor);
+            int[] candidates = first < 256 ? RULES_BY_FIRST_CHAR[first] : ALL_RULES;
+            for (int i : candidates) {
                 Matcher m = s.matchers[i];
+                if (m == null) {
+                    m = RULES[i].pattern.matcher(s.str);
+                    s.matchers[i] = m;
+                }
                 m.region(cursor, s.lim);
                 if (m.lookingAt()) {
                     int len = m.end() - cursor;
@@ -1851,10 +1891,7 @@ public final class ParseDate {
         in.cur = 0;
         in.time = newUnsetTime();
         in.tzdb = tzdb;
-        in.matchers = new Matcher[RULES.length];
-        for (int i = 0; i < RULES.length; i++) {
-            in.matchers[i] = RULES[i].pattern.matcher(in.str);
-        }
+        in.matchers = new Matcher[RULES.length]; // created on first use by scan()
 
         int t;
         do {
