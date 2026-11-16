@@ -122,7 +122,7 @@ public final class PhpMainRootNode extends PhpRootNode {
         ctx.writeGlobal("_COOKIE", PhpQuery.parseCookies(PhpQuery.header(request.headers, "Cookie")));
         ctx.writeGlobal("_FILES", new PhpArray());
         PhpArray environment = new PhpArray();
-        System.getenv().forEach((key, value) -> environment.put(dev.phpruntime.runtime.PhpStrings.fromJava(key),
+        request.environment.forEach((key, value) -> environment.put(dev.phpruntime.runtime.PhpStrings.fromJava(key),
                 dev.phpruntime.runtime.PhpStrings.fromJava(value)));
         ctx.writeGlobal("_ENV", environment);
         ctx.writeGlobal("_SERVER", toArray(request.server));

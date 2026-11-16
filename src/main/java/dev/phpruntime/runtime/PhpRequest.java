@@ -27,6 +27,8 @@ public final class PhpRequest {
     public final Map<String, String> get = new LinkedHashMap<>();
     public final Map<String, String> post = new LinkedHashMap<>();
     public final Map<String, String> server = new LinkedHashMap<>();
+    /** Java OS environment text supplied by an embedder; empty by default, like php-cli. */
+    public final Map<String, String> environment = new LinkedHashMap<>();
 
     /** True when serving HTTP (a JS module's exported handler is then called with req/res). */
     public boolean http;

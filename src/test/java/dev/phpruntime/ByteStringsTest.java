@@ -185,6 +185,18 @@ class ByteStringsTest {
     }
 
     @Test
+    void hostProvidedEnvironmentIsJavaText(@TempDir Path dir) throws Exception {
+        Path script = Files.writeString(dir.resolve("env.php"), "<?php echo bin2hex($_ENV['clé']);");
+        PhpRequest request = new PhpRequest();
+        request.environment.put("clé", "é😀");
+        try (PhpEngine engine = new PhpEngine(null)) {
+            var result = engine.execute(script, request);
+            assertEquals(200, result.status(), result.bodyText() + result.errors());
+            assertArrayEquals("c3a9f09f9880".getBytes(StandardCharsets.US_ASCII), result.body());
+        }
+    }
+
+    @Test
     void pathsAndDiagnosticsHaveExplicitBoundaries(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("é😀"), "payload");
         String code = """
