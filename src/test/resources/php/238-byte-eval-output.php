@@ -11,3 +11,4 @@ echo "\n";
 $s = str_repeat("é’😀\xFF", 1000);
 ob_start(); echo $s; $out = ob_get_clean();
 var_dump(strlen($out), $out === $s, base64_decode(base64_encode($out)) === $s);
+var_dump(eval('1 + 1;'));

@@ -48,7 +48,8 @@ public final class PhpMainRootNode extends PhpRootNode {
         boolean isEntry = frame.getArguments().length == 0;
         PhpContext ctx = PhpContext.get(this);
         PhpRequest request = ctx.request();
-        Object result = 1L;
+        Object result = !isEntry && frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE
+                ? PhpNull.INSTANCE : 1L;
         try {
             if (isEntry) {
                 start(ctx, request);

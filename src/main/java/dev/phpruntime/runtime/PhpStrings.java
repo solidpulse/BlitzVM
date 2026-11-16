@@ -216,6 +216,16 @@ public final class PhpStrings {
         }
     }
 
+    /** Strict decode and validation together, for /u subjects that need Java text. */
+    public static String toJavaUtf8OrNull(String s) {
+        try {
+            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes(s))).toString();
+        } catch (CharacterCodingException e) {
+            return null;
+        }
+    }
+
     /** json_decode substitutes one U+FFFD for each invalid byte (not maximal subparts). */
     public static String decodeUtf8Json(String s, boolean ignore) {
         StringBuilder out = new StringBuilder(s.length());

@@ -93,9 +93,9 @@ final class PregFunctions {
         private final int byteLength;
         final boolean utf;
 
-        Offsets(String s, boolean utf) {
+        Offsets(String s, boolean utf, String text) {
             this.utf = utf;
-            text = utf ? PhpStrings.toJava(s) : s;
+            this.text = text;
             byteLength = s.length();
         }
 
@@ -127,11 +127,12 @@ final class PregFunctions {
     }
 
     private static Offsets subject(PhpContext ctx, PcreTranslator.Compiled re, String s) {
-        if (re.utf && !PhpStrings.isUtf8(s)) {
+        String text = re.utf ? PhpStrings.toJavaUtf8OrNull(s) : s;
+        if (text == null) {
             ContextState.of(ctx).pregLastError = 4;
             return null;
         }
-        return new Offsets(s, re.utf);
+        return new Offsets(s, re.utf, text);
     }
 
     /** Java advances empty matches by UTF-16 units; PCRE /u advances by code points. */

@@ -10,6 +10,7 @@ import dev.phpruntime.runtime.PhpOps;
 
 /** eval's source is already a PHP byte string, not Java text. */
 public final class EvalNode extends PhpNode {
+    public static final Object EVAL_MODE = new Object();
     @Child private PhpNode code;
 
     public EvalNode(PhpNode code) {
@@ -28,7 +29,7 @@ public final class EvalNode extends PhpNode {
         // Match the existing include implementation's global-scope execution. No request
         // object or parsed target is stored in this shared AST node.
         try {
-            return ctx.language().parseBytes(source).call(new Object[]{"eval"});
+            return ctx.language().parseBytes(source).call(new Object[]{EVAL_MODE});
         } catch (dev.phpruntime.parser.PhpParseError e) {
             throw new dev.phpruntime.runtime.PhpError(dev.phpruntime.runtime.PhpError.PARSE_ERROR, e.getMessage(), this);
         }
