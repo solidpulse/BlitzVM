@@ -180,14 +180,17 @@ public final class Lexer {
 
     private void lexNumber() {
         int start = pos;
-        if (src.startsWith("0x", pos) || src.startsWith("0X", pos)) {
-            pos += 2;
-            while (pos < src.length() && (Character.digit(src.charAt(pos), 16) >= 0 || src.charAt(pos) == '_')) {
-                pos++;
+        if (pos + 1 < src.length() && src.charAt(pos) == '0') {
+            char p = Character.toLowerCase(src.charAt(pos + 1));
+            int radix = p == 'x' ? 16 : p == 'b' ? 2 : p == 'o' ? 8 : 0;
+            if (radix != 0 && pos + 2 < src.length() && Character.digit(src.charAt(pos + 2), radix) >= 0) {
+                pos += 2;
+                while (pos < src.length() && (Character.digit(src.charAt(pos), radix) >= 0 || src.charAt(pos) == '_')) {
+                    pos++;
+                }
+                addRadixInt(src.substring(start + 2, pos).replace("_", ""), radix, start);
+                return;
             }
-            String hex = src.substring(start + 2, pos).replace("_", "");
-            out.add(new Token(Kind.INT, Long.toString(Long.parseLong(hex, 16)), start, line));
-            return;
         }
         boolean isFloat = false;
         while (pos < src.length()) {
@@ -206,7 +209,35 @@ public final class Lexer {
             }
         }
         String text = src.substring(start, pos).replace("_", "");
+        if (!isFloat && text.length() > 1 && text.charAt(0) == '0') {
+            // Legacy octal: 0755 is 493. php rejects digits 8 and 9 at compile time.
+            for (int i = 1; i < text.length(); i++) {
+                if (text.charAt(i) > '7') {
+                    throw new PhpParseError("Invalid numeric literal", line);
+                }
+            }
+            addRadixInt(text.substring(1), 8, start);
+            return;
+        }
         out.add(new Token(isFloat ? Kind.FLOAT : Kind.INT, text, start, line));
+    }
+
+    /** Hex, octal and binary literals; like php, values beyond PHP_INT_MAX become floats. */
+    private void addRadixInt(String digits, int radix, int start) {
+        java.math.BigInteger v = new java.math.BigInteger(digits.isEmpty() ? "0" : digits, radix);
+        if (v.bitLength() <= 63) {
+            out.add(new Token(Kind.INT, Long.toString(v.longValue()), start, line));
+        } else {
+            // php accumulates in a double digit by digit. zend_hex_strtod adds the digit value;
+            // zend_oct_strtod and zend_bin_strtod compute `value * radix + c - '0'` left to
+            // right with the character code, rounding twice. Reproduce both exactly.
+            double d = 0;
+            for (int i = 0; i < digits.length(); i++) {
+                char c = digits.charAt(i);
+                d = radix == 16 ? d * 16 + Character.digit(c, 16) : d * radix + c - '0';
+            }
+            out.add(new Token(Kind.FLOAT, Double.toString(d), start, line));
+        }
     }
 
     private void lexSingleQuoted() {
