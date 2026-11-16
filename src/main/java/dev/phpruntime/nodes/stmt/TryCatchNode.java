@@ -47,7 +47,7 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         }
 
         @ExplodeLoop
-        boolean matches(PhpContext ctx, PhpClass thrownClass) {
+        public boolean matches(PhpContext ctx, PhpClass thrownClass) {
             for (int i = 0; i < classIds.length; i++) {
                 if (matchAllThrowables[i] && thrownClass.isThrowable()) {
                     return true;
@@ -60,10 +60,14 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
             return false;
         }
 
-        void executeCatch(VirtualFrame frame, PhpObject exObj) {
+        public void executeCatch(VirtualFrame frame, PhpObject exObj) {
             if (varTarget != null) {
                 varTarget.write(frame, varTarget.evalKeys(frame), exObj);
             }
+            body.executeVoid(frame);
+        }
+
+        public void resumeCatch(VirtualFrame frame) {
             body.executeVoid(frame);
         }
 
@@ -209,7 +213,8 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
 
     private static boolean shouldRunFinallyFor(Throwable t) {
         if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break
-                || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto) {
+                || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto
+                || t instanceof ControlFlow.GeneratorClose) {
             return true;
         }
         if (t instanceof PhpException) {

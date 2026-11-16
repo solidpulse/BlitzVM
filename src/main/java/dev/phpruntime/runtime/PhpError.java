@@ -143,8 +143,14 @@ public final class PhpError extends AbstractTruffleException {
                 pendingType = null;
                 pendingArgs = null;
             }
-            if (root instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
+            if (root instanceof dev.phpruntime.nodes.PhpFunctionRootNode
+                    || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = root instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn ? fn
+                        : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
                 com.oracle.truffle.api.frame.Frame frame = el.getFrame();
+                if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode && frame != null) {
+                    frame = ((PhpGenerator) frame.getArguments()[0]).frame;
+                }
                 pendingFn = fnRoot.rawFunctionName();
                 if (fnRoot.isClosure()) {
                     pendingCls = fnRoot.declaringClass();

@@ -15,6 +15,11 @@ public final class SplIterators {
     }
 
     public static Object call(PhpObject receiver, String name, Object... args) {
+        if (name.equals("rewind") && receiver.nativeState() instanceof PhpGenerator generator && generator.isClosed()) {
+            dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(null);
+            throw new PhpException(PhpExceptions.createBuiltinThrowable(ctx, "Exception",
+                    "Cannot traverse an already closed generator", 0L, "", 0, null), null);
+        }
         PhpClass.MethodEntry method = receiver.phpClass().lookupMethod(name);
         if (method == null || method.callTarget() == null) {
             throw new PhpError("Call to undefined method " + receiver.phpClass().name() + "::" + name + "()");

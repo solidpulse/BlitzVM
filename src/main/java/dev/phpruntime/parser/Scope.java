@@ -42,6 +42,9 @@ final class Scope {
     private final int closureObjSlot;
     private final int traitSelfSlot;
     private GotoScope gotoScope;
+    private int generatorSlot = -1;
+    private int hiddenId;
+    private boolean usesThis;
 
     Scope(PhpLanguage language, boolean global) {
         this(language, global, false, null, false, false, false);
@@ -61,7 +64,7 @@ final class Scope {
             this.calledClassSlot = isClosure ? slot("@calledClass") : -1;
         }
         this.closureObjSlot = isClosure ? slot("@closureObj") : -1;
-        boolean needsTraitSelf = isTraitMethod || (isClosure && outer != null && outer.traitSelfSlot() >= 0);
+        boolean needsTraitSelf = isTraitMethod || isClosure;
         this.traitSelfSlot = needsTraitSelf ? slot("@traitSelf") : -1;
     }
 
@@ -134,6 +137,9 @@ final class Scope {
     }
 
     LValueNode variable(String name) {
+        if (name.equals("this") && closureObjSlot >= 0) {
+            usesThis = true;
+        }
         if ("GLOBALS".equals(name)) {
             return new GlobalVarNode(name, -1);
         }
@@ -161,6 +167,29 @@ final class Scope {
 
     int intSlot(String name) {
         return slots.computeIfAbsent(name, n -> frame.addSlot(FrameSlotKind.Int, n, null));
+    }
+
+    int generatorSlot() {
+        if (generatorSlot < 0) {
+            generatorSlot = objectSlot();
+        }
+        return generatorSlot;
+    }
+
+    boolean isGenerator() {
+        return generatorSlot >= 0;
+    }
+
+    boolean usesThis() {
+        return usesThis;
+    }
+
+    int resumeSlot() {
+        return frame.addSlot(FrameSlotKind.Int, "@resume" + hiddenId++, null);
+    }
+
+    int objectSlot() {
+        return frame.addSlot(FrameSlotKind.Object, "@saved" + hiddenId++, null);
     }
 
     GotoScope gotoScope() {

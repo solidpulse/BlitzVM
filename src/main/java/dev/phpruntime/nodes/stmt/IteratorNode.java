@@ -8,6 +8,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.SplInterfaces;
+import dev.phpruntime.nodes.expr.CondNode;
 
 /** Iterator protocol. Node fields contain only method ids and child call caches, never iterators. */
 public final class IteratorNode extends Node {
@@ -49,11 +50,14 @@ public final class IteratorNode extends Node {
     }
 
     public void rewind(PhpObject iterator) {
+        if (iterator.nativeState() instanceof dev.phpruntime.runtime.PhpGenerator generator && generator.isClosed()) {
+            throw closedGenerator();
+        }
         rewind.call(iterator);
     }
 
     public boolean valid(PhpObject iterator) {
-        return PhpOps.toBool(CallArgHelper.unwrapReturn(valid.call(iterator)));
+        return CondNode.toBool(CallArgHelper.unwrapReturn(valid.call(iterator)));
     }
 
     public Object current(PhpObject iterator) {
@@ -66,5 +70,13 @@ public final class IteratorNode extends Node {
 
     public void next(PhpObject iterator) {
         next.call(iterator);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private dev.phpruntime.runtime.PhpException closedGenerator() {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        return new dev.phpruntime.runtime.PhpException(dev.phpruntime.runtime.PhpExceptions.createBuiltinThrowable(
+                ctx, "Exception", "Cannot traverse an already closed generator", 0L,
+                dev.phpruntime.runtime.PhpBacktrace.sourcePath(this), dev.phpruntime.runtime.PhpBacktrace.sourceLine(this), null), this);
     }
 }

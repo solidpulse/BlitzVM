@@ -1,0 +1,11 @@
+Generator:iterator
+start:3|bool(true)
+int(0)
+NULL
+0:null|5:"five"|6:"six"|"name":"named"|7:"seven"|
+42
+bool(false)
+NULL
+NULL
+created|body|bound
+{"-3":"a","0":"b","10":"c","2":"d","11":"e"}
