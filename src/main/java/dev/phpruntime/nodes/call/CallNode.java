@@ -217,6 +217,11 @@ public final class CallNode extends PhpNode {
     @ExplodeLoop
     private Object callBuiltin(VirtualFrame frame) {
         Builtins.Def def = builtin;
+        // zend.assertions is -1 in this build: assert() compiles to nothing, not even
+        // evaluating its arguments. The parser is shared with other work, so skip here.
+        if (def.name().equals("assert")) {
+            return true;
+        }
         if (hasSpreadOrNamed) {
             return CallArgHelper.callComplexBuiltin(frame, def, args, refTargets, argNames, spreads, this);
         }

@@ -5,6 +5,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpRequest;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.util.Locale;
 
@@ -111,6 +112,22 @@ final class CoreFunctions {
         Builtins.def("doubleval", 1, 1, (ctx, a) -> PhpOps.toDouble(a[0]));
         Builtins.def("strval", 1, 1, (ctx, a) -> PhpOps.toStr(a[0]));
         Builtins.def("boolval", 1, 1, (ctx, a) -> PhpOps.toBool(a[0]));
+        Builtins.defRef("settype", 2, 2, 1, (ctx, a) -> {
+            String type = PhpOps.toStr(a[1]);
+            Object value = a[0];
+            a[0] = switch (PhpStrings.lower(type)) {
+                case "boolean", "bool" -> PhpOps.toBool(value);
+                case "integer", "int" -> PhpOps.toLong(value);
+                case "float", "double" -> PhpOps.toDouble(value);
+                case "string" -> PhpOps.toStr(value);
+                case "array" -> dev.phpruntime.nodes.expr.CastNode.toArray(value);
+                case "object" -> dev.phpruntime.nodes.expr.CastNode.toObject(ctx, value);
+                case "null" -> dev.phpruntime.runtime.PhpNull.INSTANCE;
+                default -> throw new PhpError(PhpError.VALUE_ERROR,
+                        "settype(): Argument #2 ($type) must be a valid type", null);
+            };
+            return true;
+        });
     }
 
     private static void time() {

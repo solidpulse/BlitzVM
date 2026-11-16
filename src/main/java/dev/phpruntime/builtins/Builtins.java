@@ -75,6 +75,7 @@ public final class Builtins {
         MiscFunctions.register();
         SplFunctions.register();
         BinaryFunctions.register();
+        RuntimeFunctions.register();
     }
 
     private Builtins() {
@@ -90,5 +91,14 @@ public final class Builtins {
 
     public static Def lookup(String name) {
         return TABLE.get(PhpStrings.lower(name));
+    }
+
+    /** Every registered builtin's declared name, for get_defined_functions(). */
+    public static java.util.List<String> names() {
+        java.util.List<String> out = new java.util.ArrayList<>(TABLE.size());
+        for (Def def : TABLE.values()) {
+            out.add(def.name());
+        }
+        return out;
     }
 }

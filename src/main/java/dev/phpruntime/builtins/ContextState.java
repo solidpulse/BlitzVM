@@ -21,6 +21,8 @@ final class ContextState {
 
     /** Last errors/warnings from date parsing (date_get_last_errors, DateTime::getLastErrors). */
     dev.phpruntime.timelib.TimelibErrorContainer lastDateErrors;
+    /** ignore_user_abort(): 0 or 1; PHP starts at 0. */
+    long ignoreUserAbort;
     /** mbstring settings are request-local, never cached on AST nodes. */
     String mbEncoding = "UTF-8";
     Object mbSubstitute = 63L;

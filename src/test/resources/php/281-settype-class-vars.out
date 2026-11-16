@@ -1,0 +1,94 @@
+bool(true)
+int(12)
+bool(true)
+int(12)
+bool(true)
+int(12)
+bool(true)
+int(0)
+bool(true)
+int(1000)
+bool(true)
+int(0)
+bool(true)
+int(1)
+bool(true)
+int(0)
+bool(true)
+int(0)
+bool(true)
+int(3)
+string(2) "12"
+string(4) "12.5"
+string(3) "abc"
+string(3) "1e3"
+string(0) ""
+string(1) "1"
+string(0) ""
+string(0) ""
+string(3) "3.9"
+float(12)
+float(0)
+float(1000)
+float(0)
+float(1)
+float(0)
+float(0)
+float(3.9)
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(false)
+array (
+  0 => 5,
+)
+array (
+  'a' => 1,
+  'b' => 'two',
+)
+(object) array(
+   'scalar' => 'scalar',
+)
+NULL
+ValueError: settype(): Argument #2 ($type) must be a valid type
+array (
+  'pub' => 1,
+  'noDefault' => NULL,
+  'list' => 
+  array (
+    0 => 1,
+    1 => 2,
+  ),
+  'stat' => 4,
+)
+array (
+  'child' => 9,
+  'pub' => 1,
+  'noDefault' => NULL,
+  'list' => 
+  array (
+    0 => 1,
+    1 => 2,
+  ),
+  'stat' => 4,
+)
+array (
+  'child' => 9,
+  'childPriv' => 8,
+  'pub' => 1,
+  'prot' => 2,
+  'noDefault' => NULL,
+  'list' => 
+  array (
+    0 => 1,
+    1 => 2,
+  ),
+  'stat' => 4,
+)
+99
+TypeError: get_class_vars(): Argument #1 ($class) must be a valid class name, MissingClass given
