@@ -141,9 +141,17 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
                     PhpClassTemplate.MethodDecl invokeDecl = new PhpClassTemplate.MethodDecl(
                             "__invoke", "__invoke", methodId("__invoke"), Visibility.PUBLIC,
                             false, false, false, new ClosureInvokeRootNode(this).getCallTarget());
+                    Map<String, PhpClassTemplate.MethodDecl> methods = new java.util.LinkedHashMap<>();
+                    methods.put("__invoke", invokeDecl);
+                    for (String name : List.of("bind", "bindTo", "call", "fromCallable")) {
+                        String lower = name.toLowerCase();
+                        methods.put(lower, new PhpClassTemplate.MethodDecl(name, lower, methodId(name), Visibility.PUBLIC,
+                                name.equals("bind") || name.equals("fromCallable"), false, false,
+                                new dev.phpruntime.nodes.call.ClosureMethodRootNode(this, name).getCallTarget()));
+                    }
                     tpl = new PhpClassTemplate(
                             1L, "Closure", false, false, true, false, null,
-                            List.of(), List.of(), List.of(), Map.of("__invoke", invokeDecl));
+                            List.of(), List.of(), List.of(), methods);
                     closureTemplate = tpl;
                 }
             }

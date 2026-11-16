@@ -333,6 +333,21 @@ public final class PhpContext {
     }
 
     @TruffleBoundary
+    public void copyClosureStatics(PhpObject original, PhpObject copy, boolean share) {
+        Map<String, PhpReference> values = staticLocals.get(original);
+        if (values == null) { return; }
+        if (share) {
+            staticLocals.put(copy, values);
+        } else {
+            Map<String, PhpReference> cloned = new HashMap<>();
+            for (var entry : values.entrySet()) {
+                cloned.put(entry.getKey(), new PhpReference(PhpOps.copyOnAssign(entry.getValue().value)));
+            }
+            staticLocals.put(copy, cloned);
+        }
+    }
+
+    @TruffleBoundary
     public void unsetGlobal(String name) {
         if ("GLOBALS".equals(name)) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
@@ -588,6 +603,10 @@ public final class PhpContext {
         }
         PhpClass cls = new PhpClass(language, template, parent, ifaces, resolvedTraits);
         if (!template.isInterface() && !template.isTrait()) {
+            if (cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.ITERATOR)
+                    && cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.AGGREGATE)) {
+                throw PhpError.fatal("Class " + template.name() + " cannot implement both Iterator and IteratorAggregate at the same time");
+            }
             if (cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.TRAVERSABLE)
                     && !cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.ITERATOR)
                     && !cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.AGGREGATE)) {
@@ -599,6 +618,9 @@ public final class PhpContext {
                 ifaces.add(lookupClass("Stringable"));
                 cls = new PhpClass(language, template, parent, ifaces, resolvedTraits);
             }
+            if (!isBuiltin && !cls.isAbstract()) {
+                validateSplMethods(cls, cls);
+            }
         }
         classes.put(lower, cls);
         int id = language.classId(lower);
@@ -607,6 +629,34 @@ public final class PhpContext {
         }
         classesById[id] = cls;
         return cls;
+    }
+
+    private void validateSplMethods(PhpClass cls, PhpClass inherited) {
+        if (inherited.parent() != null) { validateSplMethods(cls, inherited.parent()); }
+        for (PhpClass iface : inherited.interfaces()) {
+            for (var entry : iface.template().methodSignatures().entrySet()) {
+                PhpClass.MethodEntry implementation = cls.lookupMethod(entry.getKey());
+                if (implementation == null || implementation.callTarget() == null) {
+                    throw PhpError.fatal("Class " + cls.name() + " contains 1 abstract method and must therefore be declared abstract or implement the remaining methods ("
+                            + iface.name() + "::" + iface.template().methods().get(entry.getKey()).name() + ")");
+                }
+                if (implementation.isStatic()) {
+                    throw PhpError.fatal("Cannot make non static method " + iface.name() + "::" + implementation.name()
+                            + "() static in class " + cls.name());
+                }
+                if (implementation.visibility() != dev.phpruntime.runtime.Visibility.PUBLIC) {
+                    throw PhpError.fatal("Access level to " + cls.name() + "::" + implementation.name() + "() must be public (as in interface " + iface.name() + ")");
+                }
+                if (implementation.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode function) {
+                    int required = entry.getValue().parameterNames().size();
+                    if ((!function.isVariadic() && function.paramNames().length < required) || function.requiredArgs() > required) {
+                        throw PhpError.fatal("Declaration of " + cls.name() + "::" + implementation.name() + "() must be compatible with "
+                                + iface.name() + "::" + implementation.name() + "()");
+                    }
+                }
+            }
+            validateSplMethods(cls, iface);
+        }
     }
 
     public long nextObjectId() {

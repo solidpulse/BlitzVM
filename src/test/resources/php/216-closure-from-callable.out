@@ -1,0 +1,8 @@
+9
+5
+4
+21
+12
+9
+bool(true)
+Failed to create closure from callable: cannot access private method CallableSource::secret()

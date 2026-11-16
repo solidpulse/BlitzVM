@@ -18,6 +18,7 @@ import dev.phpruntime.runtime.PhpObject;
 public final class ClosureInvokeRootNode extends PhpRootNode {
 
     @Child private IndirectCallNode indirectCall = Truffle.getRuntime().createIndirectCallNode();
+    @Child private DispatchCallNode dispatch = new DispatchCallNode();
 
     public ClosureInvokeRootNode(PhpLanguage language) {
         super(language, new FrameDescriptor(), null, 0);
@@ -31,8 +32,16 @@ public final class ClosureInvokeRootNode extends PhpRootNode {
         Object[] userArgs = new Object[args.length - 2];
         System.arraycopy(args, 2, userArgs, 0, userArgs.length);
         Object res = switch (closure.kind()) {
-            case CLOSURE -> indirectCall.call(closure.callTarget(),
-                    PhpCallable.buildClosureArgs(closure.callTarget(), closure.boundThis(), closure.calledClass(), closureObj, userArgs, PhpContext.get(this), this));
+            case CLOSURE -> {
+                com.oracle.truffle.api.RootCallTarget target = closure.callTarget();
+                com.oracle.truffle.api.RootCallTarget cached = dispatch.cachedTarget();
+                if (cached == target) {
+                    yield dispatch.call(cached, PhpCallable.buildClosureArgs(cached, closure.boundThis(),
+                            closure.calledClass(), closureObj, userArgs, PhpContext.get(this), this));
+                }
+                yield dispatch.call(target, PhpCallable.buildClosureArgs(target, closure.boundThis(),
+                        closure.calledClass(), closureObj, userArgs, PhpContext.get(this), this));
+            }
             case USER_FUNCTION, METHOD, MAGIC_CALL, BUILTIN ->
                     PhpCallable.invokeClosure(PhpContext.get(this), indirectCall, this, closureObj, closure, userArgs);
         };

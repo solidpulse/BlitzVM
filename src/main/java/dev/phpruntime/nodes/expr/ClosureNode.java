@@ -29,7 +29,7 @@ public final class ClosureNode extends PhpNode {
     private final int outerThisSlot;
     private final int outerCalledClassSlot;
     private final int outerTraitSelfSlot;
-    private int lexicalClassId = -1;
+    @CompilationFinal private int lexicalClassId = -1;
     @Children private final LValueNode[] captureReads;
     @CompilationFinal(dimensions = 1) private final boolean[] warnIfUndefined;
     @CompilationFinal(dimensions = 1) private final boolean[] byRef;

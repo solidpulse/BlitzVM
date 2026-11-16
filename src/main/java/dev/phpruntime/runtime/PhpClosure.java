@@ -109,4 +109,9 @@ public final class PhpClosure {
         Object[] capCopy = captures == null ? null : captures.clone();
         return new PhpClosure(kind, callTarget, builtin, boundThis, calledClass, traitSelf, capCopy, magicMethodName);
     }
+
+    public PhpClosure rebind(Object newThis, PhpClass newCalledClass, PhpClass newScope) {
+        return new PhpClosure(kind, callTarget, builtin, newThis, newCalledClass, kind == Kind.CLOSURE ? newScope : traitSelf,
+                captures == null ? null : captures.clone(), magicMethodName);
+    }
 }
