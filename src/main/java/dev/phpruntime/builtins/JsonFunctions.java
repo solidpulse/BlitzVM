@@ -5,6 +5,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.util.Map;
 
@@ -23,6 +24,8 @@ final class JsonFunctions {
     static final long PARTIAL_OUTPUT_ON_ERROR = 512;
     static final long PRESERVE_ZERO_FRACTION = 1024;
     static final long UNESCAPED_LINE_TERMINATORS = 2048;
+    static final long INVALID_UTF8_IGNORE = 1048576;
+    static final long INVALID_UTF8_SUBSTITUTE = 2097152;
     static final long THROW_ON_ERROR = 4194304;
     static final long OBJECT_AS_ARRAY = 1;
     static final long BIGINT_AS_STRING = 2;
@@ -31,6 +34,7 @@ final class JsonFunctions {
     static final int ERROR_DEPTH = 1;
     static final int ERROR_CTRL_CHAR = 3;
     static final int ERROR_SYNTAX = 4;
+    static final int ERROR_UTF8 = 5;
     static final int ERROR_INF_OR_NAN = 7;
     static final int ERROR_UTF16 = 10;
 
@@ -75,17 +79,17 @@ final class JsonFunctions {
             if (e.error != ERROR_NONE) {
                 if ((flags & PARTIAL_OUTPUT_ON_ERROR) != 0) {
                     ctx.request().jsonLastError = e.error;
-                    return e.sb.toString();
+                    return PhpStrings.fromJava(e.sb.toString());
                 }
                 throw jsonException(ctx, "json_encode", e.error);
             }
-            return e.sb.toString();
+            return PhpStrings.fromJava(e.sb.toString());
         }
         ctx.request().jsonLastError = e.error;
         if (e.error != ERROR_NONE && (flags & PARTIAL_OUTPUT_ON_ERROR) == 0) {
             return false;
         }
-        return e.sb.toString();
+        return PhpStrings.fromJava(e.sb.toString());
     }
 
     private static final class Encoder {
@@ -182,6 +186,16 @@ final class JsonFunctions {
         }
 
         void string(String s) {
+            if (!PhpStrings.isUtf8(s)) {
+                if (!has(INVALID_UTF8_SUBSTITUTE) && !has(INVALID_UTF8_IGNORE)) {
+                    error = ERROR_UTF8;
+                    sb.append("null");
+                    return;
+                }
+                s = PhpStrings.decodeUtf8Replacing(s, has(INVALID_UTF8_IGNORE));
+            } else {
+                s = PhpStrings.toJava(s);
+            }
             sb.append('"');
             for (int i = 0; i < s.length(); i++) {
                 char c = s.charAt(i);
@@ -199,7 +213,7 @@ final class JsonFunctions {
                     case '&' -> sb.append(has(HEX_AMP) ? "\\u0026" : "&");
                     case '\'' -> sb.append(has(HEX_APOS) ? "\\u0027" : "'");
                     default -> {
-                        boolean lineTerminator = c == ' ' || c == ' ';
+                        boolean lineTerminator = c == 0x2028 || c == 0x2029;
                         if (c < 0x20
                                 || (c >= 0x80 && !has(UNESCAPED_UNICODE))
                                 || (lineTerminator && !has(UNESCAPED_LINE_TERMINATORS))) {
@@ -219,6 +233,18 @@ final class JsonFunctions {
     private static Object decode(PhpContext ctx, Object[] a) {
         String json = PhpOps.toStr(a[0]);
         long flags = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
+        if (!PhpStrings.isUtf8(json)) {
+            if ((flags & (INVALID_UTF8_IGNORE | INVALID_UTF8_SUBSTITUTE)) == 0) {
+                if ((flags & THROW_ON_ERROR) != 0) {
+                    throw jsonException(ctx, "json_decode", ERROR_UTF8);
+                }
+                ctx.request().jsonLastError = ERROR_UTF8;
+                return PhpNull.INSTANCE;
+            }
+            json = PhpStrings.decodeUtf8Json(json, (flags & INVALID_UTF8_IGNORE) != 0);
+        } else {
+            json = PhpStrings.toJava(json);
+        }
         boolean assoc = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpOps.toBool(a[1]) : (flags & OBJECT_AS_ARRAY) != 0;
         long depth = a.length > 2 ? PhpOps.toLong(a[2]) : 512;
         if (depth <= 0) {
@@ -394,7 +420,7 @@ final class JsonFunctions {
                 }
                 char c = s.charAt(pos++);
                 if (c == '"') {
-                    return sb.toString();
+                    return PhpStrings.fromJava(sb.toString());
                 }
                 if (c < 0x20) {
                     throw new Fail(ERROR_CTRL_CHAR);

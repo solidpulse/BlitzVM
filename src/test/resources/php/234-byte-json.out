@@ -1,0 +1,37 @@
+{"\u00e9":"\ud83d\ude00e\u0301\u2019","nul":"\u0000"}
+{"é":"😀é’","nul":"\u0000"}
+bool(true)
+c3a9f09f9880
+bool(false)
+int(5)
+string(56) "Malformed UTF-8 characters, possibly incorrectly encoded"
+"\ufffd":""
+22efbfbd22
+NULL
+int(5)
+efbfbd
+bool(false)
+int(5)
+string(56) "Malformed UTF-8 characters, possibly incorrectly encoded"
+"\ufffd":""
+22efbfbd22
+NULL
+int(5)
+efbfbdefbfbdefbfbd
+bool(false)
+int(5)
+string(56) "Malformed UTF-8 characters, possibly incorrectly encoded"
+"\ufffd":""
+22efbfbd22
+NULL
+int(5)
+efbfbdefbfbd
+bool(false)
+int(5)
+string(56) "Malformed UTF-8 characters, possibly incorrectly encoded"
+"a\ufffdb":"ab"
+2261efbfbd6222
+NULL
+int(5)
+61efbfbd62
+[null]

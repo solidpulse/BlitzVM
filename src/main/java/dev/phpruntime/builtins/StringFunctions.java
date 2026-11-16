@@ -42,11 +42,8 @@ final class StringFunctions {
 
     private static void basics() {
         Builtins.def("strlen", 1, 1, (ctx, a) -> (long) s(a, 0).length());
-        Builtins.def("mb_strlen", 1, 2, (ctx, a) -> (long) s(a, 0).codePointCount(0, s(a, 0).length()));
         Builtins.def("strtoupper", 1, 1, (ctx, a) -> PhpStrings.upper(s(a, 0)));
         Builtins.def("strtolower", 1, 1, (ctx, a) -> PhpStrings.lower(s(a, 0)));
-        Builtins.def("mb_strtoupper", 1, 2, (ctx, a) -> s(a, 0).toUpperCase());
-        Builtins.def("mb_strtolower", 1, 2, (ctx, a) -> s(a, 0).toLowerCase());
         Builtins.def("ucfirst", 1, 1, (ctx, a) -> {
             String x = s(a, 0);
             return x.isEmpty() ? x : PhpStrings.upper(x.charAt(0)) + x.substring(1);
@@ -76,7 +73,6 @@ final class StringFunctions {
         });
         Builtins.def("strrev", 1, 1, (ctx, a) -> new StringBuilder(s(a, 0)).reverse().toString());
         Builtins.def("substr", 2, 3, (ctx, a) -> substr(s(a, 0), l(a, 1), a.length > 2 && a[2] != PhpNull.INSTANCE ? l(a, 2) : null));
-        Builtins.def("mb_substr", 2, 4, (ctx, a) -> substr(s(a, 0), l(a, 1), a.length > 2 && a[2] != PhpNull.INSTANCE ? l(a, 2) : null));
         Builtins.def("trim", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, true, true));
         Builtins.def("ltrim", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, true, false));
         Builtins.def("rtrim", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, false, true));
@@ -196,8 +192,12 @@ final class StringFunctions {
     }
 
     private static void encoding() {
-        Builtins.def("htmlspecialchars", 1, 4, (ctx, a) -> htmlspecialchars(s(a, 0)));
-        Builtins.def("htmlentities", 1, 4, (ctx, a) -> htmlspecialchars(s(a, 0)));
+        Builtins.def("htmlspecialchars", 1, 4, (ctx, a) -> HtmlEntities.encode(s(a, 0),
+                a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? s(a, 2) : "UTF-8",
+                a.length < 4 || PhpOps.toBool(a[3]), false));
+        Builtins.def("htmlentities", 1, 4, (ctx, a) -> HtmlEntities.encode(s(a, 0),
+                a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? s(a, 2) : "UTF-8",
+                a.length < 4 || PhpOps.toBool(a[3]), true));
         Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(a, 0).replaceAll("<[^>]*>", ""));
         Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
         Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(PhpStrings.bytes(s(a, 0))));
@@ -399,22 +399,6 @@ final class StringFunctions {
             }
             sb.append(PhpOps.toStr(v));
             first = false;
-        }
-        return sb.toString();
-    }
-
-    static String htmlspecialchars(String str) {
-        StringBuilder sb = new StringBuilder(str.length());
-        for (int i = 0; i < str.length(); i++) {
-            char c = str.charAt(i);
-            switch (c) {
-                case '&' -> sb.append("&amp;");
-                case '<' -> sb.append("&lt;");
-                case '>' -> sb.append("&gt;");
-                case '"' -> sb.append("&quot;");
-                case '\'' -> sb.append("&#039;");
-                default -> sb.append(c);
-            }
         }
         return sb.toString();
     }
@@ -640,7 +624,7 @@ final class StringFunctions {
             return false;
         });
         Builtins.def("html_entity_decode", 1, 3, (ctx, a) ->
-                HtmlEntities.decodeAll(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS));
+                HtmlEntities.decodeAll(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? s(a, 2) : "UTF-8"));
         Builtins.def("htmlspecialchars_decode", 1, 2, (ctx, a) ->
                 HtmlEntities.decodeSpecial(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS));
         Builtins.def("chunk_split", 1, 3, (ctx, a) -> {

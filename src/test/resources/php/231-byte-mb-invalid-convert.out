@@ -1,0 +1,34 @@
+ff:1:3f:bool(false)
+e282:1:3f:bool(false)
+f09f98:1:3f:bool(false)
+c080:2:3f3f:bool(false)
+eda080:3:3f3f3f:bool(false)
+f4908080:4:3f3f3f3f:bool(false)
+61e28258:3:613f58:bool(false)
+bool(false)
+bool(true)
+string(5) "UTF-8"
+int(63)
+61efbfbd62
+6162
+int(1)
+int(233)
+string(2) "e9"
+ISO-8859-1:e93f3f:é??
+Windows-1252:e9803f:é€?
+ASCII:3f3f3f:???
+UTF-16:00e920acd83dde00:é€😀
+UTF-16LE:e900ac203dd800de:é€😀
+UTF-16BE:00e920acd83dde00:é€😀
+e282acc3a9
+string(5) "ASCII"
+string(5) "UTF-8"
+bool(false)
+array(2) {
+  [0]=>
+  string(5) "UTF-8"
+  [1]=>
+  string(10) "ISO-8859-1"
+}
+string(10) "ISO-8859-1"
+bool(true)

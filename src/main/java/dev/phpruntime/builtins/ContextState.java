@@ -19,6 +19,12 @@ final class ContextState {
     ZoneId timezone = DateFunctions.UTC;
     String timezoneName = "UTC";
 
+    /** mbstring settings are request-local, never cached on AST nodes. */
+    String mbEncoding = "UTF-8";
+    Object mbSubstitute = 63L;
+    java.util.List<String> mbDetectOrder = java.util.List.of("ASCII", "UTF-8");
+    int pregLastError;
+
     /** mysqli: per-object state keyed by object id, the last connect error and the report mode. */
     MysqliFunctions.State mysqli;
 

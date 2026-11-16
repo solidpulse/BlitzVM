@@ -1,5 +1,8 @@
 package dev.phpruntime.builtins;
 
+import dev.phpruntime.runtime.PhpStrings;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -47,15 +50,81 @@ final class HtmlEntities {
             "spades:9824 clubs:9827 hearts:9829 diams:9830";
 
     private static final Map<String, Integer> NAMED = new HashMap<>();
+    private static final Map<Integer, String> ENCODE = new HashMap<>();
 
     static {
         for (String pair : TABLE.split(" ")) {
             int colon = pair.indexOf(':');
-            NAMED.put(pair.substring(0, colon), Integer.parseInt(pair.substring(colon + 1)));
+            String name = pair.substring(0, colon);
+            int cp = Integer.parseInt(pair.substring(colon + 1));
+            NAMED.put(name, cp);
+            ENCODE.put(cp, name);
         }
     }
 
     private HtmlEntities() {
+    }
+
+    static String name(int cp) {
+        return ENCODE.get(cp);
+    }
+
+    static Charset charset(String name) {
+        MbConvertFunctions.Encoding e = MbConvertFunctions.encoding(name);
+        return e == null || e.charset() == null ? StandardCharsets.UTF_8 : e.charset();
+    }
+
+    static String encode(String php, long flags, String encoding, boolean doubleEncode, boolean all) {
+        Charset cs = charset(encoding);
+        boolean valid = PhpStrings.isEncoding(php, cs);
+        if (!valid && (flags & (4 | ENT_SUBSTITUTE)) == 0) {
+            return "";
+        }
+        String text = cs.equals(StandardCharsets.UTF_8)
+                ? PhpStrings.decodeUtf8Replacing(php, (flags & 4) != 0)
+                : PhpStrings.decode(php, cs, (flags & 4) != 0 ? "" : "\uFFFD");
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length();) {
+            int cp = text.codePointAt(i);
+            if (cp == '&' && !doubleEncode) {
+                int semi = text.indexOf(';', i + 1);
+                if (semi > i && semi - i < 40 && knownEntity(text.substring(i + 1, semi), flags)) {
+                    out.append(text, i, semi + 1);
+                    i = semi + 1;
+                    continue;
+                }
+            }
+            if (cp == '&') {
+                out.append("&amp;");
+            } else if (cp == '<') {
+                out.append("&lt;");
+            } else if (cp == '>') {
+                out.append("&gt;");
+            } else if (cp == '"' && (flags & 2) != 0) {
+                out.append("&quot;");
+            } else if (cp == '\'' && (flags & 1) != 0) {
+                out.append((flags & 48) == ENT_HTML401 ? "&#039;" : "&apos;");
+            } else if ((flags & 128) != 0 && !allowed(cp, flags & 48)) {
+                out.append('\uFFFD');
+            } else {
+                String name = all ? ENCODE.get(cp) : null;
+                if (name != null && cp != '"') {
+                    out.append('&').append(name).append(';');
+                } else {
+                    out.appendCodePoint(cp);
+                }
+            }
+            i += Character.charCount(cp);
+        }
+        return PhpStrings.encode(out.toString(), cs, "?");
+    }
+
+    private static boolean knownEntity(String body, long flags) {
+        if (body.startsWith("#")) {
+            int cp = numeric(body);
+            return cp >= 0 && allowed(cp, flags & 48);
+        }
+        return NAMED.containsKey(body) || body.equals("apos") && (flags & 48) != ENT_HTML401;
     }
 
     /** The HTML 4.01 named entities as (name, code point) pairs, in PHP's table order. */
@@ -70,15 +139,19 @@ final class HtmlEntities {
 
     /** html_entity_decode: all named HTML 4.01 entities plus numeric ones. */
     static String decodeAll(String s, long flags) {
-        return decode(s, flags, true);
+        return decode(s, flags, true, StandardCharsets.UTF_8);
+    }
+
+    static String decodeAll(String s, long flags, String encoding) {
+        return decode(s, flags, true, charset(encoding));
     }
 
     /** htmlspecialchars_decode: only &amp; &lt; &gt; and the quote entities. */
     static String decodeSpecial(String s, long flags) {
-        return decode(s, flags, false);
+        return decode(s, flags, false, StandardCharsets.UTF_8);
     }
 
-    private static String decode(String s, long flags, boolean all) {
+    private static String decode(String s, long flags, boolean all, Charset charset) {
         if (s.indexOf('&') < 0) {
             return s;
         }
@@ -123,7 +196,12 @@ final class HtmlEntities {
                 i++;
                 continue;
             }
-            sb.appendCodePoint(cp);
+            String text = new String(Character.toChars(cp));
+            if (!charset.newEncoder().canEncode(text)) {
+                sb.append(s, i, semi + 1);
+            } else {
+                sb.append(PhpStrings.encode(text, charset, "?"));
+            }
             i = semi + 1;
         }
         return sb.toString();

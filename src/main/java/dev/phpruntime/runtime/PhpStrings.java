@@ -140,7 +140,8 @@ public final class PhpStrings {
     public static int utf8Length(String s) {
         int count = 0;
         for (int i = 0; i < s.length(); count++) {
-            i += Math.max(1, utf8SequenceLength(s, i));
+            int width = utf8SequenceLength(s, i);
+            i += width == 0 ? invalidUtf8Width(s, i) : width;
         }
         return count;
     }
@@ -152,6 +153,52 @@ public final class PhpStrings {
             int width = utf8SequenceLength(s, i);
             if (width == 0) {
                 out.append(substitute);
+                i += invalidUtf8Width(s, i);
+            } else {
+                out.appendCodePoint(utf8CodePoint(s, i, width));
+                i += width;
+            }
+        }
+        return out.toString();
+    }
+
+    /** A truncated, otherwise valid prefix is one mbstring replacement character. */
+    public static int invalidUtf8Width(String s, int i) {
+        int lead = s.charAt(i);
+        int expected = lead >= 0xC2 && lead <= 0xDF ? 2 : lead >= 0xE0 && lead <= 0xEF ? 3
+                : lead >= 0xF0 && lead <= 0xF4 ? 4 : 1;
+        int width = 1;
+        while (width < expected && i + width < s.length()) {
+            int b = s.charAt(i + width);
+            if (!continuation(b) || width == 1 && (lead == 0xE0 && b < 0xA0 || lead == 0xED && b >= 0xA0
+                    || lead == 0xF0 && b < 0x90 || lead == 0xF4 && b >= 0x90)) {
+                break;
+            }
+            width++;
+        }
+        return width;
+    }
+
+    /** JSON/HTML use the charset decoder's malformed-sequence grouping, including surrogates. */
+    public static String decodeUtf8Replacing(String s, boolean ignore) {
+        try {
+            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(ignore ? CodingErrorAction.IGNORE : CodingErrorAction.REPLACE)
+                    .onUnmappableCharacter(ignore ? CodingErrorAction.IGNORE : CodingErrorAction.REPLACE)
+                    .decode(ByteBuffer.wrap(bytes(s))).toString();
+        } catch (CharacterCodingException e) {
+            throw new IllegalStateException("Replacing UTF-8 decoder failed", e);
+        }
+    }
+
+    /** json_decode substitutes one U+FFFD for each invalid byte (not maximal subparts). */
+    public static String decodeUtf8Json(String s, boolean ignore) {
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length();) {
+            int width = utf8SequenceLength(s, i);
+            if (width == 0) {
+                if (!ignore) {
+                    out.append('\uFFFD');
+                }
                 i++;
             } else {
                 out.appendCodePoint(utf8CodePoint(s, i, width));
@@ -182,6 +229,14 @@ public final class PhpStrings {
         }
         var encoder = charset.newEncoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT);
+        try {
+            ByteBuffer b = encoder.encode(CharBuffer.wrap(text));
+            byte[] raw = new byte[b.remaining()];
+            b.get(raw);
+            return of(raw);
+        } catch (CharacterCodingException ignored) {
+            // Only the exceptional, unmappable case needs per-code-point substitution.
+        }
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < text.length();) {
             int cp = text.codePointAt(i);

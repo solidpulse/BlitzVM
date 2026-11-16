@@ -37,10 +37,11 @@ class ByteStringsTest {
         String text = PhpStrings.fromJava("é😀a");
         assertTrue(PhpStrings.isUtf8(text));
         assertEquals(3, PhpStrings.utf8Length(text));
-        for (String invalid : new String[]{"\u00ff", "\u00c0\u0080", "\u00ed\u00a0\u0080", "\u00f4\u0090\u0080\u0080", "\u00e2\u0082"}) {
+        for (String invalid : new String[]{"\u00ff", "\u00c0\u0080", "\u00ed\u00a0\u0080", "\u00f4\u0090\u0080\u0080"}) {
             assertFalse(PhpStrings.isUtf8(invalid));
             assertEquals(invalid.length(), PhpStrings.utf8Length(invalid));
         }
+        assertEquals(1, PhpStrings.utf8Length("\u00e2\u0082"));
         var offsets = new PhpStrings.Utf8Offsets("é😀a");
         assertEquals(2, offsets.toBytes(1));
         assertEquals(6, offsets.toBytes(3));
