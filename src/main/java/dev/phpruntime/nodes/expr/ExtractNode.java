@@ -76,10 +76,10 @@ public final class ExtractNode extends PhpNode {
                     : table.cell(original, false) != null && table.cell(original, false).value != null;
             String name = original;
             switch (type) {
-                case 1 -> { if (exists) { continue; } }
-                case 2 -> { if (exists) { name = prefix + "_" + original; } }
+                case 1 -> { if (exists || original.equals("this")) { continue; } }
+                case 2 -> { if (exists || original.equals("this")) { name = prefix + "_" + original; } }
                 case 3 -> { if (original.isEmpty()) { continue; } name = prefix + "_" + original; }
-                case 4 -> { if (!identifier(original)) { name = prefix + "_" + original; } }
+                case 4 -> { if (!identifier(original) || original.equals("this")) { name = prefix + "_" + original; } }
                 case 5 -> {
                     if (exists) { name = prefix + "_" + original; }
                     else if (table == null || !table.layout.locals().containsKey(original)) { continue; }

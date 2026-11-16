@@ -1,0 +1,6 @@
+5
+{"global":1}:{"local":2}
+{"local":3}:5
+5
+6:unset:empty
+Cannot re-assign $this

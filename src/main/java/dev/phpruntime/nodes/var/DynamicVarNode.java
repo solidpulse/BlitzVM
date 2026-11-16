@@ -48,30 +48,32 @@ public final class DynamicVarNode extends LValueNode {
 
     @Override public Object read(VirtualFrame frame, Object[] keys) {
         String name = (String) keys[0];
-        if (tableSlot < 0) { return PhpContext.get(this).readGlobal(name); }
+        if (tableSlot < 0) { return PhpContext.get(this).readGlobalSymbol(name); }
         PhpSymbolTable table = table(frame);
         if (name.equals("this")) {
-            if (table.thisValue == null || table.thisValue == PhpNull.INSTANCE) {
-                throw new PhpError("Using $this when not in object context", this);
-            }
-            return table.thisValue;
+            return table.thisValue == PhpNull.INSTANCE ? null : table.thisValue;
         }
         int slot = slot(table, name);
         PhpReference cell = slot >= 0 ? table.cells[slot] : table.cell(name, false);
         return cell == null ? null : cell.value;
     }
 
+    @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
+        return !keys[0].equals("this") && super.isSet(frame, keys);
+    }
+
+    @Override public Object readIfSet(VirtualFrame frame, Object[] keys) {
+        return keys[0].equals("this") ? null : read(frame, keys);
+    }
+
     private void writable(String name) {
         if (name.equals("this")) { throw new PhpError("Cannot re-assign $this", this); }
-        if (tableSlot < 0 && name.equals("GLOBALS")) {
-            throw new PhpError("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax", this);
-        }
     }
 
     @Override public void write(VirtualFrame frame, Object[] keys, Object value) {
         String name = (String) keys[0];
         writable(name);
-        if (tableSlot < 0) { PhpContext.get(this).writeGlobal(name, value); return; }
+        if (tableSlot < 0) { PhpContext.get(this).writeExtractedGlobal(name, value); return; }
         PhpSymbolTable table = table(frame);
         int slot = slot(table, name);
         if (slot >= 0) {
@@ -83,9 +85,8 @@ public final class DynamicVarNode extends LValueNode {
 
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         String name = (String) keys[0];
-        if (tableSlot < 0 && name.equals("GLOBALS")) { throw new PhpError("Cannot acquire reference to $GLOBALS", this); }
         writable(name);
-        if (tableSlot < 0) { return PhpContext.get(this).globalRef(name); }
+        if (tableSlot < 0) { return PhpContext.get(this).globalSymbolRef(name); }
         PhpSymbolTable table = table(frame);
         int slot = slot(table, name);
         PhpReference cell;
@@ -100,7 +101,7 @@ public final class DynamicVarNode extends LValueNode {
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         String name = (String) keys[0];
         writable(name);
-        if (tableSlot < 0) { PhpContext.get(this).bindGlobal(name, cell); return; }
+        if (tableSlot < 0) { PhpContext.get(this).bindExtractedGlobal(name, cell); return; }
         PhpSymbolTable table = table(frame);
         int slot = slot(table, name);
         if (slot >= 0) { table.cells[slot] = cell; }
@@ -109,9 +110,9 @@ public final class DynamicVarNode extends LValueNode {
 
     @Override public void unset(VirtualFrame frame, Object[] keys) {
         String name = (String) keys[0];
-        if (name.equals("this")) { throw new PhpError("Cannot unset $this", this); }
+        if (name.equals("this")) { return; }
         writable(name);
-        if (tableSlot < 0) { PhpContext.get(this).unsetGlobal(name); }
+        if (tableSlot < 0) { PhpContext.get(this).unsetGlobalSymbol(name); }
         else { table(frame).unset(name); }
     }
 

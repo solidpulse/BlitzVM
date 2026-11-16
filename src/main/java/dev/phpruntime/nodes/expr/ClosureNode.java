@@ -67,11 +67,11 @@ public final class ClosureNode extends PhpNode {
         Object[] caps = new Object[captureReads.length];
         for (int i = 0; i < captureReads.length; i++) {
             if (byRef[i]) {
-                caps[i] = captureReads[i].obtainCell(frame, NO_KEYS);
+                caps[i] = captureReads[i].obtainCell(frame, captureReads[i].evalKeys(frame));
             } else {
                 Object v = warnIfUndefined[i]
                         ? captureReads[i].execute(frame)
-                        : captureReads[i].read(frame, NO_KEYS);
+                        : captureReads[i].read(frame, captureReads[i].evalKeys(frame));
                 caps[i] = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
             }
         }
