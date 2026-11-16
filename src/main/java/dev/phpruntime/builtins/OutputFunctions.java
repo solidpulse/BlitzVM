@@ -108,7 +108,8 @@ final class OutputFunctions {
             seen.put(obj, Boolean.TRUE);
             Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
-            int initCount = 0;
+            Map<String, Object> extra = obj.nativeState() != null ? obj.nativeState().debugProperties(obj) : null;
+            int initCount = extra != null ? extra.size() : 0;
             for (Object rawKey : keys) {
                 if (get.execute(obj, rawKey, PhpNull.INSTANCE) != PhpClass.UNINITIALIZED) {
                     initCount++;
@@ -130,20 +131,11 @@ final class OutputFunctions {
                 }
                 varDump(sb, propVal, indent + 2, seen, false);
             }
-            if (false) {
-                    sb.append(" (");
-                    sb.append(keys.length).append(") {\n");
-            for (Object rawKey : keys) {
-                String k = (String) rawKey;
-                sb.append(" ".repeat(indent + 2));
-                appendVarDumpObjectKey(sb, obj.phpClass(), k);
-                sb.append("=>\n");
-                Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
-                if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
-                    propVal = lt.toPhpArray();
+            if (extra != null) {
+                for (Map.Entry<String, Object> e : extra.entrySet()) {
+                    sb.append(" ".repeat(indent + 2)).append("[\"").append(e.getKey()).append("\"]=>").append((char) 10);
+                    varDump(sb, e.getValue(), indent + 2, seen, false);
                 }
-                varDump(sb, propVal, indent + 2, seen, false);
-            }
             }
             sb.append(" ".repeat(indent)).append("}").append((char) 10);
             seen.remove(obj);
@@ -190,6 +182,16 @@ final class OutputFunctions {
                 Object propVal = PhpClass.unwrapProp(rawVal);
                 printR(sb, propVal, indent + 8, seen);
                 sb.append((char) 10);
+            }
+            if (obj.nativeState() != null) {
+                Map<String, Object> extra = obj.nativeState().debugProperties(obj);
+                if (extra != null) {
+                    for (Map.Entry<String, Object> e : extra.entrySet()) {
+                        sb.append(" ".repeat(indent + 4)).append('[').append(e.getKey()).append("] => ");
+                        printR(sb, e.getValue(), indent + 8, seen);
+                        sb.append('\n');
+                    }
+                }
             }
             sb.append(" ".repeat(indent)).append(")\n");
             seen.remove(obj);

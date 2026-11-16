@@ -1,0 +1,65 @@
+Y-m-d\TH:i:sP
+l, d-M-Y H:i:s T
+Y-m-d\TH:i:sO
+X-m-d\TH:i:sP
+D, d M y H:i:s O
+l, d-M-y H:i:s T
+D, d M y H:i:s O
+D, d M Y H:i:s O
+D, d M Y H:i:s \G\M\T
+D, d M Y H:i:s O
+Y-m-d\TH:i:sP
+Y-m-d\TH:i:s.vP
+D, d M Y H:i:s O
+Y-m-d\TH:i:sP
+2024-05-15T14:30:45+00:00
+Wed, 15 May 2024 14:30:45 +0000
+2025-06-20 10:20:30.123456
+microsecond=123456
+microsecond=654321
+2024-12-30
+2024-01-01 00:00:00 ts=1704067200 offset=0
+2024-01-02
+2024-02-02
+2024-02-01
+2024-02-29
+orig=2024-01-01 mod=2024-01-03
+DateTimeImmutable 2024-02-29 00:00:00
+DateTime 2024-01-01 12:00:00
+DateTimeImmutable 2024-02-29 00:00:00
+2024-01-01 13:00:00 +01:00 tz=Europe/Berlin offset=3600
+2024-01-01 17:30:00 +05:30 tz=+05:30 offset=19800
+2024-05-15T14:30:45+00:00
+bool(false)
+bool(false)
+err count=1 msg=Not enough data available to satisfy format
+DE: lat=52.50 lon=13.37 comments=most of Germany
+transitions count=3
+ts=1704067200 time=2024-01-01T00:00:00+00:00 offset=3600 isdst=false abbr=CET
+ts=1711846800 time=2024-03-31T01:00:00+00:00 offset=7200 isdst=true abbr=CEST
+ts=1729990800 time=2024-10-27T01:00:00+00:00 offset=3600 isdst=false abbr=CET
+has acst=true acst offset=34200
+europe has berlin=true gt_50=true
+p1 start=2024-01-01 rec=3 int=1 days
+p2 start=2024-01-01 end=2024-01-05 rec=NULL
+pIso start=2024-01-01 rec=3
+2024-05-15 14:30:45
+2026-01-02 08:09:10.111222
+2026-01-07
+1704067200
+0
+UTC
+2024-01-01 01:00:00 +01:00
+3600
+2024-07-04 00:00:00
+DateTimeImmutable 2024-07-04 00:00:00
+proc transitions count=3
+proc loc: DE lat=52.50 lon=13.37
+proc abbrs has utc=true
+proc utc count=1
+mysql=2024-05-15 14:30:45 next=2024-05-16 14:30:45
+OK: Caught expected DateMalformedStringException for DateTime
+OK: Caught expected DateInvalidTimeZoneException for DateTimeZone
+OK: Caught expected DateMalformedIntervalStringException for DateInterval
+OK: Caught expected DateMalformedPeriodStringException for DatePeriod
+OK: Caught DateMalformedStringException on modify

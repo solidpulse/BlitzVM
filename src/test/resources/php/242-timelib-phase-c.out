@@ -1,0 +1,274 @@
+int(1715774400)
+int(1715731200)
+int(1715644800)
+int(1715817600)
+int(1715774400)
+int(1715731200)
+int(1715860800)
+int(1715601600)
+int(1717588800)
+int(1713182400)
+int(1778846400)
+int(1715788800)
+int(1715772600)
+int(1715774445)
+int(1715774401)
+int(1715774400)
+int(1716163200)
+int(1715299200)
+int(1715817600)
+int(1717243200)
+int(1717156800)
+int(1731801600)
+int(1715601600)
+int(1715783400)
+int(1715783400)
+int(1715731200)
+int(1715731200)
+int(1715731200)
+int(1715731200)
+int(1715731200)
+int(1715731200)
+int(1715731200)
+int(1715783400)
+int(1715774400)
+int(1715776200)
+int(1715797800)
+int(1715763600)
+int(1715783400)
+int(1715783400)
+int(1715776200)
+int(1715797800)
+int(1715776200)
+int(1715797800)
+int(1715817600)
+int(1715774400)
+int(1716217200)
+bool(false)
+bool(false)
+array(14) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(5)
+  ["day"]=>
+  int(15)
+  ["hour"]=>
+  int(14)
+  ["minute"]=>
+  int(30)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0.123456)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(3)
+  ["tz_id"]=>
+  string(13) "Europe/Berlin"
+}
+array(13) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(0)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+  ["relative"]=>
+  array(7) {
+    ["year"]=>
+    int(0)
+    ["month"]=>
+    int(0)
+    ["day"]=>
+    int(2)
+    ["hour"]=>
+    int(0)
+    ["minute"]=>
+    int(0)
+    ["second"]=>
+    int(0)
+    ["weekday"]=>
+    int(1)
+  }
+}
+array(13) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  int(17)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(false)
+  ["relative"]=>
+  array(6) {
+    ["year"]=>
+    int(0)
+    ["month"]=>
+    int(0)
+    ["day"]=>
+    int(-1)
+    ["hour"]=>
+    int(0)
+    ["minute"]=>
+    int(0)
+    ["second"]=>
+    int(0)
+  }
+}
+array(13) {
+  ["year"]=>
+  bool(false)
+  ["month"]=>
+  bool(false)
+  ["day"]=>
+  bool(false)
+  ["hour"]=>
+  bool(false)
+  ["minute"]=>
+  bool(false)
+  ["second"]=>
+  bool(false)
+  ["fraction"]=>
+  bool(false)
+  ["warning_count"]=>
+  int(1)
+  ["warnings"]=>
+  array(1) {
+    [6]=>
+    string(29) "Double timezone specification"
+  }
+  ["error_count"]=>
+  int(2)
+  ["errors"]=>
+  array(2) {
+    [0]=>
+    string(47) "The timezone could not be found in the database"
+    [8]=>
+    string(29) "Double timezone specification"
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(0)
+}
+array(15) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(2)
+  ["day"]=>
+  int(29)
+  ["hour"]=>
+  int(12)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(0)
+  ["warnings"]=>
+  array(0) {
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(3)
+  ["tz_abbr"]=>
+  string(3) "UTC"
+  ["tz_id"]=>
+  string(3) "UTC"
+}
+array(15) {
+  ["year"]=>
+  int(2024)
+  ["month"]=>
+  int(2)
+  ["day"]=>
+  int(30)
+  ["hour"]=>
+  int(12)
+  ["minute"]=>
+  int(0)
+  ["second"]=>
+  int(0)
+  ["fraction"]=>
+  float(0)
+  ["warning_count"]=>
+  int(1)
+  ["warnings"]=>
+  array(1) {
+    [24]=>
+    string(27) "The parsed date was invalid"
+  }
+  ["error_count"]=>
+  int(0)
+  ["errors"]=>
+  array(0) {
+  }
+  ["is_localtime"]=>
+  bool(true)
+  ["zone_type"]=>
+  int(3)
+  ["tz_abbr"]=>
+  string(3) "UTC"
+  ["tz_id"]=>
+  string(3) "UTC"
+}

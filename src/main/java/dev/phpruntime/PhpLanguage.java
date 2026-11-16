@@ -72,7 +72,9 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
             synchronized (this) {
                 m = builtinClassTemplates;
                 if (m == null) {
-                    m = PhpExceptions.buildTemplates(this);
+                    Map<String, PhpClassTemplate> all = new java.util.LinkedHashMap<>(PhpExceptions.buildTemplates(this));
+                    dev.phpruntime.builtins.DateTimeClasses.buildTemplates(this, all);
+                    m = Map.copyOf(all);
                     int max = -1;
                     for (String lower : m.keySet()) {
                         int id = classId(lower);

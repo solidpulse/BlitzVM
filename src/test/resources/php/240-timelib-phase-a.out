@@ -1,0 +1,18 @@
+p1: 1970-1-1 rel=1700000000 err=0
+p2: 2024-1-2 err=0
+p3: 14:30:0 err=0
+p4: err=1 Empty string
+st1: 1700000000
+st2: 1704153600
+tz1: Europe/Berlin
+tz2: +05:30
+clone: Europe/Berlin
+json: {"timezone_type":3,"timezone":"Europe\/Berlin"}
+cast: 1 +05:30
+object(DateTimeZone)#1 (2) {
+  ["timezone_type"]=>
+  int(3)
+  ["timezone"]=>
+  string(13) "Europe/Berlin"
+}
+caught: DateInvalidTimeZoneException

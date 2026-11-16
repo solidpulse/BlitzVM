@@ -41,7 +41,6 @@ final class MiscFunctions {
                 a.length > 0 ? PhpOps.toLong(a[0]) : 0, a.length > 1 ? PhpOps.toLong(a[1]) : HtmlEntities.DEFAULT_FLAGS));
         Builtins.def("session_status", 0, 0, (ctx, a) -> 1L); // PHP_SESSION_NONE: sessions are not supported
         Builtins.def("opcache_get_status", 0, 1, (ctx, a) -> false);
-        Builtins.def("timezone_identifiers_list", 0, 2, (ctx, a) -> timezones());
         Builtins.def("getcwd", 0, 0, (ctx, a) -> {
             try {
                 return ctx.env().getCurrentWorkingDirectory().getPath();

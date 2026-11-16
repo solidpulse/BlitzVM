@@ -6,6 +6,8 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /** json_encode, json_decode, json_last_error, json_last_error_msg, matching ext/json's output. */
@@ -127,7 +129,17 @@ final class JsonFunctions {
                 container(arr.entries(), has(FORCE_OBJECT) || !arr.isList(), depth);
             } else if (v instanceof dev.phpruntime.runtime.PhpObject obj) {
                 // Public properties only; TODO: JsonSerializable once built-in interfaces exist.
-                container(dev.phpruntime.runtime.PhpClass.visibleEntries(null, obj, null), true, depth);
+                List<Map.Entry<Object, Object>> entries = new ArrayList<>(
+                        dev.phpruntime.runtime.PhpClass.visibleEntries(null, obj, null));
+                if (obj.nativeState() != null) {
+                    Map<String, Object> extra = obj.nativeState().debugProperties(obj);
+                    if (extra != null) {
+                        for (Map.Entry<String, Object> e : extra.entrySet()) {
+                            entries.add(Map.entry(e.getKey(), e.getValue()));
+                        }
+                    }
+                }
+                container(entries, true, depth);
             } else {
                 error = 8;
                 sb.append("null");
