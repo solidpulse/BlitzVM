@@ -189,7 +189,7 @@ final class StreamFunctions {
         throw new PhpError(PhpError.TYPE_ERROR, fn + "(): supplied resource is not a valid stream resource", null);
     }
 
-    private static PhpStream stream(Object v, String fn) {
+    static PhpStream stream(Object v, String fn) {
         return stream(resource(v, fn), fn);
     }
 
@@ -405,24 +405,11 @@ final class StreamFunctions {
     private static void directories() {
         Builtins.def("opendir", 1, 2, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
-            try {
-                TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-                if (!dir.isDirectory()) {
-                    throw new IOException();
-                }
-                List<String> names = new ArrayList<>();
-                names.add(".");
-                names.add("..");
-                for (TruffleFile child : dir.list()) {
-                    names.add(PhpStrings.fromJava(child.getName()));
-                }
-                PhpResource r = new PhpResource(streamId(ctx), "stream", new PhpStream.DirHandle(names));
+            PhpResource r = openDir(ctx, path, "opendir");
+            if (r != null) {
                 ContextState.of(ctx).lastDir = r;
-                return r;
-            } catch (IOException | SecurityException | IllegalArgumentException e) {
-                ctx.warning("opendir(" + path + "): Failed to open directory: No such file or directory", 0);
-                return false;
             }
+            return r == null ? false : r;
         });
         Builtins.def("readdir", 0, 1, (ctx, a) -> {
             PhpStream.DirHandle d = dir(ctx, a, "readdir");
@@ -438,6 +425,26 @@ final class StreamFunctions {
             r.close();
             return PhpNull.INSTANCE;
         });
+    }
+
+    /** Opens a directory as php's opendir resource; null after a warning on failure. */
+    static PhpResource openDir(PhpContext ctx, String path, String fn) {
+        try {
+            TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
+            if (!dir.isDirectory()) {
+                throw new IOException();
+            }
+            List<String> names = new ArrayList<>();
+            names.add(".");
+            names.add("..");
+            for (TruffleFile child : dir.list()) {
+                names.add(PhpStrings.fromJava(child.getName()));
+            }
+            return new PhpResource(streamId(ctx), "stream", new PhpStream.DirHandle(names));
+        } catch (IOException | SecurityException | IllegalArgumentException e) {
+            ctx.warning(fn + "(" + path + "): Failed to open directory: No such file or directory", 0);
+            return null;
+        }
     }
 
     private static PhpStream.DirHandle dir(PhpContext ctx, Object[] a, String fn) {

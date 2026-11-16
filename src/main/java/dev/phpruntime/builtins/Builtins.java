@@ -79,6 +79,8 @@ public final class Builtins {
         TextFunctions.register();
         CryptFunctions.register();
         FilterFunctions.register();
+        GzipFunctions.register();
+        DirClasses.register();
     }
 
     private Builtins() {

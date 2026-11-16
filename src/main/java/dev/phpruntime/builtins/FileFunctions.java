@@ -234,6 +234,27 @@ final class FileFunctions {
         Builtins.def("filemtime", 1, 1, (ctx, a) -> stat(ctx, "filemtime", PhpOps.toStr(a[0]), f -> f.getLastModifiedTime().toMillis() / 1000));
         Builtins.def("is_writable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isWritable()));
         Builtins.def("is_writeable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isWritable()));
+        Builtins.def("is_executable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isExecutable()));
+        Builtins.def("chdir", 1, 1, (ctx, a) -> {
+            String path = PhpOps.toStr(a[0]);
+            try {
+                TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
+                if (!dir.isDirectory()) {
+                    ctx.warning("chdir(): No such file or directory (errno 2)", 0);
+                    return false;
+                }
+                ctx.env().setCurrentWorkingDirectory(dir);
+                return true;
+            } catch (SecurityException | IllegalArgumentException e) {
+                ctx.warning("chdir(): No such file or directory (errno 2)", 0);
+                return false;
+            }
+        });
+        // Uploaded files do not exist in this runtime; php returns false for a path that
+        // was not uploaded, which is exactly what a plain fopen'ed path is here.
+        Builtins.def("is_uploaded_file", 1, 1, (ctx, a) -> false);
+        Builtins.def("move_uploaded_file", 2, 2, (ctx, a) -> false);
+        Builtins.def("mime_content_type", 1, 1, MimeFunctions::detect);
         Builtins.def("scandir", 1, 3, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
             long order = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
