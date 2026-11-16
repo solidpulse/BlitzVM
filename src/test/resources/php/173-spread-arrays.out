@@ -1,0 +1,4 @@
+indexed=["start","a","b","c","d","end"]
+assoc={"x":1,"y":20,"0":"zero","z":300,"1":"second_zero"}
+empty={"k":"v"}
+err=Only arrays and Traversables can be unpacked, int given

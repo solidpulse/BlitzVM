@@ -1,0 +1,6 @@
+basic=10,20,30,40
+skip=2,4,y
+expr=7,8:7,8
+swap=second,first
+NULL
+NULL

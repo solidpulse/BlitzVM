@@ -1,0 +1,7 @@
+fn=60
+fn_mix=45
+method=23
+static=a-b-c
+max=19
+sprintf=ok:42:end
+merge={"0":1,"1":2,"k":"v","2":3}

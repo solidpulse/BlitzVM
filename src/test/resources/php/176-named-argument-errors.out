@@ -1,0 +1,5 @@
+unk=Error: Unknown named parameter $unknown
+ovw1=Error: Named parameter $a overwrites previous argument
+ovw2=Error: Named parameter $a overwrites previous argument
+miss=ArgumentCountError: demo(): Argument #1 ($a) not passed
+builtin=Error: Unknown named parameter $nope

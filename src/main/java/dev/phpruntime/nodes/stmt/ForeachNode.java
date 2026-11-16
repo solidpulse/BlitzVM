@@ -50,7 +50,7 @@ public final class ForeachNode extends PhpNode {
         Object s = subject.execute(frame);
         List<Map.Entry<Object, Object>> entries;
         if (s instanceof PhpArray arr) {
-            entries = arr.entries();
+            entries = arr.rawEntries();
         } else if (s instanceof PhpObject obj) {
             String caller = getRootNode() instanceof PhpFunctionRootNode fn ? fn.declaringClass() : null;
             entries = PhpClass.visibleEntries(PhpContext.get(this), obj, caller);
@@ -66,7 +66,9 @@ public final class ForeachNode extends PhpNode {
                 if (keyTarget != null) {
                     keyTarget.write(frame, keyTarget.evalKeys(frame), e.getKey());
                 }
-                valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(e.getValue()));
+                Object rawVal = e.getValue();
+                Object curVal = rawVal instanceof PhpReference ref ? ref.value : rawVal;
+                valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(curVal));
                 try {
                     body.executeVoid(frame);
                 } catch (ControlFlow.Break b) {

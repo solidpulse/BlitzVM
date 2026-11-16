@@ -159,6 +159,8 @@ public final class CallArgHelper {
                 seenNamed = true;
                 if (named == null) {
                     named = new LinkedHashMap<>();
+                }
+                if (namedRefs == null) {
                     namedRefs = new LinkedHashMap<>();
                     namedKeys = new LinkedHashMap<>();
                     namedNodes = new LinkedHashMap<>();

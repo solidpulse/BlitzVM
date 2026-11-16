@@ -732,41 +732,19 @@ final class ArrayFunctions {
 
     private static Object callbackSort(PhpContext ctx, Object[] a, boolean keepKeys, boolean byKey) {
         PhpCallable cb = PhpCallable.resolve(ctx, a[1], ctx.currentBuiltinCallSite());
-        boolean ref0 = !byKey && cb.callTarget() != null
-                && cb.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn0
-                && fn0.isParamByRef(0);
-        boolean ref1 = !byKey && cb.callTarget() != null
-                && cb.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn1
-                && fn1.isParamByRef(1);
-        PhpArray writableArr = writable(a);
-        List<Map.Entry<Object, Object>> entries = new ArrayList<>();
-        for (Object k : writableArr.keys()) {
-            Object val = (ref0 || ref1) ? writableArr.obtainElementRef(k) : writableArr.get(k);
-            entries.add(Map.entry(k, val));
-        }
+        List<Map.Entry<Object, Object>> entries = new ArrayList<>(writable(a).entries());
         entries.sort((e1, e2) -> {
-            Object res;
-            if (byKey) {
-                Object k1 = ref0 ? new PhpReference(e1.getKey()) : e1.getKey();
-                Object k2 = ref1 ? new PhpReference(e2.getKey()) : e2.getKey();
-                res = cb.call(ctx, null, ctx.currentBuiltinCallSite(), k1, k2);
-            } else {
-                res = cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
-            }
+            Object res = byKey
+                    ? cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
+                    : cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
             return PhpOps.compare(res, 0L);
         });
         if (keepKeys) {
-            PhpArray out = new PhpArray();
-            for (Map.Entry<Object, Object> e : entries) {
-                Object v = e.getValue() instanceof PhpReference ref ? ref.value : e.getValue();
-                out.put(e.getKey(), PhpOps.copyOnAssign(v));
-            }
-            a[0] = out;
+            a[0] = fromEntries(entries, true);
         } else {
             PhpArray out = new PhpArray();
             for (Map.Entry<Object, Object> e : entries) {
-                Object v = e.getValue() instanceof PhpReference ref ? ref.value : e.getValue();
-                out.append(PhpOps.copyOnAssign(v));
+                out.append(PhpOps.copyOnAssign(e.getValue()));
             }
             a[0] = out;
         }

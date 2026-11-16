@@ -353,7 +353,7 @@ public final class Parser {
                     endStatement();
                     return new UnsetNode(targets.toArray(new LValueNode[0])).at(line);
                 }
-                case "abstract", "final", "class", "interface" -> {
+                case "abstract", "final", "readonly", "class", "interface" -> {
                     return classDeclaration(topLevel, line);
                 }
                 case "try" -> {

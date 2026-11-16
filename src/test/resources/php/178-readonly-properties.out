@@ -1,0 +1,9 @@
+tok_1:60:read,write
+mod_out=Cannot modify readonly property Token::$ttl
+mod_in=Cannot modify readonly property Token::$id
+unset=Cannot unset readonly property Token::$id
+ref=Cannot indirectly modify readonly property Token::$id
+pair=11,22
+ro_cls=Cannot modify readonly property ImmutablePair::$first
+bool(false)
+uninit=Typed property LazyReadonly::$code must not be accessed before initialization
