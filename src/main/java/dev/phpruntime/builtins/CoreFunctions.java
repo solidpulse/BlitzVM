@@ -33,7 +33,7 @@ final class CoreFunctions {
             }
             return v;
         });
-        Builtins.def("php_sapi_name", 0, 0, (ctx, a) -> ctx.request().scheduler == dev.phpruntime.runtime.GuestScheduler.NONE ? "cli" : "truffle-http");
+        Builtins.def("php_sapi_name", 0, 0, (ctx, a) -> ctx.request().http ? "fpm-fcgi" : "cli");
         Builtins.def("phpversion", 0, 1, (ctx, a) -> "8.3.0-truffle");
         Builtins.def("memory_get_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
         Builtins.def("memory_get_peak_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory());

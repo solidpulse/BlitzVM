@@ -145,6 +145,8 @@ public final class PhpMainRootNode extends PhpRootNode {
         ctx.writeGlobal("_REQUEST", all);
         ctx.writeGlobal("_COOKIE", PhpQuery.parseCookies(PhpQuery.header(request.headers, "Cookie")));
         ctx.writeGlobal("_FILES", new PhpArray());
+        // PHP_SAPI: php-fpm's name for HTTP requests (code checks 'cli', 'cgi-fcgi', 'fpm-fcgi').
+        ctx.defineConstant("PHP_SAPI", request.http ? "fpm-fcgi" : "cli", 0);
         PhpArray environment = new PhpArray();
         request.environment.forEach((key, value) -> environment.put(dev.phpruntime.runtime.PhpStrings.fromJava(key),
                 dev.phpruntime.runtime.PhpStrings.fromJava(value)));
