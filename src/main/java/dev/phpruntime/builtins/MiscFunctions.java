@@ -121,6 +121,42 @@ final class MiscFunctions {
     // ------------------------------------------------------------------ network
 
     private static void network() {
+        Builtins.def("ip2long", 1, 1, (ctx, a) -> {
+            byte[] b = packAddress(PhpOps.toStr(a[0]));
+            if (b == null || b.length != 4) {
+                return false;
+            }
+            return ((long) (b[0] & 0xff) << 24) | ((long) (b[1] & 0xff) << 16)
+                    | ((long) (b[2] & 0xff) << 8) | (b[3] & 0xff);
+        });
+        Builtins.def("long2ip", 1, 1, (ctx, a) -> {
+            long v = PhpOps.toLong(a[0]) & 0xffffffffL;
+            return ((v >> 24) & 0xff) + "." + ((v >> 16) & 0xff) + "." + ((v >> 8) & 0xff) + "." + (v & 0xff);
+        });
+        Builtins.def("gethostbynamel", 1, 1, (ctx, a) -> {
+            String host = PhpOps.toStr(a[0]);
+            java.util.LinkedHashSet<String> addresses = new java.util.LinkedHashSet<>();
+            // DNS is network I/O: give up the CPU slot while waiting.
+            ctx.request().scheduler.blocking(null, () -> {
+                try {
+                    for (InetAddress addr : InetAddress.getAllByName(PhpStrings.toJava(host))) {
+                        if (addr instanceof java.net.Inet4Address) {
+                            addresses.add(addr.getHostAddress());
+                        }
+                    }
+                } catch (java.net.UnknownHostException | SecurityException e) {
+                    // php returns false when no IPv4 address is found
+                }
+            });
+            if (addresses.isEmpty()) {
+                return false;
+            }
+            PhpArray out = new PhpArray();
+            for (String addr : addresses) {
+                out.append(addr);
+            }
+            return out;
+        });
         Builtins.def("inet_pton", 1, 1, (ctx, a) -> {
             byte[] packed = packAddress(PhpOps.toStr(a[0]));
             return packed == null ? false : PhpStrings.of(packed);
