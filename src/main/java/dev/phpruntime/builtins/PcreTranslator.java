@@ -189,6 +189,10 @@ final class PcreTranslator {
                 default -> throw new PatternError("Unknown modifier '" + c + "'");
             }
         }
+        String expanded = PcreSubroutines.expand(body, t.extended, t.noAutoCapture);
+        if (expanded != null) {
+            t.src = expanded;
+        }
         return t.translate();
     }
 

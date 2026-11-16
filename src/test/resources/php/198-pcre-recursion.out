@@ -1,0 +1,48 @@
+string(34) "color: ; width:  foo(bar) calc((1)"
+int(1)
+array(2) {
+  [0]=>
+  string(11) "((a)(b(c)))"
+  [1]=>
+  string(11) "((a)(b(c)))"
+}
+int(1)
+string(10) "[a[b[c]]d]"
+int(0)
+int(0)
+int(1)
+array(2) {
+  [0]=>
+  string(8) "12-345-6"
+  [1]=>
+  string(2) "12"
+}
+int(1)
+array(3) {
+  [0]=>
+  string(7) "foo bar"
+  ["w"]=>
+  string(3) "foo"
+  [1]=>
+  string(3) "foo"
+}
+int(1)
+array(2) {
+  [0]=>
+  string(3) "7=8"
+  [1]=>
+  string(1) "8"
+}
+int(1)
+array(3) {
+  [0]=>
+  string(3) "a b"
+  ["x"]=>
+  string(1) "b"
+  [1]=>
+  string(1) "b"
+}
+user@example.com 1
+a.b@[127.0.0.1] 1
+bad@@x 0
+"q u"@ex.org 1
