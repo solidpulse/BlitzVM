@@ -226,6 +226,9 @@ public final class PhpBacktrace {
     private static PhpArray argsToPhpArray(Object[] args) {
         PhpArray a = new PhpArray();
         for (Object v : args) {
+            if (v instanceof PhpReference ref) {
+                v = ref.value == null ? PhpNull.INSTANCE : ref.value;
+            }
             a.append(PhpOps.copyOnAssign(v));
         }
         return a;
@@ -336,6 +339,9 @@ public final class PhpBacktrace {
     }
 
     private static String formatDebugArg(Object v) {
+        if (v instanceof PhpReference ref) {
+            v = ref.value;
+        }
         if (v == null || v == PhpNull.INSTANCE) {
             return "NULL";
         }

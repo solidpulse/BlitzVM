@@ -25,6 +25,11 @@ public abstract class PhpNode extends Node {
 
     public abstract Object execute(VirtualFrame frame);
 
+    /** Executes this expression preserving a {@code PhpReference} cell when returned by reference. */
+    public Object executeForRef(VirtualFrame frame) {
+        return execute(frame);
+    }
+
     public void executeVoid(VirtualFrame frame) {
         execute(frame);
     }

@@ -397,10 +397,7 @@ public final class PhpClass {
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
                 if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
-                    Object pv = get.execute(obj, k, PhpNull.INSTANCE);
-                    if (pv instanceof PhpBacktrace.LazyTrace lt) {
-                        pv = lt.toPhpArray();
-                    }
+                    Object pv = unwrapProp(get.execute(obj, k, PhpNull.INSTANCE));
                     out.add(Map.entry(prop, pv));
                 }
                 continue;
@@ -408,20 +405,70 @@ public final class PhpClass {
             InstanceProp p = cls.findVisibleProp(k);
             if (p != null && p.visibility() == Visibility.PROTECTED) {
                 if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
-                    Object pv = get.execute(obj, k, PhpNull.INSTANCE);
-                    if (pv instanceof PhpBacktrace.LazyTrace lt) {
-                        pv = lt.toPhpArray();
-                    }
+                    Object pv = unwrapProp(get.execute(obj, k, PhpNull.INSTANCE));
                     out.add(Map.entry(k, pv));
                 }
                 continue;
             }
-            Object pv = get.execute(obj, k, PhpNull.INSTANCE);
-            if (pv instanceof PhpBacktrace.LazyTrace lt) {
-                pv = lt.toPhpArray();
-            }
+            Object pv = unwrapProp(get.execute(obj, k, PhpNull.INSTANCE));
             out.add(Map.entry(k, pv));
         }
         return out;
+    }
+
+    /** Collects visible property entries backed by {@link PhpReference} cells for {@code foreach ($obj as &$v)}. */
+    @TruffleBoundary
+    public static List<Map.Entry<Object, PhpReference>> visibleRefEntries(PhpContext ctx, PhpObject obj, String callerClassName) {
+        String callerLower = callerClassName == null ? null : callerClassName.toLowerCase();
+        PhpClass caller = callerLower == null ? null : ctx.lookupClass(callerLower);
+        PhpClass cls = obj.phpClass();
+        Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
+        DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+        List<Map.Entry<Object, PhpReference>> out = new ArrayList<>(keys.length);
+        for (Object rawKey : keys) {
+            String k = (String) rawKey;
+            if (k.startsWith("\0")) {
+                int sep = k.indexOf('\0', 1);
+                String declaring = k.substring(1, sep);
+                String prop = k.substring(sep + 1);
+                if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
+                    out.add(Map.entry(prop, ensurePropRef(obj, k, get, put)));
+                }
+                continue;
+            }
+            InstanceProp p = cls.findVisibleProp(k);
+            if (p != null && p.visibility() == Visibility.PROTECTED) {
+                if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
+                    out.add(Map.entry(k, ensurePropRef(obj, k, get, put)));
+                }
+                continue;
+            }
+            out.add(Map.entry(k, ensurePropRef(obj, k, get, put)));
+        }
+        return out;
+    }
+
+    private static PhpReference ensurePropRef(PhpObject obj, String storageKey, DynamicObject.GetNode get, DynamicObject.PutNode put) {
+        Object cur = get.execute(obj, storageKey, PhpNull.INSTANCE);
+        if (cur instanceof PhpReference ref) {
+            return ref;
+        }
+        if (cur instanceof PhpBacktrace.LazyTrace lt) {
+            cur = lt.toPhpArray();
+        }
+        PhpReference ref = new PhpReference(cur == null ? PhpNull.INSTANCE : cur);
+        put.execute(obj, storageKey, ref);
+        return ref;
+    }
+
+    public static Object unwrapProp(Object pv) {
+        if (pv instanceof PhpReference ref) {
+            pv = ref.value;
+        }
+        if (pv instanceof PhpBacktrace.LazyTrace lt) {
+            pv = lt.toPhpArray();
+        }
+        return pv == null ? PhpNull.INSTANCE : pv;
     }
 }

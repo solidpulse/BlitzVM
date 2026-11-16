@@ -9,6 +9,7 @@ import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
 /** {@code Foo::$prop}, {@code self::$prop}, {@code static::$prop}, {@code parent::$prop}. */
@@ -40,7 +41,8 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         PhpClass.StaticSlot slot = requireSlot(cls, name);
-        return slot.value == null ? PhpNull.INSTANCE : slot.value;
+        Object v = slot.value instanceof PhpReference ref ? ref.value : slot.value;
+        return v == null ? PhpNull.INSTANCE : v;
     }
 
     @Override
@@ -51,7 +53,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         if (slot == null || !isAccessible(cls, slot)) {
             return null;
         }
-        return slot.value;
+        return slot.value instanceof PhpReference ref ? ref.value : slot.value;
     }
 
     @Override
@@ -59,7 +61,35 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         PhpClass.StaticSlot slot = requireSlot(cls, name);
-        slot.value = value;
+        if (slot.value instanceof PhpReference ref) {
+            ref.value = value;
+        } else {
+            slot.value = value;
+        }
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        PhpClass cls = (PhpClass) keys[0];
+        String name = (String) keys[1];
+        PhpClass.StaticSlot slot = requireSlot(cls, name);
+        if (slot.value instanceof PhpReference ref) {
+            if (ref.value == null) {
+                ref.value = PhpNull.INSTANCE;
+            }
+            return ref;
+        }
+        PhpReference ref = new PhpReference(slot.value == null ? PhpNull.INSTANCE : slot.value);
+        slot.value = ref;
+        return ref;
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        PhpClass cls = (PhpClass) keys[0];
+        String name = (String) keys[1];
+        PhpClass.StaticSlot slot = requireSlot(cls, name);
+        slot.value = cell;
     }
 
     @Override

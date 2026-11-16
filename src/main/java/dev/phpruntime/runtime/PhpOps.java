@@ -355,7 +355,7 @@ public final class PhpOps {
                 if (!contains.execute(y, k)) {
                     return false;
                 }
-                if (!looseEquals(get.execute(x, k, null), get.execute(y, k, null), seen)) {
+                if (!looseEquals(PhpClass.unwrapProp(get.execute(x, k, null)), PhpClass.unwrapProp(get.execute(y, k, null)), seen)) {
                     return false;
                 }
             }

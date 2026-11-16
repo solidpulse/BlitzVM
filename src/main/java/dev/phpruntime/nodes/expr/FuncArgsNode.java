@@ -46,7 +46,11 @@ public final class FuncArgsNode extends PhpNode {
             case GET_ARGS -> {
                 PhpArray arr = new PhpArray();
                 for (int i = 0; i < count; i++) {
-                    arr.append(PhpOps.copyOnAssign(args[argOffset + i]));
+                    Object v = args[argOffset + i];
+                    if (v instanceof dev.phpruntime.runtime.PhpReference ref) {
+                        v = ref.value == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.value;
+                    }
+                    arr.append(PhpOps.copyOnAssign(v));
                 }
                 yield arr;
             }
@@ -58,7 +62,11 @@ public final class FuncArgsNode extends PhpNode {
                 if (idx >= count) {
                     throw new PhpError("ValueError", kind.phpName + "(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function", this);
                 }
-                yield PhpOps.copyOnAssign(args[argOffset + (int) idx]);
+                Object v = args[argOffset + (int) idx];
+                if (v instanceof dev.phpruntime.runtime.PhpReference ref) {
+                    v = ref.value == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.value;
+                }
+                yield PhpOps.copyOnAssign(v);
             }
         };
     }

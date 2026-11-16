@@ -30,6 +30,12 @@ public final class ClosureInvokeRootNode extends PhpRootNode {
         PhpClosure closure = closureObj.closure();
         Object[] userArgs = new Object[args.length - 2];
         System.arraycopy(args, 2, userArgs, 0, userArgs.length);
-        return PhpCallable.invokeClosure(PhpContext.get(this), indirectCall, this, closureObj, closure, userArgs);
+        Object res = switch (closure.kind()) {
+            case CLOSURE -> indirectCall.call(closure.callTarget(),
+                    PhpCallable.buildClosureArgs(closure.callTarget(), closure.boundThis(), closure.calledClass(), closureObj, userArgs, PhpContext.get(this), this));
+            case USER_FUNCTION, METHOD, MAGIC_CALL, BUILTIN ->
+                    PhpCallable.invokeClosure(PhpContext.get(this), indirectCall, this, closureObj, closure, userArgs);
+        };
+        return res;
     }
 }

@@ -12,6 +12,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
 /** {@code $obj->prop} or {@code $obj->$name} lvalue. */
@@ -62,12 +63,15 @@ public final class PropertyLValueNode extends LValueNode {
         String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
         if (!(target instanceof PhpObject obj)) {
             PhpContext.get(this).warning(
-                    "Attempt to read property \"" + name + "\" on " + PhpOps.typeName(target), line());
+                    "Attempt to read property " + '"' + name + '"' + " on " + PhpOps.typeName(target), line());
             return PhpNull.INSTANCE;
         }
         String storageKey = resolveKeyIfAccessible(obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
@@ -84,6 +88,9 @@ public final class PropertyLValueNode extends LValueNode {
         String storageKey = resolveKeyIfAccessible(obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
@@ -100,6 +107,9 @@ public final class PropertyLValueNode extends LValueNode {
         String storageKey = resolveKeyIfAccessible(obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v != PhpNull.INSTANCE;
             }
@@ -116,6 +126,9 @@ public final class PropertyLValueNode extends LValueNode {
         String storageKey = resolveKeyIfAccessible(obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v;
             }
@@ -132,15 +145,62 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
-            throw new PhpError("Attempt to assign property \"" + name + "\" on " + PhpOps.typeName(target), this);
+            throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
         String storageKey = resolveKeyIfAccessible(obj, name);
-        if (storageKey != null && (getNode.execute(obj, storageKey, null) != null
-                || obj.phpClass().setMethod() == null)) {
-            putNode.execute(obj, storageKey, value);
-            return;
+        if (storageKey != null) {
+            Object existing = getNode.execute(obj, storageKey, null);
+            if (existing instanceof PhpReference ref) {
+                ref.value = value;
+                return;
+            }
+            if (existing != null || obj.phpClass().setMethod() == null) {
+                putNode.execute(obj, storageKey, value);
+                return;
+            }
         }
         writeFallback(obj, name, value, storageKey == null);
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        Object target = keys[0];
+        String name = (String) keys[1];
+        if (!(target instanceof PhpObject obj)) {
+            throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+        }
+        String storageKey = resolveKeyIfAccessible(obj, name);
+        if (storageKey == null) {
+            throw inaccessibleError(obj, name);
+        }
+        Object existing = getNode.execute(obj, storageKey, null);
+        if (existing instanceof PhpReference ref) {
+            if (ref.value == null) {
+                ref.value = PhpNull.INSTANCE;
+            }
+            return ref;
+        }
+        if (existing == null && obj.phpClass().getMethod() != null && obj.phpClass().getMethod().callTarget() != null) {
+            Object val = callMagic1(obj.phpClass().getMethod(), obj, name);
+            return new PhpReference(PhpOps.copyOnAssign(val));
+        }
+        PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);
+        putNode.execute(obj, storageKey, ref);
+        return ref;
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        Object target = keys[0];
+        String name = (String) keys[1];
+        if (!(target instanceof PhpObject obj)) {
+            throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+        }
+        String storageKey = resolveKeyIfAccessible(obj, name);
+        if (storageKey == null) {
+            throw inaccessibleError(obj, name);
+        }
+        putNode.execute(obj, storageKey, cell);
     }
 
     @Override

@@ -115,6 +115,12 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     public Object get(Object key) {
+        Object v = map.get(normalizeKey(key));
+        return v instanceof PhpReference ref ? ref.value : v;
+    }
+
+    @TruffleBoundary
+    public Object getRaw(Object key) {
         return map.get(normalizeKey(key));
     }
 
@@ -126,12 +132,54 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public void put(Object key, Object value) {
         Object k = normalizeKey(key);
-        if (map.put(k, value) == null && keyCache != null) {
+        Object existing = map.get(k);
+        if (existing instanceof PhpReference ref && !(value instanceof PhpReference)) {
+            ref.value = value;
+        } else if (map.put(k, value) == null && keyCache != null) {
             keyCache = null;
         }
         if (k instanceof Long l && l >= nextIndex) {
             nextIndex = l + 1;
         }
+    }
+
+    @TruffleBoundary
+    public void putRef(Object key, PhpReference ref) {
+        Object k = normalizeKey(key);
+        if (map.put(k, ref) == null && keyCache != null) {
+            keyCache = null;
+        }
+        if (k instanceof Long l && l >= nextIndex) {
+            nextIndex = l + 1;
+        }
+    }
+
+    @TruffleBoundary
+    public PhpReference obtainElementRef(Object key) {
+        Object k = normalizeKey(key);
+        Object existing = map.get(k);
+        if (existing instanceof PhpReference ref) {
+            if (ref.value == null) {
+                ref.value = PhpNull.INSTANCE;
+            }
+            return ref;
+        }
+        PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);
+        if (map.put(k, ref) == null && keyCache != null) {
+            keyCache = null;
+        }
+        if (k instanceof Long l && l >= nextIndex) {
+            nextIndex = l + 1;
+        }
+        return ref;
+    }
+
+    @TruffleBoundary
+    public PhpReference appendRef(PhpReference ref) {
+        keyCache = null;
+        map.put(nextIndex, ref);
+        nextIndex++;
+        return ref;
     }
 
     @TruffleBoundary
@@ -159,12 +207,32 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     public List<Object> values() {
+        List<Object> out = new ArrayList<>(map.size());
+        for (Object v : map.values()) {
+            out.add(v instanceof PhpReference ref ? ref.value : v);
+        }
+        return out;
+    }
+
+    @TruffleBoundary
+    public List<Object> rawValues() {
         return new ArrayList<>(map.values());
     }
 
-    /** Snapshot of entries, so foreach is unaffected by writes to the array inside the loop. */
+    /** Snapshot of entries (unwrapped), so foreach is unaffected by writes to the array inside the loop. */
     @TruffleBoundary
     public List<Map.Entry<Object, Object>> entries() {
+        List<Map.Entry<Object, Object>> list = new ArrayList<>(map.size());
+        for (Map.Entry<Object, Object> e : map.entrySet()) {
+            Object v = e.getValue();
+            list.add(Map.entry(e.getKey(), v instanceof PhpReference ref ? ref.value : v));
+        }
+        return list;
+    }
+
+    /** Snapshot of raw entries preserving {@link PhpReference} cells. */
+    @TruffleBoundary
+    public List<Map.Entry<Object, Object>> rawEntries() {
         List<Map.Entry<Object, Object>> list = new ArrayList<>(map.size());
         for (Map.Entry<Object, Object> e : map.entrySet()) {
             list.add(Map.entry(e.getKey(), e.getValue()));
@@ -186,7 +254,7 @@ public final class PhpArray implements TruffleObject {
         keyCache = null;
         pointer = 0;
         recomputeNextIndex();
-        return v;
+        return v instanceof PhpReference ref ? ref.value : v;
     }
 
     @TruffleBoundary
@@ -198,7 +266,7 @@ public final class PhpArray implements TruffleObject {
         Object v = map.remove(firstKey);
         reindex();
         pointer = 0;
-        return v;
+        return v instanceof PhpReference ref ? ref.value : v;
     }
 
     /** Renumber integer keys from 0, keeping string keys (used by sort, array_shift...). */
@@ -268,7 +336,11 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public Object pointerValue() {
         Object k = pointerKey();
-        return k == null ? null : map.get(k);
+        if (k == null) {
+            return null;
+        }
+        Object v = map.get(k);
+        return v instanceof PhpReference ref ? ref.value : v;
     }
 
     @TruffleBoundary

@@ -72,4 +72,26 @@ public final class DispatchCallNode extends Node {
         }
         return arr;
     }
+
+    public static PhpArray evalMagicArgs(VirtualFrame frame, PhpNode[] args, String[] argNames, boolean[] spreads, Node site) {
+        if (argNames == null && spreads == null) {
+            return evalMagicArgs(frame, args);
+        }
+        CallArgHelper.RawCallArgs raw = CallArgHelper.evaluateCallSite(frame, args, null, argNames, spreads, null, site);
+        return buildMagicArrayFromRaw(raw);
+    }
+
+    @TruffleBoundary
+    private static PhpArray buildMagicArrayFromRaw(CallArgHelper.RawCallArgs raw) {
+        PhpArray arr = new PhpArray();
+        for (Object p : raw.positional()) {
+            arr.append(PhpOps.copyOnAssign(p));
+        }
+        if (raw.named() != null) {
+            for (java.util.Map.Entry<String, Object> e : raw.named().entrySet()) {
+                arr.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            }
+        }
+        return arr;
+    }
 }

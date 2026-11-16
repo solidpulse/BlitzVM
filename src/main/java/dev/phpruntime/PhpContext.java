@@ -771,15 +771,25 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void warning(String message, int line) {
+        emitDiagnostic(2L, "Warning", message, line);
+    }
+
+    @TruffleBoundary
+    public void notice(String message, int line) {
+        emitDiagnostic(8L, "Notice", message, line);
+    }
+
+    @TruffleBoundary
+    private void emitDiagnostic(long errno, String label, String message, int line) {
         String file = request().scriptFilename;
         ErrorHandlerEntry handler = errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
-                && (handler.errorLevels() & 2L) != 0) {
+                && (handler.errorLevels() & errno) != 0) {
             PhpCallable cb = PhpCallable.resolveOrNull(this, handler.callable());
             if (cb != null) {
                 inErrorHandler = true;
                 try {
-                    Object handled = cb.call(this, null, null, 2L, message, file, (long) line);
+                    Object handled = cb.call(this, null, null, errno, message, file, (long) line);
                     if (!Boolean.FALSE.equals(handled)) {
                         return;
                     }
@@ -788,6 +798,6 @@ public final class PhpContext {
                 }
             }
         }
-        err.println("PHP Warning:  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
+        err.println("PHP " + label + ":  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
     }
 }

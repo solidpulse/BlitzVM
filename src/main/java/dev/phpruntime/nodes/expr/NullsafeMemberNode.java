@@ -36,4 +36,16 @@ public final class NullsafeMemberNode extends PhpNode {
         }
         return methodNode.executeOnTarget(frame, target);
     }
+
+    @Override
+    public Object executeForRef(VirtualFrame frame) {
+        Object target = targetExpr.execute(frame);
+        if (target == PhpNull.INSTANCE) {
+            return PhpNull.INSTANCE;
+        }
+        if (propertyNode != null) {
+            return propertyNode.executeOnTarget(frame, target);
+        }
+        return methodNode.executeOnTargetRaw(frame, target);
+    }
 }

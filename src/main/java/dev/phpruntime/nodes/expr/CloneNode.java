@@ -51,7 +51,11 @@ public final class CloneNode extends PhpNode {
         DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         for (Object k : keys) {
-            put.execute(copy, k, PhpOps.copyOnAssign(get.execute(src, k, PhpNull.INSTANCE)));
+            Object raw = get.execute(src, k, PhpNull.INSTANCE);
+            if (raw instanceof dev.phpruntime.runtime.PhpReference ref) {
+                raw = ref.value;
+            }
+            put.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
         }
         return copy;
     }

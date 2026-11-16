@@ -65,7 +65,7 @@ public final class CastNode extends PhpNode {
                         arrKey = "\0*\0" + k;
                     }
                 }
-                a.put(arrKey, PhpOps.copyOnAssign(get.execute(obj, k, PhpNull.INSTANCE)));
+                a.put(arrKey, PhpOps.copyOnAssign(PhpClass.unwrapProp(get.execute(obj, k, PhpNull.INSTANCE))));
             }
             return a;
         }
