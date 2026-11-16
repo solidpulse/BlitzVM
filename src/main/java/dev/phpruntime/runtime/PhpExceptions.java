@@ -511,7 +511,7 @@ public final class PhpExceptions {
         @Override
         public Object execute(VirtualFrame frame) {
             Object[] raw = frame.getArguments();
-            PhpObject self = (PhpObject) raw[0];
+            PhpObject self = raw[0] instanceof PhpObject o ? o : null;
             Object[] callArgs = raw.length > 2
                     ? java.util.Arrays.copyOfRange(raw, 2, raw.length)
                     : new Object[0];

@@ -3,7 +3,10 @@ package dev.phpruntime.builtins;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpClass;
+import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.timelib.Dow;
 import dev.phpruntime.timelib.ParseDate;
@@ -98,6 +101,311 @@ final class DateFunctions {
         Builtins.def("strtotime", 1, 2, (ctx, a) -> strtotime(ctx, a));
         Builtins.def("date_parse", 1, 1, (ctx, a) -> dateParse(PhpOps.toStr(a[0])));
         Builtins.def("date_parse_from_format", 2, 2, (ctx, a) -> dateParseFromFormat(PhpOps.toStr(a[0]), PhpOps.toStr(a[1])));
+
+        Builtins.def("date_interval_create_from_date_string", 1, 1, (ctx, a) -> {
+            String datetime = PhpOps.toStr(a[0]);
+            TimelibErrorContainer[] err = new TimelibErrorContainer[1];
+            TimelibTime time = ParseDate.strtotime(datetime, err, ZoneinfoDb.instance());
+            if (err[0] != null && err[0].errorCount > 0) {
+                TimelibErrorMessage first = err[0].errorMessages.get(0);
+                char ch = first.character != 0 ? first.character : ' ';
+                ctx.warning(String.format("Unknown or bad format (%s) at position %d (%c): %s",
+                        datetime, first.position, ch, first.message), 0);
+                return false;
+            }
+            if (time.haveDate != 0 || time.haveTime != 0 || time.haveZone != 0) {
+                ctx.warning("String '" + datetime + "' contains non-relative elements", 0);
+                return false;
+            }
+            PhpClass cls = ctx.lookupClass("DateInterval");
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            cls.populateDefaults(obj);
+            DateTimeClasses.DateIntervalState state = new DateTimeClasses.DateIntervalState(time.relative.copy());
+            state.civilOrWall = 1; // PHP_DATE_CIVIL
+            state.fromString = true;
+            state.dateString = datetime;
+            state.initialized = true;
+            obj.setNativeState(state);
+            DateTimeClasses.syncPropertiesFromRelTime(obj, time.relative, true);
+            return obj;
+        });
+
+        Builtins.def("date_interval_format", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateIntervalState state)) {
+                throw new PhpError(PhpError.TYPE_ERROR,
+                        "date_interval_format(): Argument #1 ($object) must be of type DateInterval", null);
+            }
+            if (!state.initialized) {
+                throw new PhpError("Object of type DateInterval has not been correctly initialized", null);
+            }
+            DateTimeClasses.syncRelTimeFromProperties(obj, state.diff);
+            String fmt = PhpOps.toStr(a[1]);
+            return dev.phpruntime.timelib.Interval.format(fmt, state.diff);
+        });
+
+        Builtins.def("date_create", 0, 2, (ctx, a) -> {
+            String timeStr = a.length >= 1 && a[0] != PhpNull.INSTANCE ? PhpOps.toStr(a[0]) : "now";
+            PhpObject tzObj = (a.length >= 2 && a[1] instanceof PhpObject o && o.nativeState() instanceof DateTimeClasses.DateTimeZoneState) ? (PhpObject) a[1] : null;
+            TimelibTime time = DateTimeClasses.dateInitialize(ctx, timeStr, null, tzObj, false, false);
+            if (time == null) return false;
+            PhpClass cls = ctx.lookupClass("DateTime");
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            obj.setNativeState(new DateTimeClasses.DateTimeState(time));
+            return obj;
+        });
+
+        Builtins.def("date_create_immutable", 0, 2, (ctx, a) -> {
+            String timeStr = a.length >= 1 && a[0] != PhpNull.INSTANCE ? PhpOps.toStr(a[0]) : "now";
+            PhpObject tzObj = (a.length >= 2 && a[1] instanceof PhpObject o && o.nativeState() instanceof DateTimeClasses.DateTimeZoneState) ? (PhpObject) a[1] : null;
+            TimelibTime time = DateTimeClasses.dateInitialize(ctx, timeStr, null, tzObj, false, false);
+            if (time == null) return false;
+            PhpClass cls = ctx.lookupClass("DateTimeImmutable");
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            obj.setNativeState(new DateTimeClasses.DateTimeState(time));
+            return obj;
+        });
+
+        Builtins.def("date_create_from_format", 2, 3, (ctx, a) -> {
+            String fmt = PhpOps.toStr(a[0]);
+            String dt = PhpOps.toStr(a[1]);
+            PhpObject tzObj = (a.length >= 3 && a[2] instanceof PhpObject o && o.nativeState() instanceof DateTimeClasses.DateTimeZoneState) ? (PhpObject) a[2] : null;
+            TimelibTime time = DateTimeClasses.dateInitialize(ctx, dt, fmt, tzObj, false, true);
+            if (time == null) return false;
+            PhpClass cls = ctx.lookupClass("DateTime");
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            obj.setNativeState(new DateTimeClasses.DateTimeState(time));
+            return obj;
+        });
+
+        Builtins.def("date_create_immutable_from_format", 2, 3, (ctx, a) -> {
+            String fmt = PhpOps.toStr(a[0]);
+            String dt = PhpOps.toStr(a[1]);
+            PhpObject tzObj = (a.length >= 3 && a[2] instanceof PhpObject o && o.nativeState() instanceof DateTimeClasses.DateTimeZoneState) ? (PhpObject) a[2] : null;
+            TimelibTime time = DateTimeClasses.dateInitialize(ctx, dt, fmt, tzObj, false, true);
+            if (time == null) return false;
+            PhpClass cls = ctx.lookupClass("DateTimeImmutable");
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            obj.setNativeState(new DateTimeClasses.DateTimeState(time));
+            return obj;
+        });
+
+        Builtins.def("date_diff", 2, 3, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject o1) || !(a[1] instanceof PhpObject o2)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_diff(): Arguments must be of type DateTimeInterface", null);
+            }
+            boolean abs = a.length >= 3 && PhpOps.toBool(a[2]);
+            return DateTimeClasses.phpDateDiff(ctx, o1, o2, abs);
+        });
+
+        Builtins.def("date_format", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState state) || state.time == null) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_format(): Argument #1 ($object) must be of type DateTimeInterface", null);
+            }
+            String fmt = PhpOps.toStr(a[1]);
+            return dateFormat(fmt, state.time, state.time.isLocaltime != 0);
+        });
+
+        Builtins.def("date_modify", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState state) || state.time == null) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_modify(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            String mod = PhpOps.toStr(a[1]);
+            if (!DateTimeClasses.phpDateModify(ctx, obj, mod, false)) {
+                return false;
+            }
+            return obj;
+        });
+
+        Builtins.def("date_add", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_add(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            if (!(a[1] instanceof PhpObject intObj) || !(intObj.nativeState() instanceof DateTimeClasses.DateIntervalState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_add(): Argument #2 ($interval) must be of type DateInterval", null);
+            }
+            DateTimeClasses.phpDateAdd(obj, intObj);
+            return obj;
+        });
+
+        Builtins.def("date_sub", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_sub(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            if (!(a[1] instanceof PhpObject intObj) || !(intObj.nativeState() instanceof DateTimeClasses.DateIntervalState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_sub(): Argument #2 ($interval) must be of type DateInterval", null);
+            }
+            DateTimeClasses.phpDateSub(obj, intObj);
+            return obj;
+        });
+
+        Builtins.def("date_timezone_get", 1, 1, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_timezone_get(): Argument #1 ($object) must be of type DateTimeInterface", null);
+            }
+            return DateTimeClasses.phpDateTimezoneGet(ctx, obj);
+        });
+
+        Builtins.def("date_timezone_set", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_timezone_set(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            if (!(a[1] instanceof PhpObject tzObj) || !(tzObj.nativeState() instanceof DateTimeClasses.DateTimeZoneState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_timezone_set(): Argument #2 ($timezone) must be of type DateTimeZone", null);
+            }
+            DateTimeClasses.phpDateTimezoneSet(obj, tzObj);
+            return obj;
+        });
+
+        Builtins.def("date_offset_get", 1, 1, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState state) || state.time == null) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_offset_get(): Argument #1 ($object) must be of type DateTimeInterface", null);
+            }
+            return (long) state.time.z;
+        });
+
+        Builtins.def("date_timestamp_get", 1, 1, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState state) || state.time == null) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_timestamp_get(): Argument #1 ($object) must be of type DateTimeInterface", null);
+            }
+            return state.time.sse;
+        });
+
+        Builtins.def("date_timestamp_set", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_timestamp_set(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            DateTimeClasses.phpDateSetTimestamp(obj, PhpOps.toLong(a[1]));
+            return obj;
+        });
+
+        Builtins.def("date_time_set", 3, 5, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_time_set(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            long h = PhpOps.toLong(a[1]);
+            long i = PhpOps.toLong(a[2]);
+            long s = a.length >= 4 ? PhpOps.toLong(a[3]) : 0L;
+            long us = a.length >= 5 ? PhpOps.toLong(a[4]) : 0L;
+            DateTimeClasses.phpDateSetTime(obj, h, i, s, us);
+            return obj;
+        });
+
+        Builtins.def("date_date_set", 4, 4, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_date_set(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            DateTimeClasses.phpDateSetDate(obj, PhpOps.toLong(a[1]), PhpOps.toLong(a[2]), PhpOps.toLong(a[3]));
+            return obj;
+        });
+
+        Builtins.def("date_isodate_set", 3, 4, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeState)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "date_isodate_set(): Argument #1 ($object) must be of type DateTime", null);
+            }
+            long y = PhpOps.toLong(a[1]);
+            long w = PhpOps.toLong(a[2]);
+            long d = a.length >= 4 ? PhpOps.toLong(a[3]) : 1L;
+            DateTimeClasses.phpDateSetIsoDate(obj, y, w, d);
+            return obj;
+        });
+
+        Builtins.def("timezone_open", 1, 1, (ctx, a) -> {
+            String tz = PhpOps.toStr(a[0]);
+            DateTimeClasses.DateTimeZoneState state = new DateTimeClasses.DateTimeZoneState();
+            String[] errMsg = new String[1];
+            if (!DateTimeClasses.timezoneInitialize(state, tz, errMsg)) {
+                return false;
+            }
+            PhpClass cls = ctx.lookupClass("DateTimeZone");
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            obj.setNativeState(state);
+            return obj;
+        });
+
+        Builtins.def("timezone_name_get", 1, 1, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeZoneState state) || !state.initialized) {
+                throw new PhpError(PhpError.TYPE_ERROR, "timezone_name_get(): Argument #1 ($object) must be of type DateTimeZone", null);
+            }
+            return state.name();
+        });
+
+        Builtins.def("timezone_offset_get", 2, 2, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeZoneState state) || !state.initialized) {
+                throw new PhpError(PhpError.TYPE_ERROR, "timezone_offset_get(): Argument #1 ($object) must be of type DateTimeZone", null);
+            }
+            if (!(a[1] instanceof PhpObject dtObj) || !(dtObj.nativeState() instanceof DateTimeClasses.DateTimeState dtState) || dtState.time == null) {
+                throw new PhpError(PhpError.TYPE_ERROR, "timezone_offset_get(): Argument #2 ($datetime) must be of type DateTimeInterface", null);
+            }
+            return switch (state.type) {
+                case TIMELIB_ZONETYPE_ID -> {
+                    TimelibTzinfo.TimelibTimeOffset info = ParseTz.getTimeZoneInfo(dtState.time.sse, state.tzInfo);
+                    yield (long) info.offset;
+                }
+                case TIMELIB_ZONETYPE_OFFSET -> (long) state.utcOffset;
+                case TIMELIB_ZONETYPE_ABBR -> (long) state.utcOffset + (state.dst * 3600L);
+                default -> 0L;
+            };
+        });
+
+        Builtins.def("timezone_identifiers_list", 0, 2, (ctx, a) -> {
+            long group = a.length >= 1 ? PhpOps.toLong(a[0]) : DateTimeClasses.GROUP_ALL;
+            return DateTimeClasses.listIdentifiersPublic(group);
+        });
+
+        Builtins.def("timezone_transitions_get", 1, 3, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeZoneState state) || !state.initialized) {
+                throw new PhpError(PhpError.TYPE_ERROR, "timezone_transitions_get(): Argument #1 ($object) must be of type DateTimeZone", null);
+            }
+            if (state.type != TIMELIB_ZONETYPE_ID || state.tzInfo == null) {
+                return false;
+            }
+            long begin = a.length >= 2 ? PhpOps.toLong(a[1]) : Long.MIN_VALUE;
+            long end = a.length >= 3 ? PhpOps.toLong(a[2]) : Integer.MAX_VALUE;
+            return DateTimeClasses.buildTransitions(state.tzInfo, begin, end);
+        });
+
+        Builtins.def("timezone_location_get", 1, 1, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(obj.nativeState() instanceof DateTimeClasses.DateTimeZoneState state) || !state.initialized) {
+                throw new PhpError(PhpError.TYPE_ERROR, "timezone_location_get(): Argument #1 ($object) must be of type DateTimeZone", null);
+            }
+            if (state.type != TIMELIB_ZONETYPE_ID || state.tzInfo == null) {
+                return false;
+            }
+            PhpArray arr = new PhpArray();
+            arr.put("country_code", state.tzInfo.location.countryCodeString());
+            arr.put("latitude", state.tzInfo.location.latitude);
+            arr.put("longitude", state.tzInfo.location.longitude);
+            arr.put("comments", state.tzInfo.location.comments != null ? state.tzInfo.location.comments : "");
+            return arr;
+        });
+
+        Builtins.def("timezone_abbreviations_list", 0, 0, (ctx, a) -> DateTimeClasses.buildAbbreviationsList());
+        Builtins.def("date_get_last_errors", 0, 0, (ctx, a) -> errorContainerToPhp(ContextState.of(ctx).lastDateErrors));
+    }
+
+    static Object errorContainerToPhp(TimelibErrorContainer error) {
+        if (error == null || (error.warningCount == 0 && error.errorCount == 0)) {
+            return false;
+        }
+        PhpArray ret = new PhpArray();
+        ret.put("warning_count", (long) error.warningCount);
+        PhpArray warnings = new PhpArray();
+        if (error.warningMessages != null) {
+            for (TimelibErrorMessage msg : error.warningMessages) {
+                warnings.put((long) msg.position, msg.message);
+            }
+        }
+        ret.put("warnings", warnings);
+
+        ret.put("error_count", (long) error.errorCount);
+        PhpArray errs = new PhpArray();
+        if (error.errorMessages != null) {
+            for (TimelibErrorMessage msg : error.errorMessages) {
+                errs.put((long) msg.position, msg.message);
+            }
+        }
+        ret.put("errors", errs);
+        return ret;
     }
 
     /** C: {@code get_timezone_info} */

@@ -39,6 +39,7 @@ public final class ZoneinfoDb {
     private final boolean available;
     private final Map<String, String> lowerToCanonical;
     private final List<String> identifiers;
+    private final Map<String, TimelibTzinfo.Tlocinfo> locations;
     private final ConcurrentHashMap<String, TimelibTzinfo> cache = new ConcurrentHashMap<>();
 
     private ZoneinfoDb() {
@@ -49,12 +50,14 @@ public final class ZoneinfoDb {
             this.available = false;
             this.lowerToCanonical = Map.of();
             this.identifiers = List.of();
+            this.locations = Map.of();
             return;
         }
         this.available = true;
 
         Map<String, String> map = new HashMap<>();
         List<String> ids = new ArrayList<>();
+        Map<String, TimelibTzinfo.Tlocinfo> locMap = new HashMap<>();
 
         // Prefer tzdata.zi for the canonical identifier list if present, then also walk dir for any
         // extra symlinks/files (e.g. CET, EST, UTC, Etc/UTC).
@@ -100,9 +103,32 @@ public final class ZoneinfoDb {
         } catch (IOException ignored) {
         }
 
+        Path zoneTab = dir.resolve("zone.tab");
+        if (Files.isRegularFile(zoneTab)) {
+            try {
+                for (String line : Files.readAllLines(zoneTab)) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    String[] parts = line.split("\t", -1);
+                    if (parts.length >= 3) {
+                        String cc = parts[0];
+                        String coord = parts[1];
+                        String name = parts[2];
+                        String comments = parts.length >= 4 ? parts[3] : "";
+                        TimelibTzinfo.Tlocinfo loc = parseCoordinates(cc, coord, comments);
+                        if (loc != null) {
+                            locMap.put(name.toLowerCase(Locale.ROOT), loc);
+                        }
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+
         Collections.sort(ids);
         this.lowerToCanonical = Collections.unmodifiableMap(map);
         this.identifiers = Collections.unmodifiableList(ids);
+        this.locations = Collections.unmodifiableMap(locMap);
     }
 
     public static ZoneinfoDb instance() {
@@ -162,11 +188,56 @@ public final class ZoneinfoDb {
         }
         TimelibTzinfo parsed = ParseTz.parseTzfileBytes(canonical, bytes, errorCode);
         if (parsed != null) {
+            TimelibTzinfo.Tlocinfo loc = locations.get(canonical.toLowerCase(Locale.ROOT));
+            if (loc != null) {
+                parsed.location = loc.copy();
+            }
             TimelibTzinfo prev = cache.putIfAbsent(canonical, parsed);
             if (prev != null) {
                 return prev;
             }
         }
         return parsed;
+    }
+
+    private static TimelibTzinfo.Tlocinfo parseCoordinates(String cc, String coord, String comments) {
+        if (coord == null || coord.length() < 9) return null;
+        int lonSignIdx = -1;
+        for (int i = 1; i < coord.length(); i++) {
+            char c = coord.charAt(i);
+            if (c == '+' || c == '-') {
+                lonSignIdx = i;
+                break;
+            }
+        }
+        if (lonSignIdx < 0) return null;
+        String latStr = coord.substring(0, lonSignIdx);
+        String lonStr = coord.substring(lonSignIdx);
+        double lat = parseDms(latStr, true);
+        double lon = parseDms(lonStr, false);
+
+        TimelibTzinfo.Tlocinfo loc = new TimelibTzinfo.Tlocinfo();
+        for (int i = 0; i < Math.min(2, cc.length()); i++) {
+            loc.countryCode[i] = cc.charAt(i);
+        }
+        loc.latitude = lat;
+        loc.longitude = lon;
+        loc.comments = comments != null ? comments : "";
+        return loc;
+    }
+
+    private static double parseDms(String s, boolean isLat) {
+        if (s == null || s.isEmpty()) return 0.0;
+        int sign = s.charAt(0) == '-' ? -1 : 1;
+        String digits = (s.charAt(0) == '+' || s.charAt(0) == '-') ? s.substring(1) : s;
+        int degLen = isLat ? 2 : 3;
+        if (digits.length() < degLen + 2) return 0.0;
+        int deg = Integer.parseInt(digits.substring(0, degLen));
+        int min = Integer.parseInt(digits.substring(degLen, degLen + 2));
+        double sec = 0;
+        if (digits.length() >= degLen + 4) {
+            sec = Double.parseDouble(digits.substring(degLen + 2, degLen + 4));
+        }
+        return sign * (deg + min / 60.0 + sec / 3600.0);
     }
 }
