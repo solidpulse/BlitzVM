@@ -1,0 +1,13 @@
+mode 0: {"x":"apple.html","z":"b.HTML"}
+mode 1: {"x":["apple.html","apple","html"],"z":["b.HTML","b","HTML"]}
+mode 2: {"x":[["apple.html"],["apple"],["html"]],"z":[["b.HTML"],["b"],["HTML"]]}
+mode 3: {"x":["",""],"z":["",""]}
+mode 4: {"x":"[apple]","z":"[b]"}
+{"x":"apple.html","z":"b.HTML"}
+{"y":"pear.txt","n":"none"}
+{"x":[["a",0],["a",0]],"y":[["a",2],["a",2]]}
+300/x/
+{"1":2,"3":4,"4":6}
+int(1)
+bool(true)
+index.html=1 parts/header.html=1 single.html=1

@@ -27,6 +27,7 @@ public final class SplClasses {
         out.put("generator", GeneratorClasses.buildTemplate(language));
         arrayClasses(language, out);
         iteratorClasses(language, out);
+        filterClasses(language, out);
         fileClasses(language, out);
         Map<String, PhpClassTemplate.MethodDecl> storageMethods = new LinkedHashMap<>();
         for (String method : List.of("__construct", "attach", "detach", "contains", "offsetExists", "offsetGet", "offsetSet", "offsetUnset",
@@ -140,6 +141,50 @@ public final class SplClasses {
                     ? List.of(constant("LEAVES_ONLY", 0), constant("SELF_FIRST", 1), constant("CHILD_FIRST", 2), constant("CATCH_GET_CHILD", 16)) : List.of();
             PhpClassTemplate template = new PhpClassTemplate(language.nextTemplateId(), name, false, false, false,
                     false, null, List.of("OuterIterator"), List.of(), constants, methods);
+            out.put(template.lowerName(), template);
+        }
+    }
+
+    /** FilterIterator (abstract accept), RegexIterator and RecursiveRegexIterator. */
+    private static void filterClasses(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        List<String> base = List.of("__construct", "rewind", "valid", "current", "key", "next", "getInnerIterator");
+        for (String name : List.of("FilterIterator", "RegexIterator", "RecursiveRegexIterator")) {
+            Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+            List<String> names = new java.util.ArrayList<>(name.equals("FilterIterator") ? base : List.of("__construct"));
+            if (name.equals("RegexIterator")) {
+                names.addAll(List.of("accept", "getMode", "setMode", "getFlags", "setFlags", "getPregFlags", "setPregFlags", "getRegex"));
+            } else if (name.equals("RecursiveRegexIterator")) {
+                names.addAll(List.of("hasChildren", "getChildren", "accept"));
+            }
+            for (String method : names) {
+                String lower = method.toLowerCase();
+                methods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                        Visibility.PUBLIC, false, false, false,
+                        new dev.phpruntime.nodes.call.SplFilterMethodRootNode(language, name, method).getCallTarget()));
+            }
+            if (name.equals("FilterIterator")) {
+                methods.put("accept", new PhpClassTemplate.MethodDecl("accept", "accept", language.methodId("accept"),
+                        Visibility.PUBLIC, false, true, false, null));
+            }
+            List<PhpClassTemplate.ConstantDecl> constants = name.equals("RegexIterator")
+                    ? List.of(constant("USE_KEY", 1), constant("INVERT_MATCH", 2), constant("MATCH", 0), constant("GET_MATCH", 1),
+                            constant("ALL_MATCHES", 2), constant("SPLIT", 3), constant("REPLACE", 4))
+                    : List.of();
+            List<PhpClassTemplate.PropertyDecl> props = name.equals("RegexIterator")
+                    ? List.of(new PhpClassTemplate.PropertyDecl("replacement", Visibility.PUBLIC, false, PhpNull.INSTANCE, null))
+                    : List.of();
+            String parent = switch (name) {
+                case "RegexIterator" -> "FilterIterator";
+                case "RecursiveRegexIterator" -> "RegexIterator";
+                default -> null;
+            };
+            List<String> interfaces = switch (name) {
+                case "FilterIterator" -> List.of("OuterIterator");
+                case "RecursiveRegexIterator" -> List.of("RecursiveIterator");
+                default -> List.of();
+            };
+            PhpClassTemplate template = new PhpClassTemplate(language.nextTemplateId(), name, false,
+                    name.equals("FilterIterator"), false, false, parent, interfaces, props, constants, methods);
             out.put(template.lowerName(), template);
         }
     }
