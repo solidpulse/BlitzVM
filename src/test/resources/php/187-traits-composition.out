@@ -1,0 +1,16 @@
+TMiddle|TBase::shared|TOther::shared|vis
+Composed::ownWins|Parent::concrete|TMiddle::fromMiddle
+from_tbase|tb|tb_mid
+array(2) {
+  ["TMiddle"]=>
+  string(7) "TMiddle"
+  ["TOther"]=>
+  string(6) "TOther"
+}
+array(1) {
+  ["TBase"]=>
+  string(5) "TBase"
+}
+bool(true)
+bool(false)
+bool(false)

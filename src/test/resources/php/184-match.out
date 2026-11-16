@@ -1,0 +1,18 @@
+int-zero
+str-zero
+bool-false
+null
+one-or-two
+one-or-two
+other
+grade=B
+y
+threw:bad-10
+Unhandled match case of type int
+Unhandled match case of type float
+Unhandled match case of type string
+Unhandled match case of type bool
+Unhandled match case of type null
+Unhandled match case of type array
+Unhandled match case of type stdClass
+Unhandled match case of type resource

@@ -1,0 +1,7 @@
+10|20|IncLib\Box:stdClass
+hello Alice|hello Bob|1.2
+IncConsumer|hello world|1.2
+bool(true)
+bool(true)
+bool(true)
+caught:App\Ex\CustomEx:boom

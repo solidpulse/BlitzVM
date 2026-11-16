@@ -1,0 +1,20 @@
+Hello World!
+arr=val zero=zero prop=prop
+brace=val deep=deep
+escapes=
+	\"literal\" $x A ★
+---
+quoted World
+---
+raw $who \n {$arr['k']}
+---
+line1
+
+    line2 World
+---
+tab1
+	tab2 $who
+---
+arg1|default val
+class_const|first,second
+abc|abc|val|ab
