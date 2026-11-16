@@ -21,6 +21,7 @@ public final class PhpObject extends DynamicObject {
     private final PhpClass phpClass;
     private final long id;
     private final PhpClosure closure;
+    private PhpNativeState nativeState;
 
     public PhpObject(PhpClass phpClass, long id) {
         this(phpClass, id, null);
@@ -43,6 +44,14 @@ public final class PhpObject extends DynamicObject {
 
     public PhpClosure closure() {
         return closure;
+    }
+
+    public PhpNativeState nativeState() {
+        return nativeState;
+    }
+
+    public void setNativeState(PhpNativeState nativeState) {
+        this.nativeState = nativeState;
     }
 
     @Override

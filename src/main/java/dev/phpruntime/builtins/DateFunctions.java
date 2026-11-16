@@ -1,8 +1,16 @@
 package dev.phpruntime.builtins;
 
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.timelib.ParseDate;
+import dev.phpruntime.timelib.TimelibErrorContainer;
+import dev.phpruntime.timelib.TimelibErrorMessage;
+import dev.phpruntime.timelib.TimelibTime;
+import dev.phpruntime.timelib.ZoneinfoDb;
+
+import static dev.phpruntime.timelib.TimelibConstants.*;
 
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -66,6 +74,140 @@ final class DateFunctions {
             return true;
         });
         Builtins.def("date_default_timezone_get", 0, 0, (ctx, a) -> ContextState.of(ctx).timezoneName);
+        Builtins.def("strtotime", 1, 2, (ctx, a) -> strtotime(ctx, a));
+        Builtins.def("date_parse", 1, 1, (ctx, a) -> dateParse(PhpOps.toStr(a[0])));
+    }
+
+    private static Object strtotime(PhpContext ctx, Object[] a) {
+        String times = PhpOps.toStr(a[0]);
+        if (times.isEmpty()) {
+            return false;
+        }
+        TimelibErrorContainer[] errors = new TimelibErrorContainer[1];
+        TimelibTime t = ParseDate.strtotime(times, errors, ZoneinfoDb.instance());
+        if (errors[0] != null && errors[0].errorCount > 0) {
+            return false;
+        }
+        // Phase A skeleton: Phase B will wire timelib_fill_holes + timelib_update_ts.
+        if (t.haveRelative != 0 && t.y == 1970 && t.m == 1 && t.d == 1 && t.isLocaltime != 0 && t.zoneType == TIMELIB_ZONETYPE_OFFSET && t.z == 0) {
+            return t.relative.s;
+        }
+        if (t.haveDate != 0) {
+            int y = (int) t.y;
+            int m = (int) t.m;
+            int d = (int) t.d;
+            int h = t.h == TIMELIB_UNSET ? 0 : (int) t.h;
+            int i = t.i == TIMELIB_UNSET ? 0 : (int) t.i;
+            int s = t.s == TIMELIB_UNSET ? 0 : (int) t.s;
+            try {
+                return LocalDateTime.of(y, m, d, h, i, s).atZone(ContextState.of(ctx).timezone).toEpochSecond();
+            } catch (DateTimeException e) {
+                return false;
+            }
+        }
+        if (t.haveTime != 0) {
+            long base = timestamp(a, 1);
+            ZonedDateTime now = at(base, ContextState.of(ctx).timezone);
+            int h = t.h == TIMELIB_UNSET ? 0 : (int) t.h;
+            int i = t.i == TIMELIB_UNSET ? 0 : (int) t.i;
+            int s = t.s == TIMELIB_UNSET ? 0 : (int) t.s;
+            return now.withHour(h).withMinute(i).withSecond(s).toEpochSecond();
+        }
+        return false;
+    }
+
+    private static void setTimeElement(PhpArray arr, String name, long val) {
+        if (val == TIMELIB_UNSET) {
+            arr.put(name, false);
+        } else {
+            arr.put(name, val);
+        }
+    }
+
+    private static PhpArray dateParse(String datetime) {
+        TimelibErrorContainer[] errors = new TimelibErrorContainer[1];
+        TimelibTime parsed = ParseDate.strtotime(datetime, errors, ZoneinfoDb.instance());
+        return returnParsedTime(parsed, errors[0]);
+    }
+
+    /** C: {@code php_date_do_return_parsed_time} */
+    private static PhpArray returnParsedTime(TimelibTime parsedTime, TimelibErrorContainer error) {
+        PhpArray ret = new PhpArray();
+        setTimeElement(ret, "year", parsedTime.y);
+        setTimeElement(ret, "month", parsedTime.m);
+        setTimeElement(ret, "day", parsedTime.d);
+        setTimeElement(ret, "hour", parsedTime.h);
+        setTimeElement(ret, "minute", parsedTime.i);
+        setTimeElement(ret, "second", parsedTime.s);
+
+        if (parsedTime.us == TIMELIB_UNSET) {
+            ret.put("fraction", false);
+        } else {
+            ret.put("fraction", (double) parsedTime.us / 1000000.0);
+        }
+
+        ret.put("warning_count", (long) error.warningCount);
+        PhpArray warnings = new PhpArray();
+        for (TimelibErrorMessage msg : error.warningMessages) {
+            warnings.put((long) msg.position, msg.message);
+        }
+        ret.put("warnings", warnings);
+
+        ret.put("error_count", (long) error.errorCount);
+        PhpArray errs = new PhpArray();
+        for (TimelibErrorMessage msg : error.errorMessages) {
+            errs.put((long) msg.position, msg.message);
+        }
+        ret.put("errors", errs);
+
+        ret.put("is_localtime", parsedTime.isLocaltime != 0);
+
+        if (parsedTime.isLocaltime != 0) {
+            setTimeElement(ret, "zone_type", parsedTime.zoneType);
+            switch (parsedTime.zoneType) {
+                case TIMELIB_ZONETYPE_OFFSET -> {
+                    setTimeElement(ret, "zone", parsedTime.z);
+                    ret.put("is_dst", parsedTime.dst != 0);
+                }
+                case TIMELIB_ZONETYPE_ID -> {
+                    if (parsedTime.tzAbbr != null) {
+                        ret.put("tz_abbr", parsedTime.tzAbbr);
+                    }
+                    if (parsedTime.tzInfo != null) {
+                        ret.put("tz_id", parsedTime.tzInfo.name);
+                    }
+                }
+                case TIMELIB_ZONETYPE_ABBR -> {
+                    setTimeElement(ret, "zone", parsedTime.z);
+                    ret.put("is_dst", parsedTime.dst != 0);
+                    ret.put("tz_abbr", parsedTime.tzAbbr != null ? parsedTime.tzAbbr : "");
+                }
+            }
+        }
+
+        if (parsedTime.haveRelative != 0) {
+            PhpArray rel = new PhpArray();
+            rel.put("year", parsedTime.relative.y);
+            rel.put("month", parsedTime.relative.m);
+            rel.put("day", parsedTime.relative.d);
+            rel.put("hour", parsedTime.relative.h);
+            rel.put("minute", parsedTime.relative.i);
+            rel.put("second", parsedTime.relative.s);
+            if (parsedTime.relative.haveWeekdayRelative != 0) {
+                rel.put("weekday", (long) parsedTime.relative.weekday);
+            }
+            if (parsedTime.relative.haveSpecialRelative != 0 && parsedTime.relative.special.type == TIMELIB_SPECIAL_WEEKDAY) {
+                rel.put("weekdays", parsedTime.relative.special.amount);
+            }
+            if (parsedTime.relative.firstLastDayOf != 0) {
+                String key = parsedTime.relative.firstLastDayOf == TIMELIB_SPECIAL_FIRST_DAY_OF_MONTH
+                        ? "first_day_of_month" : "last_day_of_month";
+                rel.put(key, true);
+            }
+            ret.put("relative", rel);
+        }
+
+        return ret;
     }
 
     /** The default timezone of a request, for other builtins that need local time. */

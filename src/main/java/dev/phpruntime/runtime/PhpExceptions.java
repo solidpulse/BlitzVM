@@ -83,6 +83,12 @@ public final class PhpExceptions {
         addSubclass(language, out, "JsonException", EXCEPTION);
         addSubclass(language, out, "SodiumException", EXCEPTION);
         addSubclass(language, out, "mysqli_sql_exception", "RuntimeException");
+        addSubclass(language, out, "DateException", EXCEPTION);
+        addSubclass(language, out, "DateInvalidTimeZoneException", "DateException");
+        addSubclass(language, out, "DateInvalidOperationException", "DateException");
+        addSubclass(language, out, "DateMalformedStringException", "DateException");
+        addSubclass(language, out, "DateMalformedIntervalStringException", "DateException");
+        addSubclass(language, out, "DateMalformedPeriodStringException", "DateException");
 
         // 6. Standard Error subclasses
         addSubclass(language, out, "TypeError", ERROR);
@@ -94,6 +100,9 @@ public final class PhpExceptions {
         addSubclass(language, out, "CompileError", ERROR);
         addSubclass(language, out, "ParseError", "CompileError");
         addSubclass(language, out, "UnhandledMatchError", ERROR);
+        addSubclass(language, out, "DateError", ERROR);
+        addSubclass(language, out, "DateObjectError", "DateError");
+        addSubclass(language, out, "DateRangeError", "DateError");
 
         return Map.copyOf(out);
     }
@@ -485,15 +494,15 @@ public final class PhpExceptions {
     }
 
     @FunctionalInterface
-    private interface BuiltinMethod {
+    public interface BuiltinMethod {
         Object invoke(PhpContext ctx, PhpObject self, Object[] args);
     }
 
-    private static final class BuiltinMethodRootNode extends RootNode {
+    public static final class BuiltinMethodRootNode extends RootNode {
         private final String name;
         private final BuiltinMethod impl;
 
-        BuiltinMethodRootNode(PhpLanguage language, String name, BuiltinMethod impl) {
+        public BuiltinMethodRootNode(PhpLanguage language, String name, BuiltinMethod impl) {
             super(language);
             this.name = name;
             this.impl = impl;

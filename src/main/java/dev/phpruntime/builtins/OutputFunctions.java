@@ -95,8 +95,10 @@ final class OutputFunctions {
             }
             seen.put(obj, Boolean.TRUE);
             Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
+            Map<String, Object> extra = obj.nativeState() != null ? obj.nativeState().debugProperties(obj) : null;
+            int totalCount = keys.length + (extra != null ? extra.size() : 0);
             sb.append("object(").append(obj.phpClass().name()).append(")#").append(obj.id())
-                    .append(" (").append(keys.length).append(") {\n");
+                    .append(" (").append(totalCount).append(") {\n");
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
@@ -108,6 +110,12 @@ final class OutputFunctions {
                     propVal = lt.toPhpArray();
                 }
                 varDump(sb, propVal, indent + 2, seen);
+            }
+            if (extra != null) {
+                for (Map.Entry<String, Object> e : extra.entrySet()) {
+                    sb.append(" ".repeat(indent + 2)).append("[\"").append(e.getKey()).append("\"]=>\n");
+                    varDump(sb, e.getValue(), indent + 2, seen);
+                }
             }
             sb.append(" ".repeat(indent)).append("}\n");
             seen.remove(obj);
@@ -153,6 +161,16 @@ final class OutputFunctions {
                 }
                 printR(sb, propVal, indent + 8, seen);
                 sb.append('\n');
+            }
+            if (obj.nativeState() != null) {
+                Map<String, Object> extra = obj.nativeState().debugProperties(obj);
+                if (extra != null) {
+                    for (Map.Entry<String, Object> e : extra.entrySet()) {
+                        sb.append(" ".repeat(indent + 4)).append('[').append(e.getKey()).append("] => ");
+                        printR(sb, e.getValue(), indent + 8, seen);
+                        sb.append('\n');
+                    }
+                }
             }
             sb.append(" ".repeat(indent)).append(")\n");
             seen.remove(obj);

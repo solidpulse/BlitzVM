@@ -335,6 +335,10 @@ public final class PhpOps {
             if (x == y) {
                 return true;
             }
+            if (x.nativeState() != null && x.nativeState().supportsCompare()
+                    && y.nativeState() != null && y.nativeState().supportsCompare()) {
+                return x.nativeState().compareTo(y) == 0;
+            }
             if (x.phpClass() != y.phpClass()) {
                 return false;
             }
@@ -402,6 +406,12 @@ public final class PhpOps {
         }
         if (b instanceof PhpArray) {
             return -1;
+        }
+        if (a instanceof PhpObject x && b instanceof PhpObject y) {
+            if (x.nativeState() != null && x.nativeState().supportsCompare()
+                    && y.nativeState() != null && y.nativeState().supportsCompare()) {
+                return x.nativeState().compareTo(y);
+            }
         }
         if (a instanceof PhpObject o) {
             if (b instanceof String s && o.phpClass().toStringMethod() != null) {
