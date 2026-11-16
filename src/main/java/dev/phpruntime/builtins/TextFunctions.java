@@ -595,7 +595,13 @@ final class TextFunctions {
                 case 'P' -> t.getHour() < 12 ? "am" : "pm";
                 case 'r' -> formatStrftime("%I:%M:%S %p", t);
                 case 'R' -> formatStrftime("%H:%M", t);
-                case 's' -> Long.toString(t.toEpochSecond());
+                case 's' -> {
+                    // PHP's deprecated strftime builds %s from the standard offset, not the
+                    // DST-adjusted one: ts + offset - dst*3600.
+                    int offset = t.getOffset().getTotalSeconds();
+                    boolean dst = t.getZone().getRules().isDaylightSavings(t.toInstant());
+                    yield Long.toString(t.toEpochSecond() + offset - (dst ? 3600 : 0));
+                }
                 case 'S' -> number(t.getSecond(), 2, pad, noPad);
                 case 't' -> "\t";
                 case 'T' -> formatStrftime("%H:%M:%S", t);
