@@ -30,10 +30,12 @@ public final class PhpMainRootNode extends PhpRootNode {
     private final List<PhpFunction> functions;
     private final List<PhpClassTemplate> topLevelClasses;
     private final int hoistedClassesSlot;
+    private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
 
     public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body,
                            List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses, int hoistedClassesSlot) {
         super(language, fd, source, 1);
+        scopeLayout = fd.getInfo() instanceof dev.phpruntime.runtime.PhpScopeLayout layout ? layout : null;
         for (String sg : INIT_GLOBALS) {
             language.globalId(sg);
         }
@@ -48,6 +50,13 @@ public final class PhpMainRootNode extends PhpRootNode {
         boolean isEntry = frame.getArguments().length == 0;
         PhpContext ctx = PhpContext.get(this);
         PhpRequest request = ctx.request();
+        if (scopeLayout != null) {
+            dev.phpruntime.runtime.PhpSymbolTable table = (dev.phpruntime.runtime.PhpSymbolTable) frame.getArguments()[1];
+            frame.setObject(scopeLayout.tableSlot(), table);
+            frame.setObject(scopeLayout.thisSlot(), table.thisValue);
+            frame.setObject(scopeLayout.calledClassSlot(), table.calledClass);
+            frame.setObject(scopeLayout.lexicalClassSlot(), table.lexicalClass);
+        }
         Object result = !isEntry && frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE
                 ? PhpNull.INSTANCE : 1L;
         try {

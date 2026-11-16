@@ -7,6 +7,9 @@ import dev.phpruntime.nodes.var.GlobalVarNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
 import dev.phpruntime.nodes.var.VarKind;
+import dev.phpruntime.nodes.var.DynamicVarNode;
+import dev.phpruntime.nodes.expr.ConstNode;
+import dev.phpruntime.runtime.PhpScopeLayout;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,7 +35,7 @@ final class Scope {
     private final Scope outer;
     private final boolean isArrow;
     private final FrameDescriptor.Builder frame = FrameDescriptor.newBuilder();
-    private final Map<String, Integer> slots = new HashMap<>();
+    private final Map<String, Integer> slots = new java.util.LinkedHashMap<>();
     private final Map<Integer, VarKind> kinds = new HashMap<>();
     private final Set<String> ownParams = new HashSet<>();
     private final Map<String, Integer> capturedVars = new HashMap<>();
@@ -45,6 +48,23 @@ final class Scope {
     private int generatorSlot = -1;
     private int hiddenId;
     private boolean usesThis;
+    private int tableSlot = -1;
+    private boolean included;
+
+    static Scope forInclude(PhpLanguage language) {
+        Scope scope = new Scope(language, false, true, null, false, false, true);
+        scope.included = true;
+        scope.dynamicSlot();
+        return scope;
+    }
+
+    int dynamicSlot() {
+        if (global) { return -1; }
+        if (tableSlot < 0) { tableSlot = slot("@symbols"); }
+        return tableSlot;
+    }
+
+    boolean isFileScope() { return global || included; }
 
     Scope(PhpLanguage language, boolean global) {
         this(language, global, false, null, false, false, false);
@@ -146,6 +166,7 @@ final class Scope {
         if (global || SUPERGLOBALS.contains(name)) {
             return new GlobalVarNode(name, language.globalId(name));
         }
+        if (included) { return new DynamicVarNode(new ConstNode(name), tableSlot); }
         if (isArrow && !name.equals("this") && !ownParams.contains(name) && !capturedVars.containsKey(name) && outer != null) {
             LValueNode outerTarget = outer.variable(name);
             int localSlot = slot(name);
@@ -289,6 +310,16 @@ final class Scope {
     }
 
     FrameDescriptor build() {
+        if (tableSlot >= 0) {
+            Map<String, Integer> locals = new java.util.LinkedHashMap<>();
+            for (var entry : slots.entrySet()) {
+                if (!entry.getKey().startsWith("@") && !entry.getKey().equals("this")) {
+                    locals.put(entry.getKey(), entry.getValue());
+                }
+            }
+            int cellCount = slots.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
+            frame.info(new PhpScopeLayout(tableSlot, cellCount, locals, thisSlot, calledClassSlot, traitSelfSlot, included));
+        }
         return frame.build();
     }
 }

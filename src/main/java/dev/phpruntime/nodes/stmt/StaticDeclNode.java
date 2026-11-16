@@ -22,6 +22,9 @@ public final class StaticDeclNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final int[] slots;
     @CompilationFinal(dimensions = 1) private final int[] globalIds;
     @Children private final PhpNode[] initExprs;
+    @CompilationFinal private int tableSlot = -1;
+
+    public void dynamicScope(int tableSlot) { this.tableSlot = tableSlot; }
 
     public StaticDeclNode(boolean global, int closureObjSlot, String[] names, int[] slots, int[] globalIds, PhpNode[] initExprs) {
         this.global = global;
@@ -54,7 +57,9 @@ public final class StaticDeclNode extends PhpNode {
                 Object init = initExprs[i] != null ? PhpOps.copyOnAssign(initExprs[i].execute(frame)) : PhpNull.INSTANCE;
                 cell = ctx.initStaticLocal(owner, names[i], init);
             }
-            frame.setObject(slots[i], cell);
+            if (tableSlot >= 0) {
+                ((dev.phpruntime.runtime.PhpSymbolTable) frame.getObject(tableSlot)).cells[slots[i]] = cell;
+            } else { frame.setObject(slots[i], cell); }
         }
         return null;
     }
