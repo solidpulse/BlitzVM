@@ -30,29 +30,72 @@ public final class CallNode extends PhpNode {
     /** {@link dev.phpruntime.PhpLanguage#functionId} of {@link #name}. */
     private final int functionId;
     @Children private final PhpNode[] args;
-    /** For each argument, the lvalue it came from (for by-reference builtins), else null. */
+    /** For each argument, the lvalue it came from (for by-reference params), else null. */
     @Children private final LValueNode[] refTargets;
+    @CompilationFinal(dimensions = 1) private final String[] argNames;
+    @CompilationFinal(dimensions = 1) private final boolean[] spreads;
+    private final boolean hasSpreadOrNamed;
 
     @Child private DirectCallNode callNode;
     @Child private IndirectCallNode indirectCall;
     @CompilationFinal private Builtins.Def builtin;
 
     public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets) {
-        this(null, -1, name, functionId, args, refTargets);
+        this(null, -1, name, functionId, args, refTargets, null, null);
     }
 
     public CallNode(String nsName, int nsFunctionId, String name, int functionId,
                     PhpNode[] args, LValueNode[] refTargets) {
+        this(nsName, nsFunctionId, name, functionId, args, refTargets, null, null);
+    }
+
+    public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets,
+                    String[] argNames, boolean[] spreads) {
+        this(null, -1, name, functionId, args, refTargets, argNames, spreads);
+    }
+
+    /** {@code nsName}/{@code nsFunctionId}: the namespaced name tried first (php's fallback), or null/-1. */
+    public CallNode(String nsName, int nsFunctionId, String name, int functionId, PhpNode[] args,
+                    LValueNode[] refTargets, String[] argNames, boolean[] spreads) {
         this.nsName = nsName;
         this.nsFunctionId = nsFunctionId;
         this.name = name;
         this.functionId = functionId;
         this.args = args;
         this.refTargets = refTargets;
+        this.argNames = argNames;
+        this.spreads = spreads;
+        boolean complex = false;
+        if (argNames != null) {
+            for (String s : argNames) {
+                if (s != null) {
+                    complex = true;
+                    break;
+                }
+            }
+        }
+        if (!complex && spreads != null) {
+            for (boolean b : spreads) {
+                if (b) {
+                    complex = true;
+                    break;
+                }
+            }
+        }
+        this.hasSpreadOrNamed = complex;
     }
 
     @Override
     public Object execute(VirtualFrame frame) {
+        return CallArgHelper.unwrapReturn(executeRaw(frame));
+    }
+
+    @Override
+    public Object executeForRef(VirtualFrame frame) {
+        return executeRaw(frame);
+    }
+
+    private Object executeRaw(VirtualFrame frame) {
         if (nsFunctionId >= 0) {
             PhpFunction nsFn = PhpContext.get(this).functionById(nsFunctionId);
             if (nsFn != null) {
@@ -62,8 +105,6 @@ public final class CallNode extends PhpNode {
         if (builtin != null) {
             return callBuiltin(frame);
         }
-        // The name can mean a different function in another request (conditional
-        // declarations, includes), so check which one this context has on every call.
         PhpFunction fn = PhpContext.get(this).functionById(functionId);
         if (fn == null) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
@@ -78,14 +119,14 @@ public final class CallNode extends PhpNode {
 
     private Object callUserFunction(VirtualFrame frame, PhpFunction fn) {
         RootCallTarget target = fn.callTarget();
-        // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = callNode;
         if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(evalArgs(frame));
+            // Pass the cached target so partial evaluation sees fnRoot and hasAnyRefParam() as constants.
+            return direct.call(evalUserArgs(frame, (RootCallTarget) direct.getCallTarget()));
         }
         IndirectCallNode indirect = indirectCall;
         if (indirect != null) {
-            return indirect.call(target, evalArgs(frame));
+            return indirect.call(target, evalUserArgs(frame, target));
         }
         return callDynamic(frame, fn);
     }
@@ -107,10 +148,11 @@ public final class CallNode extends PhpNode {
 
     private Object callDynamic(VirtualFrame frame, PhpFunction fn) {
         CompilerDirectives.transferToInterpreterAndInvalidate();
-        if (prepareCall(fn.callTarget())) {
-            return callNode.call(evalArgs(frame));
+        RootCallTarget target = fn.callTarget();
+        if (prepareCall(target)) {
+            return callNode.call(evalUserArgs(frame, target));
         }
-        return indirectCall.call(fn.callTarget(), evalArgs(frame));
+        return indirectCall.call(target, evalUserArgs(frame, target));
     }
 
     @TruffleBoundary
@@ -134,6 +176,26 @@ public final class CallNode extends PhpNode {
         }
     }
 
+    private Object[] evalUserArgs(VirtualFrame frame, RootCallTarget target) {
+        if (hasSpreadOrNamed) {
+            return CallArgHelper.evalComplexUserArgs(frame, target, new Object[0], args, refTargets, argNames, spreads, this);
+        }
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        if (fnRoot != null && fnRoot.hasAnyRefParam()) {
+            return evalArgsWithRefs(frame, fnRoot);
+        }
+        return evalArgs(frame);
+    }
+
+    @ExplodeLoop
+    private Object[] evalArgsWithRefs(VirtualFrame frame, dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
+        Object[] values = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            values[i] = CallArgHelper.evalArgForParam(frame, args[i], refTargets[i], fnRoot, i, this);
+        }
+        return values;
+    }
+
     @ExplodeLoop
     private Object[] evalArgs(VirtualFrame frame) {
         Object[] values = new Object[args.length];
@@ -143,15 +205,36 @@ public final class CallNode extends PhpNode {
         return values;
     }
 
+    /** Exploded so each argument and ref-target node is a PE constant: no virtual calls, no frame escape. */
+    @ExplodeLoop
     private Object callBuiltin(VirtualFrame frame) {
         Builtins.Def def = builtin;
+        if (hasSpreadOrNamed) {
+            return CallArgHelper.callComplexBuiltin(frame, def, args, refTargets, argNames, spreads, this);
+        }
         Object[] values = new Object[args.length];
         Object[][] refKeys = new Object[args.length][];
         for (int i = 0; i < args.length; i++) {
-            if (def.isRef(i) && refTargets[i] != null) {
-                refKeys[i] = refTargets[i].evalKeys(frame);
-                Object v = refTargets[i].read(frame, refKeys[i]);
-                values[i] = v == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : v;
+            if (def.isRef(i)) {
+                if (refTargets[i] != null) {
+                    if (refTargets[i] instanceof dev.phpruntime.nodes.var.GlobalVarNode gv && gv.isGlobalsSuperglobal()) {
+                        throw new PhpError(def.name() + "(): Argument #" + (i + 1) + " could not be passed by reference", this);
+                    }
+                    refKeys[i] = refTargets[i].evalKeys(frame);
+                    Object v = refTargets[i].read(frame, refKeys[i]);
+                    values[i] = v == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : v;
+                } else {
+                    Object res = args[i].executeForRef(frame);
+                    if (res instanceof dev.phpruntime.runtime.PhpReference ref) {
+                        values[i] = ref.value == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.value;
+                    } else if (args[i] instanceof CallNode || args[i] instanceof MethodCallNode
+                            || args[i] instanceof StaticMethodCallNode || args[i] instanceof CallValueNode) {
+                        PhpContext.get(this).notice("Only variables should be passed by reference", line());
+                        values[i] = res;
+                    } else {
+                        throw new PhpError(def.name() + "(): Argument #" + (i + 1) + " could not be passed by reference", this);
+                    }
+                }
             } else {
                 values[i] = args[i].execute(frame);
             }

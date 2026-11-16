@@ -26,6 +26,16 @@ public final class DispatchCallNode extends Node {
     @Child private DirectCallNode directCall;
     @Child private IndirectCallNode indirectCall;
 
+    public RootCallTarget cachedTarget() {
+        DirectCallNode direct = directCall;
+        return direct != null ? (RootCallTarget) direct.getCallTarget() : null;
+    }
+
+    /** True once this site has seen a second target (an indirect call node is installed). */
+    public boolean isPolymorphic() {
+        return indirectCall != null;
+    }
+
     public Object call(RootCallTarget target, Object[] args) {
         // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = directCall;
@@ -57,7 +67,7 @@ public final class DispatchCallNode extends Node {
         return ((RootCallTarget) target).getRootNode() instanceof PhpFunctionRootNode r && r.traitSelfSlot() >= 0;
     }
 
-    private static Object[] withTraitSelf(Object[] args, PhpClass usingClass) {
+    static Object[] withTraitSelf(Object[] args, PhpClass usingClass) {
         Object[] out = new Object[args.length + 1];
         out[0] = args[0];
         out[1] = args[1];
@@ -100,6 +110,28 @@ public final class DispatchCallNode extends Node {
         PhpArray arr = new PhpArray();
         for (PhpNode arg : args) {
             arr.append(PhpOps.copyOnAssign(arg.execute(frame)));
+        }
+        return arr;
+    }
+
+    public static PhpArray evalMagicArgs(VirtualFrame frame, PhpNode[] args, String[] argNames, boolean[] spreads, Node site) {
+        if (argNames == null && spreads == null) {
+            return evalMagicArgs(frame, args);
+        }
+        CallArgHelper.RawCallArgs raw = CallArgHelper.evaluateCallSite(frame, args, null, argNames, spreads, null, site);
+        return buildMagicArrayFromRaw(raw);
+    }
+
+    @TruffleBoundary
+    private static PhpArray buildMagicArrayFromRaw(CallArgHelper.RawCallArgs raw) {
+        PhpArray arr = new PhpArray();
+        for (Object p : raw.positional()) {
+            arr.append(PhpOps.copyOnAssign(p));
+        }
+        if (raw.named() != null) {
+            for (java.util.Map.Entry<String, Object> e : raw.named().entrySet()) {
+                arr.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            }
         }
         return arr;
     }

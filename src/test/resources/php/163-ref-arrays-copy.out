@@ -1,0 +1,10 @@
+shared_ref=9,9,9 copied_val=10,99
+after_fn=55,55,10
+obj_elem=3
+map=changed,changed,p,p2
+array(2) {
+  [0]=>
+  &int(55)
+  [1]=>
+  int(2)
+}

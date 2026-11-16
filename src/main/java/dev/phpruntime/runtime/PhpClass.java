@@ -47,7 +47,8 @@ public final class PhpClass {
             this.value = defaultTarget == null ? PhpOps.copyOnAssign(constDefault) : null;
         }
 
-        public Object get() {
+        /** The stored value, possibly a {@link PhpReference} cell; runs the initializer on first use. */
+        private Object raw() {
             if (!initialized) {
                 // Set first so a self-referencing initializer sees null instead of recursing;
                 // reset on failure so a throwing initializer is retried, as php does.
@@ -62,17 +63,52 @@ public final class PhpClass {
             return value;
         }
 
+        /** The value, with a reference cell bound to this property unwrapped. */
+        public Object get() {
+            Object v = raw();
+            return v instanceof PhpReference ref ? ref.value : v;
+        }
+
+        /** Assigns, writing through a reference cell bound to this property. */
         public void set(Object v) {
+            if (initialized && value instanceof PhpReference ref) {
+                ref.value = v;
+                return;
+            }
             initialized = true;
             value = v;
         }
+
+        /** The cell for {@code &Cls::$p}, converting the plain value into one on first use. */
+        public PhpReference obtainCell() {
+            Object v = raw();
+            if (v instanceof PhpReference ref) {
+                if (ref.value == null) {
+                    ref.value = PhpNull.INSTANCE;
+                }
+                return ref;
+            }
+            PhpReference ref = new PhpReference(v == null ? PhpNull.INSTANCE : v);
+            value = ref;
+            return ref;
+        }
+
+        /** {@code Cls::$p = &$x}: binds this property to another cell. */
+        public void bindCell(PhpReference cell) {
+            initialized = true;
+            value = cell;
+        }
     }
 
-    public record InstanceProp(String name, String storageKey, Visibility visibility,
+    /** Sentinel stored in {@link PhpObject} for an uninitialized {@code readonly} property. */
+    public static final Object UNINITIALIZED = new Object();
+
+    public record InstanceProp(String name, String storageKey, Visibility visibility, boolean isReadonly,
                                PhpClass declaringClass, Object constDefault, RootCallTarget defaultTarget) {
     }
 
-    public record PropertyResolution(String storageKey, boolean accessible, Visibility visibility, String declaringClass) {
+    public record PropertyResolution(String storageKey, boolean accessible, Visibility visibility,
+                                     boolean isReadonly, boolean canInitReadonly, String declaringClass) {
     }
 
     private final PhpClassTemplate template;
@@ -323,11 +359,13 @@ public final class PhpClass {
             this.staticProperties.put(p.name(), new StaticSlot(p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget()));
         } else if (p.visibility() == Visibility.PRIVATE) {
             String storageKey = "\0" + template.name() + "\0" + p.name();
-            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, this, p.constDefault(), p.defaultTarget());
+            Object defVal = p.isReadonly() ? UNINITIALIZED : p.constDefault();
+            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, p.isReadonly(), this, defVal, p.defaultTarget());
             this.instanceProps.add(ip);
             this.privateProps.put(template.lowerName() + "\0" + p.name(), ip);
         } else {
-            InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget());
+            Object defVal = p.isReadonly() ? UNINITIALIZED : p.constDefault();
+            InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), p.isReadonly(), this, defVal, p.defaultTarget());
             InstanceProp prev = this.visibleProps.put(p.name(), ip);
             if (prev != null) {
                 int idx = this.instanceProps.indexOf(prev);
@@ -516,20 +554,24 @@ public final class PhpClass {
         if (callingClassLower != null) {
             InstanceProp priv = privateProps.get(callingClassLower + "\0" + name);
             if (priv != null) {
-                return new PropertyResolution(priv.storageKey(), true, Visibility.PRIVATE, priv.declaringClass().name());
+                return new PropertyResolution(priv.storageKey(), true, Visibility.PRIVATE,
+                        priv.isReadonly(), priv.isReadonly(), priv.declaringClass().name());
             }
         }
         InstanceProp vis = visibleProps.get(name);
         if (vis != null) {
             boolean accessible = vis.visibility() == Visibility.PUBLIC
                     || isProtectedAccessible(ctx, vis.declaringClass(), callingClassLower);
-            return new PropertyResolution(vis.storageKey(), accessible, vis.visibility(), vis.declaringClass().name());
+            boolean canInit = vis.isReadonly() && isProtectedAccessible(ctx, vis.declaringClass(), callingClassLower);
+            return new PropertyResolution(vis.storageKey(), accessible, vis.visibility(),
+                    vis.isReadonly(), canInit, vis.declaringClass().name());
         }
         InstanceProp ownPriv = privateProps.get(template.lowerName() + "\0" + name);
         if (ownPriv != null) {
-            return new PropertyResolution(ownPriv.storageKey(), false, Visibility.PRIVATE, ownPriv.declaringClass().name());
+            return new PropertyResolution(ownPriv.storageKey(), false, Visibility.PRIVATE,
+                    ownPriv.isReadonly(), false, ownPriv.declaringClass().name());
         }
-        return new PropertyResolution(name, true, Visibility.PUBLIC, null);
+        return new PropertyResolution(name, true, Visibility.PUBLIC, false, false, null);
     }
 
     private boolean isProtectedAccessible(PhpContext ctx, PhpClass declaring, String callingClassLower) {
@@ -583,36 +625,97 @@ public final class PhpClass {
         List<Map.Entry<Object, Object>> out = new ArrayList<>(keys.length);
         for (Object rawKey : keys) {
             String k = (String) rawKey;
+            Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+            if (rawVal == UNINITIALIZED) {
+                continue;
+            }
             if (k.startsWith("\0")) {
                 int sep = k.indexOf('\0', 1);
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
                 if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
-                    Object pv = get.execute(obj, k, PhpNull.INSTANCE);
-                    if (pv instanceof PhpBacktrace.LazyTrace lt) {
-                        pv = lt.toPhpArray();
-                    }
-                    out.add(Map.entry(prop, pv));
+                    out.add(Map.entry(prop, unwrapProp(rawVal)));
                 }
                 continue;
             }
             InstanceProp p = cls.findVisibleProp(k);
             if (p != null && p.visibility() == Visibility.PROTECTED) {
                 if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
-                    Object pv = get.execute(obj, k, PhpNull.INSTANCE);
-                    if (pv instanceof PhpBacktrace.LazyTrace lt) {
-                        pv = lt.toPhpArray();
-                    }
-                    out.add(Map.entry(k, pv));
+                    out.add(Map.entry(k, unwrapProp(rawVal)));
                 }
                 continue;
             }
-            Object pv = get.execute(obj, k, PhpNull.INSTANCE);
-            if (pv instanceof PhpBacktrace.LazyTrace lt) {
-                pv = lt.toPhpArray();
-            }
-            out.add(Map.entry(k, pv));
+            out.add(Map.entry(k, unwrapProp(rawVal)));
         }
         return out;
+    }
+
+    /** Collects visible property entries backed by {@link PhpReference} cells for {@code foreach ($obj as &$v)}. */
+    @TruffleBoundary
+    public static List<Map.Entry<Object, PhpReference>> visibleRefEntries(PhpContext ctx, PhpObject obj, String callerClassName) {
+        String callerLower = callerClassName == null ? null : callerClassName.toLowerCase();
+        PhpClass caller = callerLower == null ? null : ctx.lookupClass(callerLower);
+        PhpClass cls = obj.phpClass();
+        Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
+        DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+        List<Map.Entry<Object, PhpReference>> out = new ArrayList<>(keys.length);
+        for (Object rawKey : keys) {
+            String k = (String) rawKey;
+            if (k.startsWith("\0")) {
+                int sep = k.indexOf('\0', 1);
+                String declaring = k.substring(1, sep);
+                String prop = k.substring(sep + 1);
+                if (callerLower != null && declaring.equalsIgnoreCase(callerLower)) {
+                    out.add(Map.entry(prop, ensurePropRef(obj, k, get, put)));
+                }
+                continue;
+            }
+            InstanceProp p = cls.findVisibleProp(k);
+            if (p != null && p.visibility() == Visibility.PROTECTED) {
+                if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
+                    out.add(Map.entry(k, ensurePropRef(obj, k, get, put)));
+                }
+                continue;
+            }
+            out.add(Map.entry(k, ensurePropRef(obj, k, get, put)));
+        }
+        return out;
+    }
+
+    private static PhpReference ensurePropRef(PhpObject obj, String storageKey, DynamicObject.GetNode get, DynamicObject.PutNode put) {
+        Object cur = get.execute(obj, storageKey, PhpNull.INSTANCE);
+        if (cur instanceof PhpReference ref) {
+            return ref;
+        }
+        if (cur instanceof PhpBacktrace.LazyTrace lt) {
+            cur = lt.toPhpArray();
+        }
+        PhpReference ref = new PhpReference(cur == null ? PhpNull.INSTANCE : cur);
+        put.execute(obj, storageKey, ref);
+        return ref;
+    }
+
+    @TruffleBoundary
+    public boolean isReadonlyStorageKey(String storageKey) {
+        if (storageKey.startsWith("\0")) {
+            int sep = storageKey.indexOf('\0', 1);
+            String declaring = storageKey.substring(1, sep).toLowerCase();
+            String prop = storageKey.substring(sep + 1);
+            InstanceProp priv = privateProps.get(declaring + "\0" + prop);
+            return priv != null && priv.isReadonly();
+        }
+        InstanceProp vis = visibleProps.get(storageKey);
+        return vis != null && vis.isReadonly();
+    }
+
+    public static Object unwrapProp(Object pv) {
+        if (pv instanceof PhpReference ref) {
+            pv = ref.value;
+        }
+        if (pv instanceof PhpBacktrace.LazyTrace lt) {
+            pv = lt.toPhpArray();
+        }
+        return pv == null ? PhpNull.INSTANCE : pv;
     }
 }

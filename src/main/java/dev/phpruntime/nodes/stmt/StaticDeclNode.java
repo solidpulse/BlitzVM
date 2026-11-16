@@ -20,13 +20,15 @@ public final class StaticDeclNode extends PhpNode {
     private final int closureObjSlot;
     @CompilationFinal(dimensions = 1) private final String[] names;
     @CompilationFinal(dimensions = 1) private final int[] slots;
+    @CompilationFinal(dimensions = 1) private final int[] globalIds;
     @Children private final PhpNode[] initExprs;
 
-    public StaticDeclNode(boolean global, int closureObjSlot, String[] names, int[] slots, PhpNode[] initExprs) {
+    public StaticDeclNode(boolean global, int closureObjSlot, String[] names, int[] slots, int[] globalIds, PhpNode[] initExprs) {
         this.global = global;
         this.closureObjSlot = closureObjSlot;
         this.names = names;
         this.slots = slots;
+        this.globalIds = globalIds;
         this.initExprs = initExprs;
     }
 
@@ -36,13 +38,12 @@ public final class StaticDeclNode extends PhpNode {
         PhpContext ctx = PhpContext.get(this);
         if (global) {
             for (int i = 0; i < names.length; i++) {
-                if (ctx.getStaticLocal(ctx, names[i]) == null) {
+                PhpReference cell = ctx.getStaticLocal(ctx, names[i]);
+                if (cell == null) {
                     Object init = initExprs[i] != null ? PhpOps.copyOnAssign(initExprs[i].execute(frame)) : PhpNull.INSTANCE;
-                    ctx.initStaticLocal(ctx, names[i], init);
-                    if (ctx.readGlobal(names[i]) == null) {
-                        ctx.writeGlobal(names[i], init);
-                    }
+                    cell = ctx.initStaticLocal(ctx, names[i], init);
                 }
+                ctx.bindGlobalById(globalIds[i], cell);
             }
             return null;
         }

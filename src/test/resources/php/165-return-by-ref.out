@@ -1,0 +1,5 @@
+by_val=10
+by_ref=55
+reg=7
+static=1,2,3
+closure=250

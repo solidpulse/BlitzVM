@@ -21,6 +21,7 @@ public final class PhpObject extends DynamicObject {
     private final PhpClass phpClass;
     private final long id;
     private final PhpClosure closure;
+    private boolean cloning;
 
     public PhpObject(PhpClass phpClass, long id) {
         this(phpClass, id, null);
@@ -43,6 +44,14 @@ public final class PhpObject extends DynamicObject {
 
     public PhpClosure closure() {
         return closure;
+    }
+
+    public boolean isCloning() {
+        return cloning;
+    }
+
+    public void setCloning(boolean cloning) {
+        this.cloning = cloning;
     }
 
     @Override

@@ -1,0 +1,7 @@
+read=hello
+dyn=123,123
+nested=42
+unset=no,no
+has_top=1,has_GLOBALS=0
+iter=ok
+sg=ok

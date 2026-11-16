@@ -9,6 +9,7 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 
 /**
  * {@code $a[k1][k2]...}, where a null key node means append ({@code $a[] = v}).
@@ -75,6 +76,9 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
         Object root = base.read(frame, bk);
         try {
             base.write(frame, bk, writePath(root, arrayKeys(keys), value));
@@ -83,19 +87,94 @@ public final class IndexLValueNode extends LValueNode {
         }
     }
 
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
+        Object root = base.read(frame, bk);
+        try {
+            PhpReference[] outRef = new PhpReference[1];
+            Object updatedRoot = obtainPathCell(root, arrayKeys(keys), null, outRef);
+            base.write(frame, bk, updatedRoot);
+            return outRef[0];
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
+        Object root = base.read(frame, bk);
+        try {
+            PhpReference[] outRef = new PhpReference[1];
+            Object updatedRoot = obtainPathCell(root, arrayKeys(keys), cell, outRef);
+            base.write(frame, bk, updatedRoot);
+        } catch (PhpError e) {
+            throw e.at(this);
+        }
+    }
+
+    @TruffleBoundary
+    private Object obtainPathCell(Object root, Object[] keys, PhpReference bindTo, PhpReference[] outRef) {
+        PhpArray top = writable(root);
+        PhpArray arr = top;
+        for (int i = 0; i < keys.length - 1; i++) {
+            Object k = keys[i];
+            Object raw = k == APPEND ? null : arr.getRaw(k);
+            if (raw instanceof PhpReference ref) {
+                PhpArray child = writable(ref.value);
+                ref.value = child;
+                arr = child;
+            } else {
+                PhpArray child = writable(raw);
+                if (k == APPEND) {
+                    arr.append(child);
+                } else {
+                    arr.put(k, child);
+                }
+                arr = child;
+            }
+        }
+        Object last = keys[keys.length - 1];
+        if (bindTo != null) {
+            if (last == APPEND) {
+                arr.appendRef(bindTo);
+            } else {
+                arr.putRef(last, bindTo);
+            }
+            outRef[0] = bindTo;
+        } else {
+            outRef[0] = last == APPEND ? arr.appendRef(new PhpReference(PhpNull.INSTANCE)) : arr.obtainElementRef(last);
+        }
+        return top;
+    }
+
     @TruffleBoundary
     private Object writePath(Object root, Object[] keys, Object value) {
         PhpArray top = writable(root);
         PhpArray arr = top;
         for (int i = 0; i < keys.length - 1; i++) {
             Object k = keys[i];
-            PhpArray child = writable(k == APPEND ? null : arr.get(k));
-            if (k == APPEND) {
-                arr.append(child);
+            Object raw = k == APPEND ? null : arr.getRaw(k);
+            if (raw instanceof PhpReference ref) {
+                PhpArray child = writable(ref.value);
+                ref.value = child;
+                arr = child;
             } else {
-                arr.put(k, child);
+                PhpArray child = writable(raw);
+                if (k == APPEND) {
+                    arr.append(child);
+                } else {
+                    arr.put(k, child);
+                }
+                arr = child;
             }
-            arr = child;
         }
         Object last = keys[keys.length - 1];
         if (last == APPEND) {
@@ -122,6 +201,9 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
         Object[] bk = baseKeys(keys);
+        if (base instanceof PropertyLValueNode plv) {
+            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+        }
         Object root = base.read(frame, bk);
         if (!(root instanceof PhpArray)) {
             return;
@@ -139,13 +221,22 @@ public final class IndexLValueNode extends LValueNode {
         PhpArray top = root.forWrite();
         PhpArray arr = top;
         for (int i = 0; i < keys.length - 1; i++) {
-            Object child = arr.get(keys[i]);
-            if (!(child instanceof PhpArray c)) {
-                return top;
+            Object raw = arr.getRaw(keys[i]);
+            if (raw instanceof PhpReference ref) {
+                if (!(ref.value instanceof PhpArray c)) {
+                    return top;
+                }
+                PhpArray w = c.forWrite();
+                ref.value = w;
+                arr = w;
+            } else {
+                if (!(raw instanceof PhpArray c)) {
+                    return top;
+                }
+                PhpArray w = c.forWrite();
+                arr.put(keys[i], w);
+                arr = w;
             }
-            PhpArray w = c.forWrite();
-            arr.put(keys[i], w);
-            arr = w;
         }
         arr.remove(keys[keys.length - 1]);
         return top;

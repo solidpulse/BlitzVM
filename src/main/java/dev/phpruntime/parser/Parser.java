@@ -50,11 +50,12 @@ public final class Parser {
     private final Map<String, String> classAliases;
     private final Map<String, String> functionAliases;
     private final Map<String, String> constAliases;
+    private boolean currentReturnsRef;
     private int hoistedClassesSlot = -1;
     private int pos;
 
     public Parser(PhpLanguage language, Source source) {
-        this(language, source, lex(source), new Scope(true), new ArrayList<>(), new ArrayList<>(),
+        this(language, source, lex(source), new Scope(language, true), new ArrayList<>(), new ArrayList<>(),
                 "", null, false, "", new HashMap<>(), new HashMap<>(), new HashMap<>());
     }
 
@@ -316,7 +317,10 @@ public final class Parser {
                         value = expression();
                     }
                     endStatement();
-                    return new JumpNode(JumpNode.Kind.RETURN, 0, value).at(line);
+                    if (currentReturnsRef && value instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
+                        lv.kind().markCell();
+                    }
+                    return new JumpNode(JumpNode.Kind.RETURN, 0, value, currentReturnsRef).at(line);
                 }
                 case "goto" -> {
                     next();
@@ -326,7 +330,7 @@ public final class Parser {
                     return new GotoNode(labelId).at(line);
                 }
                 case "function" -> {
-                    if (peek(1).kind() == Kind.IDENT) {
+                    if (peek(1).kind() == Kind.IDENT || (peek(1).isOp("&") && peek(2).kind() == Kind.IDENT)) {
                         next();
                         return functionDeclaration(topLevel, line);
                     }
@@ -340,15 +344,30 @@ public final class Parser {
                 }
                 case "global" -> {
                     next();
+                    List<Integer> slots = new ArrayList<>();
+                    List<Integer> globalIds = new ArrayList<>();
                     do {
                         Token v = next();
                         if (v.kind() != Kind.VARIABLE) {
                             throw error("expected variable after global");
                         }
-                        scope.importGlobal(v.text());
+                        String name = v.text();
+                        if ("GLOBALS".equals(name)) {
+                            throw error("Cannot use $GLOBALS as global variable");
+                        }
+                        if (!scope.isGlobal()) {
+                            scope.markCell(name);
+                            slots.add(scope.slot(name));
+                            globalIds.add(language.globalId(name));
+                        }
                     } while (acceptOp(","));
                     endStatement();
-                    return null;
+                    if (slots.isEmpty()) {
+                        return null;
+                    }
+                    return new GlobalImportNode(
+                            slots.stream().mapToInt(Integer::intValue).toArray(),
+                            globalIds.stream().mapToInt(Integer::intValue).toArray()).at(line);
                 }
                 case "static" -> {
                     if (peek(1).kind() == Kind.VARIABLE) {
@@ -370,7 +389,7 @@ public final class Parser {
                     endStatement();
                     return new UnsetNode(targets.toArray(new LValueNode[0])).at(line);
                 }
-                case "abstract", "final", "class", "interface", "trait" -> {
+                case "abstract", "final", "readonly", "class", "interface", "trait" -> {
                     return classDeclaration(topLevel, line);
                 }
                 case "try" -> {
@@ -644,14 +663,26 @@ public final class Parser {
         expectOp("(");
         PhpNode subject = expression();
         expectKeyword("as");
-        acceptOp("&"); // by-reference iteration is treated as by-value
-        LValueNode first = lvalue(postfixOnly());
+        boolean byRef = acceptOp("&");
+        LValueNode first = parseForeachTarget(byRef);
         LValueNode key = null;
         LValueNode value = first;
         if (acceptOp("=>")) {
-            acceptOp("&");
+            if (byRef) {
+                throw error("Key element cannot be a reference");
+            }
+            if (first instanceof DestructureLValueNode) {
+                throw error("Cannot use list as key element");
+            }
+            byRef = acceptOp("&");
             key = first;
-            value = lvalue(postfixOnly());
+            value = parseForeachTarget(byRef);
+        }
+        if (!byRef && value instanceof DestructureLValueNode dest && dest.hasAnyRef()) {
+            byRef = true;
+        }
+        if (byRef && value instanceof LocalVarNode lv) {
+            lv.kind().markCell();
         }
         expectOp(")");
         PhpNode body;
@@ -667,7 +698,27 @@ public final class Parser {
         } finally {
             scope.gotoScope().exitLoop();
         }
-        return new ForeachNode(subject, key, value, body).at(line);
+        return new ForeachNode(subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
+    }
+
+    private LValueNode parseForeachTarget(boolean outerByRef) {
+        int line = peek().line();
+        if (peek().isOp("[")) {
+            if (outerByRef) {
+                throw error("Cannot assign reference to list()");
+            }
+            next();
+            return parseDestructurePattern("]").at(line);
+        }
+        if (peek().isKeyword("list") && peek(1).isOp("(")) {
+            if (outerByRef) {
+                throw error("Cannot assign reference to list()");
+            }
+            next();
+            next();
+            return parseDestructurePattern(")").at(line);
+        }
+        return lvalue(postfixOnly());
     }
 
     private PhpNode switchStatement() {
@@ -720,6 +771,7 @@ public final class Parser {
     private PhpNode staticStatement(int line) {
         List<String> names = new ArrayList<>();
         List<Integer> slots = new ArrayList<>();
+        List<Integer> globalIds = new ArrayList<>();
         List<PhpNode> inits = new ArrayList<>();
         do {
             Token v = next();
@@ -731,8 +783,10 @@ public final class Parser {
             if (!scope.isGlobal()) {
                 scope.markCell(name);
                 slots.add(scope.slot(name));
+                globalIds.add(-1);
             } else {
                 slots.add(-1);
+                globalIds.add(language.globalId(name));
             }
             inits.add(acceptOp("=") ? expression() : null);
         } while (acceptOp(","));
@@ -741,6 +795,7 @@ public final class Parser {
                 scope.isGlobal(), scope.closureObjSlot(),
                 names.toArray(new String[0]),
                 slots.stream().mapToInt(Integer::intValue).toArray(),
+                globalIds.stream().mapToInt(Integer::intValue).toArray(),
                 inits.toArray(new PhpNode[0])).at(line);
     }
 
@@ -806,51 +861,98 @@ public final class Parser {
         return new DefineConstantNode(names.toArray(new String[0]), values.toArray(new PhpNode[0])).at(line);
     }
 
-    private record ParsedParams(int[] slots, VarKind[] kinds, PhpNode[] defaults, boolean variadic) {}
+    private record PromotedProp(String name, Visibility visibility, boolean isReadonly, boolean byRef, int line) {
+    }
+
+    private record ParsedParams(String[] names, int[] slots, VarKind[] kinds, boolean[] byRef,
+                                PhpNode[] defaults, boolean variadic, List<PromotedProp> promoted) {}
 
     private ParsedParams parseParams() {
+        return parseParams(false);
+    }
+
+    private ParsedParams parseParams(boolean allowPromotion) {
         expectOp("(");
+        List<String> names = new ArrayList<>();
         List<Integer> slots = new ArrayList<>();
+        List<Boolean> byRef = new ArrayList<>();
         List<PhpNode> defaults = new ArrayList<>();
+        List<PromotedProp> promoted = new ArrayList<>();
         boolean variadic = false;
         while (!acceptOp(")")) {
             skipAttributes();
+            Visibility promVis = null;
+            boolean promReadonly = false;
+            boolean parsingMods = true;
+            while (parsingMods && peek().kind() == Kind.IDENT) {
+                switch (peek().text().toLowerCase()) {
+                    case "public" -> { next(); promVis = Visibility.PUBLIC; }
+                    case "protected" -> { next(); promVis = Visibility.PROTECTED; }
+                    case "private" -> { next(); promVis = Visibility.PRIVATE; }
+                    case "readonly" -> { next(); promReadonly = true; }
+                    default -> parsingMods = false;
+                }
+            }
+            if (promVis == null && promReadonly) {
+                promVis = Visibility.PUBLIC;
+            }
+            if (promVis != null && !allowPromotion) {
+                throw error("Cannot declare promoted property outside a constructor");
+            }
             skipType();
-            acceptOp("&");
+            boolean isRef = acceptOp("&");
             boolean isVarArg = acceptOp("...");
             if (isVarArg) {
+                if (promVis != null) {
+                    throw error("Cannot declare variadic promoted property");
+                }
                 variadic = true;
             }
             Token v = next();
             if (v.kind() != Kind.VARIABLE) {
                 throw new PhpParseError("syntax error, expected parameter variable", v.line());
             }
-            scope.declareParam(v.text());
-            slots.add(scope.slot(v.text()));
+            String pName = v.text();
+            scope.declareParam(pName);
+            if (isRef && !isVarArg) {
+                scope.markCell(pName);
+            }
+            names.add(pName);
+            slots.add(scope.slot(pName));
+            byRef.add(isRef);
             defaults.add(acceptOp("=") ? expression() : null);
+            if (promVis != null) {
+                promoted.add(new PromotedProp(pName, promVis, promReadonly, isRef, v.line()));
+            }
             if (!peek().isOp(")")) {
                 expectOp(",");
             }
         }
         int[] slotArray = slots.stream().mapToInt(Integer::intValue).toArray();
         VarKind[] kindArray = new VarKind[slotArray.length];
+        boolean[] refArray = new boolean[byRef.size()];
         for (int i = 0; i < slotArray.length; i++) {
             kindArray[i] = scope.kind(slotArray[i]);
+            refArray[i] = byRef.get(i);
         }
-        return new ParsedParams(slotArray, kindArray, defaults.toArray(new PhpNode[0]), variadic);
+        return new ParsedParams(names.toArray(new String[0]), slotArray, kindArray, refArray,
+                defaults.toArray(new PhpNode[0]), variadic, promoted);
     }
 
     private PhpNode functionDeclaration(boolean topLevel, int line) {
+        boolean returnsRef = acceptOp("&");
         Token nameTok = next();
         String name = qualifyDeclaration(nameTok.text());
         Scope outer = scope;
         String outerFunction = currentFunction;
         String outerClass = currentClass;
         boolean outerIsTrait = currentIsTrait;
-        scope = new Scope(false);
+        boolean outerReturnsRef = currentReturnsRef;
+        scope = new Scope(language, false);
         currentFunction = name;
         currentClass = null;
         currentIsTrait = false;
+        currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
             if (acceptOp(":")) {
@@ -859,8 +961,12 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            PhpFunctionRootNode root = new PhpFunctionRootNode(language, scope.build(), source, nameTok.line(), name,
-                    params.slots(), params.kinds(), params.defaults(), params.variadic(), body);
+            PhpFunctionRootNode root = new PhpFunctionRootNode(
+                    language, scope.build(), source, nameTok.line(),
+                    null, name, false, returnsRef, -1, -1, -1,
+                    new int[0], new VarKind[0], new boolean[0],
+                    params.names(), params.slots(), params.kinds(), params.byRef(),
+                    params.defaults(), params.variadic(), body);
             PhpFunction fn = new PhpFunction(name, root.getCallTarget());
             if (topLevel) {
                 functions.add(fn);
@@ -872,14 +978,18 @@ public final class Parser {
             currentFunction = outerFunction;
             currentClass = outerClass;
             currentIsTrait = outerIsTrait;
+            currentReturnsRef = outerReturnsRef;
         }
     }
 
     private PhpNode parseClosure(int line, boolean isStatic) {
+        boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
-        scope = Scope.forClosure(outer, !isStatic, false);
+        boolean outerReturnsRef = currentReturnsRef;
+        scope = Scope.forClosure(language, outer, !isStatic, false);
         currentFunction = "{closure}";
+        currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
             if (acceptKeyword("use")) {
@@ -902,18 +1012,22 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            return finishClosure(outer, !isStatic, params, body, line, "{closure}");
+            return finishClosure(outer, !isStatic, returnsRef, params, body, line, "{closure}");
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentReturnsRef = outerReturnsRef;
         }
     }
 
     private PhpNode parseArrowFunction(int line, boolean isStatic) {
+        boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
-        scope = Scope.forClosure(outer, !isStatic, true);
+        boolean outerReturnsRef = currentReturnsRef;
+        scope = Scope.forClosure(language, outer, !isStatic, true);
         currentFunction = "{closure}";
+        currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
             if (acceptOp(":")) {
@@ -921,15 +1035,19 @@ public final class Parser {
             }
             expectOp("=>");
             PhpNode expr = expression();
-            PhpNode body = new JumpNode(JumpNode.Kind.RETURN, 0, expr).at(line);
-            return finishClosure(outer, !isStatic, params, body, line, "{closure}");
+            if (returnsRef && expr instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
+                lv.kind().markCell();
+            }
+            PhpNode body = new JumpNode(JumpNode.Kind.RETURN, 0, expr, returnsRef).at(line);
+            return finishClosure(outer, !isStatic, returnsRef, params, body, line, "{closure}");
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentReturnsRef = outerReturnsRef;
         }
     }
 
-    private PhpNode finishClosure(Scope outer, boolean bindThis, ParsedParams params, PhpNode body, int line, String fnName) {
+    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params, PhpNode body, int line, String fnName) {
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -946,9 +1064,11 @@ public final class Parser {
         }
         PhpFunctionRootNode root = new PhpFunctionRootNode(
                 language, scope.build(), source, line,
-                currentClass, fnName, !bindThis, scope.thisSlot(), scope.calledClassSlot(),
+                currentClass, fnName, !bindThis, returnsRef, scope.thisSlot(), scope.calledClassSlot(),
                 scope.closureObjSlot(), scope.traitSelfSlot(),
-                captureSlots, captureKinds, byRef, params.slots(), params.kinds(), params.defaults(), params.variadic(), body);
+                captureSlots, captureKinds, byRef,
+                params.names(), params.slots(), params.kinds(), params.byRef(),
+                params.defaults(), params.variadic(), body);
         return new ClosureNode(root.getCallTarget(), bindThis,
                 outer.thisSlot(), outer.calledClassSlot(), outer.traitSelfSlot(), outerReads, warn, byRef).at(line);
     }
@@ -956,12 +1076,13 @@ public final class Parser {
     private PhpNode classDeclaration(boolean topLevel, int line) {
         boolean isAbstract = false;
         boolean isFinal = false;
+        boolean isReadonly = false;
         boolean mods = true;
         while (mods && peek().kind() == Kind.IDENT) {
             switch (peek().text().toLowerCase()) {
                 case "abstract" -> { next(); isAbstract = true; }
                 case "final" -> { next(); isFinal = true; }
-                case "readonly" -> next();
+                case "readonly" -> { next(); isReadonly = true; }
                 default -> mods = false;
             }
         }
@@ -972,7 +1093,7 @@ public final class Parser {
         }
         String name = qualifyDeclaration(expectIdent().text());
         PhpClassTemplate template = parseClassTemplate(
-                language.nextTemplateId(), name, isInterface, isTrait, isAbstract, isFinal, false);
+                language.nextTemplateId(), name, isInterface, isTrait, isAbstract, isFinal, isReadonly, false);
         if (topLevel) {
             int idx = topLevelClasses.size();
             topLevelClasses.add(template);
@@ -982,7 +1103,8 @@ public final class Parser {
     }
 
     private PhpClassTemplate parseClassTemplate(long templateId, String name, boolean isInterface, boolean isTrait,
-                                                  boolean isAbstract, boolean isFinal, boolean isAnonymous) {
+                                                  boolean isAbstract, boolean isFinal, boolean classReadonly,
+                                                  boolean isAnonymous) {
         String parentName = null;
         List<String> interfaceNames = new ArrayList<>();
         if (acceptKeyword("extends")) {
@@ -1025,6 +1147,8 @@ public final class Parser {
                 boolean isStatic = false;
                 boolean mAbstract = false;
                 boolean mFinal = false;
+                boolean pReadonly = classReadonly;
+                boolean explicitReadonly = false;
                 boolean parsingMods = true;
                 while (parsingMods && peek().kind() == Kind.IDENT) {
                     switch (peek().text().toLowerCase()) {
@@ -1034,7 +1158,7 @@ public final class Parser {
                         case "static" -> { next(); isStatic = true; }
                         case "abstract" -> { next(); mAbstract = true; }
                         case "final" -> { next(); mFinal = true; }
-                        case "readonly" -> next();
+                        case "readonly" -> { next(); pReadonly = true; explicitReadonly = true; }
                         default -> parsingMods = false;
                     }
                 }
@@ -1053,9 +1177,13 @@ public final class Parser {
                     } while (acceptOp(","));
                     expectOp(";");
                 } else if (acceptKeyword("function")) {
-                    PhpClassTemplate.MethodDecl m = parseMethod(vis, isStatic, isInterface || mAbstract, mFinal);
+                    PhpClassTemplate.MethodDecl m = parseMethod(vis, isStatic, isInterface || mAbstract, mFinal,
+                            classReadonly, properties);
                     methods.put(m.lowerName(), m);
                 } else {
+                    if (isStatic && (explicitReadonly || classReadonly)) {
+                        throw error("Static property cannot be readonly");
+                    }
                     skipType();
                     do {
                         Token propTok = next();
@@ -1064,10 +1192,13 @@ public final class Parser {
                         }
                         Scope[] exprScope = new Scope[1];
                         PhpNode expr = acceptOp("=") ? parseMemberInitializer(isTrait, exprScope) : null;
+                        if (pReadonly && expr != null) {
+                            throw new PhpParseError("Readonly property " + name + "::$" + propTok.text() + " cannot have default value", propTok.line());
+                        }
                         Object constVal = expr == null ? PhpNull.INSTANCE
                                 : (expr instanceof ConstNode c ? c.value() : null);
                         RootCallTarget valTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
-                        properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, constVal, valTarget));
+                        properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, pReadonly, constVal, valTarget));
                     } while (acceptOp(","));
                     expectOp(";");
                 }
@@ -1086,7 +1217,7 @@ public final class Parser {
             return expression();
         }
         Scope outer = scope;
-        Scope exprScope = Scope.forTraitMethod();
+        Scope exprScope = Scope.forTraitMethod(language);
         scope = exprScope;
         outExprScope[0] = exprScope;
         try {
@@ -1156,16 +1287,21 @@ public final class Parser {
         return new PhpClassTemplate.TraitUse(traitNames, precedences, aliases);
     }
 
-    private PhpClassTemplate.MethodDecl parseMethod(Visibility vis, boolean isStatic, boolean isAbstract, boolean isFinal) {
+    private PhpClassTemplate.MethodDecl parseMethod(Visibility vis, boolean isStatic, boolean isAbstract, boolean isFinal,
+                                                    boolean classReadonly, List<PhpClassTemplate.PropertyDecl> classProps) {
+        boolean returnsRef = acceptOp("&");
         Token nameTok = expectIdent();
         String mName = nameTok.text();
         String lower = mName.toLowerCase();
+        boolean isCtor = "__construct".equals(lower);
         Scope outerScope = scope;
         String outerFunction = currentFunction;
-        scope = currentIsTrait ? Scope.forTraitMethod() : Scope.forMethod();
+        boolean outerReturnsRef = currentReturnsRef;
+        scope = currentIsTrait ? Scope.forTraitMethod(language) : Scope.forMethod(language);
         currentFunction = mName;
+        currentReturnsRef = returnsRef;
         try {
-            ParsedParams params = parseParams();
+            ParsedParams params = parseParams(isCtor && !isAbstract);
             if (acceptOp(":")) {
                 skipType();
             }
@@ -1177,11 +1313,31 @@ public final class Parser {
                 expectOp("{");
                 PhpNode body = blockUntil("}");
                 scope.validateGotos();
+                if (!params.promoted().isEmpty()) {
+                    List<PhpNode> initStmts = new ArrayList<>(params.promoted().size() + 1);
+                    for (PromotedProp pp : params.promoted()) {
+                        boolean propRo = pp.isReadonly() || classReadonly;
+                        classProps.add(new PhpClassTemplate.PropertyDecl(
+                                pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null));
+                        LValueNode thisVar = scope.variable("this").at(pp.line());
+                        LValueNode propLv = new PropertyLValueNode(thisVar, pp.name(), null, currentClassLower(),
+                                scope.traitSelfSlot()).at(pp.line());
+                        LValueNode paramVar = scope.variable(pp.name()).at(pp.line());
+                        if (pp.byRef() && !propRo) {
+                            initStmts.add(new AssignRefNode(propLv, paramVar).at(pp.line()));
+                        } else {
+                            initStmts.add(new AssignNode(propLv, paramVar).at(pp.line()));
+                        }
+                    }
+                    initStmts.add(body);
+                    body = block(initStmts);
+                }
                 PhpFunctionRootNode root = new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
-                        currentClass, mName, isStatic, scope.thisSlot(), scope.calledClassSlot(),
-                        scope.traitSelfSlot(), params.slots(), params.kinds(), params.defaults(),
-                        params.variadic(), body);
+                        currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
+                        scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
+                        params.names(), params.slots(), params.kinds(), params.byRef(),
+                        params.defaults(), params.variadic(), body);
                 callTarget = root.getCallTarget();
             }
             return new PhpClassTemplate.MethodDecl(
@@ -1189,6 +1345,7 @@ public final class Parser {
         } finally {
             scope = outerScope;
             currentFunction = outerFunction;
+            currentReturnsRef = outerReturnsRef;
         }
     }
 
@@ -1416,13 +1573,27 @@ public final class Parser {
     private PhpNode postfix() {
         int line = peek().line();
         PhpNode e = postfixOnly();
+        if (e instanceof DestructureLValueNode dest) {
+            expectOp("=");
+            PhpNode rhs = binary(4);
+            return new DestructureAssignNode(dest, rhs, lvalueOrNull(rhs)).at(line);
+        }
         if (e instanceof LValueNode target) {
             Token t = peek();
             if (t.kind() == Kind.OP) {
                 PhpArith.Op compound = compoundOp(t.text());
                 if (t.text().equals("=")) {
                     next();
-                    acceptOp("&"); // $a = &$b is treated as a value assignment
+                    if (acceptOp("&")) {
+                        PhpNode rhs = binary(4);
+                        if (target instanceof LocalVarNode lvTarget && !"this".equals(lvTarget.varName())) {
+                            lvTarget.kind().markCell();
+                        }
+                        if (rhs instanceof LocalVarNode lvRhs && !"this".equals(lvRhs.varName())) {
+                            lvRhs.kind().markCell();
+                        }
+                        return new AssignRefNode(target, rhs).at(line);
+                    }
                     return new AssignNode(target, binary(4)).at(line);
                 }
                 if (compound != null) {
@@ -1503,7 +1674,27 @@ public final class Parser {
                         keys.add(peek().isOp("]") ? null : expression());
                         expectOp("]");
                     }
-                    e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                    if (lv instanceof GlobalVarNode gv && gv.isGlobalsSuperglobal()) {
+                        PhpNode firstKey = keys.get(0);
+                        String constName = null;
+                        int constId = -1;
+                        if (firstKey instanceof ConstNode cn && cn.value() instanceof String s) {
+                            Object norm = dev.phpruntime.runtime.PhpArray.normalizeKey(s);
+                            constName = norm instanceof String ns ? ns : String.valueOf(norm);
+                            constId = "GLOBALS".equals(constName) ? -1 : language.globalId(constName);
+                        } else if (firstKey instanceof ConstNode cn && cn.value() instanceof Long l) {
+                            constName = Long.toString(l);
+                            constId = language.globalId(constName);
+                        }
+                        LValueNode elem = new GlobalsElementLValueNode(firstKey, constName, constId).at(line);
+                        if (keys.size() == 1) {
+                            e = elem;
+                        } else {
+                            e = new IndexLValueNode(elem, keys.subList(1, keys.size()).toArray(new PhpNode[0])).at(line);
+                        }
+                    } else {
+                        e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                    }
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
@@ -1520,7 +1711,8 @@ public final class Parser {
                 if (consumeFirstClassCallableEllipsis()) {
                     e = FirstClassCallableNode.forCallable(e, scope.thisSlot()).at(line);
                 } else {
-                    e = new CallValueNode(e, parseCallArgs(), scope.thisSlot()).at(line);
+                    ParsedCallArgs pca = parseCallArgDetails();
+                    e = new CallValueNode(e, pca.args(), pca.refs(), pca.names(), pca.spreads(), scope.thisSlot()).at(line);
                 }
             } else {
                 break;
@@ -1585,7 +1777,8 @@ public final class Parser {
             }
             return FirstClassCallableNode.forMethod(nodeTarget, member, methodId, nameExpr).at(line);
         }
-        return new MethodCallNode(nodeTarget, member, methodId, nameExpr, parseCallArgs()).at(line);
+        ParsedCallArgs pca = parseCallArgDetails();
+        return new MethodCallNode(nodeTarget, member, methodId, nameExpr, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
     }
 
     private PhpNode parseStaticMember(ClassRefNode classRef, int line) {
@@ -1620,19 +1813,72 @@ public final class Parser {
             return FirstClassCallableNode.forStaticMethod(
                     classRef, member, methodId, nameExpr, scope.thisSlot(), scope.calledClassSlot()).at(line);
         }
+        ParsedCallArgs pca = parseCallArgDetails();
         return new StaticMethodCallNode(classRef, member, methodId, nameExpr,
-                scope.thisSlot(), scope.calledClassSlot(), parseCallArgs()).at(line);
+                scope.thisSlot(), scope.calledClassSlot(), pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
     }
 
-    private PhpNode[] parseCallArgs() {
+    private record ParsedCallArgs(PhpNode[] args, LValueNode[] refs, String[] names, boolean[] spreads) {
+    }
+
+    private ParsedCallArgs parseCallArgDetails() {
         List<PhpNode> args = new ArrayList<>();
+        List<LValueNode> refs = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        List<Boolean> spreads = new ArrayList<>();
+        boolean seenNamed = false;
+        boolean anyNamed = false;
+        boolean anySpread = false;
         while (!acceptOp(")")) {
-            args.add(expression());
+            if (acceptOp("...")) {
+                if (seenNamed) {
+                    throw error("Cannot use argument unpacking after named arguments");
+                }
+                anySpread = true;
+                PhpNode expr = expression();
+                args.add(expr);
+                refs.add(lvalueOrNull(expr));
+                names.add(null);
+                spreads.add(true);
+            } else if (peek().kind() == Kind.IDENT && peek(1).isOp(":")) {
+                String argName = next().text();
+                next(); // ':'
+                seenNamed = true;
+                anyNamed = true;
+                PhpNode expr = expression();
+                args.add(expr);
+                refs.add(lvalueOrNull(expr));
+                names.add(argName);
+                spreads.add(false);
+            } else {
+                if (seenNamed) {
+                    throw error("Cannot use positional argument after named argument");
+                }
+                PhpNode expr = expression();
+                args.add(expr);
+                refs.add(lvalueOrNull(expr));
+                names.add(null);
+                spreads.add(false);
+            }
             if (!peek().isOp(")")) {
                 expectOp(",");
             }
         }
-        return args.toArray(new PhpNode[0]);
+        PhpNode[] argArr = args.toArray(new PhpNode[0]);
+        LValueNode[] refArr = refs.toArray(new LValueNode[0]);
+        String[] nameArr = anyNamed ? names.toArray(new String[0]) : null;
+        boolean[] spreadArr = null;
+        if (anySpread) {
+            spreadArr = new boolean[spreads.size()];
+            for (int i = 0; i < spreads.size(); i++) {
+                spreadArr[i] = spreads.get(i);
+            }
+        }
+        return new ParsedCallArgs(argArr, refArr, nameArr, spreadArr);
+    }
+
+    private PhpNode[] parseCallArgs() {
+        return parseCallArgDetails().args();
     }
 
     private ClassRefNode makeClassRefFromName(String name) {
@@ -1667,17 +1913,24 @@ public final class Parser {
 
     private PhpNode parseNew(int line) {
         skipAttributes();
+        boolean anonReadonly = false;
+        if (peek().isKeyword("readonly") && peek(1).isKeyword("class")) {
+            next();
+            anonReadonly = true;
+        }
         if (acceptKeyword("class")) {
-            PhpNode[] args = acceptOp("(") ? parseCallArgs() : new PhpNode[0];
+            ParsedCallArgs pca = acceptOp("(") ? parseCallArgDetails()
+                    : new ParsedCallArgs(new PhpNode[0], new LValueNode[0], null, null);
             long tid = language.nextTemplateId();
             String anonName = "class@anonymous\0" + magicFile() + ":" + line + "$" + tid;
-            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, false, true);
+            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, false, anonReadonly, true);
             ClassRefNode ref = ClassRefNode.anonymous(tpl, language.classId(anonName));
-            return new NewNode(ref, args).at(line);
+            return new NewNode(ref, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
         }
         ClassRefNode ref = parseClassRef(false);
-        PhpNode[] args = acceptOp("(") ? parseCallArgs() : new PhpNode[0];
-        return new NewNode(ref, args).at(line);
+        ParsedCallArgs pca = acceptOp("(") ? parseCallArgDetails()
+                : new ParsedCallArgs(new PhpNode[0], new LValueNode[0], null, null);
+        return new NewNode(ref, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
     }
 
     private static LValueNode lvalueOrNull(PhpNode n) {
@@ -1721,6 +1974,9 @@ public final class Parser {
                     return e;
                 }
                 if (t.text().equals("[")) {
+                    if (isBracketDestructuring()) {
+                        return parseDestructurePattern("]").at(line);
+                    }
                     return arrayLiteral("]").at(line);
                 }
             }
@@ -1738,18 +1994,20 @@ public final class Parser {
         if (lower.equals("new")) {
             return parseNew(line);
         }
-        if (lower.equals("function") && peek().isOp("(")) {
+        if (lower.equals("function") && (peek().isOp("(") || (peek().isOp("&") && peek(1).isOp("(")))) {
             return parseClosure(line, false);
         }
-        if (lower.equals("fn") && peek().isOp("(")) {
+        if (lower.equals("fn") && (peek().isOp("(") || (peek().isOp("&") && peek(1).isOp("(")))) {
             return parseArrowFunction(line, false);
         }
         if (lower.equals("static")) {
-            if (peek().kind() == Kind.IDENT && peek().text().equalsIgnoreCase("function") && peek(1).isOp("(")) {
+            if (peek().kind() == Kind.IDENT && peek().text().equalsIgnoreCase("function")
+                    && (peek(1).isOp("(") || (peek(1).isOp("&") && peek(2).isOp("(")))) {
                 next();
                 return parseClosure(line, true);
             }
-            if (peek().kind() == Kind.IDENT && peek().text().equalsIgnoreCase("fn") && peek(1).isOp("(")) {
+            if (peek().kind() == Kind.IDENT && peek().text().equalsIgnoreCase("fn")
+                    && (peek(1).isOp("(") || (peek(1).isOp("&") && peek(2).isOp("(")))) {
                 next();
                 return parseArrowFunction(line, true);
             }
@@ -1802,6 +2060,12 @@ public final class Parser {
                 if (peek().isOp("(")) {
                     next();
                     return arrayLiteral(")").at(line);
+                }
+            }
+            case "list" -> {
+                if (peek().isOp("(")) {
+                    next();
+                    return parseDestructurePattern(")").at(line);
                 }
             }
             case "isset" -> {
@@ -1868,16 +2132,14 @@ public final class Parser {
                         rn.primary(), language.functionId(rn.primary()),
                         rn.fallback(), language.functionId(rn.fallback())).at(line);
             }
-            PhpNode[] argArray = parseCallArgs();
-            LValueNode[] refs = new LValueNode[argArray.length];
-            for (int i = 0; i < argArray.length; i++) {
-                refs[i] = lvalueOrNull(argArray[i]);
-            }
+            ParsedCallArgs pca = parseCallArgDetails();
             if (rn.fallback() == null) {
-                return new CallNode(rn.primary(), language.functionId(rn.primary()), argArray, refs).at(line);
+                return new CallNode(rn.primary(), language.functionId(rn.primary()), pca.args(), pca.refs(),
+                        pca.names(), pca.spreads()).at(line);
             }
             return new CallNode(rn.primary(), language.functionId(rn.primary()),
-                    rn.fallback(), language.functionId(rn.fallback()), argArray, refs).at(line);
+                    rn.fallback(), language.functionId(rn.fallback()), pca.args(), pca.refs(),
+                    pca.names(), pca.spreads()).at(line);
         }
         ResolvedName rn = resolveConstName(name);
         if (rn.fallback() == null) {
@@ -1953,20 +2215,223 @@ public final class Parser {
     private PhpNode arrayLiteral(String closing) {
         List<PhpNode> keys = new ArrayList<>();
         List<PhpNode> values = new ArrayList<>();
+        List<Boolean> byRefs = new ArrayList<>();
+        List<Boolean> spreads = new ArrayList<>();
         while (!acceptOp(closing)) {
-            PhpNode first = expression();
-            if (acceptOp("=>")) {
-                keys.add(first);
-                values.add(expression());
-            } else {
+            if (acceptOp("...")) {
                 keys.add(null);
-                values.add(first);
+                values.add(expression());
+                byRefs.add(false);
+                spreads.add(true);
+            } else if (acceptOp("&")) {
+                PhpNode refVal = expression();
+                markCellIfLocal(refVal);
+                keys.add(null);
+                values.add(refVal);
+                byRefs.add(true);
+                spreads.add(false);
+            } else {
+                PhpNode first = expression();
+                if (acceptOp("=>")) {
+                    keys.add(first);
+                    boolean isRef = acceptOp("&");
+                    PhpNode val = expression();
+                    if (isRef) {
+                        markCellIfLocal(val);
+                    }
+                    values.add(val);
+                    byRefs.add(isRef);
+                    spreads.add(false);
+                } else {
+                    keys.add(null);
+                    values.add(first);
+                    byRefs.add(false);
+                    spreads.add(false);
+                }
             }
             if (!peek().isOp(closing)) {
                 expectOp(",");
             }
         }
-        return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]));
+        boolean[] refArr = new boolean[byRefs.size()];
+        boolean[] spreadArr = new boolean[spreads.size()];
+        for (int i = 0; i < byRefs.size(); i++) {
+            refArr[i] = byRefs.get(i);
+            spreadArr[i] = spreads.get(i);
+        }
+        return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
+    }
+
+    private boolean isBracketDestructuringAt(int bracketPos) {
+        int depth = 1;
+        int i = bracketPos + 1;
+        while (i < tokens.size() && depth > 0) {
+            Token tok = tokens.get(i++);
+            if (tok.kind() == Kind.EOF) {
+                return false;
+            }
+            if (tok.isOp("[") || tok.isOp("#[")) {
+                depth++;
+            } else if (tok.isOp("]")) {
+                depth--;
+            }
+        }
+        return depth == 0 && i < tokens.size() && tokens.get(i).isOp("=>");
+    }
+
+    private boolean isBracketDestructuring() {
+        int depth = 1;
+        int i = pos;
+        while (i < tokens.size() && depth > 0) {
+            Token tok = tokens.get(i++);
+            if (tok.kind() == Kind.EOF) {
+                return false;
+            }
+            if (tok.isOp("[") || tok.isOp("#[")) {
+                depth++;
+            } else if (tok.isOp("]")) {
+                depth--;
+            }
+        }
+        return depth == 0 && i < tokens.size() && tokens.get(i).isOp("=");
+    }
+
+    private DestructureLValueNode parseDestructurePattern(String closing) {
+        List<PhpNode> keyNodes = new ArrayList<>();
+        List<LValueNode> targets = new ArrayList<>();
+        List<Long> autoIndices = new ArrayList<>();
+        List<Boolean> byRefs = new ArrayList<>();
+        Boolean keyedMode = null;
+        long nextIndex = 0;
+
+        while (!acceptOp(closing)) {
+            if (acceptOp(",")) {
+                if (Boolean.TRUE.equals(keyedMode)) {
+                    throw error("Cannot use empty array entries in keyed array assignment");
+                }
+                keyedMode = false;
+                keyNodes.add(null);
+                targets.add(null);
+                autoIndices.add(nextIndex++);
+                byRefs.add(false);
+                continue;
+            }
+            if (acceptOp("&")) {
+                if (Boolean.TRUE.equals(keyedMode)) {
+                    throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                }
+                keyedMode = false;
+                LValueNode tgt = parseDestructureItem(true);
+                keyNodes.add(null);
+                targets.add(tgt);
+                autoIndices.add(nextIndex++);
+                byRefs.add(true);
+            } else if (peek().isOp("[")) {
+                int saved = pos;
+                if (isBracketDestructuringAt(pos)) {
+                    PhpNode keyExpr = expression();
+                    expectOp("=>");
+                    if (Boolean.FALSE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = true;
+                    boolean isRef = acceptOp("&");
+                    LValueNode tgt = parseDestructureValueAfterArrow(isRef);
+                    keyNodes.add(keyExpr);
+                    targets.add(tgt);
+                    autoIndices.add(-1L);
+                    byRefs.add(isRef);
+                } else {
+                    int subLine = next().line();
+                    if (Boolean.TRUE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = false;
+                    keyNodes.add(null);
+                    targets.add(parseDestructurePattern("]").at(subLine));
+                    autoIndices.add(nextIndex++);
+                    byRefs.add(false);
+                }
+            } else if (peek().isKeyword("list") && peek(1).isOp("(")) {
+                int subLine = next().line();
+                next();
+                if (Boolean.TRUE.equals(keyedMode)) {
+                    throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                }
+                keyedMode = false;
+                keyNodes.add(null);
+                targets.add(parseDestructurePattern(")").at(subLine));
+                autoIndices.add(nextIndex++);
+                byRefs.add(false);
+            } else {
+                PhpNode first = expression();
+                if (acceptOp("=>")) {
+                    if (Boolean.FALSE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = true;
+                    boolean isRef = acceptOp("&");
+                    LValueNode tgt = parseDestructureValueAfterArrow(isRef);
+                    keyNodes.add(first);
+                    targets.add(tgt);
+                    autoIndices.add(-1L);
+                    byRefs.add(isRef);
+                } else {
+                    if (Boolean.TRUE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = false;
+                    LValueNode tgt = lvalue(first);
+                    keyNodes.add(null);
+                    targets.add(tgt);
+                    autoIndices.add(nextIndex++);
+                    byRefs.add(false);
+                }
+            }
+            if (!peek().isOp(closing)) {
+                expectOp(",");
+            }
+        }
+        long[] idxArr = new long[autoIndices.size()];
+        boolean[] refArr = new boolean[byRefs.size()];
+        for (int i = 0; i < autoIndices.size(); i++) {
+            idxArr[i] = autoIndices.get(i);
+            refArr[i] = byRefs.get(i);
+        }
+        return new DestructureLValueNode(
+                keyNodes.toArray(new PhpNode[0]),
+                targets.toArray(new LValueNode[0]),
+                idxArr,
+                refArr);
+    }
+
+    private LValueNode parseDestructureValueAfterArrow(boolean isRef) {
+        if (!isRef) {
+            if (peek().isOp("[")) {
+                int subLine = next().line();
+                return parseDestructurePattern("]").at(subLine);
+            }
+            if (peek().isKeyword("list") && peek(1).isOp("(")) {
+                int subLine = next().line();
+                next();
+                return parseDestructurePattern(")").at(subLine);
+            }
+        }
+        return parseDestructureItem(isRef);
+    }
+
+    private LValueNode parseDestructureItem(boolean isRef) {
+        LValueNode lv = lvalue(postfixOnly());
+        if (isRef && lv instanceof LocalVarNode local && !"this".equals(local.varName())) {
+            local.kind().markCell();
+        }
+        return lv;
+    }
+
+    private static void markCellIfLocal(PhpNode node) {
+        if (node instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
+            lv.kind().markCell();
+        }
     }
 
     private PhpNode interpolation(Token t) {

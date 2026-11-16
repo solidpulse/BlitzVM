@@ -9,6 +9,7 @@ import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
 /** {@code Foo::$prop}, {@code self::$prop}, {@code static::$prop}, {@code parent::$prop}. */
@@ -74,6 +75,18 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
         PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
         slot.set(value);
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        return requireSlot((PhpClass) keys[0], (String) keys[1], caller).obtainCell();
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        requireSlot((PhpClass) keys[0], (String) keys[1], caller).bindCell(cell);
     }
 
     @Override

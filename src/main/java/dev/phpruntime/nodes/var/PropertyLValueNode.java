@@ -12,6 +12,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
 /** {@code $obj->prop} or {@code $obj->$name} lvalue. */
@@ -21,6 +22,7 @@ public final class PropertyLValueNode extends LValueNode {
     private final String staticName;
     @Child private PhpNode dynamicNameExpr;
     private final String callingClassLower;
+    /** Frame slot holding the using class inside a trait method (the caller for visibility), else -1. */
     private final int traitSelfSlot;
 
     @Child private DynamicObject.GetNode getNode = DynamicObject.GetNode.create();
@@ -32,10 +34,11 @@ public final class PropertyLValueNode extends LValueNode {
      * object so a request reading it while another installs it never sees half an entry.
      */
     private record Resolution(long hierarchyId, long callerHierarchyId, String storageKey,
-                              boolean isProtected, boolean accessible) {
+                              boolean isProtected, boolean accessible, boolean isReadonly,
+                              boolean canInitReadonly, String declaringClass) {
     }
 
-    private static final Resolution MEGAMORPHIC = new Resolution(-2, -2, null, false, false);
+    private static final Resolution MEGAMORPHIC = new Resolution(-2, -2, null, false, false, false, false, null);
 
     @CompilationFinal private Resolution cache;
 
@@ -45,11 +48,11 @@ public final class PropertyLValueNode extends LValueNode {
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr,
                               String callingClassLower, int traitSelfSlot) {
+        this.traitSelfSlot = traitSelfSlot;
         this.targetExpr = targetExpr;
         this.staticName = staticName;
         this.dynamicNameExpr = dynamicNameExpr;
         this.callingClassLower = callingClassLower;
-        this.traitSelfSlot = traitSelfSlot;
     }
 
     @Override
@@ -69,12 +72,18 @@ public final class PropertyLValueNode extends LValueNode {
         String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
         if (!(target instanceof PhpObject obj)) {
             PhpContext.get(this).warning(
-                    "Attempt to read property \"" + name + "\" on " + PhpOps.typeName(target), line());
+                    "Attempt to read property " + '"' + name + '"' + " on " + PhpOps.typeName(target), line());
             return PhpNull.INSTANCE;
         }
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v == PhpClass.UNINITIALIZED) {
+                return readUninitialized(obj, name, effectiveCallerLower(frame));
+            }
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
@@ -91,6 +100,12 @@ public final class PropertyLValueNode extends LValueNode {
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v == PhpClass.UNINITIALIZED) {
+                return readUninitialized(obj, name, effectiveCallerLower(frame));
+            }
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
@@ -107,6 +122,12 @@ public final class PropertyLValueNode extends LValueNode {
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v == PhpClass.UNINITIALIZED) {
+                return checkMagicIsset(obj, name);
+            }
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v != PhpNull.INSTANCE;
             }
@@ -123,6 +144,16 @@ public final class PropertyLValueNode extends LValueNode {
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
+            if (v == PhpClass.UNINITIALIZED) {
+                if (checkMagicIsset(obj, name)) {
+                    PhpClass.MethodEntry get = obj.phpClass().getMethod();
+                    return get != null && get.callTarget() != null ? callMagic1(get, obj, name) : PhpNull.INSTANCE;
+                }
+                return null;
+            }
+            if (v instanceof PhpReference ref) {
+                v = ref.value;
+            }
             if (v != null) {
                 return v;
             }
@@ -139,15 +170,138 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
-            throw new PhpError("Attempt to assign property \"" + name + "\" on " + PhpOps.typeName(target), this);
+            throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
-        if (storageKey != null && (getNode.execute(obj, storageKey, null) != null
-                || obj.phpClass().setMethod() == null)) {
+        Resolution fast = fastResolution(frame, obj, name);
+        if (fast != null) {
+            if (!fast.accessible()) {
+                writeFallback(obj, name, value, true, effectiveCallerLower(frame));
+                return;
+            }
+            String storageKey = fast.storageKey();
+            Object existing = getNode.execute(obj, storageKey, null);
+            if (fast.isReadonly()) {
+                writeReadonly(obj, name, storageKey, existing, fast.canInitReadonly(), fast.declaringClass(), value);
+                return;
+            }
+            if (existing instanceof PhpReference ref) {
+                ref.value = value;
+                return;
+            }
+            if (existing != null || obj.phpClass().setMethod() == null) {
+                putNode.execute(obj, storageKey, value);
+                return;
+            }
+            writeFallback(obj, name, value, false, effectiveCallerLower(frame));
+            return;
+        }
+        writeDynamic(obj, name, value, effectiveCallerLower(frame));
+    }
+
+    private void writeDynamic(PhpObject obj, String name, Object value, String callerLower) {
+        PhpClass.PropertyResolution res = resolveFull(obj, name, callerLower);
+        if (!res.accessible()) {
+            writeFallback(obj, name, value, true, callerLower);
+            return;
+        }
+        String storageKey = res.storageKey();
+        Object existing = getNode.execute(obj, storageKey, null);
+        if (res.isReadonly()) {
+            writeReadonly(obj, name, storageKey, existing, res.canInitReadonly(), res.declaringClass(), value);
+            return;
+        }
+        if (existing instanceof PhpReference ref) {
+            ref.value = value;
+            return;
+        }
+        if (existing != null || obj.phpClass().setMethod() == null) {
             putNode.execute(obj, storageKey, value);
             return;
         }
-        writeFallback(obj, name, value, storageKey == null, effectiveCallerLower(frame));
+        writeFallback(obj, name, value, false, callerLower);
+    }
+
+    private void writeReadonly(PhpObject obj, String name, String storageKey, Object existing,
+                               boolean canInit, String declaringClass, Object value) {
+        if ((existing == PhpClass.UNINITIALIZED || existing == null || obj.isCloning()) && canInit) {
+            putNode.execute(obj, storageKey, value);
+            return;
+        }
+        throw cannotModifyReadonly(obj, declaringClass, name);
+    }
+
+    @TruffleBoundary
+    private PhpError cannotModifyReadonly(PhpObject obj, String declaringClass, String name) {
+        String owner = declaringClass != null ? declaringClass : obj.phpClass().name();
+        return new PhpError("Cannot modify readonly property " + owner + "::$" + name, this);
+    }
+
+    public void checkNotReadonlyForIndirectWrite(VirtualFrame frame, Object[] keys) {
+        if (!(keys[0] instanceof PhpObject obj)) {
+            return;
+        }
+        String name = (String) keys[1];
+        Resolution fast = fastResolution(frame, obj, name);
+        if (fast != null) {
+            if (fast.isReadonly()) {
+                String owner = fast.declaringClass() != null ? fast.declaringClass() : obj.phpClass().name();
+                throw new PhpError("Cannot indirectly modify readonly property " + owner + "::$" + name, this);
+            }
+            return;
+        }
+        checkNotReadonlyBoundary(obj, name, effectiveCallerLower(frame));
+    }
+
+    @TruffleBoundary
+    private void checkNotReadonlyBoundary(PhpObject obj, String name, String callerLower) {
+        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
+        if (res.isReadonly()) {
+            String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+            throw new PhpError("Cannot indirectly modify readonly property " + owner + "::$" + name, this);
+        }
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        Object target = keys[0];
+        String name = (String) keys[1];
+        if (!(target instanceof PhpObject obj)) {
+            throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+        }
+        checkNotReadonlyForIndirectWrite(frame, keys);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        if (storageKey == null) {
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame));
+        }
+        Object existing = getNode.execute(obj, storageKey, null);
+        if (existing instanceof PhpReference ref) {
+            if (ref.value == null) {
+                ref.value = PhpNull.INSTANCE;
+            }
+            return ref;
+        }
+        if (existing == null && obj.phpClass().getMethod() != null && obj.phpClass().getMethod().callTarget() != null) {
+            Object val = callMagic1(obj.phpClass().getMethod(), obj, name);
+            return new PhpReference(PhpOps.copyOnAssign(val));
+        }
+        PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);
+        putNode.execute(obj, storageKey, ref);
+        return ref;
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        Object target = keys[0];
+        String name = (String) keys[1];
+        if (!(target instanceof PhpObject obj)) {
+            throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+        }
+        checkNotReadonlyForIndirectWrite(frame, keys);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        if (storageKey == null) {
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame));
+        }
+        putNode.execute(obj, storageKey, cell);
     }
 
     @Override
@@ -155,22 +309,42 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
-            throw new PhpError("Attempt to modify property \"" + name + "\" on " + PhpOps.typeName(target), this);
+            throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame));
+        if (res.accessible() && res.isReadonly()) {
+            Object existing = getNode.execute(obj, res.storageKey(), null);
+            if (existing != PhpClass.UNINITIALIZED || !res.canInitReadonly()) {
+                String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+                throw new PhpError("Cannot unset readonly property " + owner + "::$" + name, this);
+            }
+        }
+        String storageKey = res.accessible() ? res.storageKey() : null;
         if (storageKey != null && getNode.execute(obj, storageKey, null) != null) {
-            removeNode.execute(obj, storageKey);
+            if (res.isReadonly()) {
+                putNode.execute(obj, storageKey, PhpClass.UNINITIALIZED);
+            } else {
+                removeNode.execute(obj, storageKey);
+            }
             return;
         }
         unsetFallback(obj, name, storageKey == null, effectiveCallerLower(frame));
     }
 
-    private String effectiveCallerLower(VirtualFrame frame) {
-        if (traitSelfSlot >= 0) {
-            PhpClass c = (PhpClass) frame.getObject(traitSelfSlot);
-            return c != null ? c.template().lowerName() : null;
+    @TruffleBoundary
+    private Object readUninitialized(PhpObject obj, String name, String callerLower) {
+        PhpClass.MethodEntry get = obj.phpClass().getMethod();
+        if (get != null && get.callTarget() != null) {
+            return callMagic1(get, obj, name);
         }
-        return callingClassLower;
+        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
+        String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+        throw new PhpError("Typed property " + owner + "::$" + name + " must not be accessed before initialization", this);
+    }
+
+    @TruffleBoundary
+    private PhpClass.PropertyResolution resolveFull(PhpObject obj, String name, String callerLower) {
+        return obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
     }
 
     @TruffleBoundary
@@ -234,22 +408,34 @@ public final class PropertyLValueNode extends LValueNode {
         }
     }
 
-    private String resolveKeyIfAccessible(VirtualFrame frame, PhpObject obj, String name) {
+    private Resolution fastResolution(VirtualFrame frame, PhpObject obj, String name) {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
             Resolution c = cache;
-            if (c != null && h == c.hierarchyId() && (!c.isProtected() || c.callerHierarchyId() == callerHierarchyId(frame))) {
-                return c.accessible() ? c.storageKey() : null;
+            if (c != null && h == c.hierarchyId()
+                    && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame))) {
+                return c;
             }
             if (c != MEGAMORPHIC) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                PhpClass.PropertyResolution res = cacheResolution(cls, h, effectiveCallerLower(frame), callerHierarchyId(frame));
-                return res.accessible() ? res.storageKey() : null;
+                cacheResolution(cls, h, effectiveCallerLower(frame), callerHierarchyId(frame));
+                c = cache;
+                if (c != null && c != MEGAMORPHIC && h == c.hierarchyId()
+                        && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame))) {
+                    return c;
+                }
             }
         }
-        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(
-                PhpContext.get(this), name, effectiveCallerLower(frame));
+        return null;
+    }
+
+    private String resolveKeyIfAccessible(VirtualFrame frame, PhpObject obj, String name) {
+        Resolution fast = fastResolution(frame, obj, name);
+        if (fast != null) {
+            return fast.accessible() ? fast.storageKey() : null;
+        }
+        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, effectiveCallerLower(frame));
         return res.accessible() ? res.storageKey() : null;
     }
 
@@ -267,14 +453,29 @@ public final class PropertyLValueNode extends LValueNode {
         lock.lock();
         try {
             if (cache == null) {
-                cache = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED, res.accessible());
-            } else if (cache.hierarchyId() != h || cache.callerHierarchyId() != callerH) {
+                cache = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED,
+                        res.accessible(), res.isReadonly(), res.canInitReadonly(), res.declaringClass());
+            } else if (cache.hierarchyId() != h || ((traitSelfSlot >= 0 || res.visibility() == Visibility.PROTECTED || res.isReadonly())
+                    && cache.callerHierarchyId() != callerH)) {
                 cache = MEGAMORPHIC;
             }
         } finally {
             lock.unlock();
         }
         return res;
+    }
+
+    /** Whether a cached resolution depends on the caller (inside a trait method it varies by using class). */
+    private boolean callerSensitive(Resolution c) {
+        return traitSelfSlot >= 0 || c.isProtected() || c.isReadonly();
+    }
+
+    private String effectiveCallerLower(VirtualFrame frame) {
+        if (traitSelfSlot >= 0) {
+            PhpClass c = (PhpClass) frame.getObject(traitSelfSlot);
+            return c != null ? c.template().lowerName() : null;
+        }
+        return callingClassLower;
     }
 
     private long callerHierarchyId(VirtualFrame frame) {

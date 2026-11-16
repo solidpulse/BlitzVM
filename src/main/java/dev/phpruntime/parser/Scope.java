@@ -2,6 +2,7 @@ package dev.phpruntime.parser;
 
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.FrameSlotKind;
+import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.var.GlobalVarNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
@@ -16,23 +17,23 @@ import java.util.Set;
 
 /**
  * Variable resolution at parse time. Function locals get frame slots, so reading
- * {@code $i} compiles to a frame load. Top-level variables, {@code global} imports
- * and superglobals live in the context's global symbol table.
+ * {@code $i} compiles to a frame load. Top-level variables and superglobals live in
+ * the context's global symbol table; {@code global $x} inside a function binds a cell.
  */
 final class Scope {
 
     record Capture(String name, int targetSlot, VarKind targetKind, LValueNode outerRead, boolean warnIfUndefined, boolean byRef) {
     }
 
-    private static final Set<String> SUPERGLOBALS = Set.of("_GET", "_POST", "_SERVER", "_REQUEST", "_COOKIE", "_ENV", "_FILES", "GLOBALS");
+    private static final Set<String> SUPERGLOBALS = Set.of("_GET", "_POST", "_SERVER", "_REQUEST", "_COOKIE", "_ENV", "_FILES", "_SESSION", "GLOBALS");
 
+    private final PhpLanguage language;
     private final boolean global;
     private final Scope outer;
     private final boolean isArrow;
     private final FrameDescriptor.Builder frame = FrameDescriptor.newBuilder();
     private final Map<String, Integer> slots = new HashMap<>();
     private final Map<Integer, VarKind> kinds = new HashMap<>();
-    private final Set<String> imported = new HashSet<>();
     private final Set<String> ownParams = new HashSet<>();
     private final Map<String, Integer> capturedVars = new HashMap<>();
     private final List<Capture> captures = new ArrayList<>();
@@ -42,11 +43,13 @@ final class Scope {
     private final int traitSelfSlot;
     private GotoScope gotoScope;
 
-    Scope(boolean global) {
-        this(global, false, null, false, false, false);
+    Scope(PhpLanguage language, boolean global) {
+        this(language, global, false, null, false, false, false);
     }
 
-    private Scope(boolean global, boolean hasThis, Scope outer, boolean isClosure, boolean isArrow, boolean isTraitMethod) {
+    private Scope(PhpLanguage language, boolean global, boolean hasThis, Scope outer, boolean isClosure, boolean isArrow,
+                  boolean isTraitMethod) {
+        this.language = language;
         this.global = global;
         this.outer = outer;
         this.isArrow = isArrow;
@@ -62,16 +65,16 @@ final class Scope {
         this.traitSelfSlot = needsTraitSelf ? slot("@traitSelf") : -1;
     }
 
-    static Scope forMethod() {
-        return new Scope(false, true, null, false, false, false);
+    static Scope forMethod(PhpLanguage language) {
+        return new Scope(language, false, true, null, false, false, false);
     }
 
-    static Scope forTraitMethod() {
-        return new Scope(false, true, null, false, false, true);
+    static Scope forTraitMethod(PhpLanguage language) {
+        return new Scope(language, false, true, null, false, false, true);
     }
 
-    static Scope forClosure(Scope outer, boolean bindThis, boolean isArrow) {
-        return new Scope(false, bindThis, outer, true, isArrow, false);
+    static Scope forClosure(PhpLanguage language, Scope outer, boolean bindThis, boolean isArrow) {
+        return new Scope(language, false, bindThis, outer, true, isArrow, false);
     }
 
     int thisSlot() {
@@ -131,8 +134,11 @@ final class Scope {
     }
 
     LValueNode variable(String name) {
-        if (global || SUPERGLOBALS.contains(name) || imported.contains(name)) {
-            return new GlobalVarNode(name);
+        if ("GLOBALS".equals(name)) {
+            return new GlobalVarNode(name, -1);
+        }
+        if (global || SUPERGLOBALS.contains(name)) {
+            return new GlobalVarNode(name, language.globalId(name));
         }
         if (isArrow && !name.equals("this") && !ownParams.contains(name) && !capturedVars.containsKey(name) && outer != null) {
             LValueNode outerTarget = outer.variable(name);
@@ -247,10 +253,6 @@ final class Scope {
             }
             return true;
         }
-    }
-
-    void importGlobal(String name) {
-        imported.add(name);
     }
 
     boolean isGlobal() {

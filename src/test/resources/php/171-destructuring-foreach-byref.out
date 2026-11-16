@@ -1,0 +1,6 @@
+1:Alice
+2:Bob
+u1=>10=95
+u2=>20=88
+ref_dest=100,20,300
+foreach_ref=21,43

@@ -1,0 +1,17 @@
+1 8
+41 9
+App\Util\Box:x / App\Util\Crate:2,3
+42 2,4,6
+ns-strlen 3
+small 23
+b1 has 2 and 9
+99,4,6
+Error: Cannot modify readonly property App\Util\Box::$name
+5
+99,5,8
+App\Util App\Util\Box App\Util\Crate
+7
+43 15
+App\Util\Crate App\Util\Crate:dyn
+3
+5 2,2

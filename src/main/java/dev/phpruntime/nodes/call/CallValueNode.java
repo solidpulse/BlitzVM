@@ -35,36 +35,80 @@ public final class CallValueNode extends PhpNode {
 
     @Child private PhpNode targetExpr;
     @Children private final PhpNode[] args;
+    @Children private final dev.phpruntime.nodes.var.LValueNode[] refTargets;
+    @CompilationFinal(dimensions = 1) private final String[] argNames;
+    @CompilationFinal(dimensions = 1) private final boolean[] spreads;
+    private final boolean hasSpreadOrNamed;
     private final int outerThisSlot;
     @Child private DirectCallNode directCall;
     @Child private IndirectCallNode indirectCall;
     @CompilationFinal private volatile StringCache stringCache;
+    /*
+     * Rare paths, kept out of compiled code until a site uses them. They pass the frame to
+     * helpers that partial evaluation cannot fully inline, which would make the frame escape and
+     * slow down the whole calling function. Each flag only goes false -> true (safe to race).
+     */
+    @CompilationFinal private boolean seenComplexBuiltin;
+    @CompilationFinal private boolean seenMagic;
+    @CompilationFinal private boolean seenSlow;
 
     public CallValueNode(PhpNode targetExpr, PhpNode[] args, int outerThisSlot) {
+        this(targetExpr, args, new dev.phpruntime.nodes.var.LValueNode[args.length], null, null, outerThisSlot);
+    }
+
+    public CallValueNode(PhpNode targetExpr, PhpNode[] args, dev.phpruntime.nodes.var.LValueNode[] refTargets,
+                         String[] argNames, boolean[] spreads, int outerThisSlot) {
         this.targetExpr = targetExpr;
         this.args = args;
+        this.refTargets = refTargets;
+        this.argNames = argNames;
+        this.spreads = spreads;
+        boolean complex = false;
+        if (argNames != null) {
+            for (String s : argNames) {
+                if (s != null) {
+                    complex = true;
+                    break;
+                }
+            }
+        }
+        if (!complex && spreads != null) {
+            for (boolean b : spreads) {
+                if (b) {
+                    complex = true;
+                    break;
+                }
+            }
+        }
+        this.hasSpreadOrNamed = complex;
         this.outerThisSlot = outerThisSlot;
     }
 
     @Override
     public Object execute(VirtualFrame frame) {
+        return CallArgHelper.unwrapReturn(executeRaw(frame));
+    }
+
+    @Override
+    public Object executeForRef(VirtualFrame frame) {
+        return executeRaw(frame);
+    }
+
+    private Object executeRaw(VirtualFrame frame) {
         Object target = targetExpr.execute(frame);
         if (target instanceof PhpObject obj && obj.closure() != null) {
             PhpClosure c = obj.closure();
-            return switch (c.kind()) {
-                case CLOSURE -> callTargetFast(
-                        c.callTarget(), evalClosureArgs(frame, c.boundThis(), c.calledClass(), obj));
-                case USER_FUNCTION -> callTargetFast(c.callTarget(), evalPlainArgs(frame));
-                case METHOD -> callTargetFast(c.callTarget(),
-                        c.traitSelf() != null
-                                ? evalTraitMethodArgs(frame, c.boundThis(), c.calledClass(), c.traitSelf())
-                                : evalMethodArgs(frame, c.boundThis(), c.calledClass()));
-                case MAGIC_CALL, BUILTIN -> {
-                    ensureIndirectCall();
-                    yield PhpCallable.invokeClosure(
-                            PhpContext.get(this), indirectCall, this, obj, c, evalPlainArgs(frame));
-                }
-            };
+            RootCallTarget ct = c.callTarget();
+            DirectCallNode direct = directCall;
+            if (direct != null && direct.getCallTarget() == ct) {
+                // The cached target is a PE constant, so argument evaluation folds its by-ref checks.
+                return callClosure(frame, obj, c, (RootCallTarget) direct.getCallTarget());
+            }
+            if (direct != null && indirectCall == null) {
+                // Monomorphic sites compile without the generic path; a new target re-specializes.
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+            }
+            return callClosure(frame, obj, c, ct);
         }
         if (target instanceof String s) {
             StringCache sc = stringCache;
@@ -83,15 +127,58 @@ public final class CallValueNode extends PhpNode {
 
     private Object callCachedString(VirtualFrame frame, StringCache sc) {
         if (sc.builtin != null) {
-            Object[] values = evalPlainArgs(frame);
-            CallNode.checkArity(sc.builtin, values.length, this);
-            return invokeBuiltin(sc.builtin, values);
+            return callBuiltinFast(frame, sc.builtin);
         }
         PhpFunction fn = PhpContext.get(this).functionById(sc.functionId);
         if (fn == null) {
             throw new PhpError("Value not of type callable", this);
         }
-        return callTargetFast(fn.callTarget(), evalPlainArgs(frame));
+        RootCallTarget target = fn.callTarget();
+        DirectCallNode direct = directCall;
+        if (direct != null && direct.getCallTarget() == target) {
+            // The cached target is a PE constant, so argument evaluation folds its by-ref checks.
+            return direct.call(evalUserPlainArgs(frame, (RootCallTarget) direct.getCallTarget()));
+        }
+        if (direct != null && indirectCall == null) {
+            // Monomorphic sites compile without the generic path; a new target re-specializes.
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+        }
+        return callTargetFast(target, evalUserPlainArgs(frame, target));
+    }
+
+    private Object callBuiltinFast(VirtualFrame frame, Builtins.Def def) {
+        if (hasSpreadOrNamed || def.refMask() != 0) {
+            if (!seenComplexBuiltin) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                seenComplexBuiltin = true;
+            }
+            return CallArgHelper.callComplexBuiltin(frame, def, args, refTargets, argNames, spreads, this);
+        }
+        Object[] values = evalPlainArgs(frame);
+        CallNode.checkArity(def, values.length, this);
+        return invokeBuiltin(def, values);
+    }
+
+    private Object callClosure(VirtualFrame frame, PhpObject obj, PhpClosure c, RootCallTarget target) {
+        return switch (c.kind()) {
+            case CLOSURE -> callTargetFast(target, evalClosureArgs(frame, target, c.boundThis(), c.calledClass(), obj));
+            case USER_FUNCTION -> callTargetFast(target, evalUserPlainArgs(frame, target));
+            case METHOD -> {
+                Object[] margs = evalMethodArgs(frame, target, c.boundThis(), c.calledClass());
+                yield callTargetFast(target, c.traitSelf() != null ? DispatchCallNode.withTraitSelf(margs, c.traitSelf()) : margs);
+            }
+            case MAGIC_CALL -> {
+                if (!seenMagic) {
+                    CompilerDirectives.transferToInterpreterAndInvalidate();
+                    seenMagic = true;
+                }
+                ensureIndirectCall();
+                yield indirectCall.call(target, new Object[]{
+                        c.boundThis(), c.calledClass(), c.magicMethodName(),
+                        DispatchCallNode.evalMagicArgs(frame, args, argNames, spreads, this)});
+            }
+            case BUILTIN -> callBuiltinFast(frame, c.builtin());
+        };
     }
 
     private Object callTargetFast(RootCallTarget target, Object[] frameArgs) {
@@ -177,16 +264,51 @@ public final class CallValueNode extends PhpNode {
     }
 
     private Object callSlow(VirtualFrame frame, Object target, Object callerThis) {
+        if (!seenSlow) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            seenSlow = true;
+        }
         ensureIndirectCall();
-        Object[] userArgs = evalPlainArgs(frame);
-        return dispatchSlow(target, callerThis, userArgs);
+        PhpCallable cb = resolveCallableSlow(target, callerThis);
+        if (cb.kind() == PhpCallable.Kind.BUILTIN) {
+            return callBuiltinFast(frame, cb.builtin());
+        }
+        if (cb.kind() == PhpCallable.Kind.MAGIC_CALL) {
+            return indirectCall.call(cb.callTarget(), new Object[]{
+                    cb.boundThis(), cb.calledClass(), cb.magicMethodName(),
+                    DispatchCallNode.evalMagicArgs(frame, args, argNames, spreads, this)});
+        }
+        Object[] prefix = switch (cb.kind()) {
+            case CLOSURE -> new Object[]{cb.boundThis(), cb.calledClass(), cb.closureObj()};
+            case METHOD -> cb.traitSelf() != null
+                    ? new Object[]{cb.boundThis(), cb.calledClass(), cb.traitSelf()}
+                    : new Object[]{cb.boundThis(), cb.calledClass()};
+            default -> new Object[0];
+        };
+        if (!hasSpreadOrNamed) {
+            // Plain positional arguments: keep the general named/spread binder out of compiled code.
+            return indirectCall.call(cb.callTarget(), evalArgsWithPrefix(frame, cb.callTarget(), prefix));
+        }
+        Object[] frameArgs = CallArgHelper.evalComplexUserArgs(
+                frame, cb.callTarget(), prefix, args, refTargets, argNames, spreads, this);
+        return indirectCall.call(cb.callTarget(), frameArgs);
+    }
+
+    @ExplodeLoop
+    private Object[] evalArgsWithPrefix(VirtualFrame frame, RootCallTarget target, Object[] prefix) {
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot =
+                target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        Object[] values = new Object[prefix.length + args.length];
+        System.arraycopy(prefix, 0, values, 0, prefix.length);
+        for (int i = 0; i < args.length; i++) {
+            values[prefix.length + i] = CallArgHelper.evalArgForParam(frame, args[i], refTargets[i], fnRoot, i, this);
+        }
+        return values;
     }
 
     @TruffleBoundary
-    private Object dispatchSlow(Object target, Object callerThis, Object[] userArgs) {
-        PhpContext ctx = PhpContext.get(this);
-        PhpCallable cb = PhpCallable.resolve(ctx, target, callerThis, this);
-        return cb.call(ctx, indirectCall, this, userArgs);
+    private PhpCallable resolveCallableSlow(Object target, Object callerThis) {
+        return PhpCallable.resolve(PhpContext.get(this), target, callerThis, this);
     }
 
     @TruffleBoundary
@@ -198,8 +320,33 @@ public final class CallValueNode extends PhpNode {
         }
     }
 
+    private Object[] evalClosureArgs(VirtualFrame frame, RootCallTarget target, Object boundThis, PhpClass calledClass, PhpObject closureObj) {
+        if (hasSpreadOrNamed) {
+            return CallArgHelper.evalComplexUserArgs(frame, target, new Object[]{boundThis, calledClass, closureObj},
+                    args, refTargets, argNames, spreads, this);
+        }
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        if (fnRoot != null && fnRoot.hasAnyRefParam()) {
+            return evalClosureArgsWithRefs(frame, fnRoot, boundThis, calledClass, closureObj);
+        }
+        return evalClosureArgsFast(frame, boundThis, calledClass, closureObj);
+    }
+
     @ExplodeLoop
-    private Object[] evalClosureArgs(VirtualFrame frame, Object boundThis, PhpClass calledClass, PhpObject closureObj) {
+    private Object[] evalClosureArgsWithRefs(VirtualFrame frame, dev.phpruntime.nodes.PhpFunctionRootNode fnRoot,
+                                             Object boundThis, PhpClass calledClass, PhpObject closureObj) {
+        Object[] values = new Object[3 + args.length];
+        values[0] = boundThis;
+        values[1] = calledClass;
+        values[2] = closureObj;
+        for (int i = 0; i < args.length; i++) {
+            values[3 + i] = CallArgHelper.evalArgForParam(frame, args[i], refTargets[i], fnRoot, i, this);
+        }
+        return values;
+    }
+
+    @ExplodeLoop
+    private Object[] evalClosureArgsFast(VirtualFrame frame, Object boundThis, PhpClass calledClass, PhpObject closureObj) {
         Object[] values = new Object[3 + args.length];
         values[0] = boundThis;
         values[1] = calledClass;
@@ -210,8 +357,32 @@ public final class CallValueNode extends PhpNode {
         return values;
     }
 
+    private Object[] evalMethodArgs(VirtualFrame frame, RootCallTarget target, Object boundThis, PhpClass calledClass) {
+        if (hasSpreadOrNamed) {
+            return CallArgHelper.evalComplexUserArgs(frame, target, new Object[]{boundThis, calledClass},
+                    args, refTargets, argNames, spreads, this);
+        }
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        if (fnRoot != null && fnRoot.hasAnyRefParam()) {
+            return evalMethodArgsWithRefs(frame, fnRoot, boundThis, calledClass);
+        }
+        return evalMethodArgsFast(frame, boundThis, calledClass);
+    }
+
     @ExplodeLoop
-    private Object[] evalMethodArgs(VirtualFrame frame, Object boundThis, PhpClass calledClass) {
+    private Object[] evalMethodArgsWithRefs(VirtualFrame frame, dev.phpruntime.nodes.PhpFunctionRootNode fnRoot,
+                                            Object boundThis, PhpClass calledClass) {
+        Object[] values = new Object[2 + args.length];
+        values[0] = boundThis;
+        values[1] = calledClass;
+        for (int i = 0; i < args.length; i++) {
+            values[2 + i] = CallArgHelper.evalArgForParam(frame, args[i], refTargets[i], fnRoot, i, this);
+        }
+        return values;
+    }
+
+    @ExplodeLoop
+    private Object[] evalMethodArgsFast(VirtualFrame frame, Object boundThis, PhpClass calledClass) {
         Object[] values = new Object[2 + args.length];
         values[0] = boundThis;
         values[1] = calledClass;
@@ -221,17 +392,27 @@ public final class CallValueNode extends PhpNode {
         return values;
     }
 
+    private Object[] evalUserPlainArgs(VirtualFrame frame, RootCallTarget target) {
+        if (hasSpreadOrNamed) {
+            return CallArgHelper.evalComplexUserArgs(frame, target, new Object[0],
+                    args, refTargets, argNames, spreads, this);
+        }
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        if (fnRoot != null && fnRoot.hasAnyRefParam()) {
+            return evalPlainArgsWithRefs(frame, fnRoot);
+        }
+        return evalPlainArgs(frame);
+    }
+
     @ExplodeLoop
-    private Object[] evalTraitMethodArgs(VirtualFrame frame, Object boundThis, PhpClass calledClass, PhpClass traitSelf) {
-        Object[] values = new Object[3 + args.length];
-        values[0] = boundThis;
-        values[1] = calledClass;
-        values[2] = traitSelf;
+    private Object[] evalPlainArgsWithRefs(VirtualFrame frame, dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
+        Object[] values = new Object[args.length];
         for (int i = 0; i < args.length; i++) {
-            values[3 + i] = PhpOps.copyOnAssign(args[i].execute(frame));
+            values[i] = CallArgHelper.evalArgForParam(frame, args[i], refTargets[i], fnRoot, i, this);
         }
         return values;
     }
+
 
     @ExplodeLoop
     private Object[] evalPlainArgs(VirtualFrame frame) {

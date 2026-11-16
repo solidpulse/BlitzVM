@@ -24,17 +24,29 @@ public final class LocalVarNode extends LValueNode {
         this.kind = kind;
     }
 
+    public int slot() {
+        return slot;
+    }
+
+    public String varName() {
+        return name;
+    }
+
+    public VarKind kind() {
+        return kind;
+    }
+
     /** A second node for the same variable, e.g. the read in {@code $x = $x + 1}. */
     public LocalVarNode copyForRead() {
         return new LocalVarNode(slot, name, kind).at(line());
     }
 
     public boolean holdsLong(VirtualFrame frame) {
-        return frame.isLong(slot);
+        return !kind.isCell() && frame.isLong(slot);
     }
 
     public boolean holdsDouble(VirtualFrame frame) {
-        return frame.isDouble(slot);
+        return !kind.isCell() && frame.isDouble(slot);
     }
 
     public long getLong(VirtualFrame frame) {
@@ -45,10 +57,33 @@ public final class LocalVarNode extends LValueNode {
         return frame.getDouble(slot);
     }
 
+    private PhpReference getOrMigrateCell(VirtualFrame frame) {
+        if (frame.isObject(slot)) {
+            Object obj = frame.getObject(slot);
+            if (obj == null || obj instanceof PhpReference) {
+                return (PhpReference) obj;
+            }
+            PhpReference ref = new PhpReference(obj);
+            frame.setObject(slot, ref);
+            return ref;
+        }
+        if (frame.isLong(slot)) {
+            PhpReference ref = new PhpReference(frame.getLong(slot));
+            frame.setObject(slot, ref);
+            return ref;
+        }
+        if (frame.isDouble(slot)) {
+            PhpReference ref = new PhpReference(frame.getDouble(slot));
+            frame.setObject(slot, ref);
+            return ref;
+        }
+        return null;
+    }
+
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
         if (kind.isCell()) {
-            PhpReference ref = (PhpReference) frame.getObject(slot);
+            PhpReference ref = getOrMigrateCell(frame);
             return ref == null ? null : ref.value;
         }
         if (frame.isLong(slot)) {
@@ -61,12 +96,36 @@ public final class LocalVarNode extends LValueNode {
     }
 
     public PhpReference readOrCreateCell(VirtualFrame frame) {
-        PhpReference ref = (PhpReference) frame.getObject(slot);
+        PhpReference ref = getOrMigrateCell(frame);
         if (ref == null) {
             ref = new PhpReference(PhpNull.INSTANCE);
             frame.setObject(slot, ref);
+        } else if (ref.value == null) {
+            ref.value = PhpNull.INSTANCE;
         }
         return ref;
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        if ("this".equals(name)) {
+            throw new dev.phpruntime.runtime.PhpError("Cannot re-assign $this", this);
+        }
+        if (!kind.isCell()) {
+            kind.markCell();
+        }
+        return readOrCreateCell(frame);
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        if ("this".equals(name)) {
+            throw new dev.phpruntime.runtime.PhpError("Cannot re-assign $this", this);
+        }
+        if (!kind.isCell()) {
+            kind.markCell();
+        }
+        frame.setObject(slot, cell);
     }
 
     @Override
@@ -78,7 +137,7 @@ public final class LocalVarNode extends LValueNode {
     @Override
     public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
         if (kind.isCell()) {
-            PhpReference ref = (PhpReference) frame.getObject(slot);
+            PhpReference ref = getOrMigrateCell(frame);
             if (ref != null && ref.value instanceof Long l) {
                 return l;
             }
@@ -96,7 +155,7 @@ public final class LocalVarNode extends LValueNode {
     @Override
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
         if (kind.isCell()) {
-            PhpReference ref = (PhpReference) frame.getObject(slot);
+            PhpReference ref = getOrMigrateCell(frame);
             if (ref != null && ref.value instanceof Double d) {
                 return d;
             }
@@ -153,7 +212,7 @@ public final class LocalVarNode extends LValueNode {
     }
 
     private void writeCell(VirtualFrame frame, Object value) {
-        PhpReference ref = (PhpReference) frame.getObject(slot);
+        PhpReference ref = getOrMigrateCell(frame);
         if (ref == null) {
             frame.setObject(slot, new PhpReference(value));
         } else {
@@ -163,7 +222,11 @@ public final class LocalVarNode extends LValueNode {
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
-        frame.setObject(slot, null);
+        if (kind.isCell()) {
+            frame.setObject(slot, new PhpReference(null));
+        } else {
+            frame.setObject(slot, null);
+        }
     }
 
     @Override

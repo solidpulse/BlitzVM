@@ -1,0 +1,8 @@
+loc=8
+plain=10
+arr=15,9
+obj=17,123,18
+def1=42
+def2=88,88
+swap=right,left
+err=inc(): Argument #1 ($n) could not be passed by reference

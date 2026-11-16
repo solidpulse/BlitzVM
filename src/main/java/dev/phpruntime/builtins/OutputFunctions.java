@@ -7,6 +7,7 @@ import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
 import java.nio.charset.StandardCharsets;
@@ -66,7 +67,18 @@ final class OutputFunctions {
     }
 
     private static void varDump(StringBuilder sb, Object v, int indent, IdentityHashMap<PhpObject, Boolean> seen) {
+        varDump(sb, v, indent, seen, false);
+    }
+
+    private static void varDump(StringBuilder sb, Object v, int indent, IdentityHashMap<PhpObject, Boolean> seen, boolean isRef) {
+        if (v instanceof PhpReference ref) {
+            varDump(sb, ref.value == null ? PhpNull.INSTANCE : ref.value, indent, seen, true);
+            return;
+        }
         sb.append(" ".repeat(indent));
+        if (isRef) {
+            sb.append('&');
+        }
         if (v instanceof Long l) {
             sb.append("int(").append(l).append(")\n");
         } else if (v instanceof Double d) {
@@ -76,8 +88,8 @@ final class OutputFunctions {
         } else if (v instanceof Boolean b) {
             sb.append("bool(").append(b).append(")\n");
         } else if (v instanceof PhpArray arr) {
-            sb.append("array(").append(arr.size()).append(") {\n");
-            for (Map.Entry<Object, Object> e : arr.entries()) {
+            sb.append("array(").append(arr.size()).append(") {").append((char) 10);
+            for (Map.Entry<Object, Object> e : arr.rawEntries()) {
                 sb.append(" ".repeat(indent + 2)).append('[');
                 if (e.getKey() instanceof String k) {
                     sb.append('"').append(k).append('"');
@@ -85,7 +97,7 @@ final class OutputFunctions {
                     sb.append(e.getKey());
                 }
                 sb.append("]=>\n");
-                varDump(sb, e.getValue(), indent + 2, seen);
+                varDump(sb, e.getValue(), indent + 2, seen, false);
             }
             sb.append(" ".repeat(indent)).append("}\n");
         } else if (v instanceof PhpObject obj) {
@@ -95,9 +107,32 @@ final class OutputFunctions {
             }
             seen.put(obj, Boolean.TRUE);
             Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
-            sb.append("object(").append(obj.phpClass().name()).append(")#").append(obj.id())
-                    .append(" (").append(keys.length).append(") {\n");
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+            int initCount = 0;
+            for (Object rawKey : keys) {
+                if (get.execute(obj, rawKey, PhpNull.INSTANCE) != PhpClass.UNINITIALIZED) {
+                    initCount++;
+                }
+            }
+            sb.append("object(").append(obj.phpClass().name()).append(")#").append(obj.id())
+                    .append(" (").append(initCount).append(") {").append((char) 10);
+            for (Object rawKey : keys) {
+                String k = (String) rawKey;
+                Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (propVal == PhpClass.UNINITIALIZED) {
+                    continue;
+                }
+                sb.append(" ".repeat(indent + 2));
+                appendVarDumpObjectKey(sb, obj.phpClass(), k);
+                sb.append("=>").append((char) 10);
+                if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
+                    propVal = lt.toPhpArray();
+                }
+                varDump(sb, propVal, indent + 2, seen, false);
+            }
+            if (false) {
+                    sb.append(" (");
+                    sb.append(keys.length).append(") {\n");
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
                 sb.append(" ".repeat(indent + 2));
@@ -107,9 +142,10 @@ final class OutputFunctions {
                 if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
                     propVal = lt.toPhpArray();
                 }
-                varDump(sb, propVal, indent + 2, seen);
+                varDump(sb, propVal, indent + 2, seen, false);
             }
-            sb.append(" ".repeat(indent)).append("}\n");
+            }
+            sb.append(" ".repeat(indent)).append("}").append((char) 10);
             seen.remove(obj);
         } else if (v instanceof dev.phpruntime.runtime.PhpResource r) {
             sb.append("resource(").append(r.id()).append(") of type (").append(r.type()).append(")\n");
@@ -144,15 +180,16 @@ final class OutputFunctions {
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
+                Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (rawVal == PhpClass.UNINITIALIZED) {
+                    continue;
+                }
                 sb.append(" ".repeat(indent + 4)).append('[');
                 appendPrintRObjectKey(sb, obj.phpClass(), k);
                 sb.append("] => ");
-                Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
-                if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
-                    propVal = lt.toPhpArray();
-                }
+                Object propVal = PhpClass.unwrapProp(rawVal);
                 printR(sb, propVal, indent + 8, seen);
-                sb.append('\n');
+                sb.append((char) 10);
             }
             sb.append(" ".repeat(indent)).append(")\n");
             seen.remove(obj);
@@ -209,11 +246,12 @@ final class OutputFunctions {
             DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
             for (Object rawKey : keys) {
                 String k = (String) rawKey;
-                String prop = plainPropertyName(k);
-                Object val = get.execute(obj, k, PhpNull.INSTANCE);
-                if (val instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
-                    val = lt.toPhpArray();
+                Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+                if (rawVal == PhpClass.UNINITIALIZED) {
+                    continue;
                 }
+                String prop = plainPropertyName(k);
+                Object val = PhpClass.unwrapProp(rawVal);
                 sb.append(" ".repeat(indent + 3))
                         .append('\'').append(prop.replace("\\", "\\\\").replace("'", "\\'")).append('\'')
                         .append(" => ");

@@ -9,6 +9,7 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 
 import java.util.Arrays;
+import java.util.List;
 
 import static dev.phpruntime.builtins.Builtins.def;
 
@@ -41,8 +42,75 @@ final class CallableFunctions {
         if (!(a[1] instanceof PhpArray arr)) {
             throw new PhpError(PhpError.TYPE_ERROR, "call_user_func_array(): Argument #2 ($args) must be of type array", null);
         }
-        PhpCallable cb = PhpCallable.resolve(ctx, a[0], null);
-        return cb.call(ctx, null, null, arr.values().toArray());
+        PhpCallable cb = PhpCallable.resolve(ctx, a[0], ctx.currentBuiltinCallSite());
+        if (cb.kind() != PhpCallable.Kind.BUILTIN && cb.kind() != PhpCallable.Kind.MAGIC_CALL
+                && cb.callTarget() != null && cb.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
+            boolean hasStringKey = false;
+            for (Object k : arr.keys()) {
+                if (k instanceof String) {
+                    hasStringKey = true;
+                    break;
+                }
+            }
+            if (hasStringKey) {
+                java.util.List<Object> pos = new java.util.ArrayList<>();
+                java.util.Map<String, Object> named = new java.util.LinkedHashMap<>();
+                boolean seenNamed = false;
+                for (Object k : arr.keys()) {
+                    Object rawVal = arr.getRaw(k);
+                    Object v = rawVal instanceof dev.phpruntime.runtime.PhpReference ref ? ref : PhpOps.copyOnAssign(arr.get(k));
+                    if (k instanceof String s) {
+                        seenNamed = true;
+                        if (named.containsKey(s)) {
+                            throw new PhpError("Named parameter $" + s + " overwrites previous argument", ctx.currentBuiltinCallSite());
+                        }
+                        named.put(s, v);
+                    } else {
+                        if (seenNamed) {
+                            throw new PhpError("Cannot use positional argument after named argument", ctx.currentBuiltinCallSite());
+                        }
+                        pos.add(v);
+                    }
+                }
+                for (int i = 0; i < pos.size(); i++) {
+                    if (fnRoot.isParamByRef(i) && !(pos.get(i) instanceof dev.phpruntime.runtime.PhpReference)) {
+                        String pName = fnRoot.paramName(i);
+                        String desc = pName != null ? fnRoot.qualifiedCallableName() + "(): Argument #" + (i + 1) + " ($" + pName + ")"
+                                : fnRoot.qualifiedCallableName() + "(): Argument #" + (i + 1);
+                        ctx.warning(desc + " must be passed by reference, value given", 0);
+                        pos.set(i, new dev.phpruntime.runtime.PhpReference(PhpOps.copyOnAssign(pos.get(i))));
+                    }
+                }
+                for (java.util.Map.Entry<String, Object> e : named.entrySet()) {
+                    int pIdx = -1;
+                    String[] pNames = fnRoot.paramNames();
+                    for (int i = 0; i < fnRoot.normalParamCount(); i++) {
+                        if (e.getKey().equals(pNames[i])) {
+                            pIdx = i;
+                            break;
+                        }
+                    }
+                    boolean needsRef = pIdx >= 0 ? fnRoot.isParamByRef(pIdx)
+                            : (fnRoot.isVariadic() && fnRoot.isParamByRef(fnRoot.normalParamCount()));
+                    if (needsRef && !(e.getValue() instanceof dev.phpruntime.runtime.PhpReference)) {
+                        int argNum = pIdx >= 0 ? pIdx + 1 : fnRoot.normalParamCount() + 1;
+                        ctx.warning(fnRoot.qualifiedCallableName() + "(): Argument #" + argNum + " ($" + e.getKey()
+                                + ") must be passed by reference, value given", 0);
+                        e.setValue(new dev.phpruntime.runtime.PhpReference(PhpOps.copyOnAssign(e.getValue())));
+                    }
+                }
+                Object[] prefix = switch (cb.kind()) {
+                    case CLOSURE -> new Object[]{cb.boundThis(), cb.calledClass(), cb.closureObj()};
+                    case METHOD -> new Object[]{cb.boundThis(), cb.calledClass()};
+                    default -> new Object[0];
+                };
+                dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs rawArgs =
+                        new dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs(pos, List.of(), List.of(), List.of(), named, null, null, null);
+                Object[] frameArgs = dev.phpruntime.nodes.call.CallArgHelper.bindToFunction(prefix, rawArgs, fnRoot, ctx.currentBuiltinCallSite());
+                return dev.phpruntime.nodes.call.CallArgHelper.unwrapReturn(cb.callTarget().call(frameArgs));
+            }
+        }
+        return cb.call(ctx, null, ctx.currentBuiltinCallSite(), arr.rawValues().toArray());
     }
 
     private static Object splAutoloadRegister(PhpContext ctx, Object[] a) {

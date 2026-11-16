@@ -23,9 +23,12 @@ import dev.phpruntime.runtime.PhpReference;
  */
 public final class PhpFunctionRootNode extends PhpRootNode {
 
+    public static final Object UNPASSED = new Object();
+
     private final String declaringClass;
     private final String name;
     private final boolean isStatic;
+    private final boolean returnsRef;
     private final int thisSlot;
     private final int calledClassSlot;
     private final int closureObjSlot;
@@ -33,8 +36,11 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     @CompilationFinal(dimensions = 1) private final int[] captureSlots;
     @CompilationFinal(dimensions = 1) private final VarKind[] captureKinds;
     @CompilationFinal(dimensions = 1) private final boolean[] captureByRef;
+    @CompilationFinal(dimensions = 1) private final String[] paramNames;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
     @CompilationFinal(dimensions = 1) private final VarKind[] paramKinds;
+    @CompilationFinal(dimensions = 1) private final boolean[] paramByRef;
+    private final boolean hasAnyRefParam;
     @Children private final PhpNode[] defaults;
     private final boolean variadic;
     private final int requiredArgs;
@@ -42,23 +48,25 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line, String name,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
-        this(language, fd, source, line, null, name, false, -1, -1, -1, -1, new int[0], new VarKind[0], new boolean[0],
-                paramSlots, paramKinds, defaults, variadic, body);
+        this(language, fd, source, line, null, name, false, false, -1, -1, -1, -1, new int[0], new VarKind[0],
+                new boolean[0], new String[paramSlots.length], paramSlots, paramKinds, new boolean[paramSlots.length],
+                defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
                                String declaringClass, String name, boolean isStatic, int thisSlot, int calledClassSlot,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
-        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1, -1,
-                new int[0], new VarKind[0], new boolean[0], paramSlots, paramKinds, defaults, variadic, body);
+        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1,
+                paramSlots, paramKinds, defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
                                String declaringClass, String name, boolean isStatic, int thisSlot, int calledClassSlot,
                                int traitSelfSlot, int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults,
                                boolean variadic, PhpNode body) {
-        this(language, fd, source, line, declaringClass, name, isStatic, thisSlot, calledClassSlot, -1, traitSelfSlot,
-                new int[0], new VarKind[0], new boolean[0], paramSlots, paramKinds, defaults, variadic, body);
+        this(language, fd, source, line, declaringClass, name, isStatic, false, thisSlot, calledClassSlot, -1,
+                traitSelfSlot, new int[0], new VarKind[0], new boolean[0], new String[paramSlots.length], paramSlots,
+                paramKinds, new boolean[paramSlots.length], defaults, variadic, body);
     }
 
     public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
@@ -66,10 +74,34 @@ public final class PhpFunctionRootNode extends PhpRootNode {
                                int thisSlot, int calledClassSlot, int closureObjSlot, int traitSelfSlot,
                                int[] captureSlots, VarKind[] captureKinds, boolean[] captureByRef,
                                int[] paramSlots, VarKind[] paramKinds, PhpNode[] defaults, boolean variadic, PhpNode body) {
+        this(language, fd, source, line, declaringClass, name, isStatic, false, thisSlot, calledClassSlot, closureObjSlot,
+                traitSelfSlot, captureSlots, captureKinds, captureByRef, new String[paramSlots.length], paramSlots,
+                paramKinds, new boolean[paramSlots.length], defaults, variadic, body);
+    }
+
+    public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
+                               String declaringClass, String name, boolean isStatic, boolean returnsRef,
+                               int thisSlot, int calledClassSlot, int closureObjSlot,
+                               int[] captureSlots, VarKind[] captureKinds, boolean[] captureByRef,
+                               String[] paramNames, int[] paramSlots, VarKind[] paramKinds, boolean[] paramByRef,
+                               PhpNode[] defaults, boolean variadic, PhpNode body) {
+        this(language, fd, source, line, declaringClass, name, isStatic, returnsRef, thisSlot, calledClassSlot,
+                closureObjSlot, -1, captureSlots, captureKinds, captureByRef, paramNames, paramSlots, paramKinds,
+                paramByRef, defaults, variadic, body);
+    }
+
+    /** The full form: {@code traitSelfSlot} >= 0 for methods declared in a trait. */
+    public PhpFunctionRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line,
+                               String declaringClass, String name, boolean isStatic, boolean returnsRef,
+                               int thisSlot, int calledClassSlot, int closureObjSlot, int traitSelfSlot,
+                               int[] captureSlots, VarKind[] captureKinds, boolean[] captureByRef,
+                               String[] paramNames, int[] paramSlots, VarKind[] paramKinds, boolean[] paramByRef,
+                               PhpNode[] defaults, boolean variadic, PhpNode body) {
         super(language, fd, source, line);
         this.declaringClass = declaringClass;
         this.name = name;
         this.isStatic = isStatic;
+        this.returnsRef = returnsRef;
         this.thisSlot = thisSlot;
         this.calledClassSlot = calledClassSlot;
         this.closureObjSlot = closureObjSlot;
@@ -77,8 +109,18 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         this.captureSlots = captureSlots;
         this.captureKinds = captureKinds;
         this.captureByRef = captureByRef;
+        this.paramNames = paramNames;
         this.paramSlots = paramSlots;
         this.paramKinds = paramKinds;
+        this.paramByRef = paramByRef;
+        boolean anyRef = false;
+        for (boolean b : paramByRef) {
+            if (b) {
+                anyRef = true;
+                break;
+            }
+        }
+        this.hasAnyRefParam = anyRef;
         this.defaults = defaults;
         this.variadic = variadic;
         this.body = body;
@@ -123,6 +165,52 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return isStatic;
     }
 
+    public boolean returnsRef() {
+        return returnsRef;
+    }
+
+    public boolean hasAnyRefParam() {
+        return hasAnyRefParam;
+    }
+
+    public boolean isParamByRef(int i) {
+        if (i < paramByRef.length) {
+            return paramByRef[i];
+        }
+        return variadic && paramByRef.length > 0 && paramByRef[paramByRef.length - 1];
+    }
+
+    public boolean[] paramByRef() {
+        return paramByRef;
+    }
+
+    public String[] paramNames() {
+        return paramNames;
+    }
+
+    public String paramName(int i) {
+        return i >= 0 && i < paramNames.length ? paramNames[i] : null;
+    }
+
+    public boolean isVariadic() {
+        return variadic;
+    }
+
+    public int normalParamCount() {
+        return variadic ? paramSlots.length - 1 : paramSlots.length;
+    }
+
+    public String qualifiedCallableName() {
+        if (isClosure()) {
+            String f = source() != null && source().getPath() != null && !source().getPath().isEmpty()
+                    ? source().getPath()
+                    : (source() != null ? source().getName() : "");
+            int l = getSourceSection() != null ? getSourceSection().getStartLine() : 0;
+            return "{closure:" + f + ":" + l + "}";
+        }
+        return declaringClass == null ? name : declaringClass + "::" + name;
+    }
+
     @Override
     @ExplodeLoop
     public Object execute(VirtualFrame frame) {
@@ -158,13 +246,46 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         }
         int normalParams = variadic ? paramSlots.length - 1 : paramSlots.length;
         for (int i = 0; i < normalParams; i++) {
-            Object v = i < passed ? args[offset + i] : defaults[i].execute(frame);
-            writeSlot(frame, paramSlots[i], paramKinds[i], v);
+            Object raw = i < passed ? args[offset + i] : UNPASSED;
+            if (raw == UNPASSED) {
+                if (defaults[i] == null) {
+                    throw missingArgument(i);
+                }
+                Object defVal = PhpOps.copyOnAssign(defaults[i].execute(frame));
+                writeSlot(frame, paramSlots[i], paramKinds[i], defVal);
+            } else if (paramByRef[i]) {
+                PhpReference cell = raw instanceof PhpReference ref ? ref : new PhpReference(PhpOps.copyOnAssign(raw));
+                frame.setObject(paramSlots[i], cell);
+            } else {
+                Object val = raw instanceof PhpReference ref ? PhpOps.copyOnAssign(ref.value) : raw;
+                writeSlot(frame, paramSlots[i], paramKinds[i], val);
+            }
         }
         if (variadic) {
-            PhpArray rest = new PhpArray();
-            for (int i = offset + normalParams; i < args.length; i++) {
-                rest.append(PhpOps.copyOnAssign(args[i]));
+            PhpArray rest;
+            boolean varByRef = paramByRef[normalParams];
+            if (passed == normalParams + 1 && args[offset + normalParams] instanceof NamedVariadic nv) {
+                rest = nv.entries();
+            } else {
+                rest = new PhpArray();
+                for (int i = offset + normalParams; i < args.length; i++) {
+                    Object item = args[i];
+                    if (item instanceof NamedVariadic nv) {
+                        for (java.util.Map.Entry<Object, Object> e : nv.entries().rawEntries()) {
+                            if (e.getValue() instanceof PhpReference ref && varByRef) {
+                                rest.putRef(e.getKey(), ref);
+                            } else {
+                                Object val = e.getValue() instanceof PhpReference ref ? ref.value : e.getValue();
+                                rest.put(e.getKey(), PhpOps.copyOnAssign(val));
+                            }
+                        }
+                    } else if (varByRef && item instanceof PhpReference ref) {
+                        rest.appendRef(ref);
+                    } else {
+                        Object val = item instanceof PhpReference ref ? ref.value : item;
+                        rest.append(PhpOps.copyOnAssign(val));
+                    }
+                }
             }
             writeSlot(frame, paramSlots[normalParams], paramKinds[normalParams], rest);
         }
@@ -186,6 +307,19 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         } else {
             frame.setObject(slot, v);
         }
+    }
+
+    public record NamedVariadic(PhpArray entries) {
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private PhpError missingArgument(int index) {
+        String qualified = declaringClass == null ? name : declaringClass + "::" + name;
+        String pName = paramName(index);
+        String suffix = pName != null ? " ($" + pName + ")" : "";
+        return new PhpError(PhpError.ARGUMENT_COUNT,
+                qualified + "(): Argument #" + (index + 1) + suffix + " not passed",
+                this);
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary

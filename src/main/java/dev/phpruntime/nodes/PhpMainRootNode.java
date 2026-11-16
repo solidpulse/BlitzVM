@@ -24,6 +24,8 @@ import java.util.Map;
  */
 public final class PhpMainRootNode extends PhpRootNode {
 
+    private static final String[] INIT_GLOBALS = {"_GET", "_POST", "_COOKIE", "_FILES", "_ENV", "_REQUEST", "_SERVER"};
+
     @Child private PhpNode body;
     private final List<PhpFunction> functions;
     private final List<PhpClassTemplate> topLevelClasses;
@@ -32,6 +34,9 @@ public final class PhpMainRootNode extends PhpRootNode {
     public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body,
                            List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses, int hoistedClassesSlot) {
         super(language, fd, source, 1);
+        for (String sg : INIT_GLOBALS) {
+            language.globalId(sg);
+        }
         this.body = body;
         this.functions = functions;
         this.topLevelClasses = topLevelClasses;
@@ -114,6 +119,8 @@ public final class PhpMainRootNode extends PhpRootNode {
         }
         ctx.writeGlobal("_REQUEST", all);
         ctx.writeGlobal("_COOKIE", PhpQuery.parseCookies(PhpQuery.header(request.headers, "Cookie")));
+        ctx.writeGlobal("_FILES", new PhpArray());
+        ctx.writeGlobal("_ENV", new PhpArray());
         ctx.writeGlobal("_SERVER", toArray(request.server));
     }
 

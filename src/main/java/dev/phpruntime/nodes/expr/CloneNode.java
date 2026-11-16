@@ -32,6 +32,7 @@ public final class CloneNode extends PhpNode {
         PhpObject copy = shallowCopy(PhpContext.get(this), obj);
         PhpClass.MethodEntry cloneMethod = obj.phpClass().cloneMethod();
         if (cloneMethod != null && cloneMethod.callTarget() != null) {
+            copy.setCloning(true);
             try {
                 Object[] callArgs = cloneMethod.fromTrait()
                         ? new Object[]{copy, obj.phpClass(), cloneMethod.declaringClass()}
@@ -39,6 +40,8 @@ public final class CloneNode extends PhpNode {
                 dispatch.call(cloneMethod.callTarget(), callArgs);
             } catch (PhpError e) {
                 throw e.at(this);
+            } finally {
+                copy.setCloning(false);
             }
         }
         return copy;
@@ -54,7 +57,15 @@ public final class CloneNode extends PhpNode {
         DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         for (Object k : keys) {
-            put.execute(copy, k, PhpOps.copyOnAssign(get.execute(src, k, PhpNull.INSTANCE)));
+            Object raw = get.execute(src, k, PhpNull.INSTANCE);
+            if (raw == PhpClass.UNINITIALIZED) {
+                put.execute(copy, k, PhpClass.UNINITIALIZED);
+                continue;
+            }
+            if (raw instanceof dev.phpruntime.runtime.PhpReference ref) {
+                raw = ref.value;
+            }
+            put.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
         }
         return copy;
     }
