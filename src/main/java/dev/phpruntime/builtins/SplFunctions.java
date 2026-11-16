@@ -61,7 +61,11 @@ final class SplFunctions {
         });
         Builtins.def("iterator_apply", 2, 3, (ctx, a) -> {
             PhpObject it = SplIterators.resolve(requireIterator("iterator_apply", a[0], false));
-            PhpCallable cb = PhpCallable.resolve(ctx, a[1], ctx.currentBuiltinCallSite());
+            PhpCallable cb = PhpCallable.resolveOrNull(ctx, a[1]);
+            if (cb == null) {
+                throw new PhpError(PhpError.TYPE_ERROR, "iterator_apply(): Argument #2 ($callback) must be a valid callback, "
+                        + (a[1] instanceof String name ? "function \"" + name + "\" not found or invalid function name" : "no array or string given"), null);
+            }
             if (a.length > 2 && a[2] != dev.phpruntime.runtime.PhpNull.INSTANCE && !(a[2] instanceof PhpArray)) {
                 throw new PhpError(PhpError.TYPE_ERROR, "iterator_apply(): Argument #3 ($args) must be of type ?array, "
                         + PhpOps.typeDescription(a[2]) + " given", null);
@@ -80,7 +84,7 @@ final class SplFunctions {
             return n;
         });
         Builtins.def("class_implements", 1, 2, (ctx, a) -> {
-            PhpClass cls = classArg(ctx, a);
+            PhpClass cls = classArg(ctx, a, "class_implements");
             if (cls == null) {
                 return false;
             }
@@ -89,7 +93,7 @@ final class SplFunctions {
             return out;
         });
         Builtins.def("class_parents", 1, 2, (ctx, a) -> {
-            PhpClass cls = classArg(ctx, a);
+            PhpClass cls = classArg(ctx, a, "class_parents");
             if (cls == null) {
                 return false;
             }
@@ -109,12 +113,19 @@ final class SplFunctions {
                 + (arrayAllowed ? "|array" : "") + ", " + PhpOps.typeDescription(arg) + " given", null);
     }
 
-    private static PhpClass classArg(dev.phpruntime.PhpContext ctx, Object[] args) {
+    private static PhpClass classArg(dev.phpruntime.PhpContext ctx, Object[] args, String function) {
         if (args[0] instanceof PhpObject obj) {
             return obj.phpClass();
         }
-        return args[0] instanceof String name ? (args.length < 2 || PhpOps.toBool(args[1])
-                ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name)) : null;
+        if (!(args[0] instanceof String name)) {
+            throw new PhpError(PhpError.TYPE_ERROR, function + "(): Argument #1 ($object_or_class) must be of type object|string, "
+                    + PhpOps.typeDescription(args[0]) + " given", null);
+        }
+        PhpClass cls = args.length < 2 || PhpOps.toBool(args[1]) ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
+        if (cls == null) {
+            ctx.warning(function + "(): Class " + name + " does not exist and could not be loaded", 0);
+        }
+        return cls;
     }
 
     private static void collectInterfaces(PhpClass cls, PhpArray out) {

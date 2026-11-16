@@ -12,6 +12,11 @@ public final class ResumableSwitchNode extends PhpNode {
     @Children private final PhpNode[] bodies;
     private final int slot;
     private final int valueSlot;
+    private static final class Selection {
+        Object value;
+        int caseIndex;
+        int fallback = -1;
+    }
 
     public ResumableSwitchNode(PhpNode subject, PhpNode[] values, PhpNode[] bodies, int slot, int valueSlot) {
         this.subject = subject;
@@ -26,14 +31,19 @@ public final class ResumableSwitchNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         int start = frame.getInt(slot) - 1;
         if (start < 0) {
-            Object value = subject.execute(frame);
-            frame.setObject(valueSlot, value);
-            int fallback = -1;
-            for (int i = 0; i < values.length; i++) {
-                if (values[i] == null) { fallback = i; }
-                else if (PhpOps.looseEquals(value, values[i].execute(frame))) { start = i; break; }
+            Selection selection = (Selection) frame.getObject(valueSlot);
+            if (selection == null) {
+                selection = new Selection();
+                selection.value = subject.execute(frame);
+                frame.setObject(valueSlot, selection);
             }
-            if (start < 0) { start = fallback; }
+            for (int i = 0; i < values.length; i++) {
+                if (i < selection.caseIndex) { continue; }
+                if (values[i] == null) { selection.fallback = i; }
+                else if (PhpOps.looseEquals(selection.value, values[i].execute(frame))) { start = i; break; }
+                selection.caseIndex = i + 1;
+            }
+            if (start < 0) { start = selection.fallback; }
         }
         try {
             for (int i = 0; i < bodies.length; i++) {
@@ -43,9 +53,23 @@ public final class ResumableSwitchNode extends PhpNode {
                 }
             }
         } catch (ControlFlow.Break stop) {
-            if (stop.levels > 1) { throw new ControlFlow.Break(stop.levels - 1); }
+            if (stop.levels > 1) {
+                frame.setInt(slot, 0);
+                frame.setObject(valueSlot, null);
+                throw new ControlFlow.Break(stop.levels - 1);
+            }
         } catch (ControlFlow.Continue next) {
-            if (next.levels > 1) { throw new ControlFlow.Continue(next.levels - 1); }
+            if (next.levels > 1) {
+                frame.setInt(slot, 0);
+                frame.setObject(valueSlot, null);
+                throw new ControlFlow.Continue(next.levels - 1);
+            }
+        } catch (ControlFlow.Yield suspended) {
+            throw suspended;
+        } catch (RuntimeException | Error error) {
+            frame.setInt(slot, 0);
+            frame.setObject(valueSlot, null);
+            throw error;
         }
         frame.setInt(slot, 0);
         frame.setObject(valueSlot, null);

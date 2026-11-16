@@ -9,12 +9,14 @@ public final class MemoLValueNode extends LValueNode {
     @Child private LValueNode target;
     private final int slot;
     private final int resultSlot;
+    private final int cellSlot;
     private record Result(Object value) {}
 
-    public MemoLValueNode(LValueNode target, int slot, int resultSlot) {
+    public MemoLValueNode(LValueNode target, int slot, int resultSlot, int cellSlot) {
         this.target = target;
         this.slot = slot;
         this.resultSlot = resultSlot;
+        this.cellSlot = cellSlot;
     }
 
     @Override
@@ -35,10 +37,28 @@ public final class MemoLValueNode extends LValueNode {
         f.setObject(resultSlot, new Result(value));
         return value;
     }
-    @Override public Object readIfSet(VirtualFrame f, Object[] k) { return target.readIfSet(f, k); }
-    @Override public boolean isSet(VirtualFrame f, Object[] k) { return target.isSet(f, k); }
+    @Override public Object readIfSet(VirtualFrame f, Object[] k) {
+        Object saved = f.getObject(resultSlot);
+        if (saved instanceof Result result) { return result.value; }
+        Object value = target.readIfSet(f, k);
+        f.setObject(resultSlot, new Result(value));
+        return value;
+    }
+    @Override public boolean isSet(VirtualFrame f, Object[] k) {
+        Object saved = f.getObject(resultSlot);
+        if (saved instanceof Result result) { return (Boolean) result.value; }
+        boolean value = target.isSet(f, k);
+        f.setObject(resultSlot, new Result(value));
+        return value;
+    }
     @Override public void write(VirtualFrame f, Object[] k, Object v) { target.write(f, k, v); }
-    @Override public PhpReference obtainCell(VirtualFrame f, Object[] k) { return target.obtainCell(f, k); }
+    @Override public PhpReference obtainCell(VirtualFrame f, Object[] k) {
+        Object saved = f.getObject(cellSlot);
+        if (saved instanceof PhpReference cell) { return cell; }
+        PhpReference cell = target.obtainCell(f, k);
+        f.setObject(cellSlot, cell);
+        return cell;
+    }
     @Override public void bindCell(VirtualFrame f, Object[] k, PhpReference v) { target.bindCell(f, k, v); }
     @Override public void unset(VirtualFrame f, Object[] k) { target.unset(f, k); }
     @Override public String describe() { return target.describe(); }

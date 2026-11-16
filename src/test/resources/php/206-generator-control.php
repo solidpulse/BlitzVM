@@ -22,3 +22,32 @@ function control() {
 }
 $g = control();
 echo json_encode(iterator_to_array($g)), "\n", $g->getReturn(), "\n";
+function gotoGenerator() {
+    $n = 0;
+    again:
+    yield $n;
+    if (++$n < 3) { goto again; }
+    return $n;
+}
+$g = gotoGenerator();
+echo json_encode(iterator_to_array($g)), ':', $g->getReturn(), "\n";
+function gotoBranch() {
+    goto inside;
+    if (false) {
+        inside:
+        yield 'inside';
+        yield 'again';
+    }
+    yield 'outside';
+}
+echo json_encode(iterator_to_array(gotoBranch())), "\n";
+function gotoTry() {
+    goto inside;
+    try {
+        yield 'skip';
+        inside:
+        yield 'try';
+        yield 'again';
+    } finally { echo 'goto-finally|'; }
+}
+echo json_encode(iterator_to_array(gotoTry())), "\n";

@@ -38,3 +38,8 @@ $a['ref'] = &$v;
 $v++;
 $a['ref']++;
 echo $v, ':', $a['ref'], "\n";
+$source = new ArrayObject(['x' => 1]);
+$iterator = new ArrayIterator($source);
+$source['x'] = 3;
+$iterator['x'] = 8;
+echo $source['x'], ':', $iterator['x'], "\n";

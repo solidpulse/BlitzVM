@@ -56,6 +56,10 @@ public final class ArrayAccessNode extends Node {
                 state.storage.version++;
                 return;
             }
+            com.oracle.truffle.api.object.DynamicObject.PutNode.getUncached().execute(state.storage.object,
+                    PhpOps.toStr(key), cell);
+            state.storage.version++;
+            return;
         }
         throw new PhpError("Cannot assign by reference to an array dimension of an object", this);
     }

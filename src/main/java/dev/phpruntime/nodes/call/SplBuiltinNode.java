@@ -75,6 +75,7 @@ public final class SplBuiltinNode extends Node {
             size++;
             iterator.next(it);
         }
+        com.oracle.truffle.api.nodes.LoopNode.reportLoopCount(this, (int) Math.min(Integer.MAX_VALUE, size));
         return name.equals("iterator_count") ? size : result;
     }
 

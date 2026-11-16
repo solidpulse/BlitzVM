@@ -58,7 +58,7 @@ final class GeneratorLowering {
                 set(clause, "body", lower(get(clause, "body")));
             }
             result = new ResumableTryNode(lower(get(node, "tryBlock")), catches, lower(get(node, "finallyBlock")),
-                    scope.resumeSlot(), scope.objectSlot());
+                    scope.resumeSlot(), scope.objectSlot(), scope.objectSlot());
         } else if (node instanceof EchoNode) {
             PhpNode[] values = nodes(node, "values");
             PhpNode[] echoes = new PhpNode[values.length];
@@ -66,6 +66,11 @@ final class GeneratorLowering {
                 echoes[i] = expression(new EchoNode(new PhpNode[]{values[i]}).at(node.line()));
             }
             result = new ResumableBlockNode(echoes, scope.resumeSlot());
+        } else if (node instanceof GotoDispatchNode dispatch) {
+            Node repeating = get(node, "repeating");
+            PhpNode[] segments = nodes(repeating, "segments");
+            for (int i = 0; i < segments.length; i++) { segments[i] = lower(segments[i]); }
+            result = dispatch.resumable(scope.resumeSlot());
         } else {
             result = expression(node);
         }
@@ -81,6 +86,13 @@ final class GeneratorLowering {
             for (Node child : node.getChildren()) {
                 nestedYield |= containsYield(child);
             }
+            if (!nestedYield) { return node; }
+        }
+        if (node instanceof dev.phpruntime.nodes.var.AssignNode
+                && get(node, "target") instanceof dev.phpruntime.nodes.var.LocalVarNode
+                && get(node, "value") instanceof YieldNode yield) {
+            boolean nestedYield = false;
+            for (Node child : yield.getChildren()) { nestedYield |= containsYield(child); }
             if (!nestedYield) { return node; }
         }
         List<Integer> memos = new ArrayList<>();
@@ -105,7 +117,9 @@ final class GeneratorLowering {
                 if (child instanceof LValueNode lv) {
                     int resultSlot = scope.objectSlot();
                     slots.add(resultSlot);
-                    write(field, node, new MemoLValueNode(lv, slot, resultSlot).at(child.line()));
+                    int cellSlot = scope.objectSlot();
+                    slots.add(cellSlot);
+                    write(field, node, new MemoLValueNode(lv, slot, resultSlot, cellSlot).at(child.line()));
                 } else {
                     write(field, node, new MemoNode(child, slot).at(child.line()));
                 }
@@ -127,7 +141,9 @@ final class GeneratorLowering {
                     if (child instanceof LValueNode lv) {
                         int resultSlot = scope.objectSlot();
                         slots.add(resultSlot);
-                        children[i] = new MemoLValueNode(lv, slot, resultSlot).at(child.line());
+                        int cellSlot = scope.objectSlot();
+                        slots.add(cellSlot);
+                        children[i] = new MemoLValueNode(lv, slot, resultSlot, cellSlot).at(child.line());
                     } else {
                         children[i] = new MemoNode(child, slot).at(child.line());
                     }

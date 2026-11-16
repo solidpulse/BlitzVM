@@ -82,6 +82,7 @@ public final class YieldFromNode extends PhpNode {
         }
         Object value = cursor.iterator != null ? protocol.current(cursor.iterator) : cursor.entries.get(cursor.index).getValue();
         Object key = cursor.iterator != null ? protocol.key(cursor.iterator) : cursor.entries.get(cursor.index).getKey();
+        outer.checkYield(this);
         cursor.suspended = true;
         throw new ControlFlow.Yield(key, PhpOps.copyOnAssign(value));
     }

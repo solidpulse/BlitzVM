@@ -319,6 +319,10 @@ public final class PropertyLValueNode extends LValueNode {
         if (!(target instanceof PhpObject obj)) {
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
+        if (arrayProperties(obj, name)) {
+            arrayAccess().bindCell(obj, name, cell);
+            return;
+        }
         checkNotReadonlyForIndirectWrite(frame, keys);
         String storageKey = resolveKeyIfAccessible(frame, obj, name);
         if (storageKey == null) {

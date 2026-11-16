@@ -22,6 +22,7 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
     @Child private LoopNode loop;
     private final DispatchRepeatingNode repeating;
     @CompilationFinal(dimensions = 1) private final int[] exportedLabelIds;
+    @CompilationFinal private int generatorActiveSlot = -1;
 
     public GotoDispatchNode(int pcSlot, int enterSlot, PhpNode[] segments,
                             int[] directLabelIds, int[] directLabelSegments,
@@ -43,16 +44,31 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        frame.setInt(pcSlot, 0);
-        if (enterSlot >= 0) {
-            frame.setInt(enterSlot, -1);
+        if (generatorActiveSlot < 0 || frame.getInt(generatorActiveSlot) == 0) {
+            frame.setInt(pcSlot, 0);
+            if (enterSlot >= 0) { frame.setInt(enterSlot, -1); }
+            if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 1); }
         }
-        loop.execute(frame);
+        try {
+            loop.execute(frame);
+        } catch (ControlFlow.Yield suspended) {
+            throw suspended;
+        } catch (RuntimeException | Error error) {
+            if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 0); }
+            throw error;
+        }
+        if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 0); }
         return null;
+    }
+
+    public GotoDispatchNode resumable(int activeSlot) {
+        generatorActiveSlot = activeSlot;
+        return this;
     }
 
     @Override
     public void executeEnter(VirtualFrame frame, int labelId) {
+        if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 1); }
         int seg = repeating.findDirectSegment(labelId);
         if (seg >= 0) {
             frame.setInt(pcSlot, seg);
@@ -64,7 +80,15 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
             frame.setInt(pcSlot, childSeg);
             frame.setInt(enterSlot, labelId);
         }
-        loop.execute(frame);
+        try {
+            loop.execute(frame);
+        } catch (ControlFlow.Yield suspended) {
+            throw suspended;
+        } catch (RuntimeException | Error error) {
+            if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 0); }
+            throw error;
+        }
+        if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 0); }
     }
 
     private static final class DispatchRepeatingNode extends Node implements RepeatingNode {

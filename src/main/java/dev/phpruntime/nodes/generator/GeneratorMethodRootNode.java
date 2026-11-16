@@ -20,12 +20,22 @@ public final class GeneratorMethodRootNode extends RootNode {
     }
 
     @Override
+    public boolean isCloningAllowed() {
+        return true;
+    }
+
+    @Override
     public Object execute(VirtualFrame frame) {
         Object[] args = frame.getArguments();
         if (name.equals("__construct")) {
             throw new PhpError("The \"Generator\" class is reserved for internal use and cannot be manually instantiated", this);
         }
         PhpGenerator generator = (PhpGenerator) ((PhpObject) args[0]).nativeState();
+        int expected = name.equals("send") || name.equals("throw") ? 1 : 0;
+        if (args.length - 2 != expected) {
+            throw new PhpError(PhpError.ARGUMENT_COUNT, "Generator::" + name + "() expects exactly " + expected
+                    + " argument" + (expected == 1 ? "" : "s") + ", " + (args.length - 2) + " given", this);
+        }
         return switch (name) {
             case "current" -> generator.current(dispatch, this);
             case "key" -> generator.key(dispatch, this);
@@ -33,7 +43,6 @@ public final class GeneratorMethodRootNode extends RootNode {
             case "next" -> { generator.next(dispatch, this); yield PhpNull.INSTANCE; }
             case "rewind" -> { generator.rewind(dispatch, this); yield PhpNull.INSTANCE; }
             case "send" -> {
-                if (args.length < 3) { throw new PhpError(PhpError.ARGUMENT_COUNT, "Generator::send() expects exactly 1 argument, 0 given", this); }
                 yield generator.send(args[2], dispatch, this);
             }
             case "throw" -> {
@@ -51,4 +60,5 @@ public final class GeneratorMethodRootNode extends RootNode {
     public String getName() {
         return "Generator::" + name;
     }
+
 }

@@ -7,7 +7,6 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.RepeatingNode;
 import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpNode;
-import dev.phpruntime.runtime.PhpOps;
 
 /** init / condition / body / update phases; the LoopNode still supplies OSR and safepoints. */
 public final class ResumableLoopNode extends PhpNode {
@@ -62,7 +61,7 @@ public final class ResumableLoopNode extends PhpNode {
         public boolean executeRepeating(VirtualFrame frame) {
             int phase = frame.getInt(slot);
             if (phase == 1) {
-                if (condition != null && !PhpOps.toBool(condition.execute(frame))) {
+                if (condition != null && !dev.phpruntime.nodes.expr.CondNode.toBool(condition.execute(frame))) {
                     return false;
                 }
                 frame.setInt(slot, 2);
@@ -88,7 +87,7 @@ public final class ResumableLoopNode extends PhpNode {
             }
             if (after) {
                 frame.setInt(slot, 4);
-                if (condition != null && !PhpOps.toBool(condition.execute(frame))) {
+                if (condition != null && !dev.phpruntime.nodes.expr.CondNode.toBool(condition.execute(frame))) {
                     return false;
                 }
                 frame.setInt(slot, 2);

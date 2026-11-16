@@ -1,2 +1,5 @@
 after:0|after:2|after:3|["even:0","even:2","odd:3","while:0","while:1","do:2","do:1","a:1","a:again","b:2","b:again","two","fallthrough"]
 done
+[0,1,2]:3
+["inside","again","outside"]
+goto-finally|["try","again"]

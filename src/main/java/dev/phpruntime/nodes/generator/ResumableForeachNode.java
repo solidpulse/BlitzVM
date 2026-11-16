@@ -69,7 +69,9 @@ public final class ResumableForeachNode extends PhpNode {
                 }
                 cursor.entries = arr.rawEntries();
             } else if (value instanceof PhpObject obj) {
-                String caller = getRootNode() instanceof GeneratorResumeRootNode root ? root.signature.declaringClass() : null;
+                PhpFunctionRootNode fn = getRootNode() instanceof GeneratorResumeRootNode root ? root.signature : null;
+                String caller = fn != null ? fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts
+                        ? ts.name() : fn.declaringClass() : null;
                 cursor.entries = byRef ? PhpClass.visibleRefEntries(PhpContext.get(this), obj, caller)
                         : PhpClass.visibleEntries(PhpContext.get(this), obj, caller);
             } else {

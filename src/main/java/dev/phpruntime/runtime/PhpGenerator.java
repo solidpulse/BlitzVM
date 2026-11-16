@@ -17,12 +17,14 @@ public final class PhpGenerator implements PhpNativeState {
     private boolean running;
     private boolean returned;
     private int yields;
+    private boolean advanced;
     private long nextKey;
     private Object key = PhpNull.INSTANCE;
     private Object value = PhpNull.INSTANCE;
     private Object returnValue = PhpNull.INSTANCE;
     private Object input = PhpNull.INSTANCE;
     private RuntimeException injected;
+    private boolean closing;
 
     public PhpGenerator(MaterializedFrame frame, RootCallTarget resumeTarget, PhpFunctionRootNode signature) {
         this.frame = frame;
@@ -69,6 +71,7 @@ public final class PhpGenerator implements PhpNativeState {
             return;
         }
         started = true;
+        if (yields > 0) { advanced = true; }
         running = true;
         try {
             returnValue = dispatch.call(resumeTarget, new Object[]{this});
@@ -113,8 +116,8 @@ public final class PhpGenerator implements PhpNativeState {
 
     public void rewind(DispatchCallNode dispatch, Node site) {
         ensureStarted(dispatch, site);
-        if (yields > 1) {
-            throw new PhpError("Cannot rewind a generator that was already run", site);
+        if (advanced) {
+            throw exception("Cannot rewind a generator that was already run", site);
         }
     }
 
@@ -138,21 +141,38 @@ public final class PhpGenerator implements PhpNativeState {
 
     public void close(DispatchCallNode dispatch, Node site) {
         if (!closed && started) {
-            injected = new ControlFlow.GeneratorClose();
-            resume(dispatch, site);
+            closing = true;
+            try {
+                injected = new ControlFlow.GeneratorClose();
+                resume(dispatch, site);
+            } finally {
+                closed = true;
+                closing = false;
+            }
         }
         closed = true;
     }
 
+    public void checkYield(Node site) {
+        if (closing) { throw new PhpError("Cannot yield from finally in a force-closed generator", site); }
+    }
+
     public Object getReturn(Node site) {
         if (!returned) {
-            throw new PhpError("Cannot get return value of a generator that hasn't returned", site);
+            throw exception("Cannot get return value of a generator that hasn't returned", site);
         }
         return returnValue;
     }
 
     public boolean isClosed() {
         return closed;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static PhpException exception(String message, Node site) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(site);
+        return new PhpException(PhpExceptions.createBuiltinThrowable(ctx, "Exception", message, 0L,
+                PhpBacktrace.sourcePath(site), PhpBacktrace.sourceLine(site), null), site);
     }
 
     @Override

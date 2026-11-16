@@ -52,7 +52,9 @@ class GeneratorsAndSplTest {
                 $a=$g->current();
                 $b=$g->send(3);
                 $g->send(4);
-                echo "$a:$b:$x:", $g->getReturn(), ':', $bag[0], ':', count($bag);
+                $callback=function() { return $this[0]; };
+                $bound=$callback->bindTo($bag);
+                echo "$a:$b:$x:", $g->getReturn(), ':', $bag[0], ':', count($bag), ':', $bound();
                 """);
         try (PhpEngine engine = new PhpEngine(null)) {
             int threads = 16;
@@ -72,7 +74,7 @@ class GeneratorsAndSplTest {
                             request.get.put("seed", String.valueOf(seed));
                             var result = engine.execute(script, request);
                             String expected = (seed * 3) + ":" + (seed * 3 + 4) + ":"
-                                    + (seed * 2 + 7) + ":" + (seed * 2 + 7) + ":" + (seed + 1) + ":2";
+                                    + (seed * 2 + 7) + ":" + (seed * 2 + 7) + ":" + (seed + 1) + ":2:" + (seed + 1);
                             if (result.status() != 200 || !expected.equals(result.bodyText())) {
                                 return "expected=" + expected + " actual=" + result.bodyText() + " errors=" + result.errors();
                             }
@@ -97,9 +99,9 @@ class GeneratorsAndSplTest {
                 <?php
                 function values() { yield 1; yield 2; }
                 $g=values();
-                try { $g->getReturn(); } catch (Error $e) { echo $e->getMessage(), '|'; }
+                try { $g->getReturn(); } catch (Exception $e) { echo $e->getMessage(), '|'; }
                 $g->current(); $g->next();
-                try { $g->rewind(); } catch (Error $e) { echo $e->getMessage(), '|'; }
+                try { $g->rewind(); } catch (Exception $e) { echo $e->getMessage(), '|'; }
                 $g->next();
                 try { foreach($g as $v) {} } catch (Exception $e) { echo $e->getMessage(), '|'; }
                 function recursiveGenerator() { global $g; $g->current(); yield 1; }
@@ -136,6 +138,31 @@ class GeneratorsAndSplTest {
             assertEquals(500, result.status());
             assertTrue(result.bodyText().contains("Maximum execution time"), result.bodyText());
             assertTrue(!result.bodyText().contains("caught") && !result.bodyText().contains("finally"), result.bodyText());
+        }
+    }
+
+    @Test
+    void explicitNativeCloseRunsSuspendedFinally() {
+        try (var context = org.graalvm.polyglot.Context.newBuilder("php")
+                .allowAllAccess(true).option("engine.WarnInterpreterOnly", "false").build()) {
+            context.eval("php", """
+                    <?php
+                    $closed = 0;
+                    function suspended() { try { yield 1; } finally { $GLOBALS['closed']++; } }
+                    $g = suspended();
+                    $g->current();
+                    """);
+            context.enter();
+            try {
+                PhpContext php = PhpContext.get(null);
+                dev.phpruntime.runtime.PhpObject object = (dev.phpruntime.runtime.PhpObject) php.readGlobal("g");
+                dev.phpruntime.runtime.PhpGenerator generator = (dev.phpruntime.runtime.PhpGenerator) object.nativeState();
+                generator.close(new dev.phpruntime.nodes.call.DispatchCallNode(), null);
+                assertEquals(1L, php.readGlobal("closed"));
+                assertTrue(generator.isClosed());
+            } finally {
+                context.leave();
+            }
         }
     }
 }

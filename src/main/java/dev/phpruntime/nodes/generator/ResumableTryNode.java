@@ -12,19 +12,32 @@ import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpObject;
 
 /** try, selected catch, finally, and pending exit/exception survive suspension independently. */
-public final class ResumableTryNode extends PhpNode {
+public final class ResumableTryNode extends PhpNode implements dev.phpruntime.nodes.stmt.GotoEnterable {
     @Child private PhpNode body;
     @Children private final TryCatchNode.CatchClause[] catches;
     @Child private PhpNode finallyBody;
     private final int phaseSlot;
     private final int pendingSlot;
+    private final int enterSlot;
 
-    public ResumableTryNode(PhpNode body, TryCatchNode.CatchClause[] catches, PhpNode finallyBody, int phase, int pending) {
+    public ResumableTryNode(PhpNode body, TryCatchNode.CatchClause[] catches, PhpNode finallyBody, int phase, int pending, int enter) {
         this.body = body;
         this.catches = catches;
         this.finallyBody = finallyBody;
         phaseSlot = phase;
         pendingSlot = pending;
+        enterSlot = enter;
+    }
+
+    @Override
+    public int[] exportedLabelIds() {
+        return body instanceof dev.phpruntime.nodes.stmt.GotoEnterable enterable ? enterable.exportedLabelIds() : new int[0];
+    }
+
+    @Override
+    public void executeEnter(VirtualFrame frame, int labelId) {
+        frame.setObject(enterSlot, labelId);
+        executeVoid(frame);
     }
 
     @Override
@@ -35,7 +48,13 @@ public final class ResumableTryNode extends PhpNode {
             try {
                 if (phase == 0) {
                     try {
-                        body.executeVoid(frame);
+                        Object enter = frame.getObject(enterSlot);
+                        frame.setObject(enterSlot, null);
+                        if (enter instanceof Integer label && body instanceof dev.phpruntime.nodes.stmt.GotoEnterable enterable) {
+                            enterable.executeEnter(frame, label);
+                        } else {
+                            body.executeVoid(frame);
+                        }
                     } catch (PhpException exception) {
                         dispatch(frame, exception.exceptionObject(), exception);
                     } catch (PhpError error) {

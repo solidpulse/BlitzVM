@@ -30,6 +30,7 @@ public final class YieldNode extends PhpNode {
         }
         Object yieldedKey = key == null ? null : key.execute(frame);
         Object yieldedValue = value == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(value.execute(frame));
+        generator.checkYield(this);
         yieldedKey = key == null ? generator.autoKey() : generator.explicitKey(yieldedKey);
         frame.setInt(stateSlot, 1);
         throw new ControlFlow.Yield(yieldedKey, yieldedValue);

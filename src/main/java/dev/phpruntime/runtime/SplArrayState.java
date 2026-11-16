@@ -44,7 +44,8 @@ public final class SplArrayState implements PhpNativeState {
     private long keysVersion = -1;
 
     public SplArrayState(Object source, int flags) {
-        storage = new Storage(source);
+        storage = source instanceof PhpObject object && object.nativeState() instanceof SplArrayState state
+                ? state.storage : new Storage(source);
         this.flags = flags;
     }
 
@@ -151,7 +152,7 @@ public final class SplArrayState implements PhpNativeState {
 
     @Override
     public PhpNativeState copy() {
-        SplArrayState copy = new SplArrayState(arrayCopy(), flags);
+        SplArrayState copy = storage.object != null ? new SplArrayState(storage.object, flags) : new SplArrayState(arrayCopy(), flags);
         copy.position = position;
         copy.iteratorClass = iteratorClass;
         return copy;
@@ -173,6 +174,14 @@ public final class SplArrayState implements PhpNativeState {
     @Override
     public int compareTo(PhpObject other) {
         if (!(other.nativeState() instanceof SplArrayState state)) { return 1; }
-        return PhpOps.compare(arrayCopy(), state.arrayCopy());
+        PhpArray left = arrayCopy(), right = state.arrayCopy();
+        int size = Integer.compare(left.size(), right.size());
+        if (size != 0) { return size; }
+        for (var entry : left.entries()) {
+            if (!right.containsKey(entry.getKey())) { return 1; }
+            int comparison = PhpOps.compare(entry.getValue(), right.get(entry.getKey()));
+            if (comparison != 0) { return comparison; }
+        }
+        return 0;
     }
 }
