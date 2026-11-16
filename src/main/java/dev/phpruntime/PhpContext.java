@@ -53,7 +53,8 @@ public final class PhpContext {
     private final Map<String, PhpReference> dynamicGlobals = new java.util.LinkedHashMap<>();
     private final Map<String, Integer> globalOrder = new java.util.LinkedHashMap<>();
     private final Set<String> reservedGlobals = new java.util.HashSet<>();
-    private final Map<String, PhpFunction> functions = new HashMap<>();
+    /** Script-declared functions in declaration order; lookups go through {@link #functionsById}. */
+    private final List<PhpFunction> declaredFunctions = new ArrayList<>();
     private PhpFunction[] functionsById = new PhpFunction[256];
     private final Map<String, PhpClass> classes = new HashMap<>();
     private PhpClass[] classesById = new PhpClass[128];
@@ -444,19 +445,21 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpFunction lookupFunction(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
-        return functions.get(PhpStrings.lower(n));
+        int id = language.functionIdIfKnown(PhpStrings.lower(n));
+        return id < 0 ? null : functionById(id);
     }
 
     @TruffleBoundary
     public void declareFunction(PhpFunction fn) {
-        if (Builtins.lookup(fn.name()) != null || functions.putIfAbsent(PhpStrings.lower(fn.name()), fn) != null) {
+        int id = fn.id(language);
+        if (fn.clashesWithBuiltin() || (id < functionsById.length && functionsById[id] != null)) {
             throw PhpError.fatal("Cannot redeclare function " + fn.name() + "()");
         }
-        int id = language.functionId(fn.name());
         if (id >= functionsById.length) {
             functionsById = java.util.Arrays.copyOf(functionsById, Math.max(id + 1, functionsById.length * 2));
         }
         functionsById[id] = fn;
+        declaredFunctions.add(fn);
     }
 
     /** The function with this {@link PhpLanguage#functionId id} in this context, or null. Cheap enough for every call. */
@@ -465,10 +468,14 @@ public final class PhpContext {
         return id < table.length ? table[id] : null;
     }
 
-    /** Names of script-declared functions (lowercase keys), for get_defined_functions(). */
+    /** Names of script-declared functions (lowercase), in declaration order, for get_defined_functions(). */
     @TruffleBoundary
     public List<String> definedFunctionNames() {
-        return new ArrayList<>(functions.keySet());
+        List<String> names = new ArrayList<>(declaredFunctions.size());
+        for (PhpFunction fn : declaredFunctions) {
+            names.add(fn.lowerName());
+        }
+        return names;
     }
 
     // ------------------------------------------------------------ classes
@@ -774,6 +781,12 @@ public final class PhpContext {
             return cls != null && cls.lookupConstant(n.substring(sep + 2)) != null;
         }
         return PhpConstants.lookupBuiltin(n) != null || constants.containsKey(n);
+    }
+
+    /** A user-defined global constant (no namespace separator handling, no built-ins), or null. */
+    @TruffleBoundary
+    public Object readUserConstant(String name) {
+        return constants.get(name);
     }
 
     @TruffleBoundary
