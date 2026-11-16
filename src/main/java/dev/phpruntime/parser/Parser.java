@@ -515,16 +515,22 @@ public final class Parser {
         PhpNode subject = expression();
         expectKeyword("as");
         boolean byRef = acceptOp("&");
-        LValueNode first = lvalue(postfixOnly());
+        LValueNode first = parseForeachTarget(byRef);
         LValueNode key = null;
         LValueNode value = first;
         if (acceptOp("=>")) {
             if (byRef) {
                 throw error("Key element cannot be a reference");
             }
+            if (first instanceof DestructureLValueNode) {
+                throw error("Cannot use list as key element");
+            }
             byRef = acceptOp("&");
             key = first;
-            value = lvalue(postfixOnly());
+            value = parseForeachTarget(byRef);
+        }
+        if (!byRef && value instanceof DestructureLValueNode dest && dest.hasAnyRef()) {
+            byRef = true;
         }
         if (byRef && value instanceof LocalVarNode lv) {
             lv.kind().markCell();
@@ -539,6 +545,26 @@ public final class Parser {
             body = statementOrEmpty();
         }
         return new ForeachNode(subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
+    }
+
+    private LValueNode parseForeachTarget(boolean outerByRef) {
+        int line = peek().line();
+        if (peek().isOp("[")) {
+            if (outerByRef) {
+                throw error("Cannot assign reference to list()");
+            }
+            next();
+            return parseDestructurePattern("]").at(line);
+        }
+        if (peek().isKeyword("list") && peek(1).isOp("(")) {
+            if (outerByRef) {
+                throw error("Cannot assign reference to list()");
+            }
+            next();
+            next();
+            return parseDestructurePattern(")").at(line);
+        }
+        return lvalue(postfixOnly());
     }
 
     private PhpNode switchStatement() {
@@ -1223,6 +1249,11 @@ public final class Parser {
     private PhpNode postfix() {
         int line = peek().line();
         PhpNode e = postfixOnly();
+        if (e instanceof DestructureLValueNode dest) {
+            expectOp("=");
+            PhpNode rhs = binary(4);
+            return new DestructureAssignNode(dest, rhs, lvalueOrNull(rhs)).at(line);
+        }
         if (e instanceof LValueNode target) {
             Token t = peek();
             if (t.kind() == Kind.OP) {
@@ -1609,6 +1640,9 @@ public final class Parser {
                     return e;
                 }
                 if (t.text().equals("[")) {
+                    if (isBracketDestructuring()) {
+                        return parseDestructurePattern("]").at(line);
+                    }
                     return arrayLiteral("]").at(line);
                 }
             }
@@ -1686,6 +1720,12 @@ public final class Parser {
                 if (peek().isOp("(")) {
                     next();
                     return arrayLiteral(")").at(line);
+                }
+            }
+            case "list" -> {
+                if (peek().isOp("(")) {
+                    next();
+                    return parseDestructurePattern(")").at(line);
                 }
             }
             case "isset" -> {
@@ -1812,6 +1852,172 @@ public final class Parser {
             spreadArr[i] = spreads.get(i);
         }
         return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
+    }
+
+    private boolean isBracketDestructuringAt(int bracketPos) {
+        int depth = 1;
+        int i = bracketPos + 1;
+        while (i < tokens.size() && depth > 0) {
+            Token tok = tokens.get(i++);
+            if (tok.kind() == Kind.EOF) {
+                return false;
+            }
+            if (tok.isOp("[") || tok.isOp("#[")) {
+                depth++;
+            } else if (tok.isOp("]")) {
+                depth--;
+            }
+        }
+        return depth == 0 && i < tokens.size() && tokens.get(i).isOp("=>");
+    }
+
+    private boolean isBracketDestructuring() {
+        int depth = 1;
+        int i = pos;
+        while (i < tokens.size() && depth > 0) {
+            Token tok = tokens.get(i++);
+            if (tok.kind() == Kind.EOF) {
+                return false;
+            }
+            if (tok.isOp("[") || tok.isOp("#[")) {
+                depth++;
+            } else if (tok.isOp("]")) {
+                depth--;
+            }
+        }
+        return depth == 0 && i < tokens.size() && tokens.get(i).isOp("=");
+    }
+
+    private DestructureLValueNode parseDestructurePattern(String closing) {
+        List<PhpNode> keyNodes = new ArrayList<>();
+        List<LValueNode> targets = new ArrayList<>();
+        List<Long> autoIndices = new ArrayList<>();
+        List<Boolean> byRefs = new ArrayList<>();
+        Boolean keyedMode = null;
+        long nextIndex = 0;
+
+        while (!acceptOp(closing)) {
+            if (acceptOp(",")) {
+                if (Boolean.TRUE.equals(keyedMode)) {
+                    throw error("Cannot use empty array entries in keyed array assignment");
+                }
+                keyedMode = false;
+                keyNodes.add(null);
+                targets.add(null);
+                autoIndices.add(nextIndex++);
+                byRefs.add(false);
+                continue;
+            }
+            if (acceptOp("&")) {
+                if (Boolean.TRUE.equals(keyedMode)) {
+                    throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                }
+                keyedMode = false;
+                LValueNode tgt = parseDestructureItem(true);
+                keyNodes.add(null);
+                targets.add(tgt);
+                autoIndices.add(nextIndex++);
+                byRefs.add(true);
+            } else if (peek().isOp("[")) {
+                int saved = pos;
+                if (isBracketDestructuringAt(pos)) {
+                    PhpNode keyExpr = expression();
+                    expectOp("=>");
+                    if (Boolean.FALSE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = true;
+                    boolean isRef = acceptOp("&");
+                    LValueNode tgt = parseDestructureValueAfterArrow(isRef);
+                    keyNodes.add(keyExpr);
+                    targets.add(tgt);
+                    autoIndices.add(-1L);
+                    byRefs.add(isRef);
+                } else {
+                    int subLine = next().line();
+                    if (Boolean.TRUE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = false;
+                    keyNodes.add(null);
+                    targets.add(parseDestructurePattern("]").at(subLine));
+                    autoIndices.add(nextIndex++);
+                    byRefs.add(false);
+                }
+            } else if (peek().isKeyword("list") && peek(1).isOp("(")) {
+                int subLine = next().line();
+                next();
+                if (Boolean.TRUE.equals(keyedMode)) {
+                    throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                }
+                keyedMode = false;
+                keyNodes.add(null);
+                targets.add(parseDestructurePattern(")").at(subLine));
+                autoIndices.add(nextIndex++);
+                byRefs.add(false);
+            } else {
+                PhpNode first = expression();
+                if (acceptOp("=>")) {
+                    if (Boolean.FALSE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = true;
+                    boolean isRef = acceptOp("&");
+                    LValueNode tgt = parseDestructureValueAfterArrow(isRef);
+                    keyNodes.add(first);
+                    targets.add(tgt);
+                    autoIndices.add(-1L);
+                    byRefs.add(isRef);
+                } else {
+                    if (Boolean.TRUE.equals(keyedMode)) {
+                        throw error("Cannot mix keyed and unkeyed array entries in assignments");
+                    }
+                    keyedMode = false;
+                    LValueNode tgt = lvalue(first);
+                    keyNodes.add(null);
+                    targets.add(tgt);
+                    autoIndices.add(nextIndex++);
+                    byRefs.add(false);
+                }
+            }
+            if (!peek().isOp(closing)) {
+                expectOp(",");
+            }
+        }
+        long[] idxArr = new long[autoIndices.size()];
+        boolean[] refArr = new boolean[byRefs.size()];
+        for (int i = 0; i < autoIndices.size(); i++) {
+            idxArr[i] = autoIndices.get(i);
+            refArr[i] = byRefs.get(i);
+        }
+        return new DestructureLValueNode(
+                keyNodes.toArray(new PhpNode[0]),
+                targets.toArray(new LValueNode[0]),
+                idxArr,
+                refArr);
+    }
+
+    private LValueNode parseDestructureValueAfterArrow(boolean isRef) {
+        if (!isRef) {
+            if (peek().isOp("[")) {
+                int subLine = next().line();
+                return parseDestructurePattern("]").at(subLine);
+            }
+            if (peek().isKeyword("list") && peek(1).isOp("(")) {
+                int subLine = next().line();
+                next();
+                return parseDestructurePattern(")").at(subLine);
+            }
+        }
+        return parseDestructureItem(isRef);
+    }
+
+    private LValueNode parseDestructureItem(boolean isRef) {
+        LValueNode lv = lvalue(postfixOnly());
+        if (isRef && lv instanceof LocalVarNode local && !"this".equals(local.varName())) {
+            local.kind().markCell();
+        }
+        return lv;
     }
 
     private static void markCellIfLocal(PhpNode node) {
