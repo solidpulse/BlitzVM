@@ -1,0 +1,132 @@
+"a@b.com" => 'a@b.com'
+"user.name+tag@example.co.uk" => 'user.name+tag@example.co.uk'
+"a@b" => false
+"a@localhost" => false
+"a b@c.com" => false
+"@b.com" => false
+"a@.com" => false
+"a@b..com" => false
+"a@b.c" => 'a@b.c'
+"\"foo bar\"@example.com" => false
+"a@[127.0.0.1]" => 'a@[127.0.0.1]'
+"a@b.com " => false
+" a@b.com" => false
+"a@@b.com" => false
+"a@b_c.com" => false
+127.0.0.1                plain='127.0.0.1' v4='127.0.0.1' v6=false priv='127.0.0.1' res=false
+8.8.8.8                  plain='8.8.8.8' v4='8.8.8.8' v6=false priv='8.8.8.8' res='8.8.8.8'
+10.0.0.1                 plain='10.0.0.1' v4='10.0.0.1' v6=false priv=false res='10.0.0.1'
+172.16.0.1               plain='172.16.0.1' v4='172.16.0.1' v6=false priv=false res='172.16.0.1'
+192.168.1.1              plain='192.168.1.1' v4='192.168.1.1' v6=false priv=false res='192.168.1.1'
+169.254.1.1              plain='169.254.1.1' v4='169.254.1.1' v6=false priv='169.254.1.1' res=false
+0.0.0.0                  plain='0.0.0.0' v4='0.0.0.0' v6=false priv='0.0.0.0' res=false
+255.255.255.255          plain='255.255.255.255' v4='255.255.255.255' v6=false priv='255.255.255.255' res=false
+256.1.1.1                plain=false v4=false v6=false priv=false res=false
+01.2.3.4                 plain=false v4=false v6=false priv=false res=false
+1.2.3                    plain=false v4=false v6=false priv=false res=false
+::1                      plain='::1' v4=false v6='::1' priv='::1' res=false
+::                       plain='::' v4=false v6='::' priv='::' res=false
+::ffff:127.0.0.1         plain='::ffff:127.0.0.1' v4=false v6='::ffff:127.0.0.1' priv='::ffff:127.0.0.1' res=false
+fd12:3456::1             plain='fd12:3456::1' v4=false v6='fd12:3456::1' priv=false res='fd12:3456::1'
+fe80::1                  plain='fe80::1' v4=false v6='fe80::1' priv='fe80::1' res=false
+2001:4860:4860::8888     plain='2001:4860:4860::8888' v4=false v6='2001:4860:4860::8888' priv='2001:4860:4860::8888' res='2001:4860:4860::8888'
+g::1                     plain=false v4=false v6=false priv=false res=false
+1.2.3.4.5                plain=false v4=false v6=false priv=false res=false
+string(7) "8.8.8.8"
+bool(false)
+"0" => 0
+"42" => 42
+"-42" => -42
+" 42" => 42
+"42 " => 42
+"042" => false
+"0x2a" => false
+"1.0" => false
+"abc" => false
+"" => false
+true => 1
+false => false
+null => false
+42 => 42
+42.9 => false
+int(34)
+int(42)
+bool(false)
+int(5)
+int(7)
+int(5)
+"1": true true
+"0": false false
+"true": true true
+"false": false false
+"on": true true
+"off": false false
+"yes": true true
+"no": false false
+"": false false
+"TRUE": true true
+"2": false NULL
+"abc": false NULL
+true: true true
+false: false false
+null: false false
+"1": 1.0
+"1.5": 1.5
+"-1.5": -1.5
+".5": 0.5
+"1e3": 1000.0
+" 1.5": 1.5
+"1,5": false
+"abc": false
+"": false
+true: 1.0
+false: false
+1.5: 1.5
+"http:\/\/example.com" => 'http://example.com'
+"https:\/\/example.com\/path?x=1#f" => 'https://example.com/path?x=1#f'
+"ftp:\/\/user:pass@host:21\/path" => 'ftp://user:pass@host:21/path'
+"mailto:a@b.com" => 'mailto:a@b.com'
+"file:\/\/\/etc\/passwd" => 'file:///etc/passwd'
+"news:comp.lang.php" => 'news:comp.lang.php'
+"example.com" => false
+"\/\/example.com" => false
+"http:\/\/" => false
+"http:\/\/\/path" => false
+"http:\/\/exa mple.com" => false
+"http:\/\/:80" => false
+"http:\/\/example.com:65536" => false
+"http:\/\/[::1]\/" => 'http://[::1]/'
+"javascript:alert(1)" => false
+"http:\/\/example.com\/a%20b" => 'http://example.com/a%20b'
+bool(false)
+string(20) "http://example.com/x"
+string(21) "http://example.com/?x"
+"abc": 'abc'
+5: '5'
+true: '1'
+null: ''
+string(3) "<a>"
+string(2) "xy"
+string(3) ""<>"
+string(5) "&#38;"
+NULL
+array(2) {
+  [0]=>
+  bool(false)
+  [1]=>
+  int(1)
+}
+array(1) {
+  [0]=>
+  int(1)
+}
+array(1) {
+  ["a"]=>
+  int(1)
+}
+string(26) "&lt;a&gt;&amp;&quot;&#039;"
+string(26) "&#60;a&#62;&#38;&#34;&#39;"
+string(2) "12"
+string(8) "12-3.4e5"
+string(7) "a@b.com"
+string(14) "http://ab.com/"
