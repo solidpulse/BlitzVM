@@ -39,7 +39,9 @@ public final class IncDecNode extends PhpNode {
             }
         }
         Object[] keys = target.evalKeys(frame);
-        Object old = target.read(frame, keys);
+        dev.phpruntime.runtime.PhpReference overloaded = target instanceof IndexLValueNode index
+                && index.usesArrayAccess(frame, keys) ? index.obtainCell(frame, keys) : null;
+        Object old = overloaded != null ? overloaded.value : target.read(frame, keys);
         Object updated;
         if (old instanceof Long l && l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
             updated = increment ? l + 1 : l - 1;
@@ -50,7 +52,11 @@ public final class IncDecNode extends PhpNode {
                 throw e.at(this);
             }
         }
-        target.write(frame, keys, updated);
+        if (overloaded != null) {
+            overloaded.value = updated;
+        } else {
+            target.write(frame, keys, updated);
+        }
         return prefix ? updated : (old == null ? PhpNull.INSTANCE : old);
     }
 

@@ -15,6 +15,9 @@ import java.util.Map;
  * Values are represented as long, double, boolean, String, PhpArray, PhpNull.
  */
 public final class PhpOps {
+    public static String typeDescription(Object value) {
+        return value instanceof PhpObject obj ? obj.phpClass().name() : typeName(value);
+    }
 
     private PhpOps() {
     }

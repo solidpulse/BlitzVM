@@ -1,0 +1,3 @@
+rewind|valid|current|key|10:ten|next|valid|current|key|20:twenty|next|valid|\nrewind|valid|current|ten|next|valid|current|twenty|next|valid|\nbool(true)
+bool(true)
+aggregate|aggregate|rewind|valid|current|key|next|valid|current|key|next|valid|{"10":"ten","20":"twenty"}\nrewind|valid|next|valid|next|valid|2\nrewind|valid|next|valid|2:2\nAn iterator cannot be used with foreach by reference\n

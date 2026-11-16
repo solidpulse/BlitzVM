@@ -698,7 +698,7 @@ public final class Parser {
         } finally {
             scope.gotoScope().exitLoop();
         }
-        return new ForeachNode(subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
+        return new ForeachNode(language, subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
     }
 
     private LValueNode parseForeachTarget(boolean outerByRef) {
@@ -1690,15 +1690,15 @@ public final class Parser {
                         if (keys.size() == 1) {
                             e = elem;
                         } else {
-                            e = new IndexLValueNode(elem, keys.subList(1, keys.size()).toArray(new PhpNode[0])).at(line);
+                            e = new IndexLValueNode(language, elem, keys.subList(1, keys.size()).toArray(new PhpNode[0])).at(line);
                         }
                     } else {
-                        e = new IndexLValueNode(lv, keys.toArray(new PhpNode[0])).at(line);
+                        e = new IndexLValueNode(language, lv, keys.toArray(new PhpNode[0])).at(line);
                     }
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
-                    e = new IndexReadNode(e, key).at(line);
+                    e = new IndexReadNode(language, e, key).at(line);
                 }
             } else if (acceptOp("?->")) {
                 nullsafeChain = true;
@@ -2135,11 +2135,11 @@ public final class Parser {
             ParsedCallArgs pca = parseCallArgDetails();
             if (rn.fallback() == null) {
                 return new CallNode(rn.primary(), language.functionId(rn.primary()), pca.args(), pca.refs(),
-                        pca.names(), pca.spreads()).at(line);
+                        pca.names(), pca.spreads()).withSpl(language).at(line);
             }
             return new CallNode(rn.primary(), language.functionId(rn.primary()),
                     rn.fallback(), language.functionId(rn.fallback()), pca.args(), pca.refs(),
-                    pca.names(), pca.spreads()).at(line);
+                    pca.names(), pca.spreads()).withSpl(language).at(line);
         }
         ResolvedName rn = resolveConstName(name);
         if (rn.fallback() == null) {
@@ -2259,7 +2259,7 @@ public final class Parser {
             refArr[i] = byRefs.get(i);
             spreadArr[i] = spreads.get(i);
         }
-        return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
+        return new ArrayLiteralNode(language, keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
     }
 
     private boolean isBracketDestructuringAt(int bracketPos) {
@@ -2398,7 +2398,7 @@ public final class Parser {
             idxArr[i] = autoIndices.get(i);
             refArr[i] = byRefs.get(i);
         }
-        return new DestructureLValueNode(
+        return new DestructureLValueNode(language,
                 keyNodes.toArray(new PhpNode[0]),
                 targets.toArray(new LValueNode[0]),
                 idxArr,

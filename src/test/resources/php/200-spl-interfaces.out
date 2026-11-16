@@ -1,0 +1,10 @@
+Traversable:yes\nIterator:yes\nIteratorAggregate:yes\nArrayAccess:yes\nCountable:yes\nJsonSerializable:yes\nStringable:yes\nSerializable:yes\nbool(true)
+string(5) "value"
+int(7)
+int(7)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+{"Countable":"Countable"}\n{"CountedValue":"CountedValue"}\ncount(): Argument #1 ($value) must be of type Countable|array, PrintableValue given\narray_keys(): Argument #1 ($array) must be of type array, ChildCountedValue given\n

@@ -4,12 +4,14 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpObject;
 
 /**
  * {@code $a[k1][k2]...}, where a null key node means append ({@code $a[] = v}).
@@ -23,10 +25,16 @@ public final class IndexLValueNode extends LValueNode {
 
     @Child private LValueNode base;
     @Children private final PhpNode[] keyNodes;
+    @Child private ArrayAccessNode access;
 
     public IndexLValueNode(LValueNode base, PhpNode[] keyNodes) {
         this.base = base;
         this.keyNodes = keyNodes;
+    }
+
+    public IndexLValueNode(PhpLanguage language, LValueNode base, PhpNode[] keyNodes) {
+        this(base, keyNodes);
+        this.access = new ArrayAccessNode(language);
     }
 
     private record PackedKeys(Object[] baseKeys, Object[] arrayKeys) {}
@@ -59,18 +67,64 @@ public final class IndexLValueNode extends LValueNode {
         }
     }
 
-    @TruffleBoundary
+    @ExplodeLoop
     private Object readPath(Object v, Object[] keys) {
-        for (Object k : keys) {
+        for (int i = 0; i < keyNodes.length; i++) {
+            Object k = keys[i];
             if (k == APPEND) {
                 throw new PhpError("Cannot use [] for reading", this);
             }
-            v = IndexReadNode.index(v, k);
+            v = v instanceof PhpObject obj ? access.get(obj, k) : IndexReadNode.index(v, k);
             if (v == null) {
                 return null;
             }
         }
         return v;
+    }
+
+    @Override
+    @ExplodeLoop
+    public boolean isSet(VirtualFrame frame, Object[] packed) {
+        Object value = base.readIfSet(frame, baseKeys(packed));
+        Object[] keys = arrayKeys(packed);
+        for (int i = 0; i < keyNodes.length; i++) {
+            if (value instanceof PhpObject obj) {
+                if (!access.exists(obj, keys[i])) {
+                    return false;
+                }
+                if (i == keyNodes.length - 1) {
+                    return true;
+                }
+                value = access.get(obj, keys[i]);
+            } else {
+                value = IndexReadNode.index(value, keys[i]);
+            }
+            if (value == null || value == PhpNull.INSTANCE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    @ExplodeLoop
+    public Object readIfSet(VirtualFrame frame, Object[] packed) {
+        Object value = base.readIfSet(frame, baseKeys(packed));
+        Object[] keys = arrayKeys(packed);
+        for (int i = 0; i < keyNodes.length; i++) {
+            if (value instanceof PhpObject obj) {
+                if (!access.exists(obj, keys[i])) {
+                    return null;
+                }
+                value = access.get(obj, keys[i]);
+            } else {
+                value = IndexReadNode.index(value, keys[i]);
+            }
+            if (value == null || value == PhpNull.INSTANCE) {
+                return null;
+            }
+        }
+        return value;
     }
 
     @Override
@@ -81,7 +135,7 @@ public final class IndexLValueNode extends LValueNode {
         }
         Object root = base.read(frame, bk);
         try {
-            base.write(frame, bk, writePath(root, arrayKeys(keys), value));
+            base.write(frame, bk, writeMixed(root, arrayKeys(keys), 0, value));
         } catch (PhpError e) {
             throw e.at(this);
         }
@@ -95,6 +149,16 @@ public final class IndexLValueNode extends LValueNode {
         }
         Object root = base.read(frame, bk);
         try {
+            Object[] ak = arrayKeys(keys);
+            if (root instanceof PhpObject obj) {
+                PhpReference cell = access.cell(obj, ak[0]);
+                if (ak.length == 1) {
+                    return cell;
+                }
+                PhpReference[] out = new PhpReference[1];
+                cell.value = obtainPathCell(cell.value, java.util.Arrays.copyOfRange(ak, 1, ak.length), null, out);
+                return out[0];
+            }
             PhpReference[] outRef = new PhpReference[1];
             Object updatedRoot = obtainPathCell(root, arrayKeys(keys), null, outRef);
             base.write(frame, bk, updatedRoot);
@@ -112,12 +176,60 @@ public final class IndexLValueNode extends LValueNode {
         }
         Object root = base.read(frame, bk);
         try {
+            if (root instanceof PhpObject) {
+                throw new PhpError("Cannot assign by reference to an array dimension of an object", this);
+            }
             PhpReference[] outRef = new PhpReference[1];
             Object updatedRoot = obtainPathCell(root, arrayKeys(keys), cell, outRef);
             base.write(frame, bk, updatedRoot);
         } catch (PhpError e) {
             throw e.at(this);
         }
+    }
+
+    private Object writeMixed(Object root, Object[] keys, int at, Object value) {
+        Object key = keys[at];
+        if (root instanceof PhpObject obj) {
+            if (at == keys.length - 1) {
+                access.set(obj, key == APPEND ? PhpNull.INSTANCE : key, value);
+            } else {
+                Object raw = access.getRaw(obj, key);
+                if (raw instanceof PhpReference ref) {
+                    ref.value = writeMixed(ref.value, keys, at + 1, value);
+                } else {
+                    if (!(raw instanceof PhpObject)) {
+                        access.indirectNotice(obj);
+                    }
+                    writeMixed(PhpOps.copyOnAssign(raw), keys, at + 1, value);
+                }
+            }
+            return obj;
+        }
+        PhpArray arr = writable(root);
+        if (at == keys.length - 1) {
+            if (key == APPEND) {
+                arr.append(value);
+            } else {
+                arr.put(key, value);
+            }
+        } else {
+            Object raw = key == APPEND ? null : arr.getRaw(key);
+            if (raw instanceof PhpReference ref) {
+                ref.value = writeMixed(ref.value, keys, at + 1, value);
+            } else {
+                Object child = writeMixed(raw, keys, at + 1, value);
+                if (key == APPEND) {
+                    arr.append(child);
+                } else {
+                    arr.put(key, child);
+                }
+            }
+        }
+        return arr;
+    }
+
+    public boolean usesArrayAccess(VirtualFrame frame, Object[] keys) {
+        return base.read(frame, baseKeys(keys)) instanceof PhpObject;
     }
 
     @TruffleBoundary
@@ -205,6 +317,20 @@ public final class IndexLValueNode extends LValueNode {
             plv.checkNotReadonlyForIndirectWrite(frame, bk);
         }
         Object root = base.read(frame, bk);
+        if (root instanceof PhpObject obj) {
+            Object[] ak = arrayKeys(keys);
+            if (ak.length == 1) {
+                access.unset(obj, ak[0]);
+            } else {
+                Object raw = access.getRaw(obj, ak[0]);
+                if (raw instanceof PhpReference ref && ref.value instanceof PhpArray arr) {
+                    ref.value = unsetPath(arr, java.util.Arrays.copyOfRange(ak, 1, ak.length));
+                } else {
+                    access.indirectNotice(obj);
+                }
+            }
+            return;
+        }
         if (!(root instanceof PhpArray)) {
             return;
         }

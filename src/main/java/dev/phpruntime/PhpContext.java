@@ -587,6 +587,19 @@ public final class PhpContext {
             }
         }
         PhpClass cls = new PhpClass(language, template, parent, ifaces, resolvedTraits);
+        if (!template.isInterface() && !template.isTrait()) {
+            if (cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.TRAVERSABLE)
+                    && !cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.ITERATOR)
+                    && !cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.AGGREGATE)) {
+                throw PhpError.fatal("Class " + template.name()
+                        + " must implement interface Traversable as part of either Iterator or IteratorAggregate");
+            }
+            if (cls.toStringMethod() != null
+                    && !cls.hasSplInterface(dev.phpruntime.runtime.SplInterfaces.STRINGABLE)) {
+                ifaces.add(lookupClass("Stringable"));
+                cls = new PhpClass(language, template, parent, ifaces, resolvedTraits);
+            }
+        }
         classes.put(lower, cls);
         int id = language.classId(lower);
         if (id >= classesById.length) {

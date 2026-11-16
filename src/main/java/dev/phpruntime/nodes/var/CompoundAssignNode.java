@@ -22,7 +22,7 @@ public final class CompoundAssignNode extends PhpNode {
     @Override
     public Object execute(VirtualFrame frame) {
         Object[] keys = target.evalKeys(frame);
-        Object current = target.read(frame, keys);
+        Object current = op == PhpArith.Op.COALESCE ? target.readIfSet(frame, keys) : target.read(frame, keys);
         if (op == PhpArith.Op.COALESCE) {
             if (current != null && current != PhpNull.INSTANCE) {
                 return current;

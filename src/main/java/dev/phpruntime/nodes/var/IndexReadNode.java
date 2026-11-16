@@ -3,20 +3,28 @@ package dev.phpruntime.nodes.var;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpObject;
 
 /** Read-only {@code expr[key]} on an arbitrary expression, e.g. {@code f()[0]}. */
 public final class IndexReadNode extends PhpNode {
 
     @Child private PhpNode target;
     @Child private PhpNode key;
+    @Child private ArrayAccessNode access;
 
     public IndexReadNode(PhpNode target, PhpNode key) {
         this.target = target;
         this.key = key;
+    }
+
+    public IndexReadNode(PhpLanguage language, PhpNode target, PhpNode key) {
+        this(target, key);
+        this.access = new ArrayAccessNode(language);
     }
 
     @Override
@@ -25,7 +33,7 @@ public final class IndexReadNode extends PhpNode {
         Object k = key.execute(frame);
         Object v;
         try {
-            v = index(t, k);
+            v = t instanceof PhpObject obj ? access.get(obj, k) : index(t, k);
         } catch (dev.phpruntime.runtime.PhpError e) {
             throw e.at(this);
         }
@@ -44,10 +52,23 @@ public final class IndexReadNode extends PhpNode {
             return null;
         }
         try {
+            if (t instanceof PhpObject obj) {
+                return access.exists(obj, k) ? access.get(obj, k) : null;
+            }
             return index(t, k);
         } catch (dev.phpruntime.runtime.PhpError e) {
             throw e.at(this);
         }
+    }
+
+    public boolean isSet(VirtualFrame frame) {
+        Object t = target instanceof IndexReadNode ir ? ir.readIfSet(frame) : target.execute(frame);
+        Object k = key.execute(frame);
+        if (t instanceof PhpObject obj) {
+            return access.exists(obj, k);
+        }
+        Object value = index(t, k);
+        return value != null && value != PhpNull.INSTANCE;
     }
 
     @TruffleBoundary
@@ -85,6 +106,9 @@ public final class IndexReadNode extends PhpNode {
                 return null;
             }
             return String.valueOf(s.charAt((int) i));
+        }
+        if (container instanceof PhpObject obj) {
+            throw new dev.phpruntime.runtime.PhpError("Cannot use object of type " + obj.phpClass().name() + " as array");
         }
         return null;
     }

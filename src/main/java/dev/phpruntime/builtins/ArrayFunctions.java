@@ -30,7 +30,7 @@ final class ArrayFunctions {
         if (a[i] instanceof PhpArray x) {
             return x;
         }
-        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeName(a[i]) + " given", null);
+        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeDescription(a[i]) + " given", null);
     }
 
     /** Writable copy of a by-reference array argument; undefined becomes an empty array. */

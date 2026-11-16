@@ -9,6 +9,7 @@ import dev.phpruntime.nodes.call.ClosureInvokeRootNode;
 import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpExceptions;
+import dev.phpruntime.runtime.SplClasses;
 import dev.phpruntime.runtime.Visibility;
 
 import java.io.IOException;
@@ -72,7 +73,9 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
             synchronized (this) {
                 m = builtinClassTemplates;
                 if (m == null) {
-                    m = PhpExceptions.buildTemplates(this);
+                    m = new java.util.LinkedHashMap<>(PhpExceptions.buildTemplates(this));
+                    m.putAll(SplClasses.buildTemplates(this));
+                    m = Map.copyOf(m);
                     int max = -1;
                     for (String lower : m.keySet()) {
                         int id = classId(lower);

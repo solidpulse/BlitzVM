@@ -1,0 +1,8 @@
+get:A|2\nexists:nil|exists:absent|exists:a|get:a|exists:nil|get:nil|bool(true)
+bool(false)
+bool(false)
+string(8) "fallback"
+get:A|set:A|set:append|get:a|5:4\nget:a|get:0|5:first
+unset:a|exists:a|bool(false)
+{"x":{"y":9},"n":8}\nget:a|notice:8:Indirect modification of overloaded element of Dictionary has no effect
+get:a|2\n

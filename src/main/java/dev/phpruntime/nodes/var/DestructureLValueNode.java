@@ -5,12 +5,14 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpObject;
 
 /**
  * {@code list($a, $b)} or {@code [$a, 'k' => &$b, [, $c]]} destructuring target.
@@ -24,6 +26,7 @@ public final class DestructureLValueNode extends LValueNode {
     @CompilationFinal(dimensions = 1) private final long[] autoIndices;
     @CompilationFinal(dimensions = 1) private final boolean[] byRef;
     private final boolean hasAnyRef;
+    @Child private ArrayAccessNode access;
 
     public DestructureLValueNode(PhpNode[] keyNodes, LValueNode[] targetNodes, long[] autoIndices, boolean[] byRef) {
         this.keyNodes = keyNodes;
@@ -38,6 +41,11 @@ public final class DestructureLValueNode extends LValueNode {
             }
         }
         this.hasAnyRef = anyRef;
+    }
+
+    public DestructureLValueNode(PhpLanguage language, PhpNode[] keys, LValueNode[] targets, long[] indices, boolean[] refs) {
+        this(keys, targets, indices, refs);
+        access = new ArrayAccessNode(language);
     }
 
     public boolean hasAnyRef() {
@@ -125,6 +133,13 @@ public final class DestructureLValueNode extends LValueNode {
                 } else {
                     elemVal = PhpOps.copyOnAssign(fetched);
                 }
+            } else if (source instanceof PhpObject obj) {
+                Object fetched = byRef[i] ? access.cell(obj, k) : access.get(obj, k);
+                if (fetched instanceof PhpReference cell) {
+                    target.bindCell(frame, tKeys, cell);
+                    continue;
+                }
+                elemVal = PhpOps.copyOnAssign(fetched);
             } else {
                 elemVal = PhpNull.INSTANCE;
             }
