@@ -275,6 +275,33 @@ public final class ParseDate {
     }
 
     private static final Rule[] RULES = buildRules();
+    /** The regex rules stay as a reference implementation: -Dblitz.date.regexScanner=true. */
+    private static final boolean USE_DFA = !Boolean.getBoolean("blitz.date.regexScanner");
+    private static final String PADDING = "\0".repeat(64);
+
+    /** Of two scanner results, the longer match; on equal length the first (earlier rules). */
+    private static long longer(long a, long b) {
+        if (b == -1L) {
+            return a;
+        }
+        return a == -1L || (int) b > (int) a ? b : a;
+    }
+
+    /**
+     * timelib scans bytes: its grammar spells non-ASCII text (e.g. the micro sign) as UTF-8 bytes
+     * and reports byte offsets. Until PHP strings are byte strings (task 08), give the scanner
+     * the UTF-8 bytes of the input, one char per byte. TODO(task 08): remove; strings will
+     * already be bytes.
+     */
+    private static String asBytes(String input) {
+        for (int i = 0; i < input.length(); i++) {
+            if (input.charAt(i) >= 0x80) {
+                return new String(input.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        java.nio.charset.StandardCharsets.ISO_8859_1);
+            }
+        }
+        return input;
+    }
 
     /**
      * For each first character 0..255, the indices (in rule order) of the rules that can match
@@ -1763,6 +1790,20 @@ public final class ParseDate {
 
             int bestLen = -1;
             Rule bestRule = null;
+            if (USE_DFA) {
+                // Generated re2c scanners over consecutive rule groups (scripts/date-scanner):
+                // the longest match wins and an equal-length match keeps the earlier group,
+                // which is timelib's longest match with ties to the earlier rule.
+                long r = DateScanner0.scan(s.str, cursor);
+                r = longer(r, DateScanner1.scan(s.str, cursor));
+                r = longer(r, DateScanner2.scan(s.str, cursor));
+                r = longer(r, DateScanner3.scan(s.str, cursor));
+                if (r != -1L && (int) r <= s.lim) {
+                    bestRule = RULES[(int) (r >>> 32)];
+                    bestLen = (int) r - cursor;
+                }
+            }
+            if (bestRule == null) {
             char first = s.str.charAt(cursor);
             int[] candidates = first < 256 ? RULES_BY_FIRST_CHAR[first] : ALL_RULES;
             for (int i : candidates) {
@@ -1781,6 +1822,7 @@ public final class ParseDate {
                 }
             }
 
+            }
             if (bestRule == null) {
                 s.cur = cursor;
                 return EOI;
@@ -1860,6 +1902,7 @@ public final class ParseDate {
      */
     @TruffleBoundary
     public static TimelibTime strtotime(String input, TimelibErrorContainer[] errorsOut, ZoneinfoDb tzdb) {
+        input = asBytes(input);
         Scanner in = new Scanner();
         in.errors = new TimelibErrorContainer();
 
@@ -1886,8 +1929,10 @@ public final class ParseDate {
         String trimmed = input.substring(s, e + 1);
         // Append one NUL byte for rules matching trailing [\000] (e.g. meridian, datenoyear);
         // lim = trimmed.length() + 1 so consuming it reaches EOI on the next std: step.
-        in.str = trimmed + "\0";
-        in.lim = in.str.length();
+        // Padded with NULs like timelib's YYMAXFILL so the DFA scanners never read past the end;
+        // lim still stops scanning after the first NUL.
+        in.str = trimmed + PADDING;
+        in.lim = trimmed.length() + 1;
         in.cur = 0;
         in.time = newUnsetTime();
         in.tzdb = tzdb;
