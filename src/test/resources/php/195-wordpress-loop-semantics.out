@@ -1,0 +1,17 @@
+NULL
+bool(true)
+string(5) "ab%0D"
+int(2)
+string(2) "ab"
+int(2)
+bool(true)
+bool(true)
+int(1)
+bool(true)
+array(1) {
+  ["where"]=>
+  string(1) "w"
+}
+bool(true)
+warn-in-include.php:2 Undefined variable $undefinedInIncludedFile
+195-wordpress-loop-semantics.php:24 Undefined variable $undefinedHere

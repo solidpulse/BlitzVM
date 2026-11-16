@@ -130,7 +130,9 @@ public final class LocalVarNode extends LValueNode {
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         if ("this".equals(name)) {
-            throw new dev.phpruntime.runtime.PhpError("Cannot re-assign $this", this);
+            // &$this (in an array, as $r = &$this, as a by-ref argument) is a temporary holding
+            // the object; writing through it never rebinds $this. Only $this = &$x is an error.
+            return new PhpReference(read(frame, keys));
         }
         if (!kind.isCell()) {
             kind.markCell();

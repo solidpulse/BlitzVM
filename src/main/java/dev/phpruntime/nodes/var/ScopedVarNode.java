@@ -61,6 +61,10 @@ public final class ScopedVarNode extends LValueNode {
     }
 
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        if (name.equals("this")) {
+            // &$this is a temporary holding the object (see LocalVarNode.obtainCell).
+            return new PhpReference(read(frame, keys));
+        }
         writable();
         PhpReference[] cells = table(frame).cells;
         PhpReference cell = cells[slot];

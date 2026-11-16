@@ -54,7 +54,9 @@ public final class CallArgHelper {
                 throw cannotPassByRef(fnRoot, paramIdx, site);
             }
             if (refTarget instanceof LocalVarNode lv && "this".equals(lv.varName())) {
-                throw cannotPassByRef(fnRoot, paramIdx, site);
+                // php passes $this by reference as a temporary: the callee may reassign its
+                // parameter, which never rebinds $this (WP_Upgrader::init does this).
+                return new PhpReference(argNode.execute(frame));
             }
             if (refTarget instanceof dev.phpruntime.nodes.var.ScopedVarNode sv && "this".equals(sv.varName())) {
                 throw cannotPassByRef(fnRoot, paramIdx, site);

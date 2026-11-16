@@ -126,8 +126,8 @@ final class StringFunctions {
             }
             return count;
         });
-        Builtins.def("str_replace", 3, 3, (ctx, a) -> replace(a[0], a[1], a[2], false));
-        Builtins.def("str_ireplace", 3, 3, (ctx, a) -> replace(a[0], a[1], a[2], true));
+        Builtins.defRef("str_replace", 3, 4, 1 << 3, (ctx, a) -> replaceCounting(a, false));
+        Builtins.defRef("str_ireplace", 3, 4, 1 << 3, (ctx, a) -> replaceCounting(a, true));
     }
 
     private static void splitting() {
@@ -325,11 +325,21 @@ final class StringFunctions {
         return out.toString();
     }
 
-    private static Object replace(Object search, Object replacement, Object subject, boolean ignoreCase) {
+    /** str_replace/str_ireplace; the optional 4th argument receives the number of replacements. */
+    private static Object replaceCounting(Object[] a, boolean ignoreCase) {
+        long[] count = {0};
+        Object result = replace(a[0], a[1], a[2], ignoreCase, count);
+        if (a.length > 3) {
+            a[3] = count[0];
+        }
+        return result;
+    }
+
+    private static Object replace(Object search, Object replacement, Object subject, boolean ignoreCase, long[] count) {
         if (subject instanceof PhpArray arr) {
             PhpArray out = new PhpArray();
             for (Map.Entry<Object, Object> e : arr.entries()) {
-                out.put(e.getKey(), replace(search, replacement, e.getValue(), ignoreCase));
+                out.put(e.getKey(), replace(search, replacement, e.getValue(), ignoreCase, count));
             }
             return out;
         }
@@ -339,27 +349,29 @@ final class StringFunctions {
             List<Object> to = replacement instanceof PhpArray r ? r.values() : null;
             for (int i = 0; i < from.size(); i++) {
                 String rep = to == null ? PhpOps.toStr(replacement) : (i < to.size() ? PhpOps.toStr(to.get(i)) : "");
-                result = replaceOne(result, PhpOps.toStr(from.get(i)), rep, ignoreCase);
+                result = replaceOne(result, PhpOps.toStr(from.get(i)), rep, ignoreCase, count);
             }
             return result;
         }
-        return replaceOne(result, PhpOps.toStr(search), PhpOps.toStr(replacement), ignoreCase);
+        return replaceOne(result, PhpOps.toStr(search), PhpOps.toStr(replacement), ignoreCase, count);
     }
 
-    private static String replaceOne(String str, String from, String to, boolean ignoreCase) {
+    private static String replaceOne(String str, String from, String to, boolean ignoreCase, long[] count) {
         if (from.isEmpty()) {
             return str;
         }
-        if (!ignoreCase) {
-            return str.replace(from, to);
+        String haystack = ignoreCase ? PhpStrings.lower(str) : str;
+        String needle = ignoreCase ? PhpStrings.lower(from) : from;
+        int at = haystack.indexOf(needle);
+        if (at < 0) {
+            return str;
         }
-        String folded = PhpStrings.lower(str);
-        String needle = PhpStrings.lower(from);
-        StringBuilder out = new StringBuilder();
+        StringBuilder out = new StringBuilder(str.length());
         int start = 0;
-        for (int at = folded.indexOf(needle); at >= 0; at = folded.indexOf(needle, start)) {
+        for (; at >= 0; at = haystack.indexOf(needle, start)) {
             out.append(str, start, at).append(to);
             start = at + from.length();
+            count[0]++;
         }
         return out.append(str, start, str.length()).toString();
     }
