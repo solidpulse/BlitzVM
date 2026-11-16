@@ -119,7 +119,7 @@ public final class PhpQuery {
         if (s.indexOf('%') < 0 && (!plusAsSpace || s.indexOf('+') < 0)) {
             return s;
         }
-        byte[] in = s.getBytes(StandardCharsets.UTF_8);
+        byte[] in = PhpStrings.bytes(s);
         ByteArrayOutputStream out = new ByteArrayOutputStream(in.length);
         for (int i = 0; i < in.length; i++) {
             byte b = in[i];
@@ -132,18 +132,13 @@ public final class PhpQuery {
                 out.write(b);
             }
         }
-        byte[] raw = out.toByteArray();
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .decode(java.nio.ByteBuffer.wrap(raw)).toString();
-        } catch (java.nio.charset.CharacterCodingException e) {
-            return new String(raw, StandardCharsets.ISO_8859_1);
-        }
+        return PhpStrings.of(out.toByteArray());
     }
 
     private static int hex(byte b) {
-        return Character.digit(b, 16);
+        int c = b & 255;
+        return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
     }
 
     /** Case-insensitive header lookup in the request's header map. */

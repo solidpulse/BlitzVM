@@ -19,6 +19,7 @@ import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpRequest;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -84,7 +85,7 @@ public final class PhpContext {
         this.language = language;
         this.env = env;
         this.globalsById = new PhpReference[Math.max(32, language.globalIdCount() + 8)];
-        this.err = new PrintStream(env.err(), true, StandardCharsets.UTF_8);
+        this.err = new PrintStream(env.err(), true, StandardCharsets.ISO_8859_1);
         this.stdClass = declareClass(language.stdClassTemplate());
         this.closureClass = declareClass(language.closureTemplate());
     }
@@ -675,6 +676,9 @@ public final class PhpContext {
     /** Appends to the innermost output buffer, or to the response when none is open. */
     @TruffleBoundary
     public void echo(String s) {
+        if (PhpStrings.CHECK) {
+            PhpStrings.check(s, "echo/output");
+        }
         if (!outputBuffers.isEmpty()) {
             outputBuffers.get(outputBuffers.size() - 1).text.append(s);
             return;
@@ -724,10 +728,10 @@ public final class PhpContext {
         }
         try {
             OutputStream out = env.out();
-            out.write(output.toString().getBytes(StandardCharsets.UTF_8));
+            out.write(PhpStrings.bytes(output.toString()));
             out.flush();
         } catch (IOException e) {
-            throw new dev.phpruntime.runtime.PhpError("Failed writing output: " + e.getMessage());
+            throw new dev.phpruntime.runtime.PhpError("Failed writing output: " + PhpStrings.fromJava(e.getMessage()));
         }
         output.setLength(0);
     }
@@ -811,7 +815,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     private void emitDiagnostic(long errno, String label, String message, int line) {
-        String file = request().scriptFilename;
+        String file = PhpStrings.fromJava(request().scriptFilename);
         ErrorHandlerEntry handler = errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
                 && (handler.errorLevels() & errno) != 0) {

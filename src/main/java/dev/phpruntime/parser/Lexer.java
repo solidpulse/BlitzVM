@@ -2,6 +2,7 @@ package dev.phpruntime.parser;
 
 import dev.phpruntime.parser.Token.Kind;
 import dev.phpruntime.parser.Token.Part;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -366,7 +367,7 @@ public final class Lexer {
                 if (text.startsWith("u{", p + 1) && text.indexOf('}', p + 3) > p + 3) {
                     int close = text.indexOf('}', p + 3);
                     try {
-                        lit.appendCodePoint(Integer.parseInt(text.substring(p + 3, close), 16));
+                        lit.append(PhpStrings.codePoint(Integer.parseInt(text.substring(p + 3, close), 16)));
                         p = close + 1;
                         continue;
                     } catch (IllegalArgumentException e) {
@@ -534,13 +535,8 @@ public final class Lexer {
         return e == 'x' && p + 2 < text.length() && Character.digit(text.charAt(p + 2), 16) >= 0;
     }
 
-    /**
-     * Decodes a run of consecutive octal and hex escapes into bytes. Strings are Java strings
-     * for now, so a run that is valid UTF-8 (such as "\\xC2\\xA0") becomes those characters and
-     * anything else becomes one char per byte.
-     */
+    /** Appends exactly one byte for each hex or octal escape, also in heredocs. */
     private static int appendByteEscapes(String text, int p, StringBuilder lit) {
-        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
         while (p < text.length() && text.charAt(p) == '\\' && isByteEscape(text, p)) {
             int i = p + 1;
             int value;
@@ -559,16 +555,7 @@ public final class Lexer {
                 value = Integer.parseInt(text.substring(i, end), 8) & 0xFF;
                 p = end;
             }
-            bytes.write(value);
-        }
-        byte[] b = bytes.toByteArray();
-        java.nio.charset.CharsetDecoder utf8 = java.nio.charset.StandardCharsets.UTF_8.newDecoder();
-        try {
-            lit.append(utf8.decode(java.nio.ByteBuffer.wrap(b)));
-        } catch (java.nio.charset.CharacterCodingException e) {
-            for (byte x : b) {
-                lit.append((char) (x & 0xFF));
-            }
+            lit.append((char) value);
         }
         return p;
     }

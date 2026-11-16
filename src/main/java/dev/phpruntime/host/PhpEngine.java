@@ -3,6 +3,7 @@ package dev.phpruntime.host;
 import dev.phpruntime.js.JsLanguage;
 import dev.phpruntime.runtime.GuestScheduler;
 import dev.phpruntime.runtime.PhpRequest;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.sched.Scheduler;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
@@ -101,6 +102,9 @@ public final class PhpEngine implements AutoCloseable {
     private int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e, boolean js) {
         SourceSection where = e.getSourceLocation();
         String file = where != null && where.getSource().getPath() != null ? where.getSource().getPath() : request.scriptFilename;
+        if (!js) {
+            file = PhpStrings.fromJava(file);
+        }
         int line = where != null ? where.getStartLine() : 0;
         String text;
         if (js) {
@@ -126,10 +130,11 @@ public final class PhpEngine implements AutoCloseable {
                         + "  thrown in " + file + " on line " + line;
             }
         } else {
-            text = "PHP Fatal error:  Internal error: " + e.getMessage();
+            text = "PHP Fatal error:  Internal error: " + PhpStrings.fromJava(e.getMessage());
         }
         try {
-            out.write((text + "\n").getBytes(StandardCharsets.UTF_8));
+            // Guest messages are PHP bytes; locations and host exceptions are Java text.
+            out.write(js ? (text + "\n").getBytes(StandardCharsets.UTF_8) : PhpStrings.bytes(text + "\n"));
         } catch (IOException ignored) {
             // client went away
         }
@@ -148,7 +153,7 @@ public final class PhpEngine implements AutoCloseable {
             }
             String name = f.getRootName();
             if (calledFn != null && f.getSourceLocation() != null) {
-                sb.append('#').append(i++).append(' ').append(f.getSourceLocation().getSource().getPath())
+                sb.append('#').append(i++).append(' ').append(PhpStrings.fromJava(f.getSourceLocation().getSource().getPath()))
                         .append('(').append(f.getSourceLocation().getStartLine()).append("): ").append(calledFn).append("()\n");
             }
             calledFn = name;
@@ -166,7 +171,9 @@ public final class PhpEngine implements AutoCloseable {
         }
         // A cached Source lets the shared engine reuse the parsed call target across contexts.
         String language = abs.toString().endsWith(".js") ? JsLanguage.ID : "php";
-        Source src = Source.newBuilder(language, abs.toFile()).cached(true).build();
+        Source src = Source.newBuilder(language, abs.toFile())
+                .encoding(language.equals("php") ? StandardCharsets.ISO_8859_1 : StandardCharsets.UTF_8)
+                .cached(true).build();
         sources.put(abs, new CachedSource(modified, src));
         return src;
     }

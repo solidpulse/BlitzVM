@@ -1,6 +1,7 @@
 package dev.phpruntime.host;
 
 import dev.phpruntime.runtime.PhpRequest;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.sched.Scheduler;
 
 import java.nio.file.Files;
@@ -33,6 +34,18 @@ public final class Main {
             serve(args);
             return;
         }
+        if (args[0].equals("-r")) {
+            if (args.length < 2) {
+                usage();
+                System.exit(64);
+            }
+            try (org.graalvm.polyglot.Context ctx = org.graalvm.polyglot.Context.newBuilder("php")
+                    .allowIO(org.graalvm.polyglot.io.IOAccess.ALL).build()) {
+                // PhpLanguage converts Java character sources exactly once.
+                ctx.eval(org.graalvm.polyglot.Source.newBuilder("php", "<?php " + args[1], "Command line code").build());
+            }
+            return;
+        }
         Path script = Path.of(args[0]);
         if (!Files.isRegularFile(script)) {
             System.err.println("Could not open input file: " + args[0]);
@@ -41,8 +54,9 @@ public final class Main {
         PhpRequest request = new PhpRequest();
         request.uri = script.toString();
         request.scriptFilename = script.toAbsolutePath().normalize().toString();
-        request.server.put("SCRIPT_FILENAME", script.toAbsolutePath().toString());
+        request.server.put("SCRIPT_FILENAME", PhpStrings.fromJava(script.toAbsolutePath().toString()));
         request.server.put("argc", Integer.toString(args.length));
+        request.argv = java.util.Arrays.stream(args).map(PhpStrings::fromJava).toArray(String[]::new);
         try (PhpEngine engine = new PhpEngine(null)) {
             int code = engine.executeStreaming(script, request, System.out, System.err);
             System.out.flush();

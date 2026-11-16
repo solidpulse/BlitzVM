@@ -9,6 +9,7 @@ import dev.phpruntime.nodes.call.ClosureInvokeRootNode;
 import dev.phpruntime.parser.Parser;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpExceptions;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
 import java.io.IOException;
@@ -261,7 +262,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
         if (cached != null && cached.modified() == modified) {
             return cached.source();
         }
-        Source src = Source.newBuilder(ID, canonical).cached(true).build();
+        Source src = Source.newBuilder(ID, canonical).encoding(java.nio.charset.StandardCharsets.ISO_8859_1).cached(true).build();
         sources.put(key, new CachedSource(modified, src));
         return src;
     }
@@ -275,6 +276,12 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     @Override
     protected CallTarget parse(ParsingRequest request) {
         Source source = request.getSource();
+        // Polyglot character sources are Java text; files are explicitly read as bytes.
+        // Marked in-memory sources (eval) are already PHP strings.
+        if (source.getPath() == null && !source.getName().endsWith(" [bytes]")) {
+            source = Source.newBuilder(ID, PhpStrings.fromJava(source.getCharacters().toString()), source.getName())
+                    .uri(source.getURI()).cached(source.isCached()).build();
+        }
         PhpMainRootNode root = new Parser(this, source).parseMain();
         return root.getCallTarget();
     }

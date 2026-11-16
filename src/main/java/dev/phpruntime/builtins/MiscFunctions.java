@@ -13,6 +13,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
 import java.net.InetAddress;
@@ -44,7 +45,7 @@ final class MiscFunctions {
         Builtins.def("timezone_identifiers_list", 0, 2, (ctx, a) -> timezones());
         Builtins.def("getcwd", 0, 0, (ctx, a) -> {
             try {
-                return ctx.env().getCurrentWorkingDirectory().getPath();
+                return PhpStrings.fromJava(ctx.env().getCurrentWorkingDirectory().getPath());
             } catch (SecurityException e) {
                 return false;
             }
@@ -52,11 +53,11 @@ final class MiscFunctions {
         Builtins.def("array_rand", 1, 2, (ctx, a) -> arrayRand(a));
         Builtins.def("normalizer_normalize", 1, 2, (ctx, a) -> {
             java.text.Normalizer.Form form = form(a.length > 1 ? PhpOps.toLong(a[1]) : 16);
-            return form == null ? false : java.text.Normalizer.normalize(PhpOps.toStr(a[0]), form);
+            return form == null ? false : PhpStrings.fromJava(java.text.Normalizer.normalize(PhpStrings.toJava(PhpOps.toStr(a[0])), form));
         });
         Builtins.def("normalizer_is_normalized", 1, 2, (ctx, a) -> {
             java.text.Normalizer.Form form = form(a.length > 1 ? PhpOps.toLong(a[1]) : 16);
-            return form != null && java.text.Normalizer.isNormalized(PhpOps.toStr(a[0]), form);
+            return form != null && java.text.Normalizer.isNormalized(PhpStrings.toJava(PhpOps.toStr(a[0])), form);
         });
     }
 
@@ -69,9 +70,9 @@ final class MiscFunctions {
             if (type == 3) {
                 String dest = a.length > 2 ? PhpOps.toStr(a[2]) : "";
                 try {
-                    ctx.env().getPublicTruffleFile(dest).newByteChannel(Set.of(java.nio.file.StandardOpenOption.CREATE,
+                    ctx.env().getPublicTruffleFile(PhpStrings.toJava(dest)).newByteChannel(Set.of(java.nio.file.StandardOpenOption.CREATE,
                             java.nio.file.StandardOpenOption.WRITE, java.nio.file.StandardOpenOption.APPEND))
-                            .write(java.nio.ByteBuffer.wrap(message.getBytes(StandardCharsets.UTF_8)));
+                            .write(java.nio.ByteBuffer.wrap(PhpStrings.bytes(message)));
                     return true;
                 } catch (java.io.IOException | SecurityException | IllegalArgumentException e) {
                     ctx.warning("error_log(" + dest + "): Failed to open stream: No such file or directory", 0);
@@ -83,7 +84,7 @@ final class MiscFunctions {
             }
             try {
                 java.io.OutputStream err = ctx.env().err();
-                err.write((message + "\n").getBytes(StandardCharsets.UTF_8));
+                err.write(PhpStrings.bytes(message + "\n"));
                 err.flush();
             } catch (java.io.IOException e) {
                 return false;
@@ -389,7 +390,7 @@ final class MiscFunctions {
         rows.sort(Map.Entry.comparingByKey());
         PhpArray out = new PhpArray();
         for (Map.Entry<Integer, String> r : rows) {
-            out.put(new String(Character.toChars(r.getKey())), r.getValue());
+            out.put(PhpStrings.codePoint(r.getKey()), r.getValue());
         }
         return out;
     }

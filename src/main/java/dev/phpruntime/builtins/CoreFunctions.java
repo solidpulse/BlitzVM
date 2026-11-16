@@ -41,7 +41,7 @@ final class CoreFunctions {
         Builtins.def("set_time_limit", 1, 1, (ctx, a) -> true);
         Builtins.def("gethostname", 0, 0, (ctx, a) -> {
             try {
-                return java.net.InetAddress.getLocalHost().getHostName();
+                return dev.phpruntime.runtime.PhpStrings.fromJava(java.net.InetAddress.getLocalHost().getHostName());
             } catch (java.net.UnknownHostException e) {
                 return "localhost";
             }

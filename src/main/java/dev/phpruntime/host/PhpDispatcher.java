@@ -1,9 +1,10 @@
 package dev.phpruntime.host;
 
 import dev.phpruntime.runtime.PhpRequest;
+import dev.phpruntime.runtime.PhpQuery;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,7 +29,7 @@ public final class PhpDispatcher {
         static Response text(int status, String body) {
             List<String[]> h = new ArrayList<>();
             h.add(new String[]{"Content-Type", "text/plain; charset=UTF-8"});
-            return new Response(status, h, body.getBytes(StandardCharsets.UTF_8));
+            return new Response(status, h, PhpStrings.bytes(PhpStrings.fromJava(body)));
         }
     }
 
@@ -52,7 +53,7 @@ public final class PhpDispatcher {
     /** Blocking: runs PHP. Transports must call this off their I/O threads. */
     public Response handle(Request req) {
         try {
-            String path = URLDecoder.decode(req.rawPath(), StandardCharsets.UTF_8);
+            String path = PhpStrings.toJava(PhpQuery.urldecode(req.rawPath(), false));
             if (path.equals("/__scheduler")) {
                 String body = engine.scheduler() == null ? "no scheduler\n" : engine.scheduler().stats() + "\n";
                 return Response.text(200, body);
@@ -104,7 +105,7 @@ public final class PhpDispatcher {
         r.scriptFilename = file.toString();
         r.remoteAddr = req.remoteAddr();
         parseQuery(r.queryString, r.get);
-        r.body = new String(req.body(), StandardCharsets.UTF_8);
+        r.body = PhpStrings.of(req.body());
         String contentType = null;
         for (Map.Entry<String, String> h : req.headers().entrySet()) {
             if (h.getKey().equalsIgnoreCase("Content-Type")) {
@@ -119,13 +120,13 @@ public final class PhpDispatcher {
         s.put("REQUEST_METHOD", r.method);
         s.put("REQUEST_URI", r.uri);
         s.put("QUERY_STRING", r.queryString);
-        s.put("SCRIPT_NAME", script);
-        s.put("PHP_SELF", script);
-        s.put("SCRIPT_FILENAME", r.scriptFilename);
-        s.put("DOCUMENT_ROOT", docRoot.toString());
+        s.put("SCRIPT_NAME", PhpStrings.fromJava(script));
+        s.put("PHP_SELF", PhpStrings.fromJava(script));
+        s.put("SCRIPT_FILENAME", PhpStrings.fromJava(r.scriptFilename));
+        s.put("DOCUMENT_ROOT", PhpStrings.fromJava(docRoot.toString()));
         s.put("SERVER_PROTOCOL", req.protocol());
         s.put("SERVER_SOFTWARE", "php-truffle");
-        s.put("SERVER_NAME", req.serverHost());
+        s.put("SERVER_NAME", PhpStrings.fromJava(req.serverHost()));
         s.put("SERVER_PORT", Integer.toString(req.serverPort()));
         s.put("REMOTE_ADDR", r.remoteAddr);
         s.put("REQUEST_TIME", Long.toString(System.currentTimeMillis() / 1000));
@@ -145,8 +146,8 @@ public final class PhpDispatcher {
                 continue;
             }
             int eq = pair.indexOf('=');
-            String k = URLDecoder.decode(eq < 0 ? pair : pair.substring(0, eq), StandardCharsets.UTF_8);
-            String v = eq < 0 ? "" : URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+            String k = PhpQuery.urldecode(eq < 0 ? pair : pair.substring(0, eq), true);
+            String v = eq < 0 ? "" : PhpQuery.urldecode(pair.substring(eq + 1), true);
             into.put(k, v);
         }
     }

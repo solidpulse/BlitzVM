@@ -2200,7 +2200,7 @@ public final class Parser {
         if (path == null || path.isEmpty()) {
             return "";
         }
-        return Path.of(path).toAbsolutePath().normalize().toString();
+        return dev.phpruntime.runtime.PhpStrings.fromJava(Path.of(path).toAbsolutePath().normalize().toString());
     }
 
     private String magicDir() {
@@ -2208,8 +2208,8 @@ public final class Parser {
         if (file.isEmpty()) {
             return "";
         }
-        Path parent = Path.of(file).getParent();
-        return parent == null ? "" : parent.toString();
+        Path parent = Path.of(dev.phpruntime.runtime.PhpStrings.toJava(file)).getParent();
+        return parent == null ? "" : dev.phpruntime.runtime.PhpStrings.fromJava(parent.toString());
     }
 
     private PhpNode arrayLiteral(String closing) {

@@ -20,6 +20,8 @@ public final class PhpRequest {
     public String scriptFilename = "";
     public String remoteAddr = "";
     public String body = "";
+    /** PHP byte strings; file names outside these guest-facing fields remain Java paths. */
+    public String[] argv = new String[0];
     public final Map<String, String> headers = new LinkedHashMap<>();
     public final Map<String, String> get = new LinkedHashMap<>();
     public final Map<String, String> post = new LinkedHashMap<>();

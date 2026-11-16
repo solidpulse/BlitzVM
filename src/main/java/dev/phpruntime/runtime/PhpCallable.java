@@ -350,7 +350,7 @@ public final class PhpCallable {
         }
         Object result;
         try {
-            result = def.impl().call(ctx, args);
+            result = def.call(ctx, args);
         } catch (PhpError e) {
             throw loc != null ? e.at(loc) : e;
         }

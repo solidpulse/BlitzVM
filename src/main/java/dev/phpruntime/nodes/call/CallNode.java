@@ -259,7 +259,7 @@ public final class CallNode extends PhpNode {
         com.oracle.truffle.api.nodes.Node prev = ctx.currentBuiltinCallSite();
         ctx.setCurrentBuiltinCallSite(this);
         try {
-            return def.impl().call(ctx, values);
+            return def.call(ctx, values);
         } catch (PhpError e) {
             throw e.withTrace(dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(this, def.name())).at(this);
         } finally {

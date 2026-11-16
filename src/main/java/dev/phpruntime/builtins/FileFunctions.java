@@ -4,6 +4,7 @@ import com.oracle.truffle.api.TruffleFile;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpStrings;
 
 import java.io.IOException;
 
@@ -83,7 +84,7 @@ final class FileFunctions {
             return false;
         }
         try {
-            return pred.test(ctx.env().getPublicTruffleFile(path));
+            return pred.test(ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)));
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -93,11 +94,11 @@ final class FileFunctions {
         try {
             TruffleFile f = path.isEmpty()
                     ? ctx.env().getCurrentWorkingDirectory()
-                    : ctx.env().getPublicTruffleFile(path);
+                    : ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
             if (!f.exists()) {
                 return false;
             }
-            return f.getCanonicalFile().getPath();
+            return PhpStrings.fromJava(f.getCanonicalFile().getPath());
         } catch (IOException | SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -204,7 +205,7 @@ final class FileFunctions {
                 names.add(".");
                 names.add("..");
                 for (TruffleFile child : dir.list()) {
-                    names.add(child.getName());
+                    names.add(PhpStrings.fromJava(child.getName()));
                 }
                 StreamFunctions.consumeStreamId(ctx);
                 if (order == 0) {
@@ -251,7 +252,7 @@ final class FileFunctions {
             return null;
         }
         try {
-            return ctx.env().getPublicTruffleFile(path);
+            return ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
         } catch (SecurityException | IllegalArgumentException e) {
             return null;
         }
@@ -296,7 +297,6 @@ final class FileFunctions {
 
     /** scandir sorts by bytes (strcmp), not by UTF-16 code units. */
     private static int compareBytes(String x, String y) {
-        return java.util.Arrays.compareUnsigned(x.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                y.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return x.compareTo(y);
     }
 }

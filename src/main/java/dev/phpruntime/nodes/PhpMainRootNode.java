@@ -122,6 +122,15 @@ public final class PhpMainRootNode extends PhpRootNode {
         ctx.writeGlobal("_FILES", new PhpArray());
         ctx.writeGlobal("_ENV", new PhpArray());
         ctx.writeGlobal("_SERVER", toArray(request.server));
+        if (request.argv.length > 0) {
+            PhpArray argv = PhpArray.ofList(java.util.Arrays.asList(request.argv));
+            ctx.writeGlobal("argv", argv);
+            ctx.writeGlobal("argc", (long) request.argv.length);
+            PhpArray server = toArray(request.server);
+            server.put("argv", argv.share());
+            server.put("argc", (long) request.argv.length);
+            ctx.writeGlobal("_SERVER", server);
+        }
     }
 
     @TruffleBoundary
