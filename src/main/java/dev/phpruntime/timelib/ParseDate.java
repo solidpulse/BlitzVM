@@ -8,6 +8,7 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -93,10 +94,6 @@ public final class ParseDate {
         return "(?i:" + Pattern.quote(literal) + ")";
     }
 
-    private static String cs(String literal) {
-        return Pattern.quote(literal);
-    }
-
     private static final String ANY = g("[\\u0000-\\uffff]");
 
     private static final String NBSP = g("\\u00c2\\u00a0|\\u00a0");
@@ -106,21 +103,21 @@ public final class ParseDate {
 
     private static final String AGO = ci("ago");
 
-    private static final String HOUR24 = g("[01]?[0-9]|2[0-4]");
-    private static final String HOUR24LZ = g("[01][0-9]|2[0-4]");
-    private static final String HOUR12 = g("0?[1-9]|1[0-2]");
-    private static final String MINUTE = g("[0-5]?[0-9]");
+    private static final String HOUR24 = g("2[0-4]|[01][0-9]|[0-9]");
+    private static final String HOUR24LZ = g("2[0-4]|[01][0-9]");
+    private static final String HOUR12 = g("1[0-2]|0?[1-9]");
+    private static final String MINUTE = g("[0-5][0-9]|[0-9]");
     private static final String MINUTELZ = g("[0-5][0-9]");
-    private static final String SECOND = g(MINUTE + "|60");
-    private static final String SECONDLZ = g(MINUTELZ + "|60");
+    private static final String SECOND = g("60|" + MINUTE);
+    private static final String SECONDLZ = g("60|" + MINUTELZ);
     private static final String MERIDIAN = g("([AaPp]\\.?[Mm]\\.?)[\u0000\\t ]");
-    private static final String TZ = g("\\(?[A-Za-z]{1,6}\\)?|[A-Z][a-z]+(?:[_/-][A-Za-z]+)+");
-    private static final String TZCORRECTION = g("(?:GMT)?[+-](?:(?:" + HOUR24 + "(?::?" + MINUTE + ")?)|(?:" + HOUR24LZ + MINUTELZ + SECONDLZ + ")|(?:" + HOUR24LZ + ":" + MINUTELZ + ":" + SECONDLZ + "))");
+    private static final String TZ = g("[A-Z][a-z]+(?:[_/-][A-Za-z]+)+|\\(?[A-Za-z]{1,6}\\)?");
+    private static final String TZCORRECTION = g("(?:GMT)?[+-](?:(?:" + HOUR24LZ + ":" + MINUTELZ + ":" + SECONDLZ + ")|(?:" + HOUR24LZ + MINUTELZ + SECONDLZ + ")|(?:" + HOUR24 + "(?::?" + MINUTE + ")?))");
 
     private static final String DAYSUF = g("st|nd|rd|th");
 
-    private static final String MONTH = g("0?[0-9]|1[0-2]");
-    private static final String DAY = g("(?:(?:[0-2]?[0-9])|(?:3[01]))" + DAYSUF + "?");
+    private static final String MONTH = g("1[0-2]|0?[0-9]");
+    private static final String DAY = g("(?:3[01]|[12][0-9]|0?[0-9])" + DAYSUF + "?");
     private static final String YEAR = g("[0-9]{1,4}");
     private static final String YEAR2 = g("[0-9]{2}");
     private static final String YEAR4 = g("[0-9]{4}");
@@ -136,11 +133,11 @@ public final class ParseDate {
     private static final String DAYFULLS = g(ci("sundays") + "|" + ci("mondays") + "|" + ci("tuesdays") + "|" + ci("wednesdays") + "|" + ci("thursdays") + "|" + ci("fridays") + "|" + ci("saturdays"));
     private static final String DAYFULL = g(ci("sunday") + "|" + ci("monday") + "|" + ci("tuesday") + "|" + ci("wednesday") + "|" + ci("thursday") + "|" + ci("friday") + "|" + ci("saturday"));
     private static final String DAYABBR = g(ci("sun") + "|" + ci("mon") + "|" + ci("tue") + "|" + ci("wed") + "|" + ci("thu") + "|" + ci("fri") + "|" + ci("sat") + "|" + ci("sun"));
-    private static final String DAYSPECIAL = g(ci("weekday") + "|" + ci("weekdays"));
+    private static final String DAYSPECIAL = g(ci("weekdays") + "|" + ci("weekday"));
     private static final String DAYTEXT = g(DAYFULLS + "|" + DAYFULL + "|" + DAYABBR + "|" + DAYSPECIAL);
 
     private static final String MONTHFULL = g(ci("january") + "|" + ci("february") + "|" + ci("march") + "|" + ci("april") + "|" + ci("may") + "|" + ci("june") + "|" + ci("july") + "|" + ci("august") + "|" + ci("september") + "|" + ci("october") + "|" + ci("november") + "|" + ci("december"));
-    private static final String MONTHABBR = g(ci("jan") + "|" + ci("feb") + "|" + ci("mar") + "|" + ci("apr") + "|" + ci("may") + "|" + ci("jun") + "|" + ci("jul") + "|" + ci("aug") + "|" + ci("sep") + "|" + ci("sept") + "|" + ci("oct") + "|" + ci("nov") + "|" + ci("dec"));
+    private static final String MONTHABBR = g(ci("jan") + "|" + ci("feb") + "|" + ci("mar") + "|" + ci("apr") + "|" + ci("may") + "|" + ci("jun") + "|" + ci("jul") + "|" + ci("aug") + "|" + ci("sept") + "|" + ci("sep") + "|" + ci("oct") + "|" + ci("nov") + "|" + ci("dec"));
     private static final String MONTHROMAN = g("I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII");
     private static final String MONTHTEXT = g(MONTHFULL + "|" + MONTHABBR + "|" + MONTHROMAN);
 
@@ -211,9 +208,9 @@ public final class ParseDate {
     private static final String DATESHORTWITHTIMELONGTZ = g(DATENOYEAR + ISO8601NORMTZ);
 
     // Relative regexps
-    private static final String RELTEXTNUMBER = g(ci("first") + "|" + ci("second") + "|" + ci("third") + "|" + ci("fourth") + "|" + ci("fifth") + "|" + ci("sixth") + "|" + ci("seventh") + "|" + ci("eight") + "|" + ci("eighth") + "|" + ci("ninth") + "|" + ci("tenth") + "|" + ci("eleventh") + "|" + ci("twelfth"));
-    private static final String RELTEXTTEXT = g(ci("next") + "|" + ci("last") + "|" + ci("previous") + "|" + ci("this"));
-    private static final String RELTEXTUNIT = g(ci("ms") + "|" + ci("µs") + "|(?:" + g(ci("msec") + "|" + ci("millisecond") + "|" + ci("µsec") + "|" + ci("microsecond") + "|" + ci("usec") + "|" + ci("sec") + "|" + ci("second") + "|" + ci("min") + "|" + ci("minute") + "|" + ci("hour") + "|" + ci("day") + "|" + ci("fortnight") + "|" + ci("forthnight") + "|" + ci("month") + "|" + ci("year")) + "[sS]?)|" + ci("weeks") + "|" + DAYTEXT);
+    private static final String RELTEXTNUMBER = g(ci("first") + "|" + ci("second") + "|" + ci("third") + "|" + ci("fourth") + "|" + ci("fifth") + "|" + ci("sixth") + "|" + ci("seventh") + "|" + ci("eighth") + "|" + ci("eight") + "|" + ci("ninth") + "|" + ci("tenth") + "|" + ci("eleventh") + "|" + ci("twelfth"));
+    private static final String RELTEXTTEXT = g(ci("previous") + "|" + ci("next") + "|" + ci("last") + "|" + ci("this"));
+    private static final String RELTEXTUNIT = g(g(ci("millisecond") + "|" + ci("msec") + "|" + ci("microsecond") + "|" + ci("µsec") + "|" + ci("usec") + "|" + ci("second") + "|" + ci("sec") + "|" + ci("minute") + "|" + ci("min") + "|" + ci("fortnight") + "|" + ci("forthnight") + "|" + ci("month") + "|" + ci("year") + "|" + ci("hour") + "|" + ci("day")) + "[sS]?|" + ci("weeks") + "|" + ci("ms") + "|" + ci("µs") + "|" + DAYTEXT);
 
     private static final String RELNUMBER = g("[+-]*[ \\t]*[0-9]{1,13}");
     private static final String RELATIVE = g(RELNUMBER + SPACE + "?" + g(RELTEXTUNIT + "|" + ci("week")));
@@ -280,15 +277,49 @@ public final class ParseDate {
     private static final Rule[] RULES = buildRules();
 
     private static Rule[] buildRules() {
-        List<Rule> r = new ArrayList<>();
+        List<Rule> r = new ArrayList<>(55);
 
-        // TODO (Phase C): 'yesterday'
-        // TODO (Phase C): 'now'
-        // TODO (Phase C): 'noon'
-        // TODO (Phase C): 'midnight' | 'today'
-        // TODO (Phase C): 'tomorrow'
+        // 1: yesterday
+        r.add(new Rule("yesterday", ci("yesterday"), (s, cursor) -> {
+            timelibInit(s, cursor);
+            timelibHaveRelative(s);
+            timelibUnhaveTime(s);
+            s.time.relative.d = -1;
+            return TIMELIB_RELATIVE;
+        }));
 
-        // Example rule 1: timestamp
+        // 2: now
+        r.add(new Rule("now", ci("now"), (s, cursor) -> {
+            timelibInit(s, cursor);
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 3: noon
+        r.add(new Rule("noon", ci("noon"), (s, cursor) -> {
+            timelibInit(s, cursor);
+            timelibUnhaveTime(s);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = 12;
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 4: midnight | today
+        r.add(new Rule("midnight | today", ci("midnight") + "|" + ci("today"), (s, cursor) -> {
+            timelibInit(s, cursor);
+            timelibUnhaveTime(s);
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 5: tomorrow
+        r.add(new Rule("tomorrow", ci("tomorrow"), (s, cursor) -> {
+            timelibInit(s, cursor);
+            timelibHaveRelative(s);
+            timelibUnhaveTime(s);
+            s.time.relative.d = 1;
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 6: timestamp
         r.add(new Rule("timestamp", TIMESTAMP, (s, cursor) -> {
             String str = timelibInit(s, cursor);
             Cursor ptr = new Cursor(str);
@@ -316,18 +347,160 @@ public final class ParseDate {
             return TIMELIB_RELATIVE;
         }));
 
-        // TODO (Phase C): timestampms
-        // TODO (Phase C): firstdayof | lastdayof
-        // TODO (Phase C): backof | frontof
-        // TODO (Phase C): weekdayof
-        // TODO (Phase C): 'this week' (relativetextweek)
-        // TODO (Phase C): 'last week' / 'previous week' / 'next week'
-        // TODO (Phase C): timetiny12 | timeshort12 | timelong12
-        // TODO (Phase C): timetiny24
-        // TODO (Phase C): timeshort24 | timelong24 | iso8601long
-        // TODO (Phase C): iso8601normtz
+        // 7: timestampms
+        r.add(new Rule("timestampms", TIMESTAMPMS, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            timelibUnhaveDate(s);
+            timelibUnhaveTime(s);
+            if (!timelibHaveTz(s, cursor)) {
+                return TIMELIB_ERROR;
+            }
 
-        // Example rule 2: gnunocolon
+            boolean isNegative = (ptr.ch(1) == '-');
+            long i = timelibGetSignedNr(s, ptr, 24);
+            int ptrBefore = ptr.pos;
+            long us = timelibGetSignedNr(s, ptr, 6);
+            us = (long) (us * Math.pow(10, 7 - (ptr.pos - ptrBefore)));
+            if (isNegative) {
+                us *= -1;
+            }
+
+            s.time.y = 1970;
+            s.time.m = 1;
+            s.time.d = 1;
+            s.time.h = 0;
+            s.time.i = 0;
+            s.time.s = 0;
+            s.time.us = 0;
+            s.time.relative.s += i;
+            s.time.relative.us = us;
+            s.time.isLocaltime = 1;
+            s.time.zoneType = TIMELIB_ZONETYPE_OFFSET;
+            s.time.z = 0;
+            s.time.dst = 0;
+
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 8: firstdayof | lastdayof
+        r.add(new Rule("firstdayof | lastdayof", FIRSTDAYOF + "|" + LASTDAYOF, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            if (ptr.ch() == 'l' || ptr.ch() == 'L') {
+                s.time.relative.firstLastDayOf = TIMELIB_SPECIAL_LAST_DAY_OF_MONTH;
+            } else {
+                s.time.relative.firstLastDayOf = TIMELIB_SPECIAL_FIRST_DAY_OF_MONTH;
+            }
+            return TIMELIB_LF_DAY_OF_MONTH;
+        }));
+
+        // 9: backof | frontof
+        r.add(new Rule("backof | frontof", BACKOF + "|" + FRONTOF, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibUnhaveTime(s);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            if (ptr.ch() == 'b' || ptr.ch() == 'B') {
+                s.time.h = timelibGetNr(ptr, 2);
+                s.time.i = 15;
+            } else {
+                s.time.h = timelibGetNr(ptr, 2) - 1;
+                s.time.i = 45;
+            }
+            if (ptr.ch() != '\0') {
+                timelibEatSpaces(ptr);
+                s.time.h += timelibMeridian(ptr, s.time.h);
+            }
+            return TIMELIB_LF_DAY_OF_MONTH;
+        }));
+
+        // 10: weekdayof
+        r.add(new Rule("weekdayof", WEEKDAYOF, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            timelibHaveSpecialRelative(s);
+            int[] behavior = new int[1];
+            long i = timelibGetRelativeText(ptr, behavior);
+            timelibEatSpaces(ptr);
+            if (i > 0) {
+                s.time.relative.special.type = TIMELIB_SPECIAL_DAY_OF_WEEK_IN_MONTH;
+                timelibSetRelative(ptr, i, 1, s, TIMELIB_TIME_PART_DONT_KEEP);
+            } else {
+                s.time.relative.special.type = TIMELIB_SPECIAL_LAST_DAY_OF_WEEK_IN_MONTH;
+                timelibSetRelative(ptr, i, behavior[0], s, TIMELIB_TIME_PART_DONT_KEEP);
+            }
+            return TIMELIB_WEEK_DAY_OF_MONTH;
+        }));
+
+        // 11: timetiny12 | timeshort12 | timelong12
+        r.add(new Rule("timetiny12 | timeshort12 | timelong12",
+                TIMELONG12 + "|" + TIMESHORT12 + "|" + TIMETINY12, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = timelibGetNr(ptr, 2);
+            if (ptr.ch() == ':' || ptr.ch() == '.') {
+                s.time.i = timelibGetNr(ptr, 2);
+                if (ptr.ch() == ':' || ptr.ch() == '.') {
+                    s.time.s = timelibGetNr(ptr, 2);
+                }
+            }
+            timelibEatSpaces(ptr);
+            s.time.h += timelibMeridian(ptr, s.time.h);
+            return TIMELIB_TIME12;
+        }));
+
+        // 12: mssqltime
+        r.add(new Rule("mssqltime", MSSQLTIME, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = timelibGetNr(ptr, 2);
+            s.time.i = timelibGetNr(ptr, 2);
+            if (ptr.ch() == ':' || ptr.ch() == '.') {
+                s.time.s = timelibGetNr(ptr, 2);
+                if (ptr.ch() == ':' || ptr.ch() == '.') {
+                    s.time.us = timelibGetFracNr(ptr);
+                }
+            }
+            timelibEatSpaces(ptr);
+            s.time.h += timelibMeridian(ptr, s.time.h);
+            return TIMELIB_TIME24_WITH_ZONE;
+        }));
+
+        // 13: timetiny24 | timeshort24 | timelong24 | iso8601long
+        r.add(new Rule("timetiny24 | timeshort24 | timelong24 | iso8601long",
+                ISO8601LONG + "|" + TIMELONG24 + "|" + TIMESHORT24 + "|" + TIMETINY24, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = timelibGetNr(ptr, 2);
+            if (ptr.ch() == ':' || ptr.ch() == '.') {
+                s.time.i = timelibGetNr(ptr, 2);
+                if (ptr.ch() == ':' || ptr.ch() == '.') {
+                    s.time.s = timelibGetNr(ptr, 2);
+                    if (ptr.ch() == '.') {
+                        s.time.us = timelibGetFracNr(ptr);
+                    }
+                }
+            }
+            if (ptr.ch() != '\0') {
+                int[] tzNotFound = new int[1];
+                int[] dst = new int[1];
+                s.time.z = timelibParseZone(ptr, dst, s.time, tzNotFound, s.tzdb);
+                s.time.dst = dst[0];
+                if (tzNotFound[0] != 0) {
+                    addError(s, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database");
+                }
+            }
+            return TIMELIB_TIME24_WITH_ZONE;
+        }));
+
+        // 14: gnunocolon
         r.add(new Rule("gnunocolon", GNUNOCOLON, (s, cursor) -> {
             String str = timelibInit(s, cursor);
             Cursor ptr = new Cursor(str);
@@ -348,66 +521,508 @@ public final class ParseDate {
             return TIMELIB_GNU_NOCOLON;
         }));
 
-        // TODO (Phase C): iso8601nocolon
-        // TODO (Phase C): americanshort | american
+        // 15: iso8601nocolon
+        r.add(new Rule("iso8601nocolon", ISO8601NOCOLON, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = timelibGetNr(ptr, 2);
+            s.time.i = timelibGetNr(ptr, 2);
+            s.time.s = timelibGetNr(ptr, 2);
+            if (ptr.ch() != '\0') {
+                int[] tzNotFound = new int[1];
+                int[] dst = new int[1];
+                s.time.z = timelibParseZone(ptr, dst, s.time, tzNotFound, s.tzdb);
+                s.time.dst = dst[0];
+                if (tzNotFound[0] != 0) {
+                    addError(s, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database");
+                }
+            }
+            return TIMELIB_ISO_NOCOLON;
+        }));
 
-        // Example rule 3: iso8601date4 | iso8601dateslash | dateslash
+        // 16: americanshort | american
+        r.add(new Rule("americanshort | american", AMERICAN + "|" + AMERICANSHORT, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = timelibGetNr(ptr, 2);
+            if (ptr.ch() == '/') {
+                int[] length = new int[1];
+                s.time.y = timelibGetNrEx(ptr, 4, length);
+                s.time.y = timelibProcessYear(s.time.y, length[0]);
+            }
+            return TIMELIB_AMERICAN;
+        }));
+
+        // 17: iso8601date4 | iso8601dateslash | dateslash
         r.add(new Rule("iso8601date4 | iso8601dateslash | dateslash",
                 ISO8601DATE4 + "|" + ISO8601DATESLASH + "|" + DATESLASH, (s, cursor) -> {
             String str = timelibInit(s, cursor);
             Cursor ptr = new Cursor(str);
-            if (!timelibHaveDate(s)) {
-                return TIMELIB_ERROR;
-            }
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
             s.time.y = timelibGetSignedNr(s, ptr, 4);
             s.time.m = timelibGetNr(ptr, 2);
             s.time.d = timelibGetNr(ptr, 2);
             return TIMELIB_ISO_DATE;
         }));
 
-        // TODO (Phase C): iso8601date2
-        // TODO (Phase C): iso8601datex
-        // TODO (Phase C): gnudateshorter
-        // TODO (Phase C): gnudateshort
-        // TODO (Phase C): pointeddate4
-        // TODO (Phase C): pointeddate2
-        // TODO (Phase C): datefull
-        // TODO (Phase C): datenoday
-        // TODO (Phase C): datenodayrev
-        // TODO (Phase C): datetextual | datenoyear
-        // TODO (Phase C): datenoyearrev
-        // TODO (Phase C): datenocolon
-        // TODO (Phase C): soap
-        // TODO (Phase C): xmlrpc
-        // TODO (Phase C): xmlrpcnocolon
-        // TODO (Phase C): wddx
-        // TODO (Phase C): pgydotd
-        // TODO (Phase C): pgtextshort
-        // TODO (Phase C): pgtextreverse
-        // TODO (Phase C): mssqltime
-        // TODO (Phase C): isoweekday
-        // TODO (Phase C): isoweek
-        // TODO (Phase C): exif
-        // TODO (Phase C): clf
-        // TODO (Phase C): timestampms (wait: listed above after timestamp)
-        // TODO (Phase C): relative
-        // TODO (Phase C): relativetext
-        // TODO (Phase C): ago
-        // TODO (Phase C): daytext
-        // TODO (Phase C): tzcorrection | tz
-        // TODO (Phase C): dateshortwithtimeshort12 | dateshortwithtimelong12
-        // TODO (Phase C): dateshortwithtimeshort | dateshortwithtimelong | dateshortwithtimelongtz
+        // 18: iso8601date2
+        r.add(new Rule("iso8601date2", ISO8601DATE2, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_ISO_DATE;
+        }));
 
+        // 19: iso8601datex
+        r.add(new Rule("iso8601datex", ISO8601DATEX, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.y = timelibGetSignedNr(s, ptr, 19);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = timelibGetNr(ptr, 2);
+            return TIMELIB_ISO_DATE;
+        }));
+
+        // 20: gnudateshorter
+        r.add(new Rule("gnudateshorter", GNUDATESHORTER, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = 1;
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_ISO_DATE;
+        }));
+
+        // 21: gnudateshort
+        r.add(new Rule("gnudateshort", GNUDATESHORT, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_ISO_DATE;
+        }));
+
+        // 22: datefull
+        r.add(new Rule("datefull", DATEFULL, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.d = timelibGetNr(ptr, 2);
+            timelibSkipDaySuffix(ptr);
+            s.time.m = timelibGetMonth(ptr);
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_DATE_FULL;
+        }));
+
+        // 23: pointeddate4
+        r.add(new Rule("pointeddate4", POINTEDDATE4, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.y = timelibGetNr(ptr, 4);
+            return TIMELIB_DATE_FULL_POINTED;
+        }));
+
+        // 24: pointeddate2
+        r.add(new Rule("pointeddate2", POINTEDDATE2, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.m = timelibGetNr(ptr, 2);
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 2, length);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_DATE_FULL_POINTED;
+        }));
+
+        // 25: datenoday
+        r.add(new Rule("datenoday", DATENODAY, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibGetMonth(ptr);
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.d = 1;
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_DATE_NO_DAY;
+        }));
+
+        // 26: datenodayrev
+        r.add(new Rule("datenodayrev", DATENODAYREV, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.m = timelibGetMonth(ptr);
+            s.time.d = 1;
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_DATE_NO_DAY;
+        }));
+
+        // 27: datetextual | datenoyear
+        r.add(new Rule("datetextual | datenoyear", DATETEXTUAL + "|" + DATENOYEAR, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibGetMonth(ptr);
+            s.time.d = timelibGetNr(ptr, 2);
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_DATE_TEXT;
+        }));
+
+        // 28: datenoyearrev
+        r.add(new Rule("datenoyearrev", DATENOYEARREV, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.d = timelibGetNr(ptr, 2);
+            timelibSkipDaySuffix(ptr);
+            s.time.m = timelibGetMonth(ptr);
+            return TIMELIB_DATE_TEXT;
+        }));
+
+        // 29: datenocolon
+        r.add(new Rule("datenocolon", DATENOCOLON, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.y = timelibGetNr(ptr, 4);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = timelibGetNr(ptr, 2);
+            return TIMELIB_DATE_NOCOLON;
+        }));
+
+        // 30: xmlrpc | xmlrpcnocolon | soap | wddx | exif
+        r.add(new Rule("xmlrpc | xmlrpcnocolon | soap | wddx | exif",
+                XMLRPC + "|" + XMLRPCNOCOLON + "|" + SOAP + "|" + WDDX + "|" + EXIF, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.y = timelibGetNr(ptr, 4);
+            s.time.m = timelibGetNr(ptr, 2);
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.h = timelibGetNr(ptr, 2);
+            s.time.i = timelibGetNr(ptr, 2);
+            s.time.s = timelibGetNr(ptr, 2);
+            if (ptr.ch() == '.') {
+                s.time.us = timelibGetFracNr(ptr);
+                if (ptr.ch() != '\0') {
+                    int[] tzNotFound = new int[1];
+                    int[] dst = new int[1];
+                    s.time.z = timelibParseZone(ptr, dst, s.time, tzNotFound, s.tzdb);
+                    s.time.dst = dst[0];
+                    if (tzNotFound[0] != 0) {
+                        addError(s, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database");
+                    }
+                }
+            }
+            return TIMELIB_XMLRPC_SOAP;
+        }));
+
+        // 31: pgydotd
+        r.add(new Rule("pgydotd", PGYDOTD, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.d = timelibGetNr(ptr, 3);
+            s.time.m = 1;
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_PG_YEARDAY;
+        }));
+
+        // 32: isoweekday
+        r.add(new Rule("isoweekday", ISOWEEKDAY, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            timelibHaveRelative(s);
+            s.time.y = timelibGetNr(ptr, 4);
+            long w = timelibGetNr(ptr, 2);
+            long d = timelibGetNr(ptr, 1);
+            s.time.m = 1;
+            s.time.d = 1;
+            s.time.relative.d = Dow.daynrFromWeeknr(s.time.y, w, d);
+            return TIMELIB_ISO_WEEK;
+        }));
+
+        // 33: isoweek
+        r.add(new Rule("isoweek", ISOWEEK, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            timelibHaveRelative(s);
+            s.time.y = timelibGetNr(ptr, 4);
+            long w = timelibGetNr(ptr, 2);
+            long d = 1;
+            s.time.m = 1;
+            s.time.d = 1;
+            s.time.relative.d = Dow.daynrFromWeeknr(s.time.y, w, d);
+            return TIMELIB_ISO_WEEK;
+        }));
+
+        // 34: pgtextshort
+        r.add(new Rule("pgtextshort", PGTEXTSHORT, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibGetMonth(ptr);
+            s.time.d = timelibGetNr(ptr, 2);
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_PG_TEXT;
+        }));
+
+        // 35: pgtextreverse
+        r.add(new Rule("pgtextreverse", PGTEXTREVERSE, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            int[] length = new int[1];
+            s.time.y = timelibGetNrEx(ptr, 4, length);
+            s.time.m = timelibGetMonth(ptr);
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.y = timelibProcessYear(s.time.y, length[0]);
+            return TIMELIB_PG_TEXT;
+        }));
+
+        // 36: clf
+        r.add(new Rule("clf", CLF, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.d = timelibGetNr(ptr, 2);
+            s.time.m = timelibGetMonth(ptr);
+            s.time.y = timelibGetNr(ptr, 4);
+            s.time.h = timelibGetNr(ptr, 2);
+            s.time.i = timelibGetNr(ptr, 2);
+            s.time.s = timelibGetNr(ptr, 2);
+            timelibEatSpaces(ptr);
+            int[] tzNotFound = new int[1];
+            int[] dst = new int[1];
+            s.time.z = timelibParseZone(ptr, dst, s.time, tzNotFound, s.tzdb);
+            s.time.dst = dst[0];
+            if (tzNotFound[0] != 0) {
+                addError(s, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database");
+            }
+            return TIMELIB_CLF;
+        }));
+
+        // 37: year4
+        r.add(new Rule("year4", YEAR4, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            s.time.y = timelibGetNr(ptr, 4);
+            return TIMELIB_CLF;
+        }));
+
+        // 38: ago
+        r.add(new Rule("ago", AGO, (s, cursor) -> {
+            timelibInit(s, cursor);
+            s.time.relative.y = -s.time.relative.y;
+            s.time.relative.m = -s.time.relative.m;
+            s.time.relative.d = -s.time.relative.d;
+            s.time.relative.h = -s.time.relative.h;
+            s.time.relative.i = -s.time.relative.i;
+            s.time.relative.s = -s.time.relative.s;
+            s.time.relative.weekday = -s.time.relative.weekday;
+            if (s.time.relative.weekday == 0) {
+                s.time.relative.weekday = -7;
+            }
+            if (s.time.relative.haveSpecialRelative != 0 && s.time.relative.special.type == TIMELIB_SPECIAL_WEEKDAY) {
+                s.time.relative.special.amount = -s.time.relative.special.amount;
+            }
+            return TIMELIB_AGO;
+        }));
+
+        // 39: daytext
+        r.add(new Rule("daytext", DAYTEXT, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            timelibHaveWeekdayRelative(s);
+            timelibUnhaveTime(s);
+            RelunitEntry relunit = timelibLookupRelunit(ptr);
+            if (relunit != null) {
+                s.time.relative.weekday = relunit.multiplier;
+            }
+            if (s.time.relative.weekdayBehavior != 2) {
+                s.time.relative.weekdayBehavior = 1;
+            }
+            return TIMELIB_WEEKDAY;
+        }));
+
+        // 40: relativetextweek
+        r.add(new Rule("relativetextweek", RELATIVETEXTWEEK, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            int[] behavior = new int[1];
+            while (ptr.ch() != '\0') {
+                int oldPos = ptr.pos;
+                long i = timelibGetRelativeText(ptr, behavior);
+                timelibEatSpaces(ptr);
+                timelibSetRelative(ptr, i, behavior[0], s, TIMELIB_TIME_PART_DONT_KEEP);
+                s.time.relative.weekdayBehavior = 2;
+                if (s.time.relative.haveWeekdayRelative == 0) {
+                    timelibHaveWeekdayRelative(s);
+                    s.time.relative.weekday = 1;
+                }
+                if (ptr.pos == oldPos) break;
+            }
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 41: relativetext
+        r.add(new Rule("relativetext", RELATIVETEXT, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            int[] behavior = new int[1];
+            while (ptr.ch() != '\0') {
+                int oldPos = ptr.pos;
+                long i = timelibGetRelativeText(ptr, behavior);
+                timelibEatSpaces(ptr);
+                timelibSetRelative(ptr, i, behavior[0], s, TIMELIB_TIME_PART_DONT_KEEP);
+                if (ptr.pos == oldPos) break;
+            }
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 42: monthfull | monthabbr
+        r.add(new Rule("monthfull | monthabbr", MONTHFULL + "|" + MONTHABBR, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibLookupMonth(ptr);
+            return TIMELIB_DATE_TEXT;
+        }));
+
+        // 43: tzcorrection | tz
+        r.add(new Rule("tzcorrection | tz", TZCORRECTION + "|" + TZ, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveTz(s, cursor)) return TIMELIB_ERROR;
+            timelibEatSpaces(ptr);
+            int[] tzNotFound = new int[1];
+            int[] dst = new int[1];
+            s.time.z = timelibParseZone(ptr, dst, s.time, tzNotFound, s.tzdb);
+            s.time.dst = dst[0];
+            if (tzNotFound[0] != 0) {
+                addError(s, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database");
+            }
+            return TIMELIB_TIMEZONE;
+        }));
+
+        // 44: dateshortwithtimeshort12 | dateshortwithtimelong12
+        r.add(new Rule("dateshortwithtimeshort12 | dateshortwithtimelong12",
+                DATESHORTWITHTIMELONG12 + "|" + DATESHORTWITHTIMESHORT12, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibGetMonth(ptr);
+            s.time.d = timelibGetNr(ptr, 2);
+
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = timelibGetNr(ptr, 2);
+            s.time.i = timelibGetNr(ptr, 2);
+            if (ptr.ch() == ':' || ptr.ch() == '.') {
+                s.time.s = timelibGetNr(ptr, 2);
+                if (ptr.ch() == '.') {
+                    s.time.us = timelibGetFracNr(ptr);
+                }
+            }
+            s.time.h += timelibMeridian(ptr, s.time.h);
+            return TIMELIB_SHORTDATE_WITH_TIME;
+        }));
+
+        // 45: dateshortwithtimeshort | dateshortwithtimelong | dateshortwithtimelongtz
+        r.add(new Rule("dateshortwithtimeshort | dateshortwithtimelong | dateshortwithtimelongtz",
+                DATESHORTWITHTIMELONGTZ + "|" + DATESHORTWITHTIMELONG + "|" + DATESHORTWITHTIMESHORT, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            if (!timelibHaveDate(s)) return TIMELIB_ERROR;
+            s.time.m = timelibGetMonth(ptr);
+            s.time.d = timelibGetNr(ptr, 2);
+
+            if (!timelibHaveTime(s)) return TIMELIB_ERROR;
+            s.time.h = timelibGetNr(ptr, 2);
+            s.time.i = timelibGetNr(ptr, 2);
+            if (ptr.ch() == ':') {
+                s.time.s = timelibGetNr(ptr, 2);
+                if (ptr.ch() == '.') {
+                    s.time.us = timelibGetFracNr(ptr);
+                }
+            }
+            if (ptr.ch() != '\0') {
+                int[] tzNotFound = new int[1];
+                int[] dst = new int[1];
+                s.time.z = timelibParseZone(ptr, dst, s.time, tzNotFound, s.tzdb);
+                s.time.dst = dst[0];
+                if (tzNotFound[0] != 0) {
+                    addError(s, TIMELIB_ERR_TZID_NOT_FOUND, "The timezone could not be found in the database");
+                }
+            }
+            return TIMELIB_SHORTDATE_WITH_TIME;
+        }));
+
+        // 46: relative
+        r.add(new Rule("relative", RELATIVE, (s, cursor) -> {
+            String str = timelibInit(s, cursor);
+            Cursor ptr = new Cursor(str);
+            timelibHaveRelative(s);
+            while (ptr.ch() != '\0') {
+                int oldPos = ptr.pos;
+                long i = timelibGetSignedNr(s, ptr, 24);
+                timelibEatSpaces(ptr);
+                timelibSetRelative(ptr, i, 1, s, TIMELIB_TIME_PART_KEEP);
+                if (ptr.pos == oldPos) break;
+            }
+            return TIMELIB_RELATIVE;
+        }));
+
+        // 47: [.,]
         r.add(new Rule("[.,]", "[.,]", (s, cursor) -> {
             s.cur = cursor;
             return LOOP_STD;
         }));
 
+        // 48: space
         r.add(new Rule("space", SPACE, (s, cursor) -> {
             s.cur = cursor;
             return LOOP_STD;
         }));
 
+        // 49: nul_or_nl
         r.add(new Rule("nul_or_nl", "\\u0000|\\n", (s, cursor) -> {
             s.cur = cursor;
             s.pos = cursor;
@@ -415,6 +1030,7 @@ public final class ParseDate {
             return LOOP_STD;
         }));
 
+        // 50: any
         r.add(new Rule("any", ANY, (s, cursor) -> {
             s.cur = cursor;
             addError(s, TIMELIB_ERR_UNEXPECTED_CHARACTER, "Unexpected character");
@@ -591,6 +1207,82 @@ public final class ParseDate {
         }
     }
 
+    public static void timelibSkipDaySuffix(Cursor ptr) {
+        if (Character.isWhitespace(ptr.ch())) {
+            return;
+        }
+        char c0 = Character.toLowerCase(ptr.ch(0));
+        char c1 = Character.toLowerCase(ptr.ch(1));
+        if ((c0 == 'n' && c1 == 'd')
+                || (c0 == 'r' && c1 == 'd')
+                || (c0 == 's' && c1 == 't')
+                || (c0 == 't' && c1 == 'h')) {
+            ptr.pos += 2;
+        }
+    }
+
+    public static long timelibGetFracNr(Cursor ptr) {
+        while (ptr.ch() != '.' && ptr.ch() != ':' && (ptr.ch() < '0' || ptr.ch() > '9')) {
+            if (ptr.ch() == '\0') {
+                return TIMELIB_UNSET;
+            }
+            ptr.pos++;
+        }
+        int begin = ptr.pos;
+        while (ptr.ch() == '.' || ptr.ch() == ':' || (ptr.ch() >= '0' && ptr.ch() <= '9')) {
+            ptr.pos++;
+        }
+        int end = ptr.pos;
+        if (end <= begin + 1) {
+            return TIMELIB_UNSET;
+        }
+        String digits = ptr.s.substring(begin + 1, end);
+        try {
+            double val = Double.parseDouble(digits);
+            return (long) (val * Math.pow(10, 7 - (end - begin)));
+        } catch (NumberFormatException e) {
+            return TIMELIB_UNSET;
+        }
+    }
+
+    public static void timelibEatSpaces(Cursor ptr) {
+        while (true) {
+            char c = ptr.ch();
+            if (c == ' ' || c == '\t' || c == '\u00a0' || c == '\u202f') {
+                ptr.pos++;
+                continue;
+            }
+            if (c == '\u00c2' && ptr.ch(1) == '\u00a0') {
+                ptr.pos += 2;
+                continue;
+            }
+            if (c == '\u00e2' && ptr.ch(1) == '\u0080' && ptr.ch(2) == '\u00af') {
+                ptr.pos += 3;
+                continue;
+            }
+            break;
+        }
+    }
+
+    public static long timelibMeridian(Cursor ptr, long h) {
+        long retval = 0;
+        while (ptr.ch() != 'A' && ptr.ch() != 'a' && ptr.ch() != 'P' && ptr.ch() != 'p' && ptr.ch() != '\0') {
+            ptr.pos++;
+        }
+        if (ptr.ch() == 'a' || ptr.ch() == 'A') {
+            if (h == 12) {
+                retval = -12;
+            }
+        } else if (h != 12) {
+            retval = 12;
+        }
+        if (ptr.ch() != '\0') ptr.pos++;
+        if (ptr.ch() == '.') ptr.pos++;
+        if (ptr.ch() == 'M' || ptr.ch() == 'm') ptr.pos++;
+        if (ptr.ch() == '.') ptr.pos++;
+        return retval;
+    }
+
     private static int sHour(long a) {
         return (int) (a * 3600L);
     }
@@ -608,7 +1300,7 @@ public final class ParseDate {
     }
 
     /** C: {@code timelib_parse_tz_cor} */
-    public static long timelibParseTzCor(Cursor ptr, int[] tzNotFound) {
+    public static int timelibParseTzCor(Cursor ptr, int[] tzNotFound) {
         int begin = ptr.pos;
         tzNotFound[0] = 1;
 
@@ -644,7 +1336,7 @@ public final class ParseDate {
             case 6: {
                 tzNotFound[0] = 0;
                 long tmp = strtolPrefix(ptr.s, begin);
-                return sHour(tmp / 10000) + sMin((tmp / 100) % 100) + (tmp % 100);
+                return sHour(tmp / 10000) + sMin((tmp / 100) % 100) + (int) (tmp % 100);
             }
             case 8:
                 if (ptr.s.charAt(begin + 2) != ':' || ptr.s.charAt(begin + 5) != ':') {
@@ -652,18 +1344,15 @@ public final class ParseDate {
                 }
                 tzNotFound[0] = 0;
                 return sHour(strtolPrefix(ptr.s, begin)) + sMin(strtolPrefix(ptr.s, begin + 3))
-                        + strtolPrefix(ptr.s, begin + 6);
+                        + (int) strtolPrefix(ptr.s, begin + 6);
         }
         return 0;
     }
 
-    /**
-     * C: {@code timelib_lookup_abbr}
-     *
-     * <p>Phase A handles UTC/GMT directly; Phase C will port {@code timezonemap.h} and
-     * {@code fallbackmap.h} for all abbreviations.
-     */
-    private static long timelibLookupAbbr(Cursor ptr, int[] dst, String[] tzAbbr, int[] found) {
+    private static final int MAX_ABBR_LEN = 6;
+
+    /** C: {@code timelib_lookup_abbr} */
+    private static int timelibLookupAbbr(Cursor ptr, int[] dst, String[] tzAbbr, int[] found) {
         int begin = ptr.pos;
         while ((ptr.ch() >= 'A' && ptr.ch() <= 'Z')
                 || (ptr.ch() >= 'a' && ptr.ch() <= 'z')
@@ -673,10 +1362,18 @@ public final class ParseDate {
         }
         int end = ptr.pos;
         String word = ptr.s.substring(begin, end);
-        long value = 0;
-        if ("utc".equalsIgnoreCase(word) || "gmt".equalsIgnoreCase(word)) {
-            dst[0] = 0;
-            found[0] = 1;
+        int value = 0;
+        int len = end - begin;
+        if (len < MAX_ABBR_LEN) {
+            TimezoneMap.Entry tp = TimezoneMap.abbrSearch(word, -1, 0);
+            if (tp != null) {
+                value = tp.gmtoffset;
+                dst[0] = tp.type;
+                value -= tp.type * 3600;
+                found[0] = 1;
+            } else {
+                found[0] = 0;
+            }
         } else {
             found[0] = 0;
         }
@@ -685,8 +1382,8 @@ public final class ParseDate {
     }
 
     /** C: {@code timelib_parse_zone} */
-    public static long timelibParseZone(Cursor ptr, int[] dst, TimelibTime t, int[] tzNotFound, ZoneinfoDb tzdb) {
-        long retval = 0;
+    public static int timelibParseZone(Cursor ptr, int[] dst, TimelibTime t, int[] tzNotFound, ZoneinfoDb tzdb) {
+        int retval = 0;
         int parenCount = 0;
         tzNotFound[0] = 0;
 
@@ -716,16 +1413,16 @@ public final class ParseDate {
             String[] tzAbbr = new String[1];
             t.isLocaltime = 1;
 
-            long offset = timelibLookupAbbr(ptr, dst, tzAbbr, found);
+            int offset = timelibLookupAbbr(ptr, dst, tzAbbr, found);
             if (found[0] != 0) {
                 t.zoneType = TIMELIB_ZONETYPE_ABBR;
                 t.dst = dst[0];
-                t.tzAbbr = tzAbbr[0].toUpperCase(java.util.Locale.ROOT);
+                t.tzAbbr = tzAbbr[0].toUpperCase(Locale.ROOT);
             }
 
-            if (found[0] == 0 || "UTC".equals(tzAbbr[0])) {
+            if (found[0] == 0 || "UTC".equalsIgnoreCase(tzAbbr[0])) {
                 int[] dummyError = new int[1];
-                TimelibTzinfo res = tzdb.parseTzfile(tzAbbr[0], dummyError);
+                TimelibTzinfo res = (tzdb != null) ? tzdb.parseTzfile(tzAbbr[0], dummyError) : null;
                 if (res != null) {
                     t.tzInfo = res;
                     t.zoneType = TIMELIB_ZONETYPE_ID;
@@ -740,6 +1437,280 @@ public final class ParseDate {
             parenCount--;
         }
         return retval;
+    }
+
+    // ------------------------------------------------------------------ tables & relative parsing
+
+    private static final class RelunitEntry {
+        final String name;
+        final int unit;
+        final int multiplier;
+
+        RelunitEntry(String name, int unit, int multiplier) {
+            this.name = name;
+            this.unit = unit;
+            this.multiplier = multiplier;
+        }
+    }
+
+    private static final RelunitEntry[] TIMELIB_RELUNIT_LOOKUP = new RelunitEntry[] {
+            new RelunitEntry("ms",           TIMELIB_MICROSEC, 1000),
+            new RelunitEntry("msec",         TIMELIB_MICROSEC, 1000),
+            new RelunitEntry("msecs",        TIMELIB_MICROSEC, 1000),
+            new RelunitEntry("millisecond",  TIMELIB_MICROSEC, 1000),
+            new RelunitEntry("milliseconds", TIMELIB_MICROSEC, 1000),
+            new RelunitEntry("µs",           TIMELIB_MICROSEC,    1),
+            new RelunitEntry("usec",         TIMELIB_MICROSEC,    1),
+            new RelunitEntry("usecs",        TIMELIB_MICROSEC,    1),
+            new RelunitEntry("µsec",         TIMELIB_MICROSEC,    1),
+            new RelunitEntry("µsecs",        TIMELIB_MICROSEC,    1),
+            new RelunitEntry("microsecond",  TIMELIB_MICROSEC,    1),
+            new RelunitEntry("microseconds", TIMELIB_MICROSEC,    1),
+            new RelunitEntry("sec",          TIMELIB_SECOND,   1),
+            new RelunitEntry("secs",         TIMELIB_SECOND,   1),
+            new RelunitEntry("second",       TIMELIB_SECOND,   1),
+            new RelunitEntry("seconds",      TIMELIB_SECOND,   1),
+            new RelunitEntry("min",          TIMELIB_MINUTE,   1),
+            new RelunitEntry("mins",         TIMELIB_MINUTE,   1),
+            new RelunitEntry("minute",       TIMELIB_MINUTE,   1),
+            new RelunitEntry("minutes",      TIMELIB_MINUTE,   1),
+            new RelunitEntry("hour",         TIMELIB_HOUR,     1),
+            new RelunitEntry("hours",        TIMELIB_HOUR,     1),
+            new RelunitEntry("day",          TIMELIB_DAY,      1),
+            new RelunitEntry("days",         TIMELIB_DAY,      1),
+            new RelunitEntry("week",         TIMELIB_DAY,      7),
+            new RelunitEntry("weeks",        TIMELIB_DAY,      7),
+            new RelunitEntry("fortnight",    TIMELIB_DAY,     14),
+            new RelunitEntry("fortnights",   TIMELIB_DAY,     14),
+            new RelunitEntry("forthnight",   TIMELIB_DAY,     14),
+            new RelunitEntry("forthnights",  TIMELIB_DAY,     14),
+            new RelunitEntry("month",        TIMELIB_MONTH,    1),
+            new RelunitEntry("months",       TIMELIB_MONTH,    1),
+            new RelunitEntry("year",         TIMELIB_YEAR,     1),
+            new RelunitEntry("years",        TIMELIB_YEAR,     1),
+
+            new RelunitEntry("mondays",      TIMELIB_WEEKDAY,  1),
+            new RelunitEntry("monday",       TIMELIB_WEEKDAY,  1),
+            new RelunitEntry("mon",          TIMELIB_WEEKDAY,  1),
+            new RelunitEntry("tuesdays",     TIMELIB_WEEKDAY,  2),
+            new RelunitEntry("tuesday",      TIMELIB_WEEKDAY,  2),
+            new RelunitEntry("tue",          TIMELIB_WEEKDAY,  2),
+            new RelunitEntry("wednesdays",   TIMELIB_WEEKDAY,  3),
+            new RelunitEntry("wednesday",    TIMELIB_WEEKDAY,  3),
+            new RelunitEntry("wed",          TIMELIB_WEEKDAY,  3),
+            new RelunitEntry("thursdays",    TIMELIB_WEEKDAY,  4),
+            new RelunitEntry("thursday",     TIMELIB_WEEKDAY,  4),
+            new RelunitEntry("thu",          TIMELIB_WEEKDAY,  4),
+            new RelunitEntry("fridays",      TIMELIB_WEEKDAY,  5),
+            new RelunitEntry("friday",       TIMELIB_WEEKDAY,  5),
+            new RelunitEntry("fri",          TIMELIB_WEEKDAY,  5),
+            new RelunitEntry("saturdays",    TIMELIB_WEEKDAY,  6),
+            new RelunitEntry("saturday",     TIMELIB_WEEKDAY,  6),
+            new RelunitEntry("sat",          TIMELIB_WEEKDAY,  6),
+            new RelunitEntry("sundays",      TIMELIB_WEEKDAY,  0),
+            new RelunitEntry("sunday",       TIMELIB_WEEKDAY,  0),
+            new RelunitEntry("sun",          TIMELIB_WEEKDAY,  0),
+
+            new RelunitEntry("weekday",      TIMELIB_SPECIAL,  TIMELIB_SPECIAL_WEEKDAY),
+            new RelunitEntry("weekdays",     TIMELIB_SPECIAL,  TIMELIB_SPECIAL_WEEKDAY)
+    };
+
+    public static RelunitEntry timelibLookupRelunit(Cursor ptr) {
+        int begin = ptr.pos;
+        while (ptr.ch() != '\0' && ptr.ch() != ' ' && ptr.ch() != ',' && ptr.ch() != '\t' && ptr.ch() != ';' && ptr.ch() != ':' &&
+                ptr.ch() != '/' && ptr.ch() != '.' && ptr.ch() != '-' && ptr.ch() != '(' && ptr.ch() != ')') {
+            ptr.pos++;
+        }
+        int end = ptr.pos;
+        String word = ptr.s.substring(begin, end);
+        for (RelunitEntry tp : TIMELIB_RELUNIT_LOOKUP) {
+            if (word.equalsIgnoreCase(tp.name)) {
+                return tp;
+            }
+        }
+        return null;
+    }
+
+    private static final class ReltextEntry {
+        final String name;
+        final int type;
+        final int value;
+
+        ReltextEntry(String name, int type, int value) {
+            this.name = name;
+            this.type = type;
+            this.value = value;
+        }
+    }
+
+    private static final ReltextEntry[] TIMELIB_RELTEXT_LOOKUP = new ReltextEntry[] {
+            new ReltextEntry("first",    0,  1),
+            new ReltextEntry("next",     0,  1),
+            new ReltextEntry("second",   0,  2),
+            new ReltextEntry("third",    0,  3),
+            new ReltextEntry("fourth",   0,  4),
+            new ReltextEntry("fifth",    0,  5),
+            new ReltextEntry("sixth",    0,  6),
+            new ReltextEntry("seventh",  0,  7),
+            new ReltextEntry("eight",    0,  8),
+            new ReltextEntry("eighth",   0,  8),
+            new ReltextEntry("ninth",    0,  9),
+            new ReltextEntry("tenth",    0, 10),
+            new ReltextEntry("eleventh", 0, 11),
+            new ReltextEntry("twelfth",  0, 12),
+            new ReltextEntry("last",     0, -1),
+            new ReltextEntry("previous", 0, -1),
+            new ReltextEntry("this",     1,  0)
+    };
+
+    public static long timelibLookupRelativeText(Cursor ptr, int[] behavior) {
+        int begin = ptr.pos;
+        while ((ptr.ch() >= 'A' && ptr.ch() <= 'Z') || (ptr.ch() >= 'a' && ptr.ch() <= 'z')) {
+            ptr.pos++;
+        }
+        int end = ptr.pos;
+        String word = ptr.s.substring(begin, end);
+        long value = 0;
+        for (ReltextEntry tp : TIMELIB_RELTEXT_LOOKUP) {
+            if (word.equalsIgnoreCase(tp.name)) {
+                value = tp.value;
+                behavior[0] = tp.type;
+            }
+        }
+        return value;
+    }
+
+    public static long timelibGetRelativeText(Cursor ptr, int[] behavior) {
+        while (ptr.ch() == ' ' || ptr.ch() == '\t' || ptr.ch() == '-' || ptr.ch() == '/') {
+            ptr.pos++;
+        }
+        return timelibLookupRelativeText(ptr, behavior);
+    }
+
+    private static final class MonthEntry {
+        final String name;
+        final int value;
+
+        MonthEntry(String name, int value) {
+            this.name = name;
+            this.value = value;
+        }
+    }
+
+    private static final MonthEntry[] TIMELIB_MONTH_LOOKUP = new MonthEntry[] {
+            new MonthEntry("jan", 1),
+            new MonthEntry("feb", 2),
+            new MonthEntry("mar", 3),
+            new MonthEntry("apr", 4),
+            new MonthEntry("may", 5),
+            new MonthEntry("jun", 6),
+            new MonthEntry("jul", 7),
+            new MonthEntry("aug", 8),
+            new MonthEntry("sep", 9),
+            new MonthEntry("sept", 9),
+            new MonthEntry("oct", 10),
+            new MonthEntry("nov", 11),
+            new MonthEntry("dec", 12),
+            new MonthEntry("i", 1),
+            new MonthEntry("ii", 2),
+            new MonthEntry("iii", 3),
+            new MonthEntry("iv", 4),
+            new MonthEntry("v", 5),
+            new MonthEntry("vi", 6),
+            new MonthEntry("vii", 7),
+            new MonthEntry("viii", 8),
+            new MonthEntry("ix", 9),
+            new MonthEntry("x", 10),
+            new MonthEntry("xi", 11),
+            new MonthEntry("xii", 12),
+
+            new MonthEntry("january", 1),
+            new MonthEntry("february", 2),
+            new MonthEntry("march", 3),
+            new MonthEntry("april", 4),
+            new MonthEntry("may", 5),
+            new MonthEntry("june", 6),
+            new MonthEntry("july", 7),
+            new MonthEntry("august", 8),
+            new MonthEntry("september", 9),
+            new MonthEntry("october", 10),
+            new MonthEntry("november", 11),
+            new MonthEntry("december", 12)
+    };
+
+    public static long timelibLookupMonth(Cursor ptr) {
+        int begin = ptr.pos;
+        while ((ptr.ch() >= 'A' && ptr.ch() <= 'Z') || (ptr.ch() >= 'a' && ptr.ch() <= 'z')) {
+            ptr.pos++;
+        }
+        int end = ptr.pos;
+        String word = ptr.s.substring(begin, end);
+        long value = 0;
+        for (MonthEntry tp : TIMELIB_MONTH_LOOKUP) {
+            if (word.equalsIgnoreCase(tp.name)) {
+                value = tp.value;
+            }
+        }
+        return value;
+    }
+
+    public static long timelibGetMonth(Cursor ptr) {
+        while (ptr.ch() == ' ' || ptr.ch() == '\t' || ptr.ch() == '-' || ptr.ch() == '.' || ptr.ch() == '/') {
+            ptr.pos++;
+        }
+        return timelibLookupMonth(ptr);
+    }
+
+    private static long addWithOverflow(Scanner s, long current, long amount, int multiplier) {
+        try {
+            long prod = Math.multiplyExact(amount, (long) multiplier);
+            return Math.addExact(current, prod);
+        } catch (ArithmeticException e) {
+            addError(s, TIMELIB_ERR_NUMBER_OUT_OF_RANGE, "Number out of range");
+            return current + (amount * multiplier);
+        }
+    }
+
+    /** C: {@code timelib_set_relative} */
+    public static void timelibSetRelative(Cursor ptr, long amount, int behavior, Scanner s, int timePart) {
+        RelunitEntry relunit = timelibLookupRelunit(ptr);
+        if (relunit == null) {
+            return;
+        }
+
+        switch (relunit.unit) {
+            case TIMELIB_MICROSEC: s.time.relative.us = addWithOverflow(s, s.time.relative.us, amount, relunit.multiplier); break;
+            case TIMELIB_SECOND:   s.time.relative.s = addWithOverflow(s, s.time.relative.s, amount, relunit.multiplier); break;
+            case TIMELIB_MINUTE:   s.time.relative.i = addWithOverflow(s, s.time.relative.i, amount, relunit.multiplier); break;
+            case TIMELIB_HOUR:     s.time.relative.h = addWithOverflow(s, s.time.relative.h, amount, relunit.multiplier); break;
+            case TIMELIB_DAY:      s.time.relative.d = addWithOverflow(s, s.time.relative.d, amount, relunit.multiplier); break;
+            case TIMELIB_MONTH:    s.time.relative.m = addWithOverflow(s, s.time.relative.m, amount, relunit.multiplier); break;
+            case TIMELIB_YEAR:     s.time.relative.y = addWithOverflow(s, s.time.relative.y, amount, relunit.multiplier); break;
+
+            case TIMELIB_WEEKDAY:
+                timelibHaveWeekdayRelative(s);
+                if (timePart != TIMELIB_TIME_PART_KEEP) {
+                    timelibUnhaveTime(s);
+                }
+                s.time.relative.d += (amount > 0 ? amount - 1 : amount) * 7;
+                s.time.relative.weekday = relunit.multiplier;
+                s.time.relative.weekdayBehavior = behavior;
+                break;
+
+            case TIMELIB_SPECIAL:
+                timelibHaveSpecialRelative(s);
+                if (timePart != TIMELIB_TIME_PART_KEEP) {
+                    timelibUnhaveTime(s);
+                }
+                s.time.relative.special.type = relunit.multiplier;
+                s.time.relative.special.amount = amount;
+                break;
+        }
+    }
+
+    public static String timelibTimezoneIdFromAbbr(String abbr, long gmtoffset, int isdst) {
+        TimezoneMap.Entry tp = TimezoneMap.abbrSearch(abbr, gmtoffset, isdst);
+        return tp != null ? tp.fullTzName : null;
     }
 
     // ------------------------------------------------------------------ scanner loop & entry point
@@ -846,9 +1817,6 @@ public final class ParseDate {
 
     /**
      * C: {@code timelib_strtotime}
-     *
-     * <p>Phase A wires the scanner framework and 3 example rules; Phase B adds full
-     * {@code timelib_valid_time}/{@code timelib_valid_date} and Phase C adds all remaining rules.
      */
     @TruffleBoundary
     public static TimelibTime strtotime(String input, TimelibErrorContainer[] errorsOut, ZoneinfoDb tzdb) {
@@ -892,6 +1860,15 @@ public final class ParseDate {
         do {
             t = scan(in);
         } while (t != EOI);
+
+        /* do funky checking whether the parsed time was valid time */
+        if (in.time.haveTime != 0 && Dow.validTime(in.time.h, in.time.i, in.time.s) == 0) {
+            addWarning(in, TIMELIB_WARN_INVALID_TIME, "The parsed time was invalid");
+        }
+        /* do funky checking whether the parsed date was valid date */
+        if (in.time.haveDate != 0 && Dow.validDate(in.time.y, in.time.m, in.time.d) == 0) {
+            addWarning(in, TIMELIB_WARN_INVALID_DATE, "The parsed date was invalid");
+        }
 
         if (errorsOut != null) {
             errorsOut[0] = in.errors;
