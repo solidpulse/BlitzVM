@@ -1,6 +1,7 @@
 package dev.phpruntime.nodes.stmt;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpOps;
@@ -21,7 +22,10 @@ public final class SwitchNode extends PhpNode {
         this.caseBodies = caseBodies;
     }
 
+    // Both loops are exploded so each case node is a PE constant; a plain loop over @Children
+    // made every case a virtual call taking the frame, which escaped and failed compilation.
     @Override
+    @ExplodeLoop
     public Object execute(VirtualFrame frame) {
         Object v = subject.execute(frame);
         int start = -1;
@@ -41,8 +45,12 @@ public final class SwitchNode extends PhpNode {
             return null;
         }
         try {
-            for (int i = start; i < caseBodies.length; i++) {
-                caseBodies[i].executeVoid(frame);
+            boolean running = false;
+            for (int i = 0; i < caseBodies.length; i++) {
+                running |= i == start;
+                if (running) {
+                    caseBodies[i].executeVoid(frame);
+                }
             }
         } catch (ControlFlow.Break b) {
             if (b.levels > 1) {
