@@ -46,6 +46,9 @@ public final class PhpError extends AbstractTruffleException {
         this(kind, message, true, customFile, customLine, location, null);
     }
 
+    // Behind a boundary: error paths are compiled into every node that can throw, and the
+    // message concatenation plus exception setup inflated each call site by kilobytes.
+    @TruffleBoundary
     private PhpError(String kind, String message, boolean catchable, String customFile, int customLine,
                      Node location, PhpBacktrace.LazyTrace trace) {
         super(catchable ? (kind + ": " + message) : message, location);
@@ -75,6 +78,7 @@ public final class PhpError extends AbstractTruffleException {
     }
 
     /** The same error, attributed to {@code location} if it has no location yet. */
+    @TruffleBoundary
     public PhpError at(Node location) {
         if (getLocation() != null || location == null) {
             return this;
