@@ -296,25 +296,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
             if (passed == normalParams + 1 && args[offset + normalParams] instanceof NamedVariadic nv) {
                 rest = nv.entries();
             } else {
-                rest = new PhpArray();
-                for (int i = offset + normalParams; i < args.length; i++) {
-                    Object item = args[i];
-                    if (item instanceof NamedVariadic nv) {
-                        for (java.util.Map.Entry<Object, Object> e : nv.entries().rawEntries()) {
-                            if (e.getValue() instanceof PhpReference ref && varByRef) {
-                                rest.putRef(e.getKey(), ref);
-                            } else {
-                                Object val = e.getValue() instanceof PhpReference ref ? ref.getValue() : e.getValue();
-                                rest.put(e.getKey(), PhpOps.copyOnAssign(val));
-                            }
-                        }
-                    } else if (varByRef && item instanceof PhpReference ref) {
-                        rest.appendRef(ref);
-                    } else {
-                        Object val = item instanceof PhpReference ref ? ref.getValue() : item;
-                        rest.append(PhpOps.copyOnAssign(val));
-                    }
-                }
+                rest = packVariadic(args, offset + normalParams, varByRef);
             }
             writeSlot(frame, paramSlots[normalParams], paramKinds[normalParams], rest);
         }
@@ -369,6 +351,35 @@ public final class PhpFunctionRootNode extends PhpRootNode {
                 frame.setInt(i, 0);
             }
         }
+    }
+
+    /**
+     * Collects the arguments from {@code from} on into the variadic parameter's array. Behind a
+     * boundary: its bound is the call's argument count, which execute()'s @ExplodeLoop cannot
+     * unroll (apply_filters and do_action failed to compile on it).
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static PhpArray packVariadic(Object[] args, int from, boolean varByRef) {
+        PhpArray rest = new PhpArray();
+        for (int i = from; i < args.length; i++) {
+            Object item = args[i];
+            if (item instanceof NamedVariadic nv) {
+                for (java.util.Map.Entry<Object, Object> e : nv.entries().rawEntries()) {
+                    if (e.getValue() instanceof PhpReference ref && varByRef) {
+                        rest.putRef(e.getKey(), ref);
+                    } else {
+                        Object val = e.getValue() instanceof PhpReference ref ? ref.getValue() : e.getValue();
+                        rest.put(e.getKey(), PhpOps.copyOnAssign(val));
+                    }
+                }
+            } else if (varByRef && item instanceof PhpReference ref) {
+                rest.appendRef(ref);
+            } else {
+                Object val = item instanceof PhpReference ref ? ref.getValue() : item;
+                rest.append(PhpOps.copyOnAssign(val));
+            }
+        }
+        return rest;
     }
 
     private static void writeSlot(VirtualFrame frame, int slot, VarKind kind, Object v) {
