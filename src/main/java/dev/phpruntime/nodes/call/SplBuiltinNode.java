@@ -38,6 +38,7 @@ public final class SplBuiltinNode extends Node {
         if (name.equals("count") || name.equals("sizeof")) {
             long mode = args.length > 1 ? args[1] instanceof Long n ? n : PhpOps.toLong(args[1]) : 0;
             if (mode != 0 && mode != 1) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.VALUE_ERROR, name + "(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE", this);
             }
             if (subject instanceof PhpArray array) {
@@ -47,6 +48,7 @@ public final class SplBuiltinNode extends Node {
                 Object value = CallArgHelper.unwrapReturn(count.call(obj));
                 return value instanceof Long n ? n : PhpOps.toLong(value);
             }
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, name + "(): Argument #1 ($value) must be of type Countable|array, "
                     + PhpOps.typeDescription(subject) + " given", this);
         }
@@ -61,6 +63,7 @@ public final class SplBuiltinNode extends Node {
             return PhpArray.ofList(array.values());
         }
         if (!(subject instanceof PhpObject obj) || !obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, name + "(): Argument #1 ($iterator) must be of type Traversable|array, "
                     + PhpOps.typeDescription(subject) + " given", this);
         }

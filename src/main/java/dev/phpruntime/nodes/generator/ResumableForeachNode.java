@@ -53,6 +53,7 @@ public final class ResumableForeachNode extends PhpNode {
             Object value = subject.execute(frame);
             if (value instanceof PhpObject obj && SplInterfaces.has(obj, SplInterfaces.TRAVERSABLE)) {
                 if (byRef) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("An iterator cannot be used with foreach by reference", this);
                 }
                 cursor.iterator = protocol.resolve(obj);

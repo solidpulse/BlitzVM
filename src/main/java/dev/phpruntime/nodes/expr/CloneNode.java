@@ -27,6 +27,7 @@ public final class CloneNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         Object val = targetExpr.execute(frame);
         if (!(val instanceof PhpObject obj)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("__clone method called on non-object", this);
         }
         PhpObject copy = shallowCopy(PhpContext.get(this), obj);

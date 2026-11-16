@@ -19,9 +19,11 @@ public final class ThrowNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         Object val = expr.execute(frame);
         if (!(val instanceof PhpObject obj)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Can only throw objects", this);
         }
         if (!obj.phpClass().isThrowable()) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot throw objects that do not implement Throwable", this);
         }
         throw new PhpException(obj, this);

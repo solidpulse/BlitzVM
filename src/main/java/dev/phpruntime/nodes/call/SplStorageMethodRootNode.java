@@ -56,6 +56,7 @@ public final class SplStorageMethodRootNode extends RootNode {
             case "getHash" -> String.format("%032x", object(args).id());
             case "serialize" -> {
                 if (!state.objects.isEmpty()) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("SplObjectStorage::serialize() of object entries is not supported", this);
                 }
                 yield "x:i:0;m:" + dev.phpruntime.builtins.Builtins.lookup("serialize").impl().call(
@@ -64,6 +65,7 @@ public final class SplStorageMethodRootNode extends RootNode {
             case "unserialize" -> {
                 String data = PhpOps.toStr(args[2]);
                 if (!data.startsWith("x:i:0;m:")) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("UnexpectedValueException", "Error at offset 0 of " + data.length() + " bytes", this);
                 }
                 state.clear();
@@ -79,6 +81,7 @@ public final class SplStorageMethodRootNode extends RootNode {
             }
             case "addAll", "removeAll", "removeAllExcept" -> {
                 if (!(args[2] instanceof PhpObject other) || !(other.nativeState() instanceof SplObjectStorageState source)) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "SplObjectStorage::" + name + "(): Argument #1 ($storage) must be of type SplObjectStorage", this);
                 }
                 if (name.equals("addAll")) {
@@ -96,6 +99,7 @@ public final class SplStorageMethodRootNode extends RootNode {
 
     private PhpObject object(Object[] args) {
         if (args.length > 2 && args[2] instanceof PhpObject object) { return object; }
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
         throw new PhpError(PhpError.TYPE_ERROR, "SplObjectStorage::" + name + "(): Argument #1 ($object) must be of type object, "
                 + (args.length > 2 ? PhpOps.typeDescription(args[2]) : "null") + " given", this);
     }

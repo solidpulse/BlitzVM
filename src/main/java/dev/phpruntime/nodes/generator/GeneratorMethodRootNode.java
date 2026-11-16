@@ -28,11 +28,13 @@ public final class GeneratorMethodRootNode extends RootNode {
     public Object execute(VirtualFrame frame) {
         Object[] args = frame.getArguments();
         if (name.equals("__construct")) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("The \"Generator\" class is reserved for internal use and cannot be manually instantiated", this);
         }
         PhpGenerator generator = (PhpGenerator) ((PhpObject) args[0]).nativeState();
         int expected = name.equals("send") || name.equals("throw") ? 1 : 0;
         if (args.length - 2 != expected) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.ARGUMENT_COUNT, "Generator::" + name + "() expects exactly " + expected
                     + " argument" + (expected == 1 ? "" : "s") + ", " + (args.length - 2) + " given", this);
         }
@@ -47,6 +49,7 @@ public final class GeneratorMethodRootNode extends RootNode {
             }
             case "throw" -> {
                 if (args.length < 3 || !(args[2] instanceof PhpObject obj) || !obj.phpClass().isThrowable()) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "Generator::throw(): Argument #1 ($exception) must be of type Throwable", this);
                 }
                 yield generator.throwInto((PhpObject) args[2], dispatch, this);

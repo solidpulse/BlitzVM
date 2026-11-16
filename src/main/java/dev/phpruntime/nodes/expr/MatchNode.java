@@ -60,6 +60,7 @@ public final class MatchNode extends PhpNode {
         }
         CompilerDirectives.transferToInterpreter();
         String type = v instanceof PhpObject obj ? obj.phpClass().name() : PhpOps.typeName(v);
+        CompilerDirectives.transferToInterpreter();
         throw new PhpError("UnhandledMatchError", "Unhandled match case of type " + type, this);
     }
 }

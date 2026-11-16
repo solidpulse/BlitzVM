@@ -30,6 +30,8 @@ public final class StaticMethodCallNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final boolean[] spreads;
     private final boolean hasSpreadOrNamed;
     @Child private DispatchCallNode dispatch;
+    /** Set once this site has needed __call/__callStatic; until then that path is not compiled. */
+    @CompilationFinal private boolean magicSeen;
 
     public StaticMethodCallNode(ClassRefNode classRef, String staticName, int methodId, PhpNode dynamicNameExpr,
                                 int thisSlot, int calledClassSlot, PhpNode[] args) {
@@ -89,6 +91,10 @@ public final class StaticMethodCallNode extends PhpNode {
                 ? (PhpClass) frame.getObject(calledClassSlot)
                 : targetClass;
         if (entry == null) {
+            if (!magicSeen) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                magicSeen = true;
+            }
             if (classRef.isForwarding() && thisSlot >= 0
                     && frame.getObject(thisSlot) instanceof PhpObject thisObj
                     && targetClass.callMethod() != null && targetClass.callMethod().callTarget() != null) {
@@ -102,9 +108,11 @@ public final class StaticMethodCallNode extends PhpNode {
                         new Object[]{PhpNull.INSTANCE, calledArg, name,
                                 DispatchCallNode.evalMagicArgs(frame, args, argNames, spreads, this)});
             }
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + targetClass.name() + "::" + name + "()", this);
         }
         if (entry.callTarget() == null) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
         }
         Object thisArg;
@@ -115,6 +123,7 @@ public final class StaticMethodCallNode extends PhpNode {
                 && thisObj.phpClass().isInstanceOf(entry.declaringClass())) {
             thisArg = thisObj;
         } else {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError(
                     "Non-static method " + entry.declaringClass().name() + "::" + entry.name()
                             + "() cannot be called statically",

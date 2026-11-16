@@ -29,6 +29,7 @@ public final class ClosureMethodRootNode extends RootNode {
         int minimum = name.equals("bind") ? 2 : 1;
         int maximum = name.equals("call") ? Integer.MAX_VALUE : name.equals("bind") ? 3 : name.equals("bindTo") ? 2 : 1;
         if (count < minimum || count > maximum) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.ARGUMENT_COUNT, "Closure::" + name + "() expects "
                     + (minimum == maximum ? "exactly " : count < minimum ? "at least " : "at most ")
                     + (count < minimum ? minimum : maximum) + " argument" + ((count < minimum ? minimum : maximum) == 1 ? "" : "s")
@@ -42,6 +43,7 @@ public final class ClosureMethodRootNode extends RootNode {
             try {
                 return PhpCallable.toClosure(ctx, value, callingThis(), this);
             } catch (PhpError error) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.TYPE_ERROR, "Failed to create closure from callable: " + error.detail(), this);
             }
         }
@@ -50,6 +52,7 @@ public final class ClosureMethodRootNode extends RootNode {
         Object scopeArg;
         if (name.equals("bind")) {
             if (args.length < 4 || !(args[2] instanceof PhpObject obj) || obj.closure() == null) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.TYPE_ERROR, "Closure::bind(): Argument #1 ($closure) must be of type Closure", this);
             }
             object = (PhpObject) args[2];
@@ -62,6 +65,7 @@ public final class ClosureMethodRootNode extends RootNode {
             scopeArg = args.length > 3 ? args[3] : "static";
         }
         if (newThis != PhpNull.INSTANCE && !(newThis instanceof PhpObject)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "Closure::" + name + "(): Argument #1 ($newThis) must be of type ?object, "
                     + PhpOps.typeDescription(newThis) + " given", this);
         }
@@ -72,6 +76,7 @@ public final class ClosureMethodRootNode extends RootNode {
         PhpClass newScope;
         if (name.equals("call")) {
             if (!(newThis instanceof PhpObject obj)) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.TYPE_ERROR, "Closure::call(): Argument #1 ($newThis) must be of type object, null given", this);
             }
             newScope = obj.phpClass();
@@ -90,6 +95,7 @@ public final class ClosureMethodRootNode extends RootNode {
                 }
             }
         } else {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "Closure::" + name + "(): Argument #2 ($newScope) must be of type object|string|null", this);
         }
         if (newScope != null && (ctx.language().builtinClassTemplate(newScope.template().lowerName()) != null
@@ -146,6 +152,7 @@ public final class ClosureMethodRootNode extends RootNode {
                 boolean allowed = caller != null && (method.visibility() == Visibility.PRIVATE ? caller == method.declaringClass()
                         : caller.isInstanceOf(method.declaringClass()) || method.declaringClass().isInstanceOf(caller));
                 if (!allowed) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "Failed to create closure from callable: cannot access "
                             + (method.visibility() == Visibility.PRIVATE ? "private" : "protected") + " method "
                             + method.declaringClass().name() + "::" + method.name() + "()", this);

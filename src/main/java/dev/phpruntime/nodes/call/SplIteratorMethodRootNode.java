@@ -38,11 +38,13 @@ public final class SplIteratorMethodRootNode extends RootNode {
         PhpObject self = (PhpObject) args[0];
         if (name.equals("__construct")) {
             if (args.length < 3 || !(args[2] instanceof PhpObject obj) || !SplInterfaces.has(obj, SplInterfaces.TRAVERSABLE)) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.TYPE_ERROR, owner + "::__construct(): Argument #1 ($iterator) must be of type Traversable", this);
             }
             PhpObject inner = protocol.resolve((PhpObject) args[2]);
             boolean recursive = owner.equals("RecursiveIteratorIterator");
             if (recursive && inner.phpClass().methodById(hasChildrenId) == null) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("InvalidArgumentException", "An instance of RecursiveIterator or IteratorAggregate creating it is required", this);
             }
             int mode = recursive && args.length > 3 ? (int) PhpOps.toLong(args[3]) : 0;
@@ -56,6 +58,7 @@ public final class SplIteratorMethodRootNode extends RootNode {
             return PhpNull.INSTANCE;
         }
         if (!(self.nativeState() instanceof SplIteratorState state)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("The parent constructor was not called: the object is in an invalid state", this);
         }
         return switch (name) {
@@ -126,6 +129,7 @@ public final class SplIteratorMethodRootNode extends RootNode {
                 try {
                     Object child = CallArgHelper.unwrapReturn(getChildren.call(it));
                     if (!(child instanceof PhpObject obj)) {
+                        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                         throw new PhpError("UnexpectedValueException", "Objects returned by RecursiveIterator::getChildren() must implement RecursiveIterator", this);
                     }
                     PhpObject childIterator = protocol.resolve(obj);

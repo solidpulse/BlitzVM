@@ -229,6 +229,7 @@ public final class CallArgHelper {
     @TruffleBoundary
     private static void checkDuplicateNamed(Map<String, Object> named, String name, Node site) {
         if (named.containsKey(name)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Named parameter $" + name + " overwrites previous argument", site);
         }
     }
@@ -262,6 +263,7 @@ public final class CallArgHelper {
                     named.put(s, value);
                 } else if (key instanceof Long) {
                     if (seenNamed) {
+                        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                         throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
                     }
                     positional.add(value);
@@ -269,6 +271,7 @@ public final class CallArgHelper {
                     posKeys.add(null);
                     posNodes.add(null);
                 } else {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "Keys must be of type int|string during argument unpacking", site);
                 }
             }
@@ -276,6 +279,7 @@ public final class CallArgHelper {
         }
         if (!(unpacked instanceof PhpArray src)) {
             String given = unpacked == null || unpacked == PhpNull.INSTANCE ? "null" : PhpOps.typeName(unpacked);
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "Only arrays and Traversables can be unpacked, " + given + " given", site);
         }
         boolean seenNamed = alreadySeenNamed || !named.isEmpty();
@@ -283,6 +287,7 @@ public final class CallArgHelper {
             if (k instanceof String s) {
                 seenNamed = true;
                 if (named.containsKey(s)) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("Named parameter $" + s + " overwrites previous argument", site);
                 }
                 Object val = writableRefSource != null ? writableRefSource.obtainElementRef(k)
@@ -290,6 +295,7 @@ public final class CallArgHelper {
                 named.put(s, val);
             } else {
                 if (seenNamed) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
                 }
                 Object val = writableRefSource != null ? writableRefSource.obtainElementRef(k)
@@ -329,6 +335,7 @@ public final class CallArgHelper {
                     slots.add(PhpFunctionRootNode.UNPASSED);
                 }
                 if (slots.get(idx) != PhpFunctionRootNode.UNPASSED) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("Named parameter $" + pName + " overwrites previous argument", site);
                 }
                 slots.set(idx, e.getValue());
@@ -343,6 +350,7 @@ public final class CallArgHelper {
                     extraNamed.put(pName, PhpOps.copyOnAssign(v));
                 }
             } else {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Unknown named parameter $" + pName, site);
             }
         }
@@ -367,6 +375,7 @@ public final class CallArgHelper {
         RawCallArgs raw = evaluateCallSite(frame, args, refTargets, argNames, spreads, null, def.refMask() != 0, site);
         if (raw.named() != null && !raw.named().isEmpty()) {
             String first = firstKey(raw.named());
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Unknown named parameter $" + first, site);
         }
         List<Object> pos = raw.positional();

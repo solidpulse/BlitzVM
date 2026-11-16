@@ -62,6 +62,7 @@ public final class IncludeNode extends PhpNode {
         PhpContext ctx = PhpContext.get(this);
         boolean once = kind == Kind.INCLUDE_ONCE || kind == Kind.REQUIRE_ONCE;
         if (path.isEmpty() && !once) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "Path must not be empty", this);
         }
         // Fast path: the same path string from the same file resolved recently. No stat,
@@ -103,6 +104,7 @@ public final class IncludeNode extends PhpNode {
             target = tableSlot >= 0 ? ctx.language().parseLocalBytes(source) : env.parsePublic(source);
         } catch (dev.phpruntime.parser.PhpParseError pe) {
             String msg = pe.getMessage();
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.PARSE_ERROR, msg != null ? msg : "syntax error",
                     source.getPath() != null ? source.getPath() : key, pe.line(), this);
         }
@@ -133,6 +135,7 @@ public final class IncludeNode extends PhpNode {
 
     private Object missing(PhpContext ctx, String path) {
         if (kind == Kind.REQUIRE || kind == Kind.REQUIRE_ONCE) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Failed opening required '" + path + "'", this);
         }
         ctx.warning("include(" + path + "): Failed to open stream: No such file or directory", line());

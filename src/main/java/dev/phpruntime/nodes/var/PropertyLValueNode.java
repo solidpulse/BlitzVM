@@ -186,6 +186,7 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
         if (arrayProperties(obj, name)) {
@@ -265,6 +266,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (fast != null) {
             if (fast.isReadonly()) {
                 String owner = fast.declaringClass() != null ? fast.declaringClass() : obj.phpClass().name();
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Cannot indirectly modify readonly property " + owner + "::$" + name, this);
             }
             return;
@@ -277,6 +279,7 @@ public final class PropertyLValueNode extends LValueNode {
         PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
         if (res.isReadonly()) {
             String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot indirectly modify readonly property " + owner + "::$" + name, this);
         }
     }
@@ -286,6 +289,7 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
         if (arrayProperties(obj, name)) {
@@ -315,6 +319,7 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
         if (arrayProperties(obj, name)) {
@@ -334,6 +339,7 @@ public final class PropertyLValueNode extends LValueNode {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
         if (arrayProperties(obj, name)) {
@@ -345,6 +351,7 @@ public final class PropertyLValueNode extends LValueNode {
             Object existing = getNode.execute(obj, res.storageKey(), null);
             if (existing != PhpClass.UNINITIALIZED || !res.canInitReadonly()) {
                 String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Cannot unset readonly property " + owner + "::$" + name, this);
             }
         }
@@ -368,6 +375,7 @@ public final class PropertyLValueNode extends LValueNode {
         }
         PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
         String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+        CompilerDirectives.transferToInterpreter();
         throw new PhpError("Typed property " + owner + "::$" + name + " must not be accessed before initialization", this);
     }
 

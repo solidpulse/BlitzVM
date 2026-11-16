@@ -120,6 +120,7 @@ public final class CallNode extends PhpNode {
             if (def != null) {
                 return callBuiltin(frame);
             }
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined function " + (nsName != null ? nsName : name) + "()", this);
         }
         return callUserFunction(frame, fn);
@@ -231,6 +232,7 @@ public final class CallNode extends PhpNode {
             if (def.isRef(i)) {
                 if (refTargets[i] != null) {
                     if (refTargets[i] instanceof dev.phpruntime.nodes.var.GlobalVarNode gv && gv.isGlobalsSuperglobal()) {
+                        CompilerDirectives.transferToInterpreter();
                         throw new PhpError(def.name() + "(): Argument #" + (i + 1) + " could not be passed by reference", this);
                     }
                     refKeys[i] = refTargets[i].evalKeys(frame);
@@ -245,6 +247,7 @@ public final class CallNode extends PhpNode {
                         PhpContext.get(this).notice("Only variables should be passed by reference", line());
                         values[i] = res;
                     } else {
+                        CompilerDirectives.transferToInterpreter();
                         throw new PhpError(def.name() + "(): Argument #" + (i + 1) + " could not be passed by reference", this);
                     }
                 }

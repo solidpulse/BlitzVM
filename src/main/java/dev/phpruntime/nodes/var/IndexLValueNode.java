@@ -72,6 +72,7 @@ public final class IndexLValueNode extends LValueNode {
         for (int i = 0; i < keyNodes.length; i++) {
             Object k = keys[i];
             if (k == APPEND) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Cannot use [] for reading", this);
             }
             v = v instanceof PhpObject obj ? access.get(obj, k) : IndexReadNode.index(v, k);
@@ -179,6 +180,7 @@ public final class IndexLValueNode extends LValueNode {
                 return;
             }
             if (root instanceof PhpObject) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Cannot assign by reference to an array dimension of an object", this);
             }
             PhpReference[] outRef = new PhpReference[1];
@@ -193,6 +195,7 @@ public final class IndexLValueNode extends LValueNode {
     @TruffleBoundary
     private String writeStringOffset(String s, Object key, Object value) {
         if (key == APPEND) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("[] operator not supported for strings", this);
         }
         long offset = PhpOps.toLong(key);
@@ -205,6 +208,7 @@ public final class IndexLValueNode extends LValueNode {
         }
         String replacement = PhpOps.toStr(value);
         if (replacement.isEmpty()) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "Cannot assign an empty string to a string offset", this);
         }
         if (replacement.length() > 1) {
@@ -357,8 +361,10 @@ public final class IndexLValueNode extends LValueNode {
             return new PhpArray();
         }
         if (v instanceof String s && s.isEmpty()) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot auto-initialize an array from an empty string", this);
         }
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
         throw new PhpError("Cannot use a scalar value as an array", this);
     }
 

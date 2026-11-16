@@ -87,15 +87,19 @@ public final class ClassRefNode extends PhpNode {
         if (cls == null) {
             CompilerDirectives.transferToInterpreter();
             if (kind == Kind.PARENT) {
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Class \"" + name + "\" has no parent", this);
             }
             if (kind == Kind.TRAIT_PARENT) {
                 PhpClass cur = (PhpClass) frame.getObject(calledClassSlot);
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Class \"" + (cur != null ? cur.name() : "") + "\" has no parent", this);
             }
             if (kind == Kind.STATIC) {
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Cannot use \"static\" when no class scope is active", this);
             }
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Class \"" + name + "\" not found", this);
         }
         return cls;
@@ -147,6 +151,7 @@ public final class ClassRefNode extends PhpNode {
     }
 
     private PhpClass throwMissing(String clsName) {
+        CompilerDirectives.transferToInterpreter();
         throw new PhpError("Class \"" + clsName + "\" not found", this);
     }
 

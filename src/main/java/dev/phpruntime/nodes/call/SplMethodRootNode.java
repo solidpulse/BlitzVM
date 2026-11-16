@@ -40,6 +40,7 @@ public final class SplMethodRootNode extends RootNode {
         int n = raw.length - 2;
         if (n < min || (max >= 0 && n > max)) {
             int expected = n < min ? min : max;
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.ARGUMENT_COUNT, owner + "::" + method + "() expects "
                     + (min == max ? "exactly " : n < min ? "at least " : "at most ")
                     + expected + " argument" + (expected == 1 ? "" : "s") + ", " + n + " given", this);
@@ -51,6 +52,7 @@ public final class SplMethodRootNode extends RootNode {
             int flags = n > 1 ? (int) PhpOps.toLong(b) : 0;
             Object source = n > 0 ? a : new PhpArray();
             if (!(source instanceof PhpArray || source instanceof PhpObject)) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.TYPE_ERROR, owner + "::__construct(): Argument #1 ($array) must be of type array|object, "
                         + PhpOps.typeDescription(source) + " given", this);
             }
@@ -59,6 +61,7 @@ public final class SplMethodRootNode extends RootNode {
                 state.iteratorClass = PhpOps.toStr(raw[4]);
                 PhpClass iteratorClass = ctx.lookupOrAutoloadClass(state.iteratorClass);
                 if (iteratorClass == null || !iteratorClass.isInstanceOf(ctx.lookupClass("ArrayIterator"))) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "ArrayObject::__construct(): Argument #3 ($iteratorClass) must be a class name derived from ArrayIterator", this);
                 }
             }
@@ -66,6 +69,7 @@ public final class SplMethodRootNode extends RootNode {
             return PhpNull.INSTANCE;
         }
         if (!(self.nativeState() instanceof SplArrayState state)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("The parent constructor was not called: the object is in an invalid state", this);
         }
         return switch (method) {
@@ -101,6 +105,7 @@ public final class SplMethodRootNode extends RootNode {
             case "seek" -> {
                 long pos = PhpOps.toLong(a);
                 if (pos < 0 || pos >= state.count()) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("OutOfBoundsException", "Seek position " + pos + " is out of range", this);
                 }
                 state.position = (int) pos;
@@ -110,6 +115,7 @@ public final class SplMethodRootNode extends RootNode {
                 PhpClass cls = ctx.lookupOrAutoloadClass(state.iteratorClass);
                 if (cls == null) { throw new PhpError("Class \"" + state.iteratorClass + "\" not found", this); }
                 if (!cls.isInstanceOf(ctx.lookupClass("ArrayIterator"))) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "ArrayObject::__construct(): Argument #3 ($iteratorClass) must be a class name derived from ArrayIterator", this);
                 }
                 PhpObject iterator = new PhpObject(cls, ctx.nextObjectId());
@@ -122,6 +128,7 @@ public final class SplMethodRootNode extends RootNode {
                 String name = PhpOps.toStr(a);
                 PhpClass cls = ctx.lookupOrAutoloadClass(name);
                 if (cls == null || !cls.isInstanceOf(ctx.lookupClass("ArrayIterator"))) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "ArrayObject::setIteratorClass(): Argument #1 ($iteratorClass) must be a class name derived from ArrayIterator", this);
                 }
                 state.iteratorClass = cls.name();
@@ -129,6 +136,7 @@ public final class SplMethodRootNode extends RootNode {
             }
             case "exchangeArray" -> {
                 if (!(a instanceof PhpArray || a instanceof PhpObject)) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "ArrayObject::exchangeArray(): Argument #1 ($array) must be of type array|object, "
                             + PhpOps.typeDescription(a) + " given", this);
                 }

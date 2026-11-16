@@ -63,10 +63,12 @@ public final class NewNode extends PhpNode {
         PhpClass cls = classRef.resolve(frame);
         PhpContext ctx = PhpContext.get(this);
         if (cls == ctx.closureClass()) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Instantiation of Closure is not allowed", this);
         }
         if (cls.isInterface() || cls.isTrait() || cls.isAbstract()) {
             String kind = cls.isInterface() ? "interface " : (cls.isTrait() ? "trait " : "abstract class ");
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot instantiate " + kind + cls.name(), this);
         }
         PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
@@ -139,6 +141,7 @@ public final class NewNode extends PhpNode {
             CallArgHelper.RawCallArgs raw = CallArgHelper.evaluateCallSite(frame, args, refTargets, argNames, spreads, null, this);
             if (raw.named() != null && !raw.named().isEmpty()) {
                 String first = raw.named().keySet().iterator().next();
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Unknown named parameter $" + first, this);
             }
             return;

@@ -27,6 +27,8 @@ public final class MethodCallNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final boolean[] spreads;
     private final boolean hasSpreadOrNamed;
     @Child private DispatchCallNode dispatch;
+    /** Set once this site has needed __call/__callStatic; until then that path is not compiled. */
+    @CompilationFinal private boolean magicSeen;
 
     public MethodCallNode(PhpNode targetExpr, String staticName, int methodId, PhpNode dynamicNameExpr, PhpNode[] args) {
         this(targetExpr, staticName, methodId, dynamicNameExpr, args, new LValueNode[args.length], null, null);
@@ -81,19 +83,26 @@ public final class MethodCallNode extends PhpNode {
     public Object executeOnTargetRaw(VirtualFrame frame, Object target) {
         String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
         if (!(target instanceof PhpObject obj)) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to a member function " + name + "() on " + PhpOps.typeName(target), this);
         }
         PhpClass cls = obj.phpClass();
         PhpClass.MethodEntry entry = methodId >= 0 ? cls.methodById(methodId) : cls.lookupMethod(name);
         if (entry == null) {
+            if (!magicSeen) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                magicSeen = true;
+            }
             PhpClass.MethodEntry magic = cls.callMethod();
             if (magic != null && magic.callTarget() != null) {
                 return dispatch.call(magic.callTarget(),
                         new Object[]{obj, cls, name, DispatchCallNode.evalMagicArgs(frame, args, argNames, spreads, this)});
             }
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + cls.name() + "::" + name + "()", this);
         }
         if (entry.callTarget() == null) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;

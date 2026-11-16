@@ -93,6 +93,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
     public void unset(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
         throw new PhpError("Attempt to unset static property " + cls.name() + "::$" + name, this);
     }
 
@@ -100,10 +101,12 @@ public final class StaticPropertyLValueNode extends LValueNode {
     private PhpClass.StaticSlot requireSlot(PhpClass cls, String name, PhpClass traitCaller) {
         PhpClass.StaticSlot slot = cls.lookupStaticProperty(name);
         if (slot == null) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Access to undeclared static property " + cls.name() + "::$" + name, this);
         }
         if (!isAccessible(cls, slot, traitCaller)) {
             String level = slot.visibility == Visibility.PRIVATE ? "private" : "protected";
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(
                     "Cannot access " + level + " property " + slot.declaringClass.name() + "::$" + name,
                     this);

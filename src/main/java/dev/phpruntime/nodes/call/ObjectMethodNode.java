@@ -36,6 +36,7 @@ public final class ObjectMethodNode extends Node {
     private Object callRaw(PhpObject receiver, Object[] args) {
         PhpClass.MethodEntry entry = receiver.phpClass().methodById(methodId);
         if (entry == null || entry.callTarget() == null) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + receiver.phpClass().name() + "::" + name + "()", this);
         }
         RootCallTarget cached = dispatch.cachedTarget();

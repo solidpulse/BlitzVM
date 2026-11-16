@@ -186,6 +186,7 @@ public final class ForeachNode extends PhpNode {
         }
         if (s instanceof PhpObject obj) {
             if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("An iterator cannot be used with foreach by reference", this);
             }
             PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function

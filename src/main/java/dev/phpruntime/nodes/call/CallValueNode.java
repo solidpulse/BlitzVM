@@ -131,6 +131,7 @@ public final class CallValueNode extends PhpNode {
         }
         PhpFunction fn = PhpContext.get(this).functionById(sc.functionId);
         if (fn == null) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Value not of type callable", this);
         }
         RootCallTarget target = fn.callTarget();

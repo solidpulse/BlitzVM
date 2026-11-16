@@ -112,6 +112,7 @@ public final class ArrayLiteralNode extends PhpNode {
                 } else if (key instanceof Long) {
                     dest.append(value);
                 } else {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("Keys must be of type int|string during array unpacking", this);
                 }
                 iterator.next(it);
@@ -120,6 +121,7 @@ public final class ArrayLiteralNode extends PhpNode {
         }
         if (!(unpacked instanceof PhpArray src)) {
             String given = unpacked == null || unpacked == PhpNull.INSTANCE ? "null" : PhpOps.typeName(unpacked);
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Only arrays and Traversables can be unpacked, " + given + " given", this);
         }
         for (Map.Entry<Object, Object> e : src.entries()) {

@@ -114,6 +114,7 @@ public final class FirstClassCallableNode extends PhpNode {
         if (def != null) {
             return ctx.newClosure(PhpClosure.builtin(def));
         }
+        CompilerDirectives.transferToInterpreter();
         throw new PhpError("Call to undefined function " + (nsFnName != null ? nsFnName : fnName) + "()", this);
     }
 
@@ -136,6 +137,7 @@ public final class FirstClassCallableNode extends PhpNode {
         Object target = targetExpr.execute(frame);
         String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
         if (!(target instanceof PhpObject obj)) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to a member function " + name + "() on " + PhpOps.typeName(target), this);
         }
         PhpClass cls = obj.phpClass();
@@ -145,9 +147,11 @@ public final class FirstClassCallableNode extends PhpNode {
             if (magic != null && magic.callTarget() != null) {
                 return ctx.newClosure(PhpClosure.magicCall(magic.callTarget(), obj, cls, name));
             }
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + cls.name() + "::" + name + "()", this);
         }
         if (entry.callTarget() == null) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
@@ -172,9 +176,11 @@ public final class FirstClassCallableNode extends PhpNode {
             if (magicStatic != null && magicStatic.callTarget() != null) {
                 return ctx.newClosure(PhpClosure.magicCall(magicStatic.callTarget(), PhpNull.INSTANCE, calledArg, name));
             }
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + targetClass.name() + "::" + name + "()", this);
         }
         if (entry.callTarget() == null) {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
         }
         Object thisArg;
@@ -185,6 +191,7 @@ public final class FirstClassCallableNode extends PhpNode {
                 && thisObj.phpClass().isInstanceOf(entry.declaringClass())) {
             thisArg = thisObj;
         } else {
+            CompilerDirectives.transferToInterpreter();
             throw new PhpError("Non-static method " + entry.declaringClass().name() + "::" + entry.name()
                     + "() cannot be called statically", this);
         }

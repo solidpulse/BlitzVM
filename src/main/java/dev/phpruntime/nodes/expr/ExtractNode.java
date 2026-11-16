@@ -30,15 +30,18 @@ public final class ExtractNode extends PhpNode {
         Object rawPrefix = prefix == null ? "" : prefix.execute(frame);
         if (!(rawFlags == PhpNull.INSTANCE || rawFlags instanceof Long || rawFlags instanceof Double
                 || rawFlags instanceof Boolean || rawFlags instanceof String s && PhpOps.isNumericString(s))) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #2 ($flags) must be of type int, " + PhpOps.typeName(rawFlags) + " given", this);
         }
         if (rawPrefix instanceof PhpArray || rawPrefix instanceof PhpObject) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #3 ($prefix) must be of type string, " + PhpOps.typeName(rawPrefix) + " given", this);
         }
         long flag = PhpOps.toLong(rawFlags);
         String pre = PhpOps.toStr(rawPrefix);
         validate(flag, pre);
         if (!(value instanceof PhpArray input)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #1 ($array) must be of type array, " + PhpOps.typeName(value) + " given", this);
         }
         boolean refs = (flag & 256) != 0;
@@ -64,12 +67,15 @@ public final class ExtractNode extends PhpNode {
     private void validate(long flags, String prefix) {
         int type = (int) flags & 255;
         if (type > 6) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #2 ($flags) must be a valid extract type", this);
         }
         if ((type == 2 || type == 3 || type == 4 || type == 5) && this.prefix == null) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #3 ($prefix) is required when using this extract type", this);
         }
         if ((type == 2 || type == 3 || type == 4 || type == 5) && !prefix.isEmpty() && !identifier(prefix)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #3 ($prefix) must be a valid identifier", this);
         }
     }

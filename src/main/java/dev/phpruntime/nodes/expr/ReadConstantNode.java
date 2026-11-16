@@ -36,6 +36,7 @@ public final class ReadConstantNode extends PhpNode {
         }
         Object value = ctx.readConstant(name);
         if (value == null) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Undefined constant \"" + (nsName != null ? nsName : name) + "\"", this);
         }
         return value;

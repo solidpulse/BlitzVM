@@ -48,6 +48,7 @@ public final class YieldFromNode extends PhpNode {
                     protocol.rewind(cursor.iterator);
                 }
             } else {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Can use \"yield from\" only with arrays and Traversables", this);
             }
             frame.setObject(stateSlot, cursor);

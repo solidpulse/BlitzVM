@@ -30,6 +30,7 @@ public final class ArrayAccessNode extends Node {
 
     private void check(PhpObject obj) {
         if (!obj.phpClass().hasSplInterface(SplInterfaces.ARRAY_ACCESS)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot use object of type " + obj.phpClass().name() + " as array", this);
         }
     }
@@ -61,6 +62,7 @@ public final class ArrayAccessNode extends Node {
             state.storage.version++;
             return;
         }
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
         throw new PhpError("Cannot assign by reference to an array dimension of an object", this);
     }
 

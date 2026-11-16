@@ -93,6 +93,7 @@ public final class DestructureLValueNode extends LValueNode {
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
         throw new PhpError("Cannot use list() / array destructuring in read context", this);
     }
 
@@ -231,6 +232,7 @@ public final class DestructureLValueNode extends LValueNode {
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
         throw new PhpError("Cannot unset destructuring pattern", this);
     }
 

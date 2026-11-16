@@ -58,6 +58,7 @@ public final class DynamicVarNode extends LValueNode {
         PhpSymbolTable table = table(frame);
         if (name.equals("this")) {
             if (literal && (table.thisValue == null || table.thisValue == PhpNull.INSTANCE)) {
+                CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Using $this when not in object context", this);
             }
             return table.thisValue == PhpNull.INSTANCE ? null : table.thisValue;

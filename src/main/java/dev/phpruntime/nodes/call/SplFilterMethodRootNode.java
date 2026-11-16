@@ -83,6 +83,7 @@ public final class SplFilterMethodRootNode extends RootNode {
             return PhpNull.INSTANCE;
         }
         if (!(self.nativeState() instanceof State s)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("The parent constructor was not called: the object is in an invalid state", this);
         }
         return switch (name) {
@@ -105,6 +106,7 @@ public final class SplFilterMethodRootNode extends RootNode {
             case "setMode" -> {
                 long m = PhpOps.toLong(args[2]);
                 if (m < MATCH || m > REPLACE) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.VALUE_ERROR,
                             "RegexIterator::setMode(): Argument #1 ($mode) must be RegexIterator::MATCH, RegexIterator::GET_MATCH, "
                                     + "RegexIterator::ALL_MATCHES, RegexIterator::SPLIT, or RegexIterator::REPLACE", this);
@@ -137,6 +139,7 @@ public final class SplFilterMethodRootNode extends RootNode {
 
     private void construct(PhpObject self, Object[] args) {
         if (args.length < 3 || !(args[2] instanceof PhpObject it) || !SplInterfaces.has(it, SplInterfaces.TRAVERSABLE)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, owner + "::__construct(): Argument #1 ($iterator) must be of type "
                     + (owner.equals("RecursiveRegexIterator") ? "RecursiveIterator" : "Iterator"), this);
         }
@@ -144,6 +147,7 @@ public final class SplFilterMethodRootNode extends RootNode {
         s.inner = SplIterators.resolve(it);
         if (!owner.equals("FilterIterator")) {
             if (args.length < 4) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.ARGUMENT_COUNT, owner + "::__construct() expects at least 2 arguments, 1 given", this);
             }
             s.regex = PhpOps.toStr(args[3]);

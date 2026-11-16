@@ -37,6 +37,7 @@ public final class FuncArgsNode extends PhpNode {
     @Override
     public Object execute(VirtualFrame frame) {
         if (argOffset < 0) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(kind.phpName + "(): Cannot be called from the global scope", this);
         }
         Object[] args = frame.getArguments();
@@ -57,9 +58,11 @@ public final class FuncArgsNode extends PhpNode {
             case GET_ARG -> {
                 long idx = PhpOps.toLong(indexExpr.execute(frame));
                 if (idx < 0) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("ValueError", kind.phpName + "(): Argument #1 ($position) must be greater than or equal to 0", this);
                 }
                 if (idx >= count) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("ValueError", kind.phpName + "(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function", this);
                 }
                 Object v = args[argOffset + (int) idx];

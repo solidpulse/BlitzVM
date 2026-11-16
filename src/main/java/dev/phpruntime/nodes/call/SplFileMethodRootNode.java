@@ -37,6 +37,7 @@ public final class SplFileMethodRootNode extends RootNode {
             if (args.length < 3) { throw new PhpError(PhpError.ARGUMENT_COUNT, owner + "::__construct() expects at least 1 argument, 0 given", this); }
             String path = PhpOps.toStr(args[2]);
             if (path.indexOf('\0') >= 0) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError(PhpError.VALUE_ERROR, owner + "::__construct(): Argument #1 ($filename) must not contain any null bytes", this);
             }
             if (owner.equals("SplFileInfo")) {
@@ -47,12 +48,14 @@ public final class SplFileMethodRootNode extends RootNode {
                 try {
                     self.setNativeState(SplFileState.directory(path, flags));
                 } catch (PhpError error) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(error.kind(), error.detail().replace("RecursiveDirectoryIterator::__construct", owner + "::__construct"), this);
                 }
             }
             return PhpNull.INSTANCE;
         }
         if (!(self.nativeState() instanceof SplFileState state)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("The parent constructor was not called: the object is in an invalid state", this);
         }
         Path path = Path.of(state.pathname.isEmpty() ? "." : PhpStrings.toJava(state.pathname));
@@ -72,6 +75,7 @@ public final class SplFileMethodRootNode extends RootNode {
                 case "seek" -> {
                     long position = PhpOps.toLong(args[2]);
                     if (position < 0 || position >= state.entries.size()) {
+                        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                         throw new PhpError("OutOfBoundsException", "Seek position " + position + " is out of range", this);
                     }
                     state.position = (int) position;
@@ -133,6 +137,7 @@ public final class SplFileMethodRootNode extends RootNode {
                 default -> throw new IllegalStateException(name);
             };
         } catch (IOException error) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("RuntimeException", owner + "::" + name + "(): stat failed for " + state.pathname, this);
         }
     }
