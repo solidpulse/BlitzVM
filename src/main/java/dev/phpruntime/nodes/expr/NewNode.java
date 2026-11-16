@@ -76,8 +76,11 @@ public final class NewNode extends PhpNode {
         }
         PhpClass.MethodEntry ctor = cls.constructMethod();
         if (ctor != null) {
+            RootCallTarget target = ctor.callTarget();
+            RootCallTarget cached = dispatch.cachedTarget();
+            RootCallTarget argTarget = cached == target ? cached : target;
             try {
-                dispatch.call(ctor.callTarget(), evalCtorArgs(frame, ctor.callTarget(), obj, cls));
+                dispatch.call(target, evalCtorArgs(frame, argTarget, obj, cls));
             } catch (PhpError e) {
                 throw e.at(this);
             }

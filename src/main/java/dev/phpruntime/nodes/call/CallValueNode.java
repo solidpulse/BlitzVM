@@ -90,14 +90,17 @@ public final class CallValueNode extends PhpNode {
         Object target = targetExpr.execute(frame);
         if (target instanceof PhpObject obj && obj.closure() != null) {
             PhpClosure c = obj.closure();
+            DirectCallNode direct = directCall;
+            RootCallTarget ct = c.callTarget();
+            RootCallTarget argTarget = direct != null && direct.getCallTarget() == ct ? (RootCallTarget) direct.getCallTarget() : ct;
             return switch (c.kind()) {
                 case CLOSURE -> callTargetFast(
-                        c.callTarget(), evalClosureArgs(frame, c.callTarget(), c.boundThis(), c.calledClass(), obj));
-                case USER_FUNCTION -> callTargetFast(c.callTarget(), evalUserPlainArgs(frame, c.callTarget()));
-                case METHOD -> callTargetFast(c.callTarget(), evalMethodArgs(frame, c.callTarget(), c.boundThis(), c.calledClass()));
+                        ct, evalClosureArgs(frame, argTarget, c.boundThis(), c.calledClass(), obj));
+                case USER_FUNCTION -> callTargetFast(ct, evalUserPlainArgs(frame, argTarget));
+                case METHOD -> callTargetFast(ct, evalMethodArgs(frame, argTarget, c.boundThis(), c.calledClass()));
                 case MAGIC_CALL -> {
                     ensureIndirectCall();
-                    yield indirectCall.call(c.callTarget(), new Object[]{
+                    yield indirectCall.call(ct, new Object[]{
                             c.boundThis(), c.calledClass(), c.magicMethodName(),
                             DispatchCallNode.evalMagicArgs(frame, args, argNames, spreads, this)});
                 }
@@ -127,7 +130,10 @@ public final class CallValueNode extends PhpNode {
         if (fn == null) {
             throw new PhpError("Value not of type callable", this);
         }
-        return callTargetFast(fn.callTarget(), evalUserPlainArgs(frame, fn.callTarget()));
+        RootCallTarget target = fn.callTarget();
+        DirectCallNode direct = directCall;
+        RootCallTarget argTarget = direct != null && direct.getCallTarget() == target ? (RootCallTarget) direct.getCallTarget() : target;
+        return callTargetFast(target, evalUserPlainArgs(frame, argTarget));
     }
 
     private Object callBuiltinFast(VirtualFrame frame, Builtins.Def def) {

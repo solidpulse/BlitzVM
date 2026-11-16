@@ -96,7 +96,8 @@ public final class CallNode extends PhpNode {
         RootCallTarget target = fn.callTarget();
         DirectCallNode direct = callNode;
         if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(evalUserArgs(frame, target));
+            // Pass the cached target so partial evaluation sees fnRoot and hasAnyRefParam() as constants.
+            return direct.call(evalUserArgs(frame, (RootCallTarget) direct.getCallTarget()));
         }
         IndirectCallNode indirect = indirectCall;
         if (indirect != null) {

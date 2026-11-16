@@ -119,8 +119,11 @@ public final class StaticMethodCallNode extends PhpNode {
                             + "() cannot be called statically",
                     this);
         }
+        RootCallTarget target = entry.callTarget();
+        RootCallTarget cached = dispatch.cachedTarget();
+        RootCallTarget argTarget = cached == target ? cached : target;
         try {
-            return dispatch.call(entry.callTarget(), evalMethodArgs(frame, entry.callTarget(), thisArg, calledArg));
+            return dispatch.call(target, evalMethodArgs(frame, argTarget, thisArg, calledArg));
         } catch (PhpError e) {
             throw e.at(this);
         }
