@@ -66,7 +66,7 @@ public final class ForeachNode extends PhpNode {
         boolean isArray = arrayProfile.profile(s instanceof PhpArray);
         if (isArray) {
             PhpArray arr = (PhpArray) s;
-            entries = arr.rawEntries();
+            return executeArray(frame, arr);
         } else if (s instanceof PhpObject obj) {
             if (iteratorProfile.profile(obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE))) {
                 return executeIterator(frame, iterator.resolve(obj));
@@ -111,6 +111,39 @@ public final class ForeachNode extends PhpNode {
                 }
             }
         } finally {
+            LoopNode.reportLoopCount(this, count);
+        }
+        return null;
+    }
+
+    private Object executeArray(VirtualFrame frame, PhpArray arr) {
+        arr.share();
+        int count = 0;
+        try {
+            for (int pos = arr.firstPos(); pos >= 0; pos = arr.nextPos(pos)) {
+                TruffleSafepoint.poll(this);
+                count++;
+                if (keyTarget != null) {
+                    keyTarget.write(frame, keyTarget.evalKeys(frame), arr.keyAt(pos));
+                }
+                Object rawVal = arr.rawValueAt(pos);
+                Object curVal = rawVal instanceof PhpReference ref ? ref.getValue() : rawVal;
+                valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(curVal));
+                try {
+                    body.executeVoid(frame);
+                } catch (ControlFlow.Break b) {
+                    if (b.levels > 1) {
+                        throw new ControlFlow.Break(b.levels - 1);
+                    }
+                    break;
+                } catch (ControlFlow.Continue c) {
+                    if (c.levels > 1) {
+                        throw new ControlFlow.Continue(c.levels - 1);
+                    }
+                }
+            }
+        } finally {
+            arr.releaseShare();
             LoopNode.reportLoopCount(this, count);
         }
         return null;
