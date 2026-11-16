@@ -61,6 +61,9 @@ public final class IncludeNode extends PhpNode {
     private Object prepare(String path) {
         PhpContext ctx = PhpContext.get(this);
         boolean once = kind == Kind.INCLUDE_ONCE || kind == Kind.REQUIRE_ONCE;
+        if (path.isEmpty() && !once) {
+            throw new PhpError(PhpError.VALUE_ERROR, "Path must not be empty", this);
+        }
         // Fast path: the same path string from the same file resolved recently. No stat,
         // realpath or parse-cache lookup; WordPress does ~500 includes per request.
         String cacheKey = includeKey(ctx, path);

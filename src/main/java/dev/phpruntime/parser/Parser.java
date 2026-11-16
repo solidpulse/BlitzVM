@@ -353,6 +353,7 @@ public final class Parser {
                     List<Integer> globalIds = new ArrayList<>();
                     List<LValueNode> dynamicTargets = new ArrayList<>();
                     List<PhpNode> dynamicNames = new ArrayList<>();
+                    List<LValueNode> fileScopeGlobals = new ArrayList<>();
                     do {
                         if (peek().isOp("$") || scope.isFileScope() && !scope.isGlobal()) {
                             PhpNode nameExpr;
@@ -377,6 +378,8 @@ public final class Parser {
                             scope.markCell(name);
                             slots.add(scope.slot(name));
                             globalIds.add(language.globalId(name));
+                        } else {
+                            fileScopeGlobals.add(scope.variable(name).at(v.line()));
                         }
                     } while (acceptOp(","));
                     endStatement();
@@ -386,7 +389,9 @@ public final class Parser {
                         return new BlockNode(new PhpNode[]{new GlobalImportNode(toIntArray(slots), toIntArray(globalIds)), dynamic}).at(line);
                     }
                     if (slots.isEmpty()) {
-                        return null;
+                        return fileScopeGlobals.isEmpty() ? null
+                                : new dev.phpruntime.nodes.stmt.EnsureVariablesNode(
+                                        fileScopeGlobals.toArray(new LValueNode[0])).at(line);
                     }
                     return new GlobalImportNode(
                             slots.stream().mapToInt(Integer::intValue).toArray(),
@@ -1973,11 +1978,16 @@ public final class Parser {
     private ClassRefNode makeClassRefFromName(String name) {
         String lower = dev.phpruntime.runtime.PhpStrings.lower(name);
         String cur = currentClass != null ? currentClass : "<global>";
+        // The frame's self slot serves trait code, rebindable closures and code included into a
+        // method's scope. A (non-trait) class declared in an included file parses its member
+        // initializers in that file's scope: there, self is the declared class.
+        boolean slotSelf = scope.traitSelfSlot() >= 0
+                && !(currentClass != null && !currentIsTrait && scope.isFileScope());
         return switch (lower) {
-            case "self" -> scope.traitSelfSlot() >= 0
+            case "self" -> slotSelf
                     ? ClassRefNode.traitSelf(scope.traitSelfSlot())
                     : ClassRefNode.self(cur, language.classId(cur));
-            case "parent" -> scope.traitSelfSlot() >= 0
+            case "parent" -> slotSelf
                     ? ClassRefNode.traitParent(scope.traitSelfSlot())
                     : ClassRefNode.parent(cur, language.classId(cur));
             case "static" -> ClassRefNode.staticRef(scope.calledClassSlot());
