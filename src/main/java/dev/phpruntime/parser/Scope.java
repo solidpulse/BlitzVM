@@ -51,9 +51,11 @@ final class Scope {
     private int tableSlot = -1;
     private boolean included;
     private final Map<String, Integer> literalSlots = new HashMap<>();
+    private final Set<String> globalNames = new java.util.LinkedHashSet<>();
 
     LValueNode compactVariable(String name) {
-        if (global || included) { return variable(name); }
+        if (global) { return new GlobalVarNode(name, name.equals("GLOBALS") ? -1 : language.globalId(name)); }
+        if (included) { return variable(name); }
         Integer existing = slots.get(name);
         int slot = existing != null ? existing : literalSlots.computeIfAbsent(name,
                 n -> frame.addSlot(FrameSlotKind.Illegal, n, null));
@@ -173,6 +175,7 @@ final class Scope {
             return new GlobalVarNode(name, -1);
         }
         if (global || SUPERGLOBALS.contains(name)) {
+            if (global && !SUPERGLOBALS.contains(name)) { globalNames.add(name); }
             return new GlobalVarNode(name, language.globalId(name));
         }
         if (included) { return new DynamicVarNode(new ConstNode(name), tableSlot); }
@@ -322,6 +325,7 @@ final class Scope {
     }
 
     FrameDescriptor build() {
+        if (global) { frame.info(new dev.phpruntime.runtime.PhpGlobalLayout(globalNames.toArray(new String[0]))); }
         if (tableSlot >= 0) {
             Map<String, Integer> locals = new java.util.LinkedHashMap<>();
             for (var entry : slots.entrySet()) {

@@ -814,12 +814,14 @@ public final class Parser {
             inits.add(acceptOp("=") ? expression() : null);
         } while (acceptOp(","));
         endStatement();
-        return new StaticDeclNode(
+        StaticDeclNode node = new StaticDeclNode(
                 scope.isGlobal(), scope.closureObjSlot(),
                 names.toArray(new String[0]),
                 slots.stream().mapToInt(Integer::intValue).toArray(),
                 globalIds.stream().mapToInt(Integer::intValue).toArray(),
                 inits.toArray(new PhpNode[0])).at(line);
+        if (scope.isFileScope() && !scope.isGlobal()) { node.includedScope(scope.dynamicSlot()); }
+        return node;
     }
 
     private PhpNode tryStatement(int line) {
@@ -2219,6 +2221,10 @@ public final class Parser {
                         rn.fallback(), language.functionId(rn.fallback())).at(line);
             }
             ParsedCallArgs pca = parseCallArgDetails();
+            if (rn.primary().equalsIgnoreCase("get_defined_vars") && pca.names() == null && pca.spreads() == null) {
+                if (pca.args().length != 0) { throw error("get_defined_vars() expects exactly 0 arguments"); }
+                return new GetDefinedVarsNode(scope.dynamicSlot()).at(line);
+            }
             if (rn.primary().equalsIgnoreCase("compact") && pca.names() == null && pca.spreads() == null) {
                 if (pca.args().length == 0) { throw error("compact() expects at least 1 argument"); }
                 PhpNode[] args = pca.args();

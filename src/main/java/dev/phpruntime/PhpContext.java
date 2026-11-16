@@ -51,6 +51,8 @@ public final class PhpContext {
     private final TruffleLanguage.Env env;
     private PhpReference[] globalsById;
     private final Map<String, PhpReference> dynamicGlobals = new java.util.LinkedHashMap<>();
+    private final Map<String, Integer> globalOrder = new java.util.LinkedHashMap<>();
+    private final Set<String> reservedGlobals = new java.util.HashSet<>();
     private final Map<String, PhpFunction> functions = new HashMap<>();
     private PhpFunction[] functionsById = new PhpFunction[256];
     private final Map<String, PhpClass> classes = new HashMap<>();
@@ -149,6 +151,14 @@ public final class PhpContext {
 
     // ------------------------------------------------------------ globals
 
+    @TruffleBoundary
+    public void reserveGlobals(String[] names) {
+        for (String name : names) {
+            globalOrder.putIfAbsent(name, language.globalId(name));
+            reservedGlobals.add(name);
+        }
+    }
+
     /** extract can create an ordinary symbol called GLOBALS; literal $GLOBALS remains special. */
     @TruffleBoundary
     public void bindExtractedGlobal(String name, PhpReference cell) {
@@ -172,6 +182,18 @@ public final class PhpContext {
             return cell == null ? null : cell.value;
         }
         return readGlobal(name);
+    }
+
+    @TruffleBoundary
+    public PhpReference globalSymbolRef(String name) {
+        if (!name.equals("GLOBALS")) { return globalRef(name); }
+        return dynamicGlobals.computeIfAbsent(name, n -> new PhpReference(PhpNull.INSTANCE));
+    }
+
+    @TruffleBoundary
+    public void unsetGlobalSymbol(String name) {
+        if (name.equals("GLOBALS")) { dynamicGlobals.remove(name); }
+        else { unsetGlobal(name); }
     }
 
     public Object readGlobalById(int id) {
@@ -204,6 +226,7 @@ public final class PhpContext {
         if (cell == null) {
             cell = new PhpReference(value);
             globalsById[id] = cell;
+            globalOrder.put(language.globalName(id), id);
         } else {
             cell.value = value;
         }
@@ -228,8 +251,12 @@ public final class PhpContext {
         if (id >= globalsById.length) {
             growGlobalsTable(id);
         }
+        if (globalsById[id] == null) { recordGlobal(id); }
         globalsById[id] = cell;
     }
+
+    @TruffleBoundary
+    private void recordGlobal(int id) { globalOrder.put(language.globalName(id), id); }
 
     @TruffleBoundary
     private void growGlobalsTable(int id) {
@@ -240,7 +267,14 @@ public final class PhpContext {
         PhpReference[] table = globalsById;
         if (id < table.length) {
             table[id] = null;
+            forgetGlobal(id);
         }
+    }
+
+    @TruffleBoundary
+    private void forgetGlobal(int id) {
+        String name = language.globalName(id);
+        if (!reservedGlobals.contains(name)) { globalOrder.remove(name); }
     }
 
     @TruffleBoundary
@@ -261,17 +295,7 @@ public final class PhpContext {
         if ("GLOBALS".equals(name)) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
         }
-        Integer id = language.lookupGlobalId(name);
-        if (id != null) {
-            writeGlobalById(id, value);
-            return;
-        }
-        PhpReference cell = dynamicGlobals.get(name);
-        if (cell != null) {
-            cell.value = value;
-        } else {
-            dynamicGlobals.put(name, new PhpReference(value));
-        }
+        writeGlobalById(language.globalId(name), value);
     }
 
     @TruffleBoundary
@@ -310,9 +334,7 @@ public final class PhpContext {
             }
             return cell;
         }
-        cell = new PhpReference(PhpNull.INSTANCE);
-        dynamicGlobals.put(name, cell);
-        return cell;
+        return globalRefById(language.globalId(name));
     }
 
     @TruffleBoundary
@@ -320,22 +342,17 @@ public final class PhpContext {
         if ("GLOBALS".equals(name)) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
         }
-        Integer id = language.lookupGlobalId(name);
-        if (id != null) {
-            bindGlobalById(id, cell);
-        } else {
-            dynamicGlobals.put(name, cell);
-        }
+        bindGlobalById(language.globalId(name), cell);
     }
 
     @TruffleBoundary
     public PhpArray buildGlobalsSnapshot() {
         PhpArray snap = new PhpArray();
-        int count = Math.min(globalsById.length, language.globalIdCount());
-        for (int i = 0; i < count; i++) {
-            PhpReference cell = globalsById[i];
+        for (var entry : globalOrder.entrySet()) {
+            int i = entry.getValue();
+            PhpReference cell = i < globalsById.length ? globalsById[i] : null;
             if (cell != null && cell.value != null) {
-                String name = language.globalName(i);
+                String name = entry.getKey();
                 if (name != null && !"GLOBALS".equals(name)) {
                     snap.put(name, PhpOps.copyOnAssign(cell.value));
                 }

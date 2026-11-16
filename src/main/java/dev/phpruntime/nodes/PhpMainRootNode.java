@@ -31,11 +31,13 @@ public final class PhpMainRootNode extends PhpRootNode {
     private final List<PhpClassTemplate> topLevelClasses;
     private final int hoistedClassesSlot;
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final String[] globalNames;
 
     public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body,
                            List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses, int hoistedClassesSlot) {
         super(language, fd, source, 1);
         scopeLayout = fd.getInfo() instanceof dev.phpruntime.runtime.PhpScopeLayout layout ? layout : null;
+        globalNames = fd.getInfo() instanceof dev.phpruntime.runtime.PhpGlobalLayout layout ? layout.names() : new String[0];
         for (String sg : INIT_GLOBALS) {
             language.globalId(sg);
         }
@@ -62,6 +64,7 @@ public final class PhpMainRootNode extends PhpRootNode {
         try {
             if (isEntry) {
                 start(ctx, request);
+                ctx.reserveGlobals(globalNames);
             }
             declareFunctions(ctx);
             if (hoistedClassesSlot >= 0) {
