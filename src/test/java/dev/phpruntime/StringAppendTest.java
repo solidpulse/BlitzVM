@@ -35,6 +35,14 @@ class StringAppendTest {
     void cellAccessorsFlattenAndNeverShareBuffersWithAnotherCell() {
         PhpReference cell = new PhpReference("a");
         cell.appendString("b", false);
+        cell.ensureDefined();
+        try {
+            var field = PhpReference.class.getDeclaredField("value");
+            field.setAccessible(true);
+            var snapshot = PhpStringBuffer.class.getDeclaredField("snapshot");
+            snapshot.setAccessible(true);
+            assertNull(snapshot.get(field.get(cell)), "Taking an existing reference must not flatten an append prefix");
+        } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
         Object copy = cell.getValue();
         assertInstanceOf(String.class, copy);
         assertSame(copy, cell.getValue());
@@ -46,6 +54,25 @@ class StringAppendTest {
         PhpStrings.checkValue(cell, "cell read");
         cell.setValue("reset"); cell.appendString("!", false);
         assertEquals("reset!", cell.getValue());
+    }
+
+    @Test
+    void repeatedByReferenceCallsDoNotFlattenThePrefix() {
+        Builtins.def("__append_ref_storage_check", 0, 0, (ctx, args) -> {
+            try {
+                var field = PhpReference.class.getDeclaredField("value");
+                field.setAccessible(true);
+                var snapshot = PhpStringBuffer.class.getDeclaredField("snapshot");
+                snapshot.setAccessible(true);
+                Object buffer = field.get(ctx.globalRef("append_ref_test"));
+                assertInstanceOf(PhpStringBuffer.class, buffer);
+                assertNull(snapshot.get(buffer), "By-ref call preparation must not flatten existing cell storage");
+            } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+            return PhpNull.INSTANCE;
+        });
+        try (var ctx = org.graalvm.polyglot.Context.newBuilder("php").build()) {
+            ctx.eval("php", "<?php function append_ref_step(&$s) { $s .= 'ab'; } $append_ref_test = ''; for ($i = 0; $i < 1000; $i++) { append_ref_step($append_ref_test); } __append_ref_storage_check();");
+        }
     }
 
     @Test

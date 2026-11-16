@@ -24,6 +24,9 @@ public final class PhpReference {
     public Object getValue() { return PhpStringBuffer.flatten(value); }
     public void setValue(Object value) { this.value = PhpStringBuffer.flatten(value); }
 
+    /** Taking an existing reference is not a value read and must not copy its append prefix. */
+    public void ensureDefined() { if (value == null) { value = PhpNull.INSTANCE; } }
+
     /** Only .= may create or mutate a buffer, and it stays in this cell. */
     public String appendString(String suffix, boolean resultNeeded) {
         PhpStringBuffer buffer;

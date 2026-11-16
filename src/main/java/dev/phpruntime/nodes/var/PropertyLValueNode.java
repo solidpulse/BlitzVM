@@ -298,9 +298,7 @@ public final class PropertyLValueNode extends LValueNode {
         }
         Object existing = getNode.execute(obj, storageKey, null);
         if (existing instanceof PhpReference ref) {
-            if (ref.getValue() == null) {
-                ref.setValue(PhpNull.INSTANCE);
-            }
+            ref.ensureDefined();
             return ref;
         }
         if (existing == null && obj.phpClass().getMethod() != null && obj.phpClass().getMethod().callTarget() != null) {

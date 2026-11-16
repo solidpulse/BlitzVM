@@ -13,3 +13,6 @@ echo static_append(), '|', static_append(), '|', static_append(), "\n";
 $saved = $GLOBALS['output']; $output .= '!'; echo $saved, '|', $output, "\n";
 function untouched_global() { $plain = ''; $plain .= 'plain'; return $plain; }
 echo untouched_global(), "\n";
+class AppendStatic { public static $value; }
+AppendStatic::$value =& $output; $alias =& AppendStatic::$value;
+$alias .= '-static-property'; echo AppendStatic::$value, '|', $output, "\n";

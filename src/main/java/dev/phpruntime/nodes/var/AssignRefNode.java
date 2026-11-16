@@ -46,9 +46,7 @@ public final class AssignRefNode extends PhpNode {
         }
         Object raw = value.executeForRef(frame);
         if (raw instanceof PhpReference ref) {
-            if (ref.getValue() == null) {
-                ref.setValue(PhpNull.INSTANCE);
-            }
+            ref.ensureDefined();
             return ref;
         }
         PhpContext.get(this).notice("Only variables should be assigned by reference", line());

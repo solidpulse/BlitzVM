@@ -159,9 +159,7 @@ public final class PhpArray implements TruffleObject {
         Object k = normalizeKey(key);
         Object existing = map.get(k);
         if (existing instanceof PhpReference ref) {
-            if (ref.getValue() == null) {
-                ref.setValue(PhpNull.INSTANCE);
-            }
+            ref.ensureDefined();
             return ref;
         }
         PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);

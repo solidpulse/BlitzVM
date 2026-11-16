@@ -111,7 +111,7 @@ public final class DynamicVarNode extends LValueNode {
             cell = table.cells[slot];
             if (cell == null) { table.cells[slot] = cell = new PhpReference(null); }
         } else { cell = table.cell(name, true); }
-        if (cell.getValue() == null) { cell.setValue(PhpNull.INSTANCE); }
+        cell.ensureDefined();
         return cell.alias();
     }
 

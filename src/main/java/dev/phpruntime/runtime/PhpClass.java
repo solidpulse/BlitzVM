@@ -83,9 +83,7 @@ public final class PhpClass {
         public PhpReference obtainCell() {
             Object v = raw();
             if (v instanceof PhpReference ref) {
-                if (ref.getValue() == null) {
-                    ref.setValue(PhpNull.INSTANCE);
-                }
+                ref.ensureDefined();
                 return ref;
             }
             PhpReference ref = new PhpReference(v == null ? PhpNull.INSTANCE : v);

@@ -12,3 +12,19 @@ function containers() {
     echo json_encode($a), '|', json_encode($b), "\n";
 }
 containers();
+class AppendAccess implements ArrayAccess {
+    public $values = ['s' => 'a', 'nested' => ['s' => 'b']];
+    function offsetExists($key): bool { return isset($this->values[$key]); }
+    function &offsetGet($key): mixed { echo 'get:', $key, '|'; return $this->values[$key]; }
+    function offsetSet($key, $value): void { echo 'set:', $key, '|'; $this->values[$key] = $value; }
+    function offsetUnset($key): void { unset($this->values[$key]); }
+}
+$access = new AppendAccess(); $access['s'] .= 'x'; echo "\n";
+$access['nested']['s'] .= 'y'; echo "\n";
+echo json_encode($access->values), "\n";
+class AppendMagic {
+    private $value = 'a';
+    function __get($name) { echo 'magic-get|'; return $this->value; }
+    function __set($name, $value) { echo 'magic-set|'; $this->value = $value; }
+}
+$magic = new AppendMagic(); echo ($magic->s .= 'b'), "\n";

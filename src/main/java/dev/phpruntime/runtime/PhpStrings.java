@@ -412,11 +412,17 @@ public final class PhpStrings {
         } else if (value instanceof PhpReference ref && seen.put(ref, true) == null) {
             checkNoBuffer(ref.getValue(), origin, seen);
         } else if (value instanceof PhpArray arr && seen.put(arr, true) == null) {
-            for (var entry : arr.rawEntries()) { checkNoBuffer(entry.getValue(), origin, seen); }
+            for (var entry : arr.rawEntries()) {
+                checkNoBuffer(entry.getKey(), origin, seen);
+                checkNoBuffer(entry.getValue(), origin, seen);
+            }
         } else if (value instanceof PhpObject obj && seen.put(obj, true) == null) {
             var get = com.oracle.truffle.api.object.DynamicObject.GetNode.getUncached();
             for (Object key : com.oracle.truffle.api.object.DynamicObject.GetKeyArrayNode.getUncached().execute(obj)) {
                 checkNoBuffer(get.execute(obj, key, PhpNull.INSTANCE), origin, seen);
+            }
+            if (obj.closure() != null && obj.closure().captures() != null) {
+                for (Object capture : obj.closure().captures()) { checkNoBuffer(capture, origin, seen); }
             }
         }
     }

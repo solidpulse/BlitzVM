@@ -65,7 +65,7 @@ public final class ScopedVarNode extends LValueNode {
         PhpReference[] cells = table(frame).cells;
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = cell = new PhpReference(PhpNull.INSTANCE); }
-        else if (cell.getValue() == null) { cell.setValue(PhpNull.INSTANCE); }
+        else { cell.ensureDefined(); }
         return cell.alias();
     }
 

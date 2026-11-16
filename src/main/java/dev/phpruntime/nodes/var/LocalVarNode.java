@@ -123,9 +123,7 @@ public final class LocalVarNode extends LValueNode {
         if (ref == null) {
             ref = new PhpReference(PhpNull.INSTANCE);
             frame.setObject(slot, ref);
-        } else if (ref.getValue() == null) {
-            ref.setValue(PhpNull.INSTANCE);
-        }
+        } else { ref.ensureDefined(); }
         return ref;
     }
 

@@ -48,7 +48,7 @@ public final class PhpSymbolTable {
         public PhpReference obtain() {
             PhpReference cell = get();
             if (cell == null) { bind(cell = new PhpReference(PhpNull.INSTANCE)); }
-            else if (cell.getValue() == null) { cell.setValue(PhpNull.INSTANCE); }
+            else { cell.ensureDefined(); }
             return cell.alias();
         }
     }

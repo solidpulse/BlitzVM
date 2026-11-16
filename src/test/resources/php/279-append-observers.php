@@ -13,3 +13,5 @@ function observations() {
     $f = 'strlen'; echo $f($s), '|', call_user_func('strlen', $s), '|', strlen(...[$s]), "\n";
 }
 observations();
+function ref_builtin(&$s) { $s .= 'abc'; preg_match('/(b)/', $s, $s); echo json_encode($s), "\n"; }
+$s = ''; ref_builtin($s);

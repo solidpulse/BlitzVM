@@ -4,3 +4,7 @@ abef|abe
 s=abef
 a:1:{s:1:"s";s:4:"abef";}
 ["xyz"]|["xyz"]
+get:s|set:s|
+get:nested|
+{"s":"ax","nested":{"s":"by"}}
+magic-get|magic-set|ab

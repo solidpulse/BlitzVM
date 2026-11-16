@@ -6,6 +6,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpObject;
 
 /** {@code .=}: statement execution leaves the append storage unflattened. */
 public final class StringAppendNode extends PhpNode {
@@ -30,6 +31,10 @@ public final class StringAppendNode extends PhpNode {
             Object suffix = value.execute(frame);
             if (suffix instanceof String s) {
                 return target.appendString(frame, keys, s, resultNeeded);
+            }
+            if (!(suffix instanceof PhpObject)) {
+                // Scalar conversion has no PHP side effects, so it can use append storage too.
+                return target.appendString(frame, keys, PhpOps.toStr(suffix), resultNeeded);
             }
             // Conversions can call PHP (__toString): snapshot and convert the LHS first.
             PhpReference nested = target instanceof IndexLValueNode index && index.isNested()

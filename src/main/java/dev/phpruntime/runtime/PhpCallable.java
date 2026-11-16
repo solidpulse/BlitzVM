@@ -306,9 +306,7 @@ public final class PhpCallable {
         boolean expectsRef = fnRoot != null && fnRoot.isParamByRef(paramIdx);
         if (expectsRef) {
             if (arg instanceof PhpReference ref) {
-                if (ref.getValue() == null) {
-                    ref.setValue(PhpNull.INSTANCE);
-                }
+                ref.ensureDefined();
                 return ref;
             }
             if (ctx != null) {

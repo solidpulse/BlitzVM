@@ -266,9 +266,7 @@ public final class PhpContext {
         if (id < table.length) {
             PhpReference cell = table[id];
             if (cell != null) {
-                if (cell.getValue() == null) {
-                    cell.setValue(PhpNull.INSTANCE);
-                }
+                cell.ensureDefined();
                 return cell.alias();
             }
         }
@@ -358,9 +356,7 @@ public final class PhpContext {
         }
         PhpReference cell = dynamicGlobals.get(name);
         if (cell != null) {
-            if (cell.getValue() == null) {
-                cell.setValue(PhpNull.INSTANCE);
-            }
+            cell.ensureDefined();
             return cell;
         }
         return globalRefById(language.globalId(name));

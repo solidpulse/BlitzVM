@@ -245,10 +245,10 @@ Targets: `truffle` (BlitzVM), `truffle-jdk`, `fpm`, `fpm-jit`, `swoole`, `swoole
 
 ## Testing
 
-`mvn test` runs 285 tests (2 skipped without a MySQL server; live MariaDB fixtures run
+`mvn test` runs 318 tests (2 skipped without a MySQL server; live MariaDB fixtures run
 when `BLITZ_MYSQL_HOST` is set):
 
-- `ConformanceTest`: 197 PHP scripts whose expected output came from real PHP 8.5, matched
+- `ConformanceTest`: 224 PHP scripts whose expected output came from real PHP 8.5, matched
   byte for byte.
 - `JsConformanceTest`: 16 JavaScript scripts whose expected output came from real Node.js.
 - `SchedulerTest`: a busy loop and a sleeping request must not starve a hello request on a
@@ -265,6 +265,9 @@ when `BLITZ_MYSQL_HOST` is set):
   `$_GET`/`$_POST`/`$_COOKIE` query and cookie parsing.
 - `DynamicScopeTest`: typed-frame preservation and 16-thread isolation of include/extract
   with method class scope. Fixtures 250–269 cover dynamic-scope and variable-variable syntax.
+- `StringAppendTest`: immutable append snapshots, buffer-escape guards, local-slot marking,
+  repeated by-reference calls and shared-engine request isolation. Fixtures 270–279 cover
+  string append reads, references, generators, dynamic scope and byte/conversion semantics.
 
 ## PHP support
 
@@ -292,6 +295,9 @@ these scope-sensitive builtins are not yet implemented.
 
 Also supported: general references, destructuring, heredoc/nowdoc, namespaces, generators,
 `match`, `goto`, traits, SPL interfaces/collections and PHP byte-string semantics.
+Local and reference-cell `.=` appends use growable storage with immutable value snapshots,
+including globals, by-reference parameters and template-local symbol tables. Ordinary array
+element and property appends still store immutable strings.
 Sessions and full WordPress/Laravel application compatibility remain work in progress.
 
 ## Roadmap

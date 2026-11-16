@@ -64,9 +64,7 @@ public final class CallArgHelper {
         if (isFunctionOrNewResult(argNode)) {
             Object res = argNode.executeForRef(frame);
             if (res instanceof PhpReference ref) {
-                if (ref.getValue() == null) {
-                    ref.setValue(PhpNull.INSTANCE);
-                }
+                ref.ensureDefined();
                 return ref;
             }
             if (!(argNode instanceof dev.phpruntime.nodes.expr.NewNode)) {
