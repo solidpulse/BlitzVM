@@ -328,10 +328,15 @@ final class ArrayFunctions {
 
     // ------------------------------------------------------------------ helpers
 
+    /** Scans in place and stops at the first match; copying the entries first made in_array O(n) allocation per call. */
     private static Object search(Object needle, PhpArray hay, boolean strict) {
-        for (Map.Entry<Object, Object> e : hay.entries()) {
-            if (strict ? PhpOps.strictEquals(needle, e.getValue()) : PhpOps.looseEquals(needle, e.getValue())) {
-                return e.getKey();
+        for (int pos = hay.firstPos(); pos >= 0; pos = hay.nextPos(pos)) {
+            Object v = hay.rawValueAt(pos);
+            if (v instanceof dev.phpruntime.runtime.PhpReference ref) {
+                v = ref.getValue();
+            }
+            if (strict ? PhpOps.strictEquals(needle, v) : PhpOps.looseEquals(needle, v)) {
+                return hay.keyAt(pos);
             }
         }
         return null;
