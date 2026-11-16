@@ -32,10 +32,20 @@ public final class PhpDispatcher {
         }
     }
 
-    private static final Map<String, String> MIME = Map.of(
-            "html", "text/html; charset=UTF-8", "css", "text/css", "js", "application/javascript",
-            "json", "application/json", "png", "image/png", "jpg", "image/jpeg", "svg", "image/svg+xml",
-            "txt", "text/plain; charset=UTF-8", "ico", "image/x-icon");
+    private static final Map<String, String> MIME = Map.ofEntries(
+            Map.entry("html", "text/html; charset=UTF-8"), Map.entry("htm", "text/html; charset=UTF-8"),
+            Map.entry("css", "text/css; charset=UTF-8"), Map.entry("js", "text/javascript; charset=UTF-8"),
+            Map.entry("mjs", "text/javascript; charset=UTF-8"), Map.entry("map", "application/json"),
+            Map.entry("json", "application/json"), Map.entry("xml", "application/xml"),
+            Map.entry("txt", "text/plain; charset=UTF-8"), Map.entry("csv", "text/csv; charset=UTF-8"),
+            Map.entry("png", "image/png"), Map.entry("jpg", "image/jpeg"), Map.entry("jpeg", "image/jpeg"),
+            Map.entry("gif", "image/gif"), Map.entry("webp", "image/webp"), Map.entry("avif", "image/avif"),
+            Map.entry("svg", "image/svg+xml"), Map.entry("ico", "image/x-icon"), Map.entry("bmp", "image/bmp"),
+            Map.entry("woff", "font/woff"), Map.entry("woff2", "font/woff2"), Map.entry("ttf", "font/ttf"),
+            Map.entry("otf", "font/otf"), Map.entry("eot", "application/vnd.ms-fontobject"),
+            Map.entry("mp4", "video/mp4"), Map.entry("webm", "video/webm"), Map.entry("mp3", "audio/mpeg"),
+            Map.entry("ogg", "audio/ogg"), Map.entry("wav", "audio/wav"), Map.entry("pdf", "application/pdf"),
+            Map.entry("zip", "application/zip"), Map.entry("gz", "application/gzip"), Map.entry("wasm", "application/wasm"));
 
     private final Path docRoot;
     private final PhpEngine engine;
@@ -61,19 +71,41 @@ public final class PhpDispatcher {
             if (!file.startsWith(docRoot)) {
                 return Response.text(403, "Forbidden\n");
             }
+            // Routing as FrankenPHP's php_server (try_files {path} {path}/index.php index.php,
+            // split_path .php): no configuration needed for front controllers like WordPress.
+            String pathInfo = null;
             if (Files.isDirectory(file)) {
-                file = file.resolve("index.php");
+                Path index = file.resolve("index.php");
+                if (Files.isRegularFile(index) && !path.endsWith("/")) {
+                    List<String[]> h = new ArrayList<>();
+                    String q = req.rawQuery() == null || req.rawQuery().isEmpty() ? "" : "?" + req.rawQuery();
+                    h.add(new String[]{"Location", req.rawPath() + "/" + q});
+                    return new Response(308, h, new byte[0]);
+                }
+                file = Files.isRegularFile(index) ? index : docRoot.resolve("index.php");
+            } else if (!Files.isRegularFile(file)) {
+                int split = path.indexOf(".php/");
+                Path script = split < 0 ? null : docRoot.resolve(path.substring(1, split + 4)).normalize();
+                if (script != null && script.startsWith(docRoot) && Files.isRegularFile(script)) {
+                    file = script;
+                    pathInfo = path.substring(split + 4);
+                } else {
+                    file = docRoot.resolve("index.php");
+                }
             }
             if (!Files.isRegularFile(file)) {
                 return Response.text(404, "Not Found: " + path + "\n");
             }
             if (!isScript(file)) {
                 String name = file.getFileName().toString();
+                String ext = PhpStrings.lower(name.substring(name.lastIndexOf('.') + 1));
                 List<String[]> h = new ArrayList<>();
-                h.add(new String[]{"Content-Type", MIME.getOrDefault(name.substring(name.lastIndexOf('.') + 1), "application/octet-stream")});
-                return new Response(200, h, Files.readAllBytes(file));
+                h.add(new String[]{"Content-Type", MIME.getOrDefault(ext, "application/octet-stream")});
+                h.add(new String[]{"Last-Modified", java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                        Files.getLastModifiedTime(file).toInstant().atZone(java.time.ZoneOffset.UTC))});
+                return new Response(200, h, "HEAD".equals(req.method()) ? new byte[0] : Files.readAllBytes(file));
             }
-            PhpRequest request = buildRequest(req, file);
+            PhpRequest request = buildRequest(req, file, pathInfo);
             PhpEngine.Result result = engine.execute(file, request);
             if (!result.errors().isEmpty()) {
                 System.err.print(result.errors());
@@ -95,7 +127,7 @@ public final class PhpDispatcher {
         return name.endsWith(".php") || name.endsWith(".js");
     }
 
-    private PhpRequest buildRequest(Request req, Path file) {
+    private PhpRequest buildRequest(Request req, Path file, String pathInfo) {
         PhpRequest r = new PhpRequest();
         r.http = true;
         r.method = req.method();
@@ -120,7 +152,13 @@ public final class PhpDispatcher {
         s.put("REQUEST_URI", r.uri);
         s.put("QUERY_STRING", r.queryString);
         s.put("SCRIPT_NAME", PhpStrings.fromJava(script));
-        s.put("PHP_SELF", PhpStrings.fromJava(script));
+        s.put("PHP_SELF", PhpStrings.fromJava(pathInfo == null ? script : script + pathInfo));
+        if (pathInfo != null) {
+            s.put("PATH_INFO", PhpStrings.fromJava(pathInfo));
+        }
+        s.put("GATEWAY_INTERFACE", "CGI/1.1");
+        s.put("REQUEST_SCHEME", "http");
+        s.put("REQUEST_TIME_FLOAT", Double.toString(System.currentTimeMillis() / 1000.0));
         s.put("SCRIPT_FILENAME", PhpStrings.fromJava(r.scriptFilename));
         s.put("DOCUMENT_ROOT", PhpStrings.fromJava(docRoot.toString()));
         s.put("SERVER_PROTOCOL", req.protocol());
@@ -130,7 +168,12 @@ public final class PhpDispatcher {
         s.put("REMOTE_ADDR", r.remoteAddr);
         s.put("REQUEST_TIME", Long.toString(System.currentTimeMillis() / 1000));
         for (Map.Entry<String, String> h : req.headers().entrySet()) {
-            s.put("HTTP_" + PhpStrings.upper(h.getKey()).replace('-', '_'), h.getValue());
+            String upper = PhpStrings.upper(h.getKey()).replace('-', '_');
+            if (upper.equals("CONTENT_TYPE") || upper.equals("CONTENT_LENGTH")) {
+                s.put(upper, h.getValue()); // CGI names: php has no HTTP_CONTENT_TYPE
+            } else {
+                s.put("HTTP_" + upper, h.getValue());
+            }
             r.headers.put(h.getKey(), h.getValue());
         }
         // The shared host also serves JavaScript. Keep that language's existing text
