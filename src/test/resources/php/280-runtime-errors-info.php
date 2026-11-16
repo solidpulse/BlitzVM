@@ -1,7 +1,7 @@
 <?php
 // trigger_error and user_error route through set_error_handler with every E_USER_* level.
 set_error_handler(function ($errno, $errstr, $errfile, $errline) {
-    echo "handler:", $errno, ":", $errstr, ":", basename($errfile), ":", $errline, "\n";
+    echo "handler:", $errno, ":", $errstr, ":", $errline, "\n";
     return true;
 });
 var_dump(trigger_error("plain notice"));

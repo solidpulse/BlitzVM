@@ -76,6 +76,8 @@ public final class Builtins {
         SplFunctions.register();
         BinaryFunctions.register();
         RuntimeFunctions.register();
+        TextFunctions.register();
+        CryptFunctions.register();
     }
 
     private Builtins() {

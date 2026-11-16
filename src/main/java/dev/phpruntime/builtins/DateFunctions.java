@@ -30,21 +30,21 @@ final class DateFunctions {
 
     static final java.time.ZoneId UTC = java.time.ZoneId.of("UTC");
 
-    private static final String[] MON_FULL_NAMES = {
+    static final String[] MON_FULL_NAMES = {
         "January", "February", "March", "April",
         "May", "June", "July", "August",
         "September", "October", "November", "December"
     };
 
-    private static final String[] MON_SHORT_NAMES = {
+    static final String[] MON_SHORT_NAMES = {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     };
 
-    private static final String[] DAY_FULL_NAMES = {
+    static final String[] DAY_FULL_NAMES = {
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
     };
 
-    private static final String[] DAY_SHORT_NAMES = {
+    static final String[] DAY_SHORT_NAMES = {
         "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
     };
 
