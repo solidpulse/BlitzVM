@@ -81,6 +81,7 @@ public final class Builtins {
         FilterFunctions.register();
         GzipFunctions.register();
         DirClasses.register();
+        TokenizerFunctions.register();
     }
 
     private Builtins() {
