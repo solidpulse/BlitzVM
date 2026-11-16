@@ -29,7 +29,7 @@ public final class ScopedVarNode extends LValueNode {
             return value;
         }
         PhpReference cell = table(frame).cells[slot];
-        return cell == null ? null : cell.value;
+        return cell == null ? null : cell.getValue();
     }
 
     @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
@@ -57,7 +57,7 @@ public final class ScopedVarNode extends LValueNode {
         PhpReference[] cells = table(frame).cells;
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = PhpReference.local(value); }
-        else { cell.value = value; }
+        else { cell.setValue(value); }
     }
 
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
@@ -65,7 +65,7 @@ public final class ScopedVarNode extends LValueNode {
         PhpReference[] cells = table(frame).cells;
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = cell = new PhpReference(PhpNull.INSTANCE); }
-        else if (cell.value == null) { cell.value = PhpNull.INSTANCE; }
+        else if (cell.getValue() == null) { cell.setValue(PhpNull.INSTANCE); }
         return cell.alias();
     }
 

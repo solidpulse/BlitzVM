@@ -53,7 +53,7 @@ public final class CompactNode extends PhpNode {
             else {
                 PhpReference cell = table.cell(name, false);
                 value = name.equals("this") ? table.thisValue == PhpNull.INSTANCE ? null : table.thisValue
-                        : cell == null ? null : cell.value;
+                        : cell == null ? null : cell.getValue();
             }
             put(result, name, value);
         } else {

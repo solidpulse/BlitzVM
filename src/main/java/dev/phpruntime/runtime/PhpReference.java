@@ -7,7 +7,7 @@ package dev.phpruntime.runtime;
  */
 public final class PhpReference {
 
-    public Object value;
+    private Object value;
     /** Symbol-table storage cells are not PHP references until they are explicitly aliased. */
     private boolean aliased = true;
 
@@ -19,6 +19,9 @@ public final class PhpReference {
 
     public PhpReference alias() { aliased = true; return this; }
     public boolean isAliased() { return aliased; }
+
+    public Object getValue() { return value; }
+    public void setValue(Object value) { this.value = value; }
 
     public PhpReference() {
         this(PhpNull.INSTANCE);

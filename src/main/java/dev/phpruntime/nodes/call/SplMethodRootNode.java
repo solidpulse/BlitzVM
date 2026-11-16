@@ -198,7 +198,7 @@ public final class SplMethodRootNode extends RootNode {
     }
 
     private static Object unwrap(Object value) {
-        return value instanceof PhpReference ref ? ref.value : value;
+        return value instanceof PhpReference ref ? ref.getValue() : value;
     }
 
     private static int naturalCompare(String left, String right, boolean insensitive) {

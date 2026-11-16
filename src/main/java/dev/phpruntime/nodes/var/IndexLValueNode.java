@@ -229,7 +229,7 @@ public final class IndexLValueNode extends LValueNode {
             } else {
                 Object raw = access.getRaw(obj, key);
                 if (raw instanceof PhpReference ref) {
-                    ref.value = writeMixed(ref.value, keys, at + 1, value);
+                    ref.setValue(writeMixed(ref.getValue(), keys, at + 1, value));
                 } else {
                     if (!(raw instanceof PhpObject)) {
                         access.indirectNotice(obj);
@@ -249,7 +249,7 @@ public final class IndexLValueNode extends LValueNode {
         } else {
             Object raw = key == APPEND ? null : arr.getRaw(key);
             if (raw instanceof PhpReference ref) {
-                ref.value = writeMixed(ref.value, keys, at + 1, value);
+                ref.setValue(writeMixed(ref.getValue(), keys, at + 1, value));
             } else {
                 Object child = writeMixed(raw, keys, at + 1, value);
                 if (key == APPEND) {
@@ -282,8 +282,8 @@ public final class IndexLValueNode extends LValueNode {
                 return new CellResult(root, new PhpReference(PhpOps.copyOnAssign(raw)));
             }
             if (raw instanceof PhpReference ref) {
-                CellResult child = mixedCell(ref.value, keys, at + 1);
-                ref.value = child.root();
+                CellResult child = mixedCell(ref.getValue(), keys, at + 1);
+                ref.setValue(child.root());
                 return new CellResult(root, child.cell());
             }
             if (!(raw instanceof PhpObject)) { access.indirectNotice(obj); }
@@ -295,8 +295,8 @@ public final class IndexLValueNode extends LValueNode {
             return new CellResult(array, ref);
         }
         Object raw = keys[at] == APPEND ? null : array.getRaw(key);
-        CellResult child = mixedCell(raw instanceof PhpReference ref ? ref.value : raw, keys, at + 1);
-        if (raw instanceof PhpReference ref) { ref.value = child.root(); }
+        CellResult child = mixedCell(raw instanceof PhpReference ref ? ref.getValue() : raw, keys, at + 1);
+        if (raw instanceof PhpReference ref) { ref.setValue(child.root()); }
         else if (keys[at] == APPEND) { array.append(child.root()); }
         else { array.put(key, child.root()); }
         return new CellResult(array, child.cell());
@@ -310,8 +310,8 @@ public final class IndexLValueNode extends LValueNode {
             Object k = keys[i];
             Object raw = k == APPEND ? null : arr.getRaw(k);
             if (raw instanceof PhpReference ref) {
-                PhpArray child = writable(ref.value);
-                ref.value = child;
+                PhpArray child = writable(ref.getValue());
+                ref.setValue(child);
                 arr = child;
             } else {
                 PhpArray child = writable(raw);
@@ -385,7 +385,7 @@ public final class IndexLValueNode extends LValueNode {
             }
             Object raw = access.getRaw(obj, keys[at]);
             if (raw instanceof PhpReference ref) {
-                ref.value = unsetMixed(ref.value, keys, at + 1);
+                ref.setValue(unsetMixed(ref.getValue(), keys, at + 1));
             } else {
                 if (!(raw instanceof PhpObject)) { access.indirectNotice(obj); }
                 unsetMixed(PhpOps.copyOnAssign(raw), keys, at + 1);
@@ -398,7 +398,7 @@ public final class IndexLValueNode extends LValueNode {
             array.remove(keys[at]);
         } else {
             Object raw = array.getRaw(keys[at]);
-            if (raw instanceof PhpReference ref) { ref.value = unsetMixed(ref.value, keys, at + 1); }
+            if (raw instanceof PhpReference ref) { ref.setValue(unsetMixed(ref.getValue(), keys, at + 1)); }
             else if (raw != null) { array.put(keys[at], unsetMixed(raw, keys, at + 1)); }
         }
         return array;
@@ -411,11 +411,11 @@ public final class IndexLValueNode extends LValueNode {
         for (int i = 0; i < keys.length - 1; i++) {
             Object raw = arr.getRaw(keys[i]);
             if (raw instanceof PhpReference ref) {
-                if (!(ref.value instanceof PhpArray c)) {
+                if (!(ref.getValue() instanceof PhpArray c)) {
                     return top;
                 }
                 PhpArray w = c.forWrite();
-                ref.value = w;
+                ref.setValue(w);
                 arr = w;
             } else {
                 if (!(raw instanceof PhpArray c)) {

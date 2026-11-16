@@ -64,7 +64,7 @@ public final class DynamicVarNode extends LValueNode {
         }
         int slot = slot(table, name);
         PhpReference cell = slot >= 0 ? table.cells[slot] : table.cell(name, false);
-        return cell == null ? null : cell.value;
+        return cell == null ? null : cell.getValue();
     }
 
     @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
@@ -96,8 +96,8 @@ public final class DynamicVarNode extends LValueNode {
         if (slot >= 0) {
             PhpReference cell = table.cells[slot];
             if (cell == null) { table.cells[slot] = PhpReference.local(value); }
-            else { cell.value = value; }
-        } else { table.cell(name, true).value = value; }
+            else { cell.setValue(value); }
+        } else { table.cell(name, true).setValue(value); }
     }
 
     @Override public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
@@ -111,7 +111,7 @@ public final class DynamicVarNode extends LValueNode {
             cell = table.cells[slot];
             if (cell == null) { table.cells[slot] = cell = new PhpReference(null); }
         } else { cell = table.cell(name, true); }
-        if (cell.value == null) { cell.value = PhpNull.INSTANCE; }
+        if (cell.getValue() == null) { cell.setValue(PhpNull.INSTANCE); }
         return cell.alias();
     }
 

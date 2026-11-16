@@ -89,7 +89,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return readUninitialized(obj, name, effectiveCallerLower(frame));
             }
             if (v instanceof PhpReference ref) {
-                v = ref.value;
+                v = ref.getValue();
             }
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
@@ -114,7 +114,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return readUninitialized(obj, name, effectiveCallerLower(frame));
             }
             if (v instanceof PhpReference ref) {
-                v = ref.value;
+                v = ref.getValue();
             }
             if (v != null) {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
@@ -139,7 +139,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return checkMagicIsset(obj, name);
             }
             if (v instanceof PhpReference ref) {
-                v = ref.value;
+                v = ref.getValue();
             }
             if (v != null) {
                 return v != PhpNull.INSTANCE;
@@ -168,7 +168,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return null;
             }
             if (v instanceof PhpReference ref) {
-                v = ref.value;
+                v = ref.getValue();
             }
             if (v != null) {
                 return v;
@@ -205,7 +205,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return;
             }
             if (existing instanceof PhpReference ref) {
-                ref.value = value;
+                ref.setValue(value);
                 return;
             }
             if (existing != null || obj.phpClass().setMethod() == null) {
@@ -231,7 +231,7 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         if (existing instanceof PhpReference ref) {
-            ref.value = value;
+            ref.setValue(value);
             return;
         }
         if (existing != null || obj.phpClass().setMethod() == null) {
@@ -298,8 +298,8 @@ public final class PropertyLValueNode extends LValueNode {
         }
         Object existing = getNode.execute(obj, storageKey, null);
         if (existing instanceof PhpReference ref) {
-            if (ref.value == null) {
-                ref.value = PhpNull.INSTANCE;
+            if (ref.getValue() == null) {
+                ref.setValue(PhpNull.INSTANCE);
             }
             return ref;
         }

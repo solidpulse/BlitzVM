@@ -192,7 +192,7 @@ public final class PhpContext {
         if (name.equals("GLOBALS")) {
             PhpReference cell = dynamicGlobals.get(name);
             if (cell == null) { dynamicGlobals.put(name, PhpReference.local(value)); }
-            else { cell.value = value; }
+            else { cell.setValue(value); }
         } else { writeGlobal(name, value); }
     }
 
@@ -200,7 +200,7 @@ public final class PhpContext {
     public Object readGlobalSymbol(String name) {
         if (name.equals("GLOBALS")) {
             PhpReference cell = dynamicGlobals.get(name);
-            return cell == null ? null : cell.value;
+            return cell == null ? null : cell.getValue();
         }
         return readGlobal(name);
     }
@@ -221,7 +221,7 @@ public final class PhpContext {
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
-            return cell == null ? null : cell.value;
+            return cell == null ? null : cell.getValue();
         }
         return null;
     }
@@ -231,7 +231,7 @@ public final class PhpContext {
         if (id < table.length) {
             PhpReference cell = table[id];
             if (cell != null) {
-                cell.value = value;
+                cell.setValue(value);
                 return;
             }
         }
@@ -249,7 +249,7 @@ public final class PhpContext {
             globalsById[id] = cell;
             globalOrder.put(language.globalName(id), id);
         } else {
-            cell.value = value;
+            cell.setValue(value);
         }
         return cell;
     }
@@ -259,8 +259,8 @@ public final class PhpContext {
         if (id < table.length) {
             PhpReference cell = table[id];
             if (cell != null) {
-                if (cell.value == null) {
-                    cell.value = PhpNull.INSTANCE;
+                if (cell.getValue() == null) {
+                    cell.setValue(PhpNull.INSTANCE);
                 }
                 return cell.alias();
             }
@@ -309,7 +309,7 @@ public final class PhpContext {
             return readGlobalById(id);
         }
         PhpReference cell = dynamicGlobals.get(name);
-        return cell == null ? null : cell.value;
+        return cell == null ? null : cell.getValue();
     }
 
     @TruffleBoundary
@@ -334,10 +334,10 @@ public final class PhpContext {
         Integer id = language.lookupGlobalId(name);
         if (id != null) {
             PhpReference[] table = globalsById;
-            return id < table.length && table[id] != null && table[id].value != null;
+            return id < table.length && table[id] != null && table[id].getValue() != null;
         }
         PhpReference cell = dynamicGlobals.get(name);
-        return cell != null && cell.value != null;
+        return cell != null && cell.getValue() != null;
     }
 
     @TruffleBoundary
@@ -351,8 +351,8 @@ public final class PhpContext {
         }
         PhpReference cell = dynamicGlobals.get(name);
         if (cell != null) {
-            if (cell.value == null) {
-                cell.value = PhpNull.INSTANCE;
+            if (cell.getValue() == null) {
+                cell.setValue(PhpNull.INSTANCE);
             }
             return cell;
         }
@@ -373,19 +373,19 @@ public final class PhpContext {
         for (var entry : globalOrder.entrySet()) {
             int i = entry.getValue();
             PhpReference cell = i < globalsById.length ? globalsById[i] : null;
-            if (cell != null && cell.value != null) {
+            if (cell != null && cell.getValue() != null) {
                 String name = entry.getKey();
                 if (name != null && !"GLOBALS".equals(name)) {
                     if (cell.isAliased()) { snap.putRef(name, cell); }
-                    else { snap.put(name, PhpOps.copyOnAssign(cell.value)); }
+                    else { snap.put(name, PhpOps.copyOnAssign(cell.getValue())); }
                 }
             }
         }
         for (Map.Entry<String, PhpReference> e : dynamicGlobals.entrySet()) {
             PhpReference cell = e.getValue();
-            if (cell != null && cell.value != null && !"GLOBALS".equals(e.getKey())) {
+            if (cell != null && cell.getValue() != null && !"GLOBALS".equals(e.getKey())) {
                 if (cell.isAliased()) { snap.putRef(e.getKey(), cell); }
-                else { snap.put(e.getKey(), PhpOps.copyOnAssign(cell.value)); }
+                else { snap.put(e.getKey(), PhpOps.copyOnAssign(cell.getValue())); }
             }
         }
         return snap;
@@ -417,7 +417,7 @@ public final class PhpContext {
         } else {
             Map<String, PhpReference> cloned = new HashMap<>();
             for (var entry : values.entrySet()) {
-                cloned.put(entry.getKey(), new PhpReference(PhpOps.copyOnAssign(entry.getValue().value)));
+                cloned.put(entry.getKey(), new PhpReference(PhpOps.copyOnAssign(entry.getValue().getValue())));
             }
             staticLocals.put(copy, cloned);
         }

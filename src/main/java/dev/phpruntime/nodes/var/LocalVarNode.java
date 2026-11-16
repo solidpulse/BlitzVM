@@ -84,7 +84,7 @@ public final class LocalVarNode extends LValueNode {
     public Object read(VirtualFrame frame, Object[] keys) {
         if (kind.isCell()) {
             PhpReference ref = getOrMigrateCell(frame);
-            return ref == null ? null : ref.value;
+            return ref == null ? null : ref.getValue();
         }
         if (frame.isLong(slot)) {
             return frame.getLong(slot);
@@ -100,8 +100,8 @@ public final class LocalVarNode extends LValueNode {
         if (ref == null) {
             ref = new PhpReference(PhpNull.INSTANCE);
             frame.setObject(slot, ref);
-        } else if (ref.value == null) {
-            ref.value = PhpNull.INSTANCE;
+        } else if (ref.getValue() == null) {
+            ref.setValue(PhpNull.INSTANCE);
         }
         return ref;
     }
@@ -138,7 +138,7 @@ public final class LocalVarNode extends LValueNode {
     public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
         if (kind.isCell()) {
             PhpReference ref = getOrMigrateCell(frame);
-            if (ref != null && ref.value instanceof Long l) {
+            if (ref != null && ref.getValue() instanceof Long l) {
                 return l;
             }
             throw new UnexpectedResultException(execute(frame));
@@ -156,7 +156,7 @@ public final class LocalVarNode extends LValueNode {
     public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
         if (kind.isCell()) {
             PhpReference ref = getOrMigrateCell(frame);
-            if (ref != null && ref.value instanceof Double d) {
+            if (ref != null && ref.getValue() instanceof Double d) {
                 return d;
             }
             throw new UnexpectedResultException(execute(frame));
@@ -216,7 +216,7 @@ public final class LocalVarNode extends LValueNode {
         if (ref == null) {
             frame.setObject(slot, new PhpReference(value));
         } else {
-            ref.value = value;
+            ref.setValue(value);
         }
     }
 

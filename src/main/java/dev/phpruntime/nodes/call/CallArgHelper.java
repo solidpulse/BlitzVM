@@ -33,7 +33,7 @@ public final class CallArgHelper {
 
     public static Object unwrapReturn(Object res) {
         if (res instanceof PhpReference ref) {
-            return ref.value == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.value);
+            return ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
         }
         return res;
     }
@@ -64,8 +64,8 @@ public final class CallArgHelper {
         if (isFunctionOrNewResult(argNode)) {
             Object res = argNode.executeForRef(frame);
             if (res instanceof PhpReference ref) {
-                if (ref.value == null) {
-                    ref.value = PhpNull.INSTANCE;
+                if (ref.getValue() == null) {
+                    ref.setValue(PhpNull.INSTANCE);
                 }
                 return ref;
             }
@@ -148,7 +148,7 @@ public final class CallArgHelper {
                     if (cur instanceof PhpArray arr) {
                         PhpReference cell = spreadLv.obtainCell(frame, sk);
                         writableSpread = arr.forWrite();
-                        cell.value = writableSpread;
+                        cell.setValue(writableSpread);
                         unpacked = writableSpread;
                     } else {
                         unpacked = cur == null ? PhpNull.INSTANCE : cur;
@@ -339,7 +339,7 @@ public final class CallArgHelper {
                 if (e.getValue() instanceof PhpReference ref && fnRoot.isParamByRef(normal)) {
                     extraNamed.putRef(pName, ref);
                 } else {
-                    Object v = e.getValue() instanceof PhpReference ref ? ref.value : e.getValue();
+                    Object v = e.getValue() instanceof PhpReference ref ? ref.getValue() : e.getValue();
                     extraNamed.put(pName, PhpOps.copyOnAssign(v));
                 }
             } else {
@@ -373,9 +373,9 @@ public final class CallArgHelper {
         Object[] values = toObjectArray(pos);
         for (int i = 0; i < values.length; i++) {
             if (values[i] instanceof PhpReference ref && !def.isRef(i)) {
-                values[i] = ref.value == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.value);
+                values[i] = ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
             } else if (values[i] instanceof PhpReference ref && def.isRef(i)) {
-                values[i] = ref.value == null ? PhpNull.INSTANCE : ref.value;
+                values[i] = ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue();
             }
         }
         CallNode.checkArity(def, values.length, site);
@@ -416,7 +416,7 @@ public final class CallArgHelper {
                 continue;
             }
             if (orig[i] instanceof PhpReference ref) {
-                ref.value = values[i];
+                ref.setValue(values[i]);
             } else if (lvs[i] != null) {
                 lvs[i].write(frame, keys[i], values[i]);
             }

@@ -306,8 +306,8 @@ public final class PhpCallable {
         boolean expectsRef = fnRoot != null && fnRoot.isParamByRef(paramIdx);
         if (expectsRef) {
             if (arg instanceof PhpReference ref) {
-                if (ref.value == null) {
-                    ref.value = PhpNull.INSTANCE;
+                if (ref.getValue() == null) {
+                    ref.setValue(PhpNull.INSTANCE);
                 }
                 return ref;
             }
@@ -320,7 +320,7 @@ public final class PhpCallable {
             return new PhpReference(PhpOps.copyOnAssign(arg));
         }
         if (arg instanceof PhpReference ref) {
-            return ref.value == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.value);
+            return ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
         }
         return PhpOps.copyOnAssign(arg);
     }
@@ -328,7 +328,7 @@ public final class PhpCallable {
     private static PhpArray buildMagicArray(Object[] userArgs) {
         PhpArray arr = new PhpArray();
         for (Object u : userArgs) {
-            Object val = u instanceof PhpReference ref ? ref.value : u;
+            Object val = u instanceof PhpReference ref ? ref.getValue() : u;
             arr.append(PhpOps.copyOnAssign(val == null ? PhpNull.INSTANCE : val));
         }
         return arr;
@@ -343,7 +343,7 @@ public final class PhpCallable {
         Object[] args = new Object[userArgs.length];
         for (int i = 0; i < userArgs.length; i++) {
             if (userArgs[i] instanceof PhpReference ref) {
-                args[i] = ref.value == null ? PhpNull.INSTANCE : (def.isRef(i) ? ref.value : PhpOps.copyOnAssign(ref.value));
+                args[i] = ref.getValue() == null ? PhpNull.INSTANCE : (def.isRef(i) ? ref.getValue() : PhpOps.copyOnAssign(ref.getValue()));
             } else {
                 args[i] = PhpOps.copyOnAssign(userArgs[i]);
             }
@@ -356,7 +356,7 @@ public final class PhpCallable {
         }
         for (int i = 0; i < userArgs.length; i++) {
             if (def.isRef(i) && userArgs[i] instanceof PhpReference ref) {
-                ref.value = args[i];
+                ref.setValue(args[i]);
             }
         }
         return result;

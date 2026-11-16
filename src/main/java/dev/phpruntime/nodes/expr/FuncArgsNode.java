@@ -48,7 +48,7 @@ public final class FuncArgsNode extends PhpNode {
                 for (int i = 0; i < count; i++) {
                     Object v = args[argOffset + i];
                     if (v instanceof dev.phpruntime.runtime.PhpReference ref) {
-                        v = ref.value == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.value;
+                        v = ref.getValue() == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.getValue();
                     }
                     arr.append(PhpOps.copyOnAssign(v));
                 }
@@ -64,7 +64,7 @@ public final class FuncArgsNode extends PhpNode {
                 }
                 Object v = args[argOffset + (int) idx];
                 if (v instanceof dev.phpruntime.runtime.PhpReference ref) {
-                    v = ref.value == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.value;
+                    v = ref.getValue() == null ? dev.phpruntime.runtime.PhpNull.INSTANCE : ref.getValue();
                 }
                 yield PhpOps.copyOnAssign(v);
             }

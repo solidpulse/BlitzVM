@@ -395,7 +395,7 @@ public final class PhpStrings {
             check(s, origin);
         } else if (value instanceof PhpReference ref) {
             if (seen.put(ref, true) == null) {
-                checkValue(ref.value, origin, seen);
+                checkValue(ref.getValue(), origin, seen);
             }
         } else if (value instanceof PhpArray arr && seen.put(arr, true) == null) {
             for (var e : arr.entries()) {

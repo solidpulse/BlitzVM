@@ -66,7 +66,7 @@ public final class CloneNode extends PhpNode {
                 continue;
             }
             if (raw instanceof dev.phpruntime.runtime.PhpReference ref) {
-                raw = ref.value;
+                raw = ref.getValue();
             }
             put.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
         }
