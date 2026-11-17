@@ -67,7 +67,7 @@ import java.util.Map;
  */
 @GenerateBytecode(languageClass = PhpLanguage.class, enableQuickening = true,
         boxingEliminationTypes = {long.class, double.class, boolean.class},
-        storeBytecodeIndexInFrame = true, enableBlockScoping = false)
+        enableBlockScoping = false)
 @TypeSystemReference(PhpTypes.class)
 @ShortCircuitOperation(name = "PhpAnd", operator = ShortCircuitOperation.Operator.AND_RETURN_CONVERTED,
         booleanConverter = PhpBytecodeRootNode.ToBool.class)
@@ -302,6 +302,54 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** {@code $x = value;} as a statement: as {@link WriteVar}, without pushing the value. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class StoreVar {
+        @Specialization(guards = "!info.kind().isCell()")
+        static void storeLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, long value,
+                              @Bind BytecodeNode bytecode) {
+            acc.setLong(bytecode, frame, value);
+        }
+
+        @Specialization(guards = "!info.kind().isCell()")
+        static void storeDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, double value,
+                                @Bind BytecodeNode bytecode) {
+            acc.setDouble(bytecode, frame, value);
+        }
+
+        @Specialization(replaces = {"storeLong", "storeDouble"})
+        static void store(VirtualFrame frame, LocalAccessor acc, VarInfo info, Object value,
+                          @Bind BytecodeNode bytecode) {
+            PhpBytecodeRootNode.store(frame, acc, info, bytecode, PhpOps.copyOnAssign(value));
+        }
+    }
+
+    /** {@code $x++;} as a statement. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = boolean.class, name = "increment")
+    public static final class StepVar {
+        @Specialization
+        static void step(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean increment,
+                         @Bind BytecodeNode bytecode) {
+            if (!info.kind().isCell()) {
+                try {
+                    long l = acc.getLong(bytecode, frame);
+                    if (l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
+                        acc.setLong(bytecode, frame, increment ? l + 1 : l - 1);
+                        return;
+                    }
+                } catch (UnexpectedResultException e) {
+                    // not an unboxed int: the generic path below
+                }
+            }
+            IncDecVar.generic(frame, acc, info, increment, true, bytecode);
+        }
+    }
+
     @Operation
     @ConstantOperand(type = LocalAccessor.class)
     @ConstantOperand(type = VarInfo.class)
@@ -440,6 +488,24 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 store(frame, acc, info, bytecode, raw instanceof PhpReference ref ? PhpOps.copyOnAssign(ref.getValue()) : raw);
             }
             return true;
+        }
+    }
+
+    /** A parameter without a default: binds it, or throws the missing-argument error. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = int.class, name = "argIndex")
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    @ConstantOperand(type = int.class, name = "param")
+    public static final class BindRequired {
+        @Specialization
+        static void bind(VirtualFrame frame, LocalAccessor acc, VarInfo info, int argIndex, boolean byRef, int param,
+                         @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root) {
+            if (!BindParam.bind(frame, acc, info, argIndex, byRef, bytecode)) {
+                CompilerDirectives.transferToInterpreter();
+                throw root.function.missingArgument(param);
+            }
         }
     }
 
@@ -1159,9 +1225,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** The function a call site names in this request: a {@link PhpFunction} or a builtin. */
     @Operation
     @ConstantOperand(type = CallSite.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class ResolveFunction {
         @Specialization
-        static Object resolve(CallSite site, @Bind Node node) {
+        static void resolve(VirtualFrame frame, CallSite site, LocalAccessor callee, @Bind BytecodeNode bytecode,
+                            @Bind Node node) {
+            callee.setObject(bytecode, frame, lookup(site, node));
+        }
+
+        static Object lookup(CallSite site, Node node) {
             PhpContext ctx = PhpContext.get(node);
             if (site.nsFunctionId() >= 0) {
                 PhpFunction nsFn = ctx.functionById(site.nsFunctionId());
@@ -1182,10 +1254,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = int.class, name = "param")
     @ConstantOperand(type = LocalAccessor.class)
     @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class SendVar {
         @Specialization
-        static Object send(VirtualFrame frame, int param, LocalAccessor acc, VarInfo info, Object callee,
+        static Object send(VirtualFrame frame, int param, LocalAccessor acc, VarInfo info, LocalAccessor calleeLocal,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
             if (callee instanceof PhpFunction fn) {
                 PhpFunctionRootNode root = PhpFunctionRootNode.of(fn.callTarget().getRootNode());
                 if (root != null && root.isParamByRef(param)) {
@@ -1207,10 +1281,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     @ConstantOperand(type = int.class, name = "param")
     @ConstantOperand(type = int.class, name = "kind")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class SendValue {
         @Specialization
-        static Object send(int param, int kind, Object callee, Object value,
+        static Object send(VirtualFrame frame, int param, int kind, LocalAccessor calleeLocal, Object value,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
             if (callee instanceof PhpFunction fn) {
                 PhpFunctionRootNode root = PhpFunctionRootNode.of(fn.callTarget().getRootNode());
                 if (root != null && root.isParamByRef(param)) {
@@ -1222,33 +1298,51 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** The call itself; the callee comes from the local {@link ResolveFunction} wrote. */
     @Operation
     @ConstantOperand(type = CallSite.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class DoCall {
+        @Specialization
+        static Object call(VirtualFrame frame, CallSite site, LocalAccessor calleeLocal, @Variadic Object[] args,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached CallCallee callCallee) {
+            return callCallee.execute(site, calleeLocal.getObject(bytecode, frame), args, location);
+        }
+    }
+
+    /** Dispatch on the resolved callee: a cached direct call, an indirect call, or a builtin. */
+    @com.oracle.truffle.api.dsl.GenerateInline(false)
+    public abstract static class CallCallee extends Node {
+        abstract Object execute(CallSite site, Object callee, Object[] args, SiteNode location);
+
         @Specialization(guards = "fn.callTarget() == cachedTarget", limit = "1")
-        static Object direct(CallSite site, PhpFunction fn, @Variadic Object[] args,
+        static Object direct(CallSite site, PhpFunction fn, Object[] args, SiteNode location,
                              @Cached("fn.callTarget()") RootCallTarget cachedTarget,
                              @Cached("create(cachedTarget)") DirectCallNode call) {
             return CallArgHelper.unwrapReturn(call.call(args));
         }
 
         @Specialization(replaces = "direct")
-        static Object indirect(CallSite site, PhpFunction fn, @Variadic Object[] args,
+        static Object indirect(CallSite site, PhpFunction fn, Object[] args, SiteNode location,
                                @Cached IndirectCallNode call) {
             return CallArgHelper.unwrapReturn(call.call(fn.callTarget(), args));
         }
 
         @Specialization
-        static Object builtin(CallSite site, Builtins.Def def, @Variadic Object[] args,
-                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                              @Bind PhpBytecodeRootNode root,
-                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                              @Cached(value = "create(root, site.splName())", neverDefault = false) SplBuiltinNode spl) {
+        static Object builtin(CallSite site, Builtins.Def def, Object[] args, SiteNode location,
+                              @Bind Node node,
+                              @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl) {
             if (spl != null) {
                 CallNode.checkArity(def, args.length, location);
                 return spl.execute(args);
             }
             return Ops.callBuiltin(def, args, location);
+        }
+
+        static SplBuiltinNode createSpl(Node node, CallSite site) {
+            return SplBuiltinNode.create(node.getRootNode(), site.splName());
         }
     }
 

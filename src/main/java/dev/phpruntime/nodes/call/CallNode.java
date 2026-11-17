@@ -417,31 +417,29 @@ public final class CallNode extends PhpNode {
         dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
                 new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId,
                         spl != null ? name.toLowerCase() : null);
-        com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.temp();
-        b.beginBlock();
-        b.beginStoreLocal(callee);
-        b.emitResolveFunction(site);
-        b.endStoreLocal();
-        b.beginDoCall(site);
-        b.emitLoadLocal(callee);
-        for (int i = 0; i < args.length; i++) {
-            if (args[i] instanceof dev.phpruntime.nodes.var.LocalVarNode lv) {
-                b.beginSendVar(i, e.accessor(lv), e.info(lv));
-                b.emitLoadLocal(callee);
-                b.endSendVar();
-            } else if (refTargets != null && refTargets[i] != null) {
-                throw e.unsupported("argument that may be by reference: " + refTargets[i].getClass().getSimpleName());
-            } else {
-                int kind = args[i] instanceof dev.phpruntime.nodes.expr.NewNode ? 2
-                        : (args[i] instanceof CallNode || args[i] instanceof MethodCallNode
-                        || args[i] instanceof StaticMethodCallNode || args[i] instanceof CallValueNode) ? 1 : 0;
-                b.beginSendValue(i, kind);
-                b.emitLoadLocal(callee);
-                e.expr(args[i]);
-                b.endSendValue();
+        com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
+        try {
+            b.beginBlock();
+            b.emitResolveFunction(site, callee);
+            b.beginDoCall(site, callee);
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] instanceof dev.phpruntime.nodes.var.LocalVarNode lv) {
+                    b.emitSendVar(i, e.accessor(lv), e.info(lv), callee);
+                } else if (refTargets != null && refTargets[i] != null) {
+                    throw e.unsupported("argument that may be by reference: " + refTargets[i].getClass().getSimpleName());
+                } else {
+                    int kind = args[i] instanceof dev.phpruntime.nodes.expr.NewNode ? 2
+                            : (args[i] instanceof CallNode || args[i] instanceof MethodCallNode
+                            || args[i] instanceof StaticMethodCallNode || args[i] instanceof CallValueNode) ? 1 : 0;
+                    b.beginSendValue(i, kind, callee);
+                    e.expr(args[i]);
+                    b.endSendValue();
+                }
             }
+            b.endDoCall();
+            b.endBlock();
+        } finally {
+            e.exitCall();
         }
-        b.endDoCall();
-        b.endBlock();
     }
 }

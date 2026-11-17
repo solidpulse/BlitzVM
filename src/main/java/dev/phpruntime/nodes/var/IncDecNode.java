@@ -107,4 +107,12 @@ public final class IncDecNode extends PhpNode {
         }
         e.builder().emitIncDecVar(e.accessor(lv), e.info(lv), increment, prefix);
     }
+
+    @Override
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
+            throw e.unsupported("increment of " + target.getClass().getSimpleName());
+        }
+        e.builder().emitStepVar(e.accessor(lv), e.info(lv), increment);
+    }
 }

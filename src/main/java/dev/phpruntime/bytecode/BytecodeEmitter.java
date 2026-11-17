@@ -175,19 +175,19 @@ public final class BytecodeEmitter {
             String name = fn.paramName(i) != null ? fn.paramName(i) : "#param" + i;
             PhpBytecodeRootNode.VarInfo info = info(slots[i], kinds[i], name);
             BytecodeLocal acc = accessor(slots[i], name);
+            if (defaults[i] == null) {
+                b.emitBindRequired(acc, info, offset + i, fn.isParamByRef(i), i);
+                continue;
+            }
             b.beginIfThen();
             b.beginNot();
             b.emitBindParam(acc, info, offset + i, fn.isParamByRef(i));
             b.endNot();
-            if (defaults[i] == null) {
-                b.emitMissingArgument(i);
-            } else {
-                b.beginWriteVar(acc, info);
-                b.beginCopy();
-                expr(defaults[i]);
-                b.endCopy();
-                b.endWriteVar();
-            }
+            b.beginStoreVar(acc, info);
+            b.beginCopy();
+            expr(defaults[i]);
+            b.endCopy();
+            b.endStoreVar();
             b.endIfThen();
         }
         if (fn.isVariadic()) {
@@ -278,6 +278,25 @@ public final class BytecodeEmitter {
 
     public BytecodeLocal temp() {
         return b.createLocal();
+    }
+
+    private final java.util.List<BytecodeLocal> calleeLocals = new java.util.ArrayList<>();
+    private int callDepth;
+
+    /**
+     * The local holding the callee of the call being emitted. Calls nested in another call's
+     * arguments are deeper and get their own; calls at the same depth share one, which keeps
+     * frames small.
+     */
+    public BytecodeLocal enterCall() {
+        if (callDepth == calleeLocals.size()) {
+            calleeLocals.add(b.createLocal("#callee" + callDepth, null));
+        }
+        return calleeLocals.get(callDepth++);
+    }
+
+    public void exitCall() {
+        callDepth--;
     }
 
     /** Opens a loop: break and continue inside it branch to these labels. */

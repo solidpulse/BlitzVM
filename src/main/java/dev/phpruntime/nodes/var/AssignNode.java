@@ -106,4 +106,14 @@ public final class AssignNode extends PhpNode {
         e.expr(value);
         e.builder().endWriteVar();
     }
+
+    @Override
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
+            throw e.unsupported("assign to " + target.getClass().getSimpleName());
+        }
+        e.builder().beginStoreVar(e.accessor(lv), e.info(lv));
+        e.expr(value);
+        e.builder().endStoreVar();
+    }
 }
