@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   java bench/LoadGen.java load  URL CONCURRENCY SECONDS   throughput and latency percentiles
  *   java bench/LoadGen.java probe URL COUNT GAP_MS          sequential requests, one latency line each
  *   java bench/LoadGen.java once  URL                       one request, prints status, time and body
+ *   java -Dwarmup=0 bench/LoadGen.java curve URL CONCURRENCY WINDOW_SECONDS SAMPLES
  * </pre>
  */
 public class LoadGen {

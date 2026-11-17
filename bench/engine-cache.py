@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 import re
 import socket
-import statistics
 import subprocess
 import time
 import urllib.error
@@ -136,6 +135,7 @@ def steady(port, run, label, process, startup, load):
     for key, page, connections in (("boot", "/wp-load.php", 1), ("front", "/", 1), ("throughput", "/", 4)):
         row[key] = bench.loadgen(port, page, connections, 15, run, label + "-" + key)
     row["rss_mib"] = bench.rss_mib(bench.descendants(process.pid))
+    row["rss_load"] = bench.load_average()
     return row
 
 
@@ -208,9 +208,22 @@ def diagnose(args):
         raise RuntimeError("No successful guest compilation; do not benchmark this image as JIT-enabled")
 
 
+def gc_summary(args):
+    summaries = []
+    for path in sorted(args.run.glob("*.server.log")):
+        text = path.read_text(errors="replace")
+        # Serial GC's short PrintGC format uses seconds at the end of each event.
+        times = [float(value) for value in re.findall(r"GC[^\n]*?([\d.]+) secs\]", text)]
+        if not times:
+            times = [float(value) / 1000 for value in re.findall(r"GC\([^\n]*?([\d.]+)ms", text)]
+        summaries.append({"log": path.name, "events": len(times), "pause_s": sum(times)})
+    bench.save(args.run, "gc-summary.json", summaries)
+    print(json.dumps(summaries, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("diagnose", "store", "check", "measure", "curve"))
+    parser.add_argument("action", choices=("diagnose", "store", "check", "measure", "curve", "gc_summary"))
     parser.add_argument("docroot", type=Path)
     parser.add_argument("--binary", type=Path, default=ROOT / "target/blitzvm")
     parser.add_argument("--run", type=Path, default=ROOT / "target/engine-cache")
@@ -228,11 +241,16 @@ def main():
     args.run = args.run.resolve()
     args.cache = args.cache.resolve() if args.cache else None
     args.run.mkdir(parents=True, exist_ok=True)
+    if args.repeats < 1 or args.train_seconds < 120 or args.stop_timeout < 1:
+        parser.error("positive repeats/stop-timeout and at least 120 training seconds are required")
     if args.action in ("store", "check") and not args.cache:
         parser.error("--cache required")
-    bench.save(args.run, "binary.json", {"path": str(args.binary), "bytes": args.binary.stat().st_size,
-                                        "sha256": hashlib.sha256(args.binary.read_bytes()).hexdigest(),
-                                        "vm_options": args.vm_option})
+    identity = {"path": str(args.binary), "bytes": args.binary.stat().st_size,
+                "sha256": hashlib.sha256(args.binary.read_bytes()).hexdigest(), "vm_options": args.vm_option}
+    previous = args.run / "binary.json"
+    if previous.exists() and json.loads(previous.read_text()) != identity:
+        parser.error("result directory belongs to another binary/options; use a fresh --run directory")
+    bench.save(args.run, "binary.json", identity)
     globals()[args.action](args)
 
 
