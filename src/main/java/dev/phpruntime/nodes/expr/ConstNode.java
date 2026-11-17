@@ -20,4 +20,9 @@ public final class ConstNode extends PhpNode {
     public Object value() {
         return value;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().emitLoadConstant(value);
+    }
 }

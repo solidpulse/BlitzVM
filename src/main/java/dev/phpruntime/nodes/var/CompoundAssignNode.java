@@ -57,4 +57,24 @@ public final class CompoundAssignNode extends PhpNode {
         }
         return PhpArith.apply(op, a, b);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
+            throw e.unsupported("compound assign to " + target.getClass().getSimpleName());
+        }
+        var b = e.builder();
+        if (op == PhpArith.Op.COALESCE) {
+            b.beginCoalesce();
+            b.emitReadVarIfSet(e.accessor(lv), e.info(lv));
+            b.beginWriteVar(e.accessor(lv), e.info(lv));
+            e.expr(value);
+            b.endWriteVar();
+            b.endCoalesce();
+            return;
+        }
+        b.beginCompoundVar(e.accessor(lv), e.info(lv), op);
+        e.expr(value);
+        b.endCompoundVar();
+    }
 }

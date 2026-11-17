@@ -70,7 +70,7 @@ public final class ClosureMethodRootNode extends RootNode {
                     + PhpOps.typeDescription(newThis) + " given", this);
         }
         PhpClosure closure = object.closure();
-        PhpFunctionRootNode signature = closure.callTarget() != null && closure.callTarget().getRootNode() instanceof PhpFunctionRootNode root ? root : null;
+        PhpFunctionRootNode signature = closure.callTarget() != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(closure.callTarget().getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode root ? root : null;
         PhpClass oldScope = closure.traitSelf() != null ? closure.traitSelf()
                 : signature != null && signature.declaringClass() != null ? ctx.lookupClass(signature.declaringClass()) : null;
         PhpClass newScope;
@@ -164,9 +164,9 @@ public final class ClosureMethodRootNode extends RootNode {
     private PhpClass callingScope() {
         return com.oracle.truffle.api.Truffle.getRuntime().iterateFrames(instance -> {
             if (instance.getCallTarget() instanceof com.oracle.truffle.api.RootCallTarget target
-                    && (target.getRootNode() instanceof PhpFunctionRootNode
+                    && (dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode
                     || target.getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode)) {
-                PhpFunctionRootNode root = target.getRootNode() instanceof PhpFunctionRootNode function ? function
+                PhpFunctionRootNode root = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode function ? function
                         : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) target.getRootNode()).signature;
                 var frame = instance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
                 if (target.getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
@@ -182,9 +182,9 @@ public final class ClosureMethodRootNode extends RootNode {
     private Object callingThis() {
         Object result = com.oracle.truffle.api.Truffle.getRuntime().iterateFrames(instance -> {
             if (instance.getCallTarget() instanceof com.oracle.truffle.api.RootCallTarget target
-                    && (target.getRootNode() instanceof PhpFunctionRootNode
+                    && (dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode
                     || target.getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode)) {
-                PhpFunctionRootNode root = target.getRootNode() instanceof PhpFunctionRootNode function ? function
+                PhpFunctionRootNode root = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode function ? function
                         : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) target.getRootNode()).signature;
                 var frame = instance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
                 if (target.getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {

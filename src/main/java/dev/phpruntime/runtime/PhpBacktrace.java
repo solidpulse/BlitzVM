@@ -110,8 +110,10 @@ public final class PhpBacktrace {
             } else if (pending[0] != null) {
                 PendingCall pc = pending[0];
                 Node callNode = fi.getCallNode();
-                String file = sourcePath(callNode);
-                int line = sourceLine(callNode);
+                SourceSection bcSite = root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode
+                        ? dev.phpruntime.bytecode.PhpBytecodeRootNode.callSiteSection(fi) : null;
+                String file = bcSite != null ? sectionPath(bcSite, callNode) : sourcePath(callNode);
+                int line = bcSite != null ? bcSite.getStartLine() : sourceLine(callNode);
                 String fnName = pc.function();
                 if (fnName == null) {
                     IncludeNode inc = findIncludeNode(callNode);
@@ -124,8 +126,8 @@ public final class PhpBacktrace {
                 }
             }
 
-            if (root instanceof PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                PhpFunctionRootNode fnRoot = root instanceof PhpFunctionRootNode fn ? fn
+            if (dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn ? fn
                         : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
                 Frame f = fi.getFrame(FrameInstance.FrameAccess.READ_ONLY);
                 if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
@@ -387,6 +389,13 @@ public final class PhpBacktrace {
             return PhpStrings.fromJava(pr.source().getPath());
         }
         return "";
+    }
+
+    private static String sectionPath(SourceSection ss, Node fallback) {
+        if (ss.getSource() != null && ss.getSource().getPath() != null) {
+            return PhpStrings.fromJava(ss.getSource().getPath());
+        }
+        return sourcePath(fallback);
     }
 
     public static int sourceLine(Node location) {

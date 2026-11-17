@@ -107,7 +107,7 @@ public final class NewNode extends PhpNode {
             return CallArgHelper.evalComplexUserArgs(frame, target, new Object[]{obj, cls},
                     args, refTargets, argNames, spreads, this);
         }
-        PhpFunctionRootNode fnRoot = target.getRootNode() instanceof PhpFunctionRootNode r ? r : null;
+        PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         if (fnRoot != null && fnRoot.hasAnyRefParam()) {
             return evalArgsWithRefs(frame, fnRoot, obj, cls);
         }

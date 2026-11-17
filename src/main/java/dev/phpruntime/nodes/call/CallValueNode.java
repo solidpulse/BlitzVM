@@ -298,7 +298,7 @@ public final class CallValueNode extends PhpNode {
     @ExplodeLoop
     private Object[] evalArgsWithPrefix(VirtualFrame frame, RootCallTarget target, Object[] prefix) {
         dev.phpruntime.nodes.PhpFunctionRootNode fnRoot =
-                target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+                dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         Object[] values = new Object[prefix.length + args.length];
         System.arraycopy(prefix, 0, values, 0, prefix.length);
         for (int i = 0; i < args.length; i++) {
@@ -326,7 +326,7 @@ public final class CallValueNode extends PhpNode {
             return CallArgHelper.evalComplexUserArgs(frame, target, new Object[]{boundThis, calledClass, closureObj},
                     args, refTargets, argNames, spreads, this);
         }
-        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         if (fnRoot != null && fnRoot.hasAnyRefParam()) {
             return evalClosureArgsWithRefs(frame, fnRoot, boundThis, calledClass, closureObj);
         }
@@ -363,7 +363,7 @@ public final class CallValueNode extends PhpNode {
             return CallArgHelper.evalComplexUserArgs(frame, target, new Object[]{boundThis, calledClass},
                     args, refTargets, argNames, spreads, this);
         }
-        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         if (fnRoot != null && fnRoot.hasAnyRefParam()) {
             return evalMethodArgsWithRefs(frame, fnRoot, boundThis, calledClass);
         }
@@ -398,7 +398,7 @@ public final class CallValueNode extends PhpNode {
             return CallArgHelper.evalComplexUserArgs(frame, target, new Object[0],
                     args, refTargets, argNames, spreads, this);
         }
-        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         if (fnRoot != null && fnRoot.hasAnyRefParam()) {
             return evalPlainArgsWithRefs(frame, fnRoot);
         }

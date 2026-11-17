@@ -49,4 +49,25 @@ public final class JumpNode extends PhpNode {
             }
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        switch (kind) {
+            case BREAK -> e.emitBreak(levels, false);
+            case CONTINUE -> e.emitBreak(levels, true);
+            default -> {
+                if (returnByRef) {
+                    throw e.unsupported("return by reference");
+                }
+                var b = e.builder();
+                b.beginReturn();
+                if (value == null) {
+                    b.emitLoadConstant(dev.phpruntime.runtime.PhpNull.INSTANCE);
+                } else {
+                    e.expr(value);
+                }
+                b.endReturn();
+            }
+        }
+    }
 }

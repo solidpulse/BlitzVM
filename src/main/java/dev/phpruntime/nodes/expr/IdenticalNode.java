@@ -30,4 +30,12 @@ public abstract class IdenticalNode extends BinaryNode {
     protected boolean doGeneric(Object a, Object b) {
         return PhpOps.strictEquals(a, b) != negate;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginIdentical(negate);
+        e.expr(getLeft());
+        e.expr(getRight());
+        e.builder().endIdentical();
+    }
 }

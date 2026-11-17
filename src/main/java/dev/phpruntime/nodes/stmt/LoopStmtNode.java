@@ -36,4 +36,14 @@ public final class LoopStmtNode extends PhpNode {
         loop.execute(frame);
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginBlock();
+        if (init != null) {
+            e.stmt(init);
+        }
+        ((LoopBodyNode) loop.getRepeatingNode()).emitLoop(e);
+        e.builder().endBlock();
+    }
 }

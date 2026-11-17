@@ -86,6 +86,15 @@ public final class PhpError extends AbstractTruffleException {
         return new PhpError(kind, detail, catchable, customFile, customLine, location, capturedTrace);
     }
 
+    /** The same error with a file and line, if it has neither a location nor a line yet. */
+    @TruffleBoundary
+    public PhpError atLine(String file, int line) {
+        if (getLocation() != null || customLine > 0 || line <= 0) {
+            return this;
+        }
+        return new PhpError(kind, detail, catchable, file, line, null, capturedTrace);
+    }
+
     /** Attaches a pre-captured guest call stack if none is attached yet. */
     public PhpError withTrace(PhpBacktrace.LazyTrace trace) {
         if (this.capturedTrace == null) {
@@ -147,9 +156,9 @@ public final class PhpError extends AbstractTruffleException {
                 pendingType = null;
                 pendingArgs = null;
             }
-            if (root instanceof dev.phpruntime.nodes.PhpFunctionRootNode
+            if (dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode
                     || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = root instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn ? fn
+                dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn ? fn
                         : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
                 com.oracle.truffle.api.frame.Frame frame = el.getFrame();
                 if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode && frame != null) {

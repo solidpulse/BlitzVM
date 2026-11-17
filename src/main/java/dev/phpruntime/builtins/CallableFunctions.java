@@ -44,7 +44,7 @@ final class CallableFunctions {
         }
         PhpCallable cb = PhpCallable.resolve(ctx, a[0], ctx.currentBuiltinCallSite());
         if (cb.kind() != PhpCallable.Kind.BUILTIN && cb.kind() != PhpCallable.Kind.MAGIC_CALL
-                && cb.callTarget() != null && cb.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
+                && cb.callTarget() != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(cb.callTarget().getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
             boolean hasStringKey = false;
             for (Object k : arr.keys()) {
                 if (k instanceof String) {

@@ -1003,7 +1003,7 @@ public final class Parser {
             if (scope.isGenerator()) {
                 root.asGenerator(language, scope.generatorSlot());
             }
-            PhpFunction fn = new PhpFunction(name, root.getCallTarget());
+            PhpFunction fn = new PhpFunction(name, dev.phpruntime.bytecode.BytecodeEmitter.target(language, root));
             if (topLevel) {
                 functions.add(fn);
                 return null;
@@ -1111,7 +1111,7 @@ public final class Parser {
         if (scope.isGenerator()) {
             root.asGenerator(language, scope.generatorSlot());
         }
-        return new ClosureNode(root.getCallTarget(), bindThis,
+        return new ClosureNode(dev.phpruntime.bytecode.BytecodeEmitter.target(language, root), bindThis,
                 outer.thisSlot(), outer.calledClassSlot(), outer.traitSelfSlot(), outerReads, warn, byRef)
                 .inClass(currentClass != null ? language.classId(currentClass) : -1).at(line);
     }
@@ -1387,7 +1387,7 @@ public final class Parser {
                 if (scope.isGenerator()) {
                     root.asGenerator(language, scope.generatorSlot());
                 }
-                callTarget = root.getCallTarget();
+                callTarget = dev.phpruntime.bytecode.BytecodeEmitter.target(language, root);
             }
             return new PhpClassTemplate.MethodDecl(
                     mName, lower, language.methodId(mName), vis, isStatic, isAbstract, isFinal, callTarget);

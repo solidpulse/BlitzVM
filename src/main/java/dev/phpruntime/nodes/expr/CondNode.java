@@ -31,4 +31,11 @@ public final class CondNode extends PhpNode {
         }
         return PhpOps.toBool(v);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginToBool();
+        e.expr(operand);
+        e.builder().endToBool();
+    }
 }

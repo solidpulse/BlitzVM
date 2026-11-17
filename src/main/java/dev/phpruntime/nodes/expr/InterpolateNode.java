@@ -37,4 +37,13 @@ public final class InterpolateNode extends PhpNode {
         }
         return sb.toString();
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginInterpolate();
+        for (PhpNode p : parts) {
+            e.expr(p);
+        }
+        e.builder().endInterpolate();
+    }
 }

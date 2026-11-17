@@ -27,4 +27,13 @@ public abstract class NegNode extends PhpNode {
             throw e.at(this);
         }
     }
+
+    public abstract PhpNode getOperand();
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginNeg();
+        e.expr(getOperand());
+        e.builder().endNeg();
+    }
 }

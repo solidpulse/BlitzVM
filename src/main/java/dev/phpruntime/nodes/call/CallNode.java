@@ -206,7 +206,7 @@ public final class CallNode extends PhpNode {
         if (hasSpreadOrNamed) {
             return CallArgHelper.evalComplexUserArgs(frame, target, new Object[0], args, refTargets, argNames, spreads, this);
         }
-        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = target.getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
+        dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         if (fnRoot != null && fnRoot.hasAnyRefParam()) {
             return evalArgsWithRefs(frame, fnRoot);
         }
@@ -373,5 +373,75 @@ public final class CallNode extends PhpNode {
         String quantifier = def.minArgs() == def.maxArgs() ? "exactly" : (n < def.minArgs() ? "at least" : "at most");
         int count = n < def.minArgs() ? def.minArgs() : def.maxArgs();
         return quantifier + " " + count + " argument" + (count == 1 ? "" : "s");
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (hasSpreadOrNamed) {
+            throw e.unsupported("call with spread or named arguments");
+        }
+        var b = e.builder();
+        Builtins.Def def = Builtins.lookup(name);
+        if (def != null) {
+            if (nsName == null) {
+                int kind = intrinsicFor(def.name(), args.length);
+                if (kind == STRLEN) {
+                    b.beginStrlen(def);
+                    e.expr(args[0]);
+                    b.endStrlen();
+                    return;
+                }
+                if (kind == ARRAY_KEY_EXISTS) {
+                    b.beginKeyExists(def);
+                    e.expr(args[0]);
+                    e.expr(args[1]);
+                    b.endKeyExists();
+                    return;
+                }
+                if (kind != NO_INTRINSIC) {
+                    b.beginTypeTest(kind);
+                    e.expr(args[0]);
+                    b.endTypeTest();
+                    return;
+                }
+            }
+            if (def.name().equals("assert")) {
+                throw e.unsupported("assert");
+            }
+            for (int i = 0; i < args.length; i++) {
+                if (def.isRef(i)) {
+                    throw e.unsupported("builtin by-reference argument");
+                }
+            }
+        }
+        dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
+                new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId,
+                        spl != null ? name.toLowerCase() : null);
+        com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.temp();
+        b.beginBlock();
+        b.beginStoreLocal(callee);
+        b.emitResolveFunction(site);
+        b.endStoreLocal();
+        b.beginDoCall(site);
+        b.emitLoadLocal(callee);
+        for (int i = 0; i < args.length; i++) {
+            if (args[i] instanceof dev.phpruntime.nodes.var.LocalVarNode lv) {
+                b.beginSendVar(i, e.accessor(lv), e.info(lv));
+                b.emitLoadLocal(callee);
+                b.endSendVar();
+            } else if (refTargets != null && refTargets[i] != null) {
+                throw e.unsupported("argument that may be by reference: " + refTargets[i].getClass().getSimpleName());
+            } else {
+                int kind = args[i] instanceof dev.phpruntime.nodes.expr.NewNode ? 2
+                        : (args[i] instanceof CallNode || args[i] instanceof MethodCallNode
+                        || args[i] instanceof StaticMethodCallNode || args[i] instanceof CallValueNode) ? 1 : 0;
+                b.beginSendValue(i, kind);
+                b.emitLoadLocal(callee);
+                e.expr(args[i]);
+                b.endSendValue();
+            }
+        }
+        b.endDoCall();
+        b.endBlock();
     }
 }

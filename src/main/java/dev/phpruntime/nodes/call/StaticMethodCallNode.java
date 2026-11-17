@@ -155,7 +155,7 @@ public final class StaticMethodCallNode extends PhpNode {
             return CallArgHelper.evalComplexUserArgs(frame, target, new Object[]{thisArg, calledClass},
                     args, refTargets, argNames, spreads, this);
         }
-        PhpFunctionRootNode fnRoot = target.getRootNode() instanceof PhpFunctionRootNode r ? r : null;
+        PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         if (fnRoot != null && fnRoot.hasAnyRefParam()) {
             return evalArgsWithRefs(frame, fnRoot, thisArg, calledClass);
         }

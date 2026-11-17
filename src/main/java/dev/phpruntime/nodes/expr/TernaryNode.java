@@ -26,4 +26,23 @@ public final class TernaryNode extends PhpNode {
         }
         return whenFalse.execute(frame);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        if (whenTrue == null) {
+            b.beginElvis();
+            e.expr(condition);
+            e.expr(whenFalse);
+            b.endElvis();
+            return;
+        }
+        b.beginConditional();
+        b.beginToBool();
+        e.expr(condition);
+        b.endToBool();
+        e.expr(whenTrue);
+        e.expr(whenFalse);
+        b.endConditional();
+    }
 }

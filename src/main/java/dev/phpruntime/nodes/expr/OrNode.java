@@ -23,4 +23,12 @@ public final class OrNode extends PhpNode {
         }
         return CondNode.toBool(right.execute(frame));
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginPhpOr();
+        e.expr(left);
+        e.expr(right);
+        e.builder().endPhpOr();
+    }
 }

@@ -73,7 +73,7 @@ public final class IncDecNode extends PhpNode {
     }
 
     /** Perl-style string increment: "a" becomes "b", "Az" becomes "Ba", "zz" becomes "aaa". */
-    private static String incrementString(String s) {
+    public static String incrementString(String s) {
         if (s.isEmpty()) {
             return "1";
         }
@@ -98,5 +98,13 @@ public final class IncDecNode extends PhpNode {
         char first = s.charAt(0);
         String prefix = first == 'z' ? "a" : first == 'Z' ? "A" : "1";
         return prefix + new String(c);
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
+            throw e.unsupported("increment of " + target.getClass().getSimpleName());
+        }
+        e.builder().emitIncDecVar(e.accessor(lv), e.info(lv), increment, prefix);
     }
 }

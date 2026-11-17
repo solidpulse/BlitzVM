@@ -771,7 +771,7 @@ public final class PhpContext {
                 if (implementation.visibility() != dev.phpruntime.runtime.Visibility.PUBLIC) {
                     throw PhpError.fatal("Access level to " + cls.name() + "::" + implementation.name() + "() must be public (as in interface " + iface.name() + ")");
                 }
-                if (implementation.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode function) {
+                if (dev.phpruntime.nodes.PhpFunctionRootNode.of(implementation.callTarget().getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode function) {
                     int required = entry.getValue().parameterNames().size();
                     if ((!function.isVariadic() && function.paramNames().length < required) || function.requiredArgs() > required) {
                         throw PhpError.fatal("Declaration of " + cls.name() + "::" + implementation.name() + "() must be compatible with "

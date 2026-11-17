@@ -28,4 +28,30 @@ public final class IfNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        if (elseBranch == null) {
+            b.beginIfThen();
+            e.expr(condition);
+            branch(e, thenBranch);
+            b.endIfThen();
+        } else {
+            b.beginIfThenElse();
+            e.expr(condition);
+            branch(e, thenBranch);
+            branch(e, elseBranch);
+            b.endIfThenElse();
+        }
+    }
+
+    private static void branch(dev.phpruntime.bytecode.BytecodeEmitter e, PhpNode n) {
+        if (n == null) {
+            e.builder().beginBlock();
+            e.builder().endBlock();
+        } else {
+            e.stmt(n);
+        }
+    }
 }

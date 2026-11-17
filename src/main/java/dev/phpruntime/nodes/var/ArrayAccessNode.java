@@ -20,6 +20,11 @@ public final class ArrayAccessNode extends Node {
     @Child private ObjectMethodNode unset;
     private final int getId;
 
+    /** For bytecode operations, which cache this node per instruction. */
+    public static ArrayAccessNode create(com.oracle.truffle.api.nodes.RootNode root) {
+        return new ArrayAccessNode(root.getLanguage(PhpLanguage.class));
+    }
+
     public ArrayAccessNode(PhpLanguage language) {
         getId = language.methodId("offsetGet");
         get = new ObjectMethodNode(language, "offsetGet");

@@ -380,8 +380,8 @@ final class MiscFunctions {
         Truffle.getRuntime().iterateFrames(frameInstance -> {
             if (frameInstance.getCallTarget() instanceof RootCallTarget rct
                     && rct.getRootNode() instanceof PhpRootNode root) {
-                if (root instanceof PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                    PhpFunctionRootNode fn = root instanceof PhpFunctionRootNode f ? f
+                if (dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+                    PhpFunctionRootNode fn = dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode f ? f
                             : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
                     com.oracle.truffle.api.frame.Frame runtimeFrame =
                             frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);

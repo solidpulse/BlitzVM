@@ -145,6 +145,32 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return declaringClass;
     }
 
+    /**
+     * The function metadata of a call target's root: this node itself, or the AST root a
+     * bytecode root was compiled from. Null for any other root.
+     */
+    public static PhpFunctionRootNode of(com.oracle.truffle.api.nodes.RootNode root) {
+        if (root instanceof PhpFunctionRootNode f) {
+            return f;
+        }
+        return root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b ? b.function() : null;
+    }
+
+    // Read by the bytecode compiler.
+    public PhpNode body() { return body; }
+    public PhpNode[] defaults() { return defaults; }
+    public int[] paramSlots() { return paramSlots; }
+    public VarKind[] paramKinds() { return paramKinds; }
+    public int thisSlot() { return thisSlot; }
+    public int calledClassSlot() { return calledClassSlot; }
+    public int closureObjSlot() { return closureObjSlot; }
+    public int[] captureSlots() { return captureSlots; }
+    public VarKind[] captureKinds() { return captureKinds; }
+    public boolean[] captureByRef() { return captureByRef; }
+    public boolean usesSymbolTable() { return scopeLayout != null; }
+    public boolean isGenerator() { return generatorTarget != null; }
+    public int line() { return getSourceSection() != null ? getSourceSection().getStartLine() : -1; }
+
     public PhpFunctionRootNode asGenerator(PhpLanguage language, int slot) {
         generatorSlot = slot;
         PhpNode generatorBody = body;
@@ -359,7 +385,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
      * unroll (apply_filters and do_action failed to compile on it).
      */
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
-    private static PhpArray packVariadic(Object[] args, int from, boolean varByRef) {
+    public static PhpArray packVariadic(Object[] args, int from, boolean varByRef) {
         PhpArray rest = new PhpArray();
         for (int i = from; i < args.length; i++) {
             Object item = args[i];
@@ -398,7 +424,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
-    private PhpError missingArgument(int index) {
+    public PhpError missingArgument(int index) {
         String qualified = declaringClass == null ? name : declaringClass + "::" + name;
         String pName = paramName(index);
         String suffix = pName != null ? " ($" + pName + ")" : "";
@@ -408,7 +434,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
-    private PhpError tooFewArguments(int passed) {
+    public PhpError tooFewArguments(int passed) {
         String exactly = requiredArgs == paramSlots.length ? "exactly" : "at least";
         String qualified = declaringClass == null ? name : declaringClass + "::" + name;
         dev.phpruntime.runtime.PhpBacktrace.LazyTrace trace = dev.phpruntime.runtime.PhpBacktrace.capture(this, false);

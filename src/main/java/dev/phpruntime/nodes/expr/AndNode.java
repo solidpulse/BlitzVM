@@ -23,4 +23,12 @@ public final class AndNode extends PhpNode {
         }
         return false;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginPhpAnd();
+        e.expr(left);
+        e.expr(right);
+        e.builder().endPhpAnd();
+    }
 }

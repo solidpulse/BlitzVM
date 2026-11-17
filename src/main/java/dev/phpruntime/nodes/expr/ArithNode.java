@@ -27,4 +27,12 @@ public final class ArithNode extends PhpNode {
             throw e.at(this);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginArith(op);
+        e.expr(left);
+        e.expr(right);
+        e.builder().endArith();
+    }
 }

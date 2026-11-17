@@ -91,7 +91,7 @@ class StringAppendTest {
     @Test
     void onlyAppendTargetsCheckPlainSlotsForBuffers() {
         Builtins.def("__append_shape_check", 0, 0, (ctx, args) -> {
-            var root = ctx.lookupFunction("append_shape").callTarget().getRootNode();
+            var root = dev.phpruntime.nodes.PhpFunctionRootNode.of(ctx.lookupFunction("append_shape").callTarget().getRootNode());
             root.adoptChildren();
             int[] counts = new int[2];
             root.accept(node -> {

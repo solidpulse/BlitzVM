@@ -52,4 +52,38 @@ final class LoopBodyNode extends Node implements RepeatingNode {
     private boolean test(VirtualFrame frame) {
         return condition == null || condition.executeCondition(frame);
     }
+
+    /** Emits the loop into the enclosing block; break leaves it, continue runs the update next. */
+    void emitLoop(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        com.oracle.truffle.api.bytecode.BytecodeLabel exit = b.createLabel();
+        b.beginWhile();
+        if (conditionAfterBody || condition == null) {
+            b.emitLoadConstant(true);
+        } else {
+            e.expr(condition);
+        }
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLabel next = b.createLabel();
+        e.pushLoop(exit, next);
+        if (body != null) {
+            e.stmt(body);
+        }
+        e.popLoop();
+        b.emitLabel(next);
+        if (update != null) {
+            e.stmt(update);
+        }
+        if (conditionAfterBody) {
+            b.beginIfThen();
+            b.beginNot();
+            e.expr(condition);
+            b.endNot();
+            b.emitBranch(exit);
+            b.endIfThen();
+        }
+        b.endBlock();
+        b.endWhile();
+        b.emitLabel(exit);
+    }
 }

@@ -19,6 +19,11 @@ public final class IteratorNode extends Node {
     @Child private ObjectMethodNode key;
     @Child private ObjectMethodNode next;
 
+    /** For bytecode operations, which cache this node per instruction. */
+    public static IteratorNode create(com.oracle.truffle.api.nodes.RootNode root) {
+        return new IteratorNode(root.getLanguage(PhpLanguage.class));
+    }
+
     public IteratorNode(PhpLanguage language) {
         getIterator = new ObjectMethodNode(language, "getIterator");
         rewind = new ObjectMethodNode(language, "rewind");

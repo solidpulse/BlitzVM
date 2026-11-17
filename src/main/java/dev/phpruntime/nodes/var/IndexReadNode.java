@@ -112,4 +112,36 @@ public final class IndexReadNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (key == null) {
+            throw e.unsupported("read of []");
+        }
+        e.builder().beginIndex();
+        e.expr(target);
+        e.expr(key);
+        e.builder().endIndex();
+    }
+
+    /** The silent read used by isset, ?? and nested index reads under them. */
+    public void emitIfSet(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (key == null) {
+            throw e.unsupported("read of []");
+        }
+        e.builder().beginIndexIfSet();
+        e.ifSet(target);
+        e.expr(key);
+        e.builder().endIndexIfSet();
+    }
+
+    public void emitIsset(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (key == null) {
+            throw e.unsupported("isset of []");
+        }
+        e.builder().beginIssetIndex();
+        e.ifSet(target);
+        e.expr(key);
+        e.builder().endIssetIndex();
+    }
 }

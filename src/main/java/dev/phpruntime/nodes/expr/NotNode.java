@@ -15,4 +15,11 @@ public final class NotNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         return !CondNode.toBool(operand.execute(frame));
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginNot();
+        e.expr(operand);
+        e.builder().endNot();
+    }
 }

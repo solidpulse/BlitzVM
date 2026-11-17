@@ -42,4 +42,12 @@ public abstract class EqualNode extends BinaryNode {
     protected boolean doGeneric(Object a, Object b) {
         return PhpOps.looseEquals(a, b) != negate;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginEqual(negate);
+        e.expr(getLeft());
+        e.expr(getRight());
+        e.builder().endEqual();
+    }
 }

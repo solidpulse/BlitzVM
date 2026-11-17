@@ -27,4 +27,13 @@ public abstract class ModNode extends BinaryNode {
             throw e.at(this);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginMod();
+        e.expr(getLeft());
+        e.expr(getRight());
+        b.endMod();
+    }
 }

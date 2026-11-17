@@ -52,4 +52,12 @@ public abstract class CompareNode extends BinaryNode {
             case SPACESHIP -> (long) Integer.signum(c);
         };
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginCompare(kind);
+        e.expr(getLeft());
+        e.expr(getRight());
+        e.builder().endCompare();
+    }
 }

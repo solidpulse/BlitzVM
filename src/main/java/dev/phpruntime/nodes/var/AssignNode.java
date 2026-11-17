@@ -96,4 +96,14 @@ public final class AssignNode extends PhpNode {
         target.write(frame, keys, PhpOps.copyOnAssign(v));
         return v;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
+            throw e.unsupported("assign to " + target.getClass().getSimpleName());
+        }
+        e.builder().beginWriteVar(e.accessor(lv), e.info(lv));
+        e.expr(value);
+        e.builder().endWriteVar();
+    }
 }

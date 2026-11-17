@@ -53,4 +53,13 @@ public abstract class DivNode extends BinaryNode {
     protected static boolean isNonZero(double b) {
         return b != 0;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginDiv();
+        e.expr(getLeft());
+        e.expr(getRight());
+        b.endDiv();
+    }
 }

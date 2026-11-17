@@ -256,4 +256,9 @@ public final class LocalVarNode extends LValueNode {
     public String describe() {
         return "$" + name;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().emitReadVar(e.accessor(this), e.info(this));
+    }
 }

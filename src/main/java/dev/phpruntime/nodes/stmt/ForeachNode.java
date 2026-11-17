@@ -293,4 +293,55 @@ public final class ForeachNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (byRef || !(valueTarget instanceof dev.phpruntime.nodes.var.LocalVarNode value)
+                || (keyTarget != null && !(keyTarget instanceof dev.phpruntime.nodes.var.LocalVarNode))) {
+            throw e.unsupported("foreach by reference or into " + (valueTarget == null ? "?" : valueTarget.getClass().getSimpleName()));
+        }
+        var b = e.builder();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLocal cursor = e.temp();
+        b.beginStoreLocal(cursor);
+        b.beginForeachStart();
+        e.expr(subject);
+        b.endForeachStart();
+        b.endStoreLocal();
+        b.beginTryFinally(() -> {
+            b.beginForeachEnd();
+            b.emitLoadLocal(cursor);
+            b.endForeachEnd();
+        });
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLabel exit = b.createLabel();
+        b.beginWhile();
+        b.beginForeachNext();
+        b.emitLoadLocal(cursor);
+        b.endForeachNext();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLabel next = b.createLabel();
+        if (keyTarget instanceof dev.phpruntime.nodes.var.LocalVarNode key) {
+            b.beginWriteVar(e.accessor(key), e.info(key));
+            b.beginForeachKey();
+            b.emitLoadLocal(cursor);
+            b.endForeachKey();
+            b.endWriteVar();
+        }
+        b.beginWriteVar(e.accessor(value), e.info(value));
+        b.beginForeachValue();
+        b.emitLoadLocal(cursor);
+        b.endForeachValue();
+        b.endWriteVar();
+        e.pushLoop(exit, next);
+        e.stmt(body);
+        e.popLoop();
+        b.emitLabel(next);
+        b.endBlock();
+        b.endWhile();
+        b.emitLabel(exit);
+        b.endBlock();
+        b.endTryFinally();
+        b.endBlock();
+    }
 }

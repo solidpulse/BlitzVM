@@ -64,7 +64,7 @@ public final class DispatchCallNode extends Node {
     }
 
     private static boolean isTraitMethod(CallTarget target) {
-        return ((RootCallTarget) target).getRootNode() instanceof PhpFunctionRootNode r
+        return dev.phpruntime.nodes.PhpFunctionRootNode.of(((RootCallTarget) target).getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r
                 && !r.isClosure() && r.traitSelfSlot() >= 0;
     }
 

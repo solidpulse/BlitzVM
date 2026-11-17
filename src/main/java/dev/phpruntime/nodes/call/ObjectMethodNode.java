@@ -49,7 +49,7 @@ public final class ObjectMethodNode extends Node {
     }
 
     private static void adaptArgs(RootCallTarget target, Object[] args) {
-        if (target.getRootNode() instanceof PhpFunctionRootNode root && root.hasAnyRefParam()) {
+        if (dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode root && root.hasAnyRefParam()) {
             for (int i = 2; i < args.length; i++) {
                 if (root.isParamByRef(i - 2) && !(args[i] instanceof PhpReference)) {
                     args[i] = new PhpReference(PhpOps.copyOnAssign(args[i]));

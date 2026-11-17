@@ -7,4 +7,8 @@ import dev.phpruntime.nodes.PhpNode;
 @NodeChild("left")
 @NodeChild("right")
 public abstract class BinaryNode extends PhpNode {
+
+    public abstract dev.phpruntime.nodes.PhpNode getLeft();
+
+    public abstract dev.phpruntime.nodes.PhpNode getRight();
 }

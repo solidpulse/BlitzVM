@@ -24,4 +24,13 @@ public abstract class ConcatNode extends BinaryNode {
             throw e.at(this);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginConcat();
+        e.expr(getLeft());
+        e.expr(getRight());
+        b.endConcat();
+    }
 }

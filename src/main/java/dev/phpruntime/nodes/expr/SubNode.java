@@ -50,4 +50,13 @@ public abstract class SubNode extends BinaryNode {
             throw e.at(this);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginSub();
+        e.expr(getLeft());
+        e.expr(getRight());
+        b.endSub();
+    }
 }

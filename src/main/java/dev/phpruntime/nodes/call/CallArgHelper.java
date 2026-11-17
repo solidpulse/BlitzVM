@@ -102,7 +102,7 @@ public final class CallArgHelper {
     public static Object[] evalComplexUserArgs(VirtualFrame frame, RootCallTarget target, Object[] prefix,
                                                PhpNode[] args, LValueNode[] refTargets,
                                                String[] argNames, boolean[] spreads, Node site) {
-        PhpFunctionRootNode fnRoot = target.getRootNode() instanceof PhpFunctionRootNode r ? r : null;
+        PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         RawCallArgs raw = evaluateCallSite(frame, args, refTargets, argNames, spreads, fnRoot, site);
         return bindToFunction(prefix, raw, fnRoot, site);
     }

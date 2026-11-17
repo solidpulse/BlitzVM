@@ -26,4 +26,13 @@ public final class BlockNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginBlock();
+        for (PhpNode s : statements) {
+            e.stmt(s);
+        }
+        e.builder().endBlock();
+    }
 }

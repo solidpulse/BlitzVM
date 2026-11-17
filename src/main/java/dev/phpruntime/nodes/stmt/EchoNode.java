@@ -33,4 +33,13 @@ public final class EchoNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        for (PhpNode v : values) {
+            e.builder().beginEcho();
+            e.expr(v);
+            e.builder().endEcho();
+        }
+    }
 }

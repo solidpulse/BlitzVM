@@ -48,4 +48,23 @@ public final class StringAppendNode extends PhpNode {
             throw e.at(this);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emitAppend(e, true);
+    }
+
+    @Override
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emitAppend(e, false);
+    }
+
+    private void emitAppend(dev.phpruntime.bytecode.BytecodeEmitter e, boolean resultNeeded) {
+        if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
+            throw e.unsupported("append to " + target.getClass().getSimpleName());
+        }
+        e.builder().beginAppendVar(e.accessor(lv), e.info(lv), resultNeeded);
+        e.expr(value);
+        e.builder().endAppendVar();
+    }
 }

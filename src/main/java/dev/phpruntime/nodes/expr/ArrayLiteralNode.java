@@ -182,4 +182,37 @@ public final class ArrayLiteralNode extends PhpNode {
             }
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        if (constant != null) {
+            b.emitLoadConstant(constant);
+            return;
+        }
+        for (int i = 0; i < values.length; i++) {
+            if (byRef[i] || spread[i]) {
+                throw e.unsupported("array literal with reference or spread");
+            }
+        }
+        // Each element wraps the array built so far: the last element's operation is outermost.
+        for (int i = values.length - 1; i >= 0; i--) {
+            if (keys[i] == null) {
+                b.beginArrayAppend();
+            } else {
+                b.beginArrayPut();
+            }
+        }
+        b.emitNewArray();
+        for (int i = 0; i < values.length; i++) {
+            if (keys[i] == null) {
+                e.expr(values[i]);
+                b.endArrayAppend();
+            } else {
+                e.expr(keys[i]);
+                e.expr(values[i]);
+                b.endArrayPut();
+            }
+        }
+    }
 }

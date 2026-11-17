@@ -253,7 +253,7 @@ public final class PhpCallable {
 
     public static Object[] buildClosureArgs(RootCallTarget target, Object boundThis, PhpClass calledClass,
                                             PhpObject closureObj, Object[] userArgs, PhpContext ctx, Node loc) {
-        PhpFunctionRootNode fnRoot = target != null && target.getRootNode() instanceof PhpFunctionRootNode r ? r : null;
+        PhpFunctionRootNode fnRoot = target != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         Object[] args = new Object[3 + userArgs.length];
         args[0] = boundThis;
         args[1] = calledClass;
@@ -270,7 +270,7 @@ public final class PhpCallable {
 
     public static Object[] buildMethodArgs(RootCallTarget target, Object boundThis, PhpClass calledClass,
                                            Object[] userArgs, PhpContext ctx, Node loc) {
-        PhpFunctionRootNode fnRoot = target != null && target.getRootNode() instanceof PhpFunctionRootNode r ? r : null;
+        PhpFunctionRootNode fnRoot = target != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         Object[] args = new Object[2 + userArgs.length];
         args[0] = boundThis;
         args[1] = calledClass;
@@ -294,7 +294,7 @@ public final class PhpCallable {
     }
 
     private static Object[] prepareUserArgs(RootCallTarget target, Object[] userArgs, PhpContext ctx, Node loc) {
-        PhpFunctionRootNode fnRoot = target != null && target.getRootNode() instanceof PhpFunctionRootNode r ? r : null;
+        PhpFunctionRootNode fnRoot = target != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
         Object[] args = new Object[userArgs.length];
         for (int i = 0; i < userArgs.length; i++) {
             args[i] = adaptUserArg(fnRoot, i, userArgs[i], ctx, loc);

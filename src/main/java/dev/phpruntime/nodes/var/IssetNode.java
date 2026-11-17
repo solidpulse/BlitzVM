@@ -30,4 +30,28 @@ public final class IssetNode extends PhpNode {
         }
         return true;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        if (targets.length > 1) {
+            b.beginPhpAnd();
+        }
+        for (PhpNode t : targets) {
+            if (t instanceof LocalVarNode lv) {
+                b.emitIssetVar(e.accessor(lv), e.info(lv));
+            } else if (t instanceof IndexReadNode ir) {
+                ir.emitIsset(e);
+            } else if (t instanceof IndexLValueNode il) {
+                il.emitRead(e, 2);
+            } else if (t instanceof LValueNode) {
+                throw e.unsupported("isset of " + t.getClass().getSimpleName());
+            } else {
+                b.emitLoadConstant(true);
+            }
+        }
+        if (targets.length > 1) {
+            b.endPhpAnd();
+        }
+    }
 }

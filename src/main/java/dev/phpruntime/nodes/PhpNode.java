@@ -76,6 +76,19 @@ public abstract class PhpNode extends Node {
         return source.createSection(line);
     }
 
+    /**
+     * Emits this node as bytecode that leaves its value on the stack. Nodes without a
+     * bytecode form keep this default, and their function stays on the AST.
+     */
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        throw e.unsupported(this);
+    }
+
+    /** Emits this node where its value is not used; statements override this. */
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emit(e);
+    }
+
     public final int line() {
         return line;
     }

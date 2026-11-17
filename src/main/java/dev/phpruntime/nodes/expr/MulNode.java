@@ -50,4 +50,13 @@ public abstract class MulNode extends BinaryNode {
             throw e.at(this);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginMul();
+        e.expr(getLeft());
+        e.expr(getRight());
+        b.endMul();
+    }
 }

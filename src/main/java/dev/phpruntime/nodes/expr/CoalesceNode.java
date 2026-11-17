@@ -32,4 +32,12 @@ public final class CoalesceNode extends PhpNode {
         }
         return v;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginCoalesce();
+        e.ifSet(left);
+        e.expr(right);
+        e.builder().endCoalesce();
+    }
 }

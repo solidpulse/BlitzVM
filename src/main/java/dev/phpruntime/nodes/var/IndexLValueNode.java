@@ -470,4 +470,37 @@ public final class IndexLValueNode extends LValueNode {
     public String describe() {
         return base.describe() + "[...]";
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emitRead(e, 0);
+    }
+
+    /** mode 0: read with warning; 1: silent read (??, nested isset); 2: isset. */
+    public void emitRead(dev.phpruntime.bytecode.BytecodeEmitter e, int mode) {
+        if (!(base instanceof LocalVarNode lv)) {
+            throw e.unsupported("index of " + base.getClass().getSimpleName());
+        }
+        for (PhpNode k : keyNodes) {
+            if (k == null) {
+                throw e.unsupported("read of []");
+            }
+        }
+        var b = e.builder();
+        boolean single = keyNodes.length == 1;
+        switch (mode) {
+            case 0 -> { if (single) { b.beginIndex(); } else { b.beginIndexPath(); } }
+            case 1 -> { if (single) { b.beginIndexIfSet(); } else { b.beginIndexPathIfSet(); } }
+            default -> { if (single) { b.beginIssetIndex(); } else { b.beginIssetPath(); } }
+        }
+        b.emitReadVarIfSet(e.accessor(lv), e.info(lv));
+        for (PhpNode k : keyNodes) {
+            e.expr(k);
+        }
+        switch (mode) {
+            case 0 -> { if (single) { b.endIndex(); } else { b.endIndexPath(); } }
+            case 1 -> { if (single) { b.endIndexIfSet(); } else { b.endIndexPathIfSet(); } }
+            default -> { if (single) { b.endIssetIndex(); } else { b.endIssetPath(); } }
+        }
+    }
 }

@@ -733,7 +733,7 @@ final class ArrayFunctions {
     private static void walkArrayInPlace(PhpContext ctx, PhpArray arr, PhpCallable cb,
                                          boolean hasExtra, Object extra, boolean recursive) {
         boolean callbackWantsRef = cb.callTarget() != null
-                && cb.callTarget().getRootNode() instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn
+                && dev.phpruntime.nodes.PhpFunctionRootNode.of(cb.callTarget().getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn
                 && fn.isParamByRef(0);
         for (Object k : arr.keys()) {
             if (!arr.containsKey(k)) {
