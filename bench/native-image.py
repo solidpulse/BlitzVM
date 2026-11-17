@@ -249,10 +249,13 @@ def measure(args):
 
 
 def micro(args):
-    rows = []
+    rows = json.loads((args.run / "micro.json").read_text()) if (args.run / "micro.json").exists() else []
     for repeat in range(1, args.repeats + 1):
         for config in ("native-ast", "native-bc"):
             for name in ("01-wp-array-get.php", "02-small-functions.php"):
+                if any(row["configuration"] == config and row["repeat"] == repeat and row["kernel"] == name
+                       for row in rows):
+                    continue
                 label = f"micro-{repeat}-{config}-{name}"
                 before = load_average()
                 uptime = subprocess.check_output(["uptime"], text=True).strip()
