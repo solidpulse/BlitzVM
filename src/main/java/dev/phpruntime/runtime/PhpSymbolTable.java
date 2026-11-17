@@ -72,6 +72,7 @@ public final class PhpSymbolTable {
         else { dynamicOrder.remove(name); }
     }
 
+    @TruffleBoundary
     public PhpSymbolTable(PhpScopeLayout layout, Object thisValue, PhpClass calledClass, PhpClass lexicalClass) {
         this.layout = layout;
         this.cells = new PhpReference[layout.cellCount()];

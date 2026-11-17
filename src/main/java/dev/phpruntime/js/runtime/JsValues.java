@@ -44,6 +44,10 @@ public final class JsValues {
         private final Map<String, Object> props = new LinkedHashMap<>();
 
         @TruffleBoundary
+        public JsObject() {
+        }
+
+        @TruffleBoundary
         public Object get(String key) {
             Object v = props.get(key);
             return v == null ? Undefined.INSTANCE : v;

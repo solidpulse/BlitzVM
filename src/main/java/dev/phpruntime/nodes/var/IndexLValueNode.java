@@ -311,11 +311,16 @@ public final class IndexLValueNode extends LValueNode {
         if (isNested() && usesArrayAccess(frame, keys)) {
             PhpReference cell = obtainCell(frame, keys);
             Object current = cell.getValue();
-            String result = PhpOps.toStr(current == null ? PhpNull.INSTANCE : current).concat(suffix);
+            String result = concat(PhpOps.toStr(current == null ? PhpNull.INSTANCE : current), suffix);
             cell.setValue(result);
             return result;
         }
         return super.appendString(frame, keys, suffix, resultNeeded);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static String concat(String left, String right) {
+        return left.concat(right);
     }
 
     private record CellResult(Object root, PhpReference cell) {}

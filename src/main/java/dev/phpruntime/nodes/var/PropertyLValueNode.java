@@ -101,8 +101,7 @@ public final class PropertyLValueNode extends LValueNode {
     /** The rvalue read with the receiver and name already evaluated. */
     public Object executeOn(VirtualFrame frame, Object target, String name) {
         if (!(target instanceof PhpObject obj)) {
-            PhpContext.get(this).warning(
-                    "Attempt to read property " + '"' + name + '"' + " on " + PhpOps.typeName(target), line());
+            warnNonObject(target, name);
             return PhpNull.INSTANCE;
         }
         if (arrayProperties(obj, name)) {
@@ -122,6 +121,12 @@ public final class PropertyLValueNode extends LValueNode {
             }
         }
         return readFallback(obj, name, storageKey == null, true, effectiveCallerLower(frame));
+    }
+
+    @TruffleBoundary
+    private void warnNonObject(Object target, String name) {
+        PhpContext.get(this).warning(
+                "Attempt to read property " + '"' + name + '"' + " on " + PhpOps.typeName(target), line());
     }
 
     @Override
@@ -436,6 +441,7 @@ public final class PropertyLValueNode extends LValueNode {
     }
 
     /** A magic method applies unless it is already running for this property (php's guards). */
+    @TruffleBoundary
     private static boolean magicUsable(PhpClass.MethodEntry entry, PhpObject obj, String name, int kind) {
         return entry != null && entry.callTarget() != null && !obj.inMagic(name, kind);
     }

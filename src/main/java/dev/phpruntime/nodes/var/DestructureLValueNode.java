@@ -58,7 +58,7 @@ public final class DestructureLValueNode extends LValueNode {
                 Object[] rk = rhsLValue.evalKeys(frame);
                 Object cur = rhsLValue.read(frame, rk);
                 if (cur == null) {
-                    PhpContext.get(this).warning("Undefined variable " + rhsLValue.describe(), line());
+                    warnUndefinedSource(rhsLValue);
                     cur = PhpNull.INSTANCE;
                 }
                 if (cur instanceof PhpArray arr) {
@@ -221,6 +221,11 @@ public final class DestructureLValueNode extends LValueNode {
         } catch (PhpError e) {
             throw e.at(this);
         }
+    }
+
+    @TruffleBoundary
+    private void warnUndefinedSource(LValueNode source) {
+        PhpContext.get(this).warning("Undefined variable " + source.describe(), line());
     }
 
     @TruffleBoundary

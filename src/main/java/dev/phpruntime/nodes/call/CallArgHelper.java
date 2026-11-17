@@ -157,19 +157,19 @@ public final class CallArgHelper {
                     unpacked = args[i].execute(frame);
                 }
                 unpackCallArg(unpacked, writableSpread, positional, posRefs, posKeys, posNodes,
-                        named == null ? (named = new LinkedHashMap<>()) : named, seenNamed, site);
-                if (named != null && !named.isEmpty()) {
+                        named == null ? (named = newMap()) : named, seenNamed, site);
+                if (hasNamed(named)) {
                     seenNamed = true;
                 }
             } else if (name != null) {
                 seenNamed = true;
                 if (named == null) {
-                    named = new LinkedHashMap<>();
+                    named = newMap();
                 }
                 if (namedRefs == null) {
-                    namedRefs = new LinkedHashMap<>();
-                    namedKeys = new LinkedHashMap<>();
-                    namedNodes = new LinkedHashMap<>();
+                    namedRefs = newMap();
+                    namedKeys = newMap();
+                    namedNodes = newMap();
                 }
                 checkDuplicateNamed(named, name, site);
                 LValueNode lv = refTargets != null ? refTargets[i] : null;
@@ -214,6 +214,11 @@ public final class CallArgHelper {
             }
         }
         return new RawCallArgs(positional, posRefs, posKeys, posNodes, named, namedRefs, namedKeys, namedNodes);
+    }
+
+    @TruffleBoundary
+    private static <K, V> Map<K, V> newMap() {
+        return new LinkedHashMap<>();
     }
 
     @TruffleBoundary
@@ -373,7 +378,7 @@ public final class CallArgHelper {
                                             LValueNode[] refTargets, String[] argNames, boolean[] spreads,
                                             Node site) {
         RawCallArgs raw = evaluateCallSite(frame, args, refTargets, argNames, spreads, null, def.refMask() != 0, site);
-        if (raw.named() != null && !raw.named().isEmpty()) {
+        if (hasNamed(raw.named())) {
             String first = firstKey(raw.named());
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Unknown named parameter $" + first, site);
@@ -399,6 +404,11 @@ public final class CallArgHelper {
     @TruffleBoundary
     private static String firstKey(Map<String, Object> map) {
         return map.keySet().iterator().next();
+    }
+
+    @TruffleBoundary
+    private static boolean hasNamed(Map<String, Object> named) {
+        return named != null && !named.isEmpty();
     }
 
     @TruffleBoundary

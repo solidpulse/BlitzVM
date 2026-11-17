@@ -58,6 +58,7 @@ public final class JsCalls {
         }
 
         @Fallback
+        @TruffleBoundary
         protected Object doNotCallable(Object callee, Object[] args) {
             throw JsError.type(JsOps.toStr(callee) + " is not a function", this);
         }

@@ -40,13 +40,18 @@ public final class StringAppendNode extends PhpNode {
             PhpReference nested = target instanceof IndexLValueNode index && index.isNested()
                     && index.usesArrayAccess(frame, keys) ? index.obtainCell(frame, keys) : null;
             Object current = nested == null ? target.read(frame, keys) : nested.getValue();
-            String result = PhpOps.toStr(current == null ? PhpNull.INSTANCE : current).concat(PhpOps.toStr(suffix));
+            String result = concat(PhpOps.toStr(current == null ? PhpNull.INSTANCE : current), PhpOps.toStr(suffix));
             if (nested == null) { target.write(frame, keys, result); }
             else { nested.setValue(result); }
             return result;
         } catch (PhpError e) {
             throw e.at(this);
         }
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static String concat(String left, String right) {
+        return left.concat(right);
     }
 
     @Override

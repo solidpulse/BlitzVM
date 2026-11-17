@@ -173,6 +173,11 @@ public final class ArrayLiteralNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Only arrays and Traversables can be unpacked, " + given + " given", this);
         }
+        unpackArray(dest, src);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static void unpackArray(PhpArray dest, PhpArray src) {
         for (Map.Entry<Object, Object> e : src.entries()) {
             Object v = PhpOps.copyOnAssign(e.getValue());
             if (e.getKey() instanceof Long) {

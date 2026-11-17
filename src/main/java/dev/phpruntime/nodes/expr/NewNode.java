@@ -139,14 +139,19 @@ public final class NewNode extends PhpNode {
     private void discardArgs(VirtualFrame frame, PhpClass cls) {
         if (hasSpreadOrNamed) {
             CallArgHelper.RawCallArgs raw = CallArgHelper.evaluateCallSite(frame, args, refTargets, argNames, spreads, null, this);
-            if (raw.named() != null && !raw.named().isEmpty()) {
-                String first = raw.named().keySet().iterator().next();
-                CompilerDirectives.transferToInterpreter();
-                throw new PhpError("Unknown named parameter $" + first, this);
-            }
+            checkDiscardedNamedArgs(raw);
             return;
         }
         discardPlainArgs(frame);
+    }
+
+    @CompilerDirectives.TruffleBoundary
+    private void checkDiscardedNamedArgs(CallArgHelper.RawCallArgs raw) {
+        if (raw.named() != null && !raw.named().isEmpty()) {
+            String first = raw.named().keySet().iterator().next();
+            CompilerDirectives.transferToInterpreter();
+            throw new PhpError("Unknown named parameter $" + first, this);
+        }
     }
 
     @ExplodeLoop

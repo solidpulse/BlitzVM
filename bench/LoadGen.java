@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   java bench/LoadGen.java load  URL CONCURRENCY SECONDS   throughput and latency percentiles
  *   java bench/LoadGen.java probe URL COUNT GAP_MS          sequential requests, one latency line each
  *   java bench/LoadGen.java once  URL                       one request, prints status, time and body
+ *   java -Dwarmup=0 bench/LoadGen.java curve URL CONCURRENCY WINDOW_SECONDS SAMPLES
  * </pre>
  */
 public class LoadGen {
@@ -32,7 +33,20 @@ public class LoadGen {
             case "load" -> load(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
             case "probe" -> probe(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
             case "once" -> once(args[1]);
+            case "curve" -> curve(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]));
             default -> throw new IllegalArgumentException(args[0]);
+        }
+    }
+
+    /** Consecutive windows without a new Java launcher between samples. */
+    private static void curve(String url, int concurrency, int windowSeconds, int samples) throws Exception {
+        long start = System.nanoTime();
+        for (int sample = 1; sample <= samples; sample++) {
+            String machineLoad = java.nio.file.Files.readString(java.nio.file.Path.of("/proc/loadavg")).strip();
+            System.out.printf("sample=%d start=%.3fs epoch_ms=%d load=%s ", sample,
+                    (System.nanoTime() - start) / 1e9, System.currentTimeMillis(), machineLoad);
+            load(url, concurrency, windowSeconds);
+            System.out.flush();
         }
     }
 
@@ -95,24 +109,29 @@ public class LoadGen {
             }
             threads.add(Thread.ofPlatform().start(() -> {
                 RawConnection conn = null;
-                while (System.nanoTime() < end) {
-                    long t = System.nanoTime();
-                    try {
-                        if (conn == null) {
-                            conn = new RawConnection(host, port);
-                        }
-                        int status = conn.exchange(request);
-                        if (status != 200) {
+                try {
+                    while (System.nanoTime() < end) {
+                        long t = System.nanoTime();
+                        try {
+                            if (conn == null) {
+                                conn = new RawConnection(host, port);
+                            }
+                            int status = conn.exchange(request);
+                            if (status != 200) {
+                                errors.incrementAndGet();
+                            }
+                            if (conn.closed) {
+                                conn = null;
+                            }
+                        } catch (Exception e) {
                             errors.incrementAndGet();
-                        }
-                        if (conn.closed) {
+                            if (conn != null) { conn.close(); }
                             conn = null;
                         }
-                    } catch (Exception e) {
-                        errors.incrementAndGet();
-                        conn = null;
+                        lat.add(System.nanoTime() - t);
                     }
-                    lat.add(System.nanoTime() - t);
+                } finally {
+                    if (conn != null) { conn.close(); }
                 }
             }));
         }
@@ -134,6 +153,11 @@ public class LoadGen {
             socket.setSoTimeout(60_000);
             out = socket.getOutputStream();
             in = new java.io.BufferedInputStream(socket.getInputStream(), 16384);
+        }
+
+        void close() {
+            closed = true;
+            try { socket.close(); } catch (java.io.IOException ignored) { }
         }
 
         int exchange(byte[] request) throws java.io.IOException {

@@ -35,10 +35,15 @@ public abstract class LValueNode extends PhpNode {
     /** Append without exposing mutable storage. Arrays/properties retain immutable stores. */
     public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
         Object current = read(frame, keys);
-        String result = dev.phpruntime.runtime.PhpOps.toStr(current == null
-                ? dev.phpruntime.runtime.PhpNull.INSTANCE : current).concat(suffix);
+        String result = concat(dev.phpruntime.runtime.PhpOps.toStr(current == null
+                ? dev.phpruntime.runtime.PhpNull.INSTANCE : current), suffix);
         write(frame, keys, result);
         return result;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static String concat(String left, String right) {
+        return left.concat(right);
     }
 
     /**
@@ -46,14 +51,20 @@ public abstract class LValueNode extends PhpNode {
      * returned cell mutate this variable, array element, or property in place.
      */
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
-        throw new dev.phpruntime.runtime.PhpError("Cannot take reference to " + describe(), this);
+        throw referenceError(false);
     }
 
     /**
      * Binds this lvalue directly to {@code cell} (for {@code $lhs = &$rhs} and {@code foreach (... as &$v)}).
      */
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
-        throw new dev.phpruntime.runtime.PhpError("Cannot assign by reference to " + describe(), this);
+        throw referenceError(true);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private dev.phpruntime.runtime.PhpError referenceError(boolean assignment) {
+        return new dev.phpruntime.runtime.PhpError(
+                (assignment ? "Cannot assign by reference to " : "Cannot take reference to ") + describe(), this);
     }
 
     /** Typed writes; variables store these unboxed, everything else boxes. */
@@ -80,6 +91,7 @@ public abstract class LValueNode extends PhpNode {
         return v;
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     protected Object undefined() {
         dev.phpruntime.PhpContext.get(this).warning("Undefined variable " + describe(), line());
         return dev.phpruntime.runtime.PhpNull.INSTANCE;
