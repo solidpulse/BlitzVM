@@ -30,15 +30,21 @@ import com.oracle.truffle.api.source.SourceSection;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.builtins.Builtins;
+import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.nodes.call.CallArgHelper;
 import dev.phpruntime.nodes.call.CallNode;
 import dev.phpruntime.nodes.call.DispatchCallNode;
 import dev.phpruntime.nodes.call.SplBuiltinNode;
+import dev.phpruntime.nodes.expr.CastNode;
 import dev.phpruntime.nodes.expr.CompareNode;
 import dev.phpruntime.nodes.expr.CondNode;
+import dev.phpruntime.nodes.expr.ReadConstantNode;
+import dev.phpruntime.nodes.expr.ThrowNode;
+import dev.phpruntime.nodes.expr.UnaryNode;
 import dev.phpruntime.nodes.stmt.IteratorNode;
+import dev.phpruntime.nodes.stmt.TryCatchNode;
 import dev.phpruntime.nodes.var.ArrayAccessNode;
 import dev.phpruntime.nodes.var.IndexReadNode;
 import dev.phpruntime.nodes.var.VarKind;
@@ -47,6 +53,8 @@ import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpBacktrace;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
+import dev.phpruntime.runtime.PhpException;
+import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
@@ -68,7 +76,9 @@ import java.util.Map;
  */
 @GenerateBytecode(languageClass = PhpLanguage.class, enableQuickening = true,
         boxingEliminationTypes = {long.class, double.class, boolean.class},
-        enableBlockScoping = false)
+        enableBlockScoping = false,
+        // exit/die skips finally blocks in PHP: it must pass through guest handlers.
+        unwindExceptions = {ControlFlow.Exit.class})
 @TypeSystemReference(PhpTypes.class)
 @ShortCircuitOperation(name = "PhpAnd", operator = ShortCircuitOperation.Operator.AND_RETURN_CONVERTED,
         booleanConverter = PhpBytecodeRootNode.ToBool.class)
@@ -2159,5 +2169,211 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     static String bytes(String s) {
         return PhpStrings.fromJava(s);
+    }
+
+    // ---- 17b: simple statements and expressions
+
+    /** {@code (int)}, {@code (float)}, ...: the conversion lives in {@link CastNode#cast}. */
+    @Operation
+    @ConstantOperand(type = CastNode.Kind.class, name = "kind")
+    public static final class Cast {
+        @Specialization
+        static Object cast(CastNode.Kind kind, Object value, @Bind Node node) {
+            return CastNode.cast(PhpContext.get(node), kind, value, node);
+        }
+    }
+
+    /** {@code exit(expr)} / {@code die}: print unless the value is an exit code, then unwind. */
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "hasValue")
+    public static final class Exit {
+        @Specialization
+        static Object exit(boolean hasValue, Object value, @Bind Node node) {
+            if (hasValue && !(value instanceof Long)) {
+                try {
+                    PhpContext.get(node).echo(Ops.toStr(value));
+                } catch (PhpError e) {
+                    throw e.at(node);
+                }
+            }
+            throw new ControlFlow.Exit();
+        }
+    }
+
+    /** Unary {@code +} and {@code ~}: the conversion lives in {@code UnaryNode.apply}. */
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "bitNot")
+    public static final class Unary {
+        @Specialization
+        static Object apply(boolean bitNot, Object value, @Bind Node node) {
+            return UnaryNode.apply(value, bitNot, node);
+        }
+    }
+
+    /** {@code throw $e}: validation and the PHP exception, shared with the AST node. */
+    @Operation
+    public static final class Throw {
+        @Specialization
+        static Object thr(Object value, @Bind Node node) {
+            return ThrowNode.throwValue(value, node);
+        }
+    }
+
+    /** {@code global $x;}: the global variable's reference cell, stored into the local by the emitter. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "globalId")
+    public static final class GlobalRef {
+        @Specialization
+        static PhpReference ref(int globalId, @Bind Node node) {
+            return PhpContext.get(node).globalRefById(globalId);
+        }
+    }
+
+    /** A copy of a {@code ReadConstantNode} for one bytecode instruction: it caches the built-in. */
+    public record ConstantSpec(ReadConstantNode template) {
+        public ReadConstantNode newEngine() {
+            return template.headless();
+        }
+
+        @Override
+        public String toString() {
+            return template.name();
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = ConstantSpec.class)
+    public static final class ReadConstant {
+        @Specialization
+        static Object read(ConstantSpec spec,
+                           @Cached("spec.newEngine()") ReadConstantNode engine) {
+            // A miss throws a PhpError with no root node; the root locates it from the instruction.
+            return engine.execute(null);
+        }
+    }
+
+    /** The static-local owner key: the closure object, or the function root the bytecode came from. */
+    static Object staticOwner(Object owner, PhpBytecodeRootNode root) {
+        return owner instanceof PhpObject ? owner : root.function;
+    }
+
+    /** {@code static $x}: the existing per-context cell, or null when it must be initialized. */
+    @Operation
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = boolean.class, name = "global")
+    public static final class StaticCell {
+        @Specialization
+        static PhpReference cell(String name, boolean global, Object owner, @Bind PhpBytecodeRootNode root,
+                                 @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            return ctx.getStaticLocal(global ? ctx : staticOwner(owner, root), name);
+        }
+    }
+
+    /** The first execution of {@code static $x = expr}: creates and registers the cell. */
+    @Operation
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = boolean.class, name = "global")
+    public static final class InitStaticCell {
+        @Specialization
+        static PhpReference init(String name, boolean global, Object owner, Object value,
+                                 @Bind PhpBytecodeRootNode root, @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            return ctx.initStaticLocal(global ? ctx : staticOwner(owner, root), name, value);
+        }
+    }
+
+    /** File-scope {@code static} variables are globals; bind the cell as the AST does. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "globalId")
+    public static final class BindGlobalById {
+        @Specialization
+        static void bind(int globalId, PhpReference cell, @Bind Node node) {
+            PhpContext.get(node).bindGlobalById(globalId, cell);
+        }
+    }
+
+    /** The catch clauses of one try, for the bytecode catch handler. */
+    public record CatchSpec(TryCatchNode.CatchClause[] clauses) {
+        @Override
+        public String toString() {
+            return "catch " + clauses.length;
+        }
+    }
+
+    /** Dispatches a thrown object to its catch clause; rethrows when no clause matches. */
+    @Operation
+    @ConstantOperand(type = CatchSpec.class)
+    public static final class CatchMatch {
+        @Specialization
+        static long match(CatchSpec spec, Object thrown, @Bind Node node) {
+            Throwable t = (Throwable) thrown;
+            int index = TryCatchNode.catchIndex(PhpContext.get(node), spec.clauses(), t);
+            if (index < 0) {
+                CompilerDirectives.transferToInterpreter();
+                throw unchecked(t);
+            }
+            return index;
+        }
+    }
+
+    /** The PHP object a matched catch clause binds: the thrown object, or the materialized Error. */
+    @Operation
+    public static final class CatchValue {
+        @Specialization
+        static PhpObject value(Object thrown, @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            PhpObject value = TryCatchNode.throwableObject(ctx, (Throwable) thrown, node);
+            if (value == null) {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Internal error: caught a non-catchable throwable");
+            }
+            return value;
+        }
+    }
+
+    /** Whether a pending throwable runs the finally block (non-catchable fatals do not). */
+    @Operation
+    public static final class ShouldRunFinally {
+        @Specialization
+        static boolean test(Object pending) {
+            return pending instanceof Throwable t
+                    && TryCatchNode.shouldRunFinallyFor(t);
+        }
+    }
+
+    /** Links a throwable raised by a finally block to the pending one, as the AST does. */
+    @Operation
+    public static final class LinkPrevious {
+        @Specialization
+        static void link(Object pending, Object raised, @Bind Node node) {
+            if (!(pending instanceof Throwable prev) || !(raised instanceof Throwable next)) {
+                return;
+            }
+            PhpContext ctx = PhpContext.get(node);
+            PhpObject previous = TryCatchNode.throwableObject(ctx, prev, node);
+            if (previous == null) {
+                return;
+            }
+            if (next instanceof PhpException ex) {
+                PhpExceptions.linkPrevious(ex.exceptionObject(), previous);
+            } else if (next instanceof PhpError err && err.isCatchable()) {
+                PhpExceptions.linkPrevious(err.toPhpObject(ctx, node), previous);
+            }
+        }
+    }
+
+    /** Rethrows the current throwable from a bytecode handler. */
+    @Operation
+    public static final class Rethrow {
+        @Specialization
+        static void rethrow(Object thrown) {
+            throw unchecked((Throwable) thrown);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    static <E extends Throwable> RuntimeException unchecked(Throwable t) throws E {
+        throw (E) t;
     }
 }

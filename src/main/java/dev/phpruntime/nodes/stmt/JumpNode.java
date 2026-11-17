@@ -60,13 +60,26 @@ public final class JumpNode extends PhpNode {
                     throw e.unsupported("return by reference");
                 }
                 var b = e.builder();
-                b.beginReturn();
                 if (value == null) {
+                    e.emitFinallies();
+                    b.beginReturn();
                     b.emitLoadConstant(dev.phpruntime.runtime.PhpNull.INSTANCE);
-                } else {
+                    b.endReturn();
+                } else if (!e.hasFinallies()) {
+                    b.beginReturn();
                     e.expr(value);
+                    b.endReturn();
+                } else {
+                    // PHP evaluates the return value before finally runs.
+                    var result = e.temp();
+                    b.beginStoreLocal(result);
+                    e.expr(value);
+                    b.endStoreLocal();
+                    e.emitFinallies();
+                    b.beginReturn();
+                    b.emitLoadLocal(result);
+                    b.endReturn();
                 }
-                b.endReturn();
             }
         }
     }

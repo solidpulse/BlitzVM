@@ -2,6 +2,7 @@ package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
@@ -29,7 +30,11 @@ public final class CastNode extends PhpNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        Object v = operand.execute(frame);
+        return cast(PhpContext.get(this), kind, operand.execute(frame), this);
+    }
+
+    /** The conversion itself, shared by the AST path and the bytecode {@code Cast} operation. */
+    public static Object cast(PhpContext ctx, Kind kind, Object v, Node location) {
         return switch (kind) {
             case INT -> PhpOps.toLong(v);
             case FLOAT -> PhpOps.toDouble(v);
@@ -37,13 +42,20 @@ public final class CastNode extends PhpNode {
                 try {
                     yield PhpOps.toStr(v);
                 } catch (dev.phpruntime.runtime.PhpError e) {
-                    throw e.at(this);
+                    throw e.at(location);
                 }
             }
             case BOOL -> PhpOps.toBool(v);
             case ARRAY -> toArray(v);
-            case OBJECT -> toObject(PhpContext.get(this), v);
+            case OBJECT -> toObject(ctx, v);
         };
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginCast(kind);
+        e.expr(operand);
+        e.builder().endCast();
     }
 
     @TruffleBoundary

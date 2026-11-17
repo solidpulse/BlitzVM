@@ -351,7 +351,7 @@ public final class BytecodeEmitter {
         return locals.computeIfAbsent(slot, s -> b.createLocal(name, null));
     }
 
-    private BytecodeLocal accessor(int slot, String name) {
+    public BytecodeLocal accessor(int slot, String name) {
         return local(slot, name);
     }
 
@@ -550,6 +550,80 @@ public final class BytecodeEmitter {
         }
     }
 
+    /**
+     * A {@code finally} block for the current try: {@code loopDepth} is the loop nesting at the
+     * try, so a {@code break}/{@code continue} that stays inside the try does not run it.
+     */
+    private record Finally(Runnable emit, int loopDepth) {
+    }
+
+    private final Deque<Finally> finallyBlocks = new ArrayDeque<>();
+
+    /** Opens a try that has a finally block; it runs before any return or jump out of it. */
+    public void pushFinally(Runnable emit) {
+        finallyBlocks.push(new Finally(emit, loops.size()));
+    }
+
+    /** Ends the try: its finally is normally emitted explicitly after the try/catch. */
+    public void popFinally() {
+        finallyBlocks.pop();
+    }
+
+    public boolean hasFinallies() {
+        return !finallyBlocks.isEmpty();
+    }
+
+    /**
+     * Emits every pending finally, innermost first: a {@code return} leaves all of them. The
+     * stack is restored afterwards, because the TryCatch emitter still generates the code after
+     * the return and needs to know which finally blocks enclose it.
+     */
+    public void emitFinallies() {
+        emitPopped(popFinallies(finallyBlocks.size()));
+    }
+
+    /** Emits the finally blocks a {@code break}/{@code continue} of {@code levels} leaves. */
+    public void emitFinallies(int levels) {
+        int threshold = loops.size() - levels + 1;
+        int count = 0;
+        for (Finally f : finallyBlocks) {
+            if (f.loopDepth() < threshold) {
+                break;
+            }
+            count++;
+        }
+        emitPopped(popFinallies(count));
+    }
+
+    /** Pops {@code count} innermost finally blocks, leaving the enclosing ones in place. */
+    private Finally[] popFinallies(int count) {
+        Finally[] popped = new Finally[count];
+        for (int i = 0; i < count; i++) {
+            popped[i] = finallyBlocks.pop();
+        }
+        return popped;
+    }
+
+    /**
+     * Emits popped finally blocks innermost first. While one is emitted, the blocks enclosing it
+     * are on the stack again, so a {@code return} inside it runs only those outer blocks.
+     */
+    private void emitPopped(Finally[] popped) {
+        int count = popped.length;
+        for (int i = 0; i < count; i++) {
+            for (int j = count - 1; j > i; j--) {
+                finallyBlocks.push(popped[j]);
+            }
+            popped[i].emit().run();
+            for (int j = count - 1; j > i; j--) {
+                finallyBlocks.pop();
+            }
+        }
+        for (int j = count - 1; j >= 0; j--) {
+            finallyBlocks.push(popped[j]);
+        }
+    }
+
     /** Opens a loop: break and continue inside it branch to these labels. */
     public void pushLoop(BytecodeLabel breakLabel, BytecodeLabel continueLabel) {
         loops.push(new Loop(breakLabel, continueLabel));
@@ -563,6 +637,7 @@ public final class BytecodeEmitter {
         if (levels < 1 || levels > loops.size()) {
             throw new Unsupported("break/continue out of range");
         }
+        emitFinallies(levels);
         Loop target = null;
         int i = 0;
         for (Loop l : loops) {

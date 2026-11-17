@@ -48,6 +48,10 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
 
         @ExplodeLoop
         public boolean matches(PhpContext ctx, PhpClass thrownClass) {
+            return matches(ctx, classIds, matchAllThrowables, thrownClass);
+        }
+
+        static boolean matches(PhpContext ctx, int[] classIds, boolean[] matchAllThrowables, PhpClass thrownClass) {
             for (int i = 0; i < classIds.length; i++) {
                 if (matchAllThrowables[i] && thrownClass.isThrowable()) {
                     return true;
@@ -58,6 +62,22 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
                 }
             }
             return false;
+        }
+
+        public int[] classIds() {
+            return classIds;
+        }
+
+        public boolean[] matchAllThrowables() {
+            return matchAllThrowables;
+        }
+
+        public LValueNode varTarget() {
+            return varTarget;
+        }
+
+        public PhpNode body() {
+            return body;
         }
 
         public void executeCatch(VirtualFrame frame, PhpObject exObj) {
@@ -95,6 +115,18 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         this.tryBlock = tryBlock;
         this.catches = catches;
         this.finallyBlock = finallyBlock;
+    }
+
+    public PhpNode tryBlock() {
+        return tryBlock;
+    }
+
+    public CatchClause[] catches() {
+        return catches;
+    }
+
+    public PhpNode finallyBlock() {
+        return finallyBlock;
     }
 
     @Override
@@ -211,7 +243,8 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         }
     }
 
-    private static boolean shouldRunFinallyFor(Throwable t) {
+    /** Whether an active {@code finally} runs for this pending throwable (the AST's rule). */
+    public static boolean shouldRunFinallyFor(Throwable t) {
         if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break
                 || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto
                 || t instanceof ControlFlow.GeneratorClose) {
@@ -226,29 +259,50 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         return false;
     }
 
-    private PhpObject extractPendingThrowableObject(Throwable pending) {
+    /** The PHP object for a pending throwable, or null when it has none (non-catchable error). */
+    public static PhpObject throwableObject(PhpContext ctx, Throwable pending, Node fallback) {
         if (pending instanceof PhpException pe) {
             return pe.exceptionObject();
         }
         if (pending instanceof PhpError err && err.isCatchable()) {
-            return err.toPhpObject(PhpContext.get(this), this);
+            return err.toPhpObject(ctx, fallback);
         }
         return null;
     }
 
+    private PhpObject extractPendingThrowableObject(Throwable pending) {
+        return throwableObject(PhpContext.get(this), pending, this);
+    }
+
     @SuppressWarnings("unchecked")
-    private static <E extends Throwable> void rethrowUnchecked(Throwable t) throws E {
+    public static <E extends Throwable> void rethrowUnchecked(Throwable t) throws E {
         throw (E) t;
     }
 
+    /** Whether {@code thrown} is caught by any clause (php's matching), or -1. */
+    public static int catchIndex(PhpContext ctx, CatchClause[] catches, Throwable thrown) {
+        if (thrown instanceof PhpException ex) {
+            return findMatchingCatch(ctx, catches, ex.exceptionObject().phpClass());
+        }
+        if (thrown instanceof PhpError err && err.isCatchable()) {
+            return findMatchingCatch(ctx, catches, err.resolveErrorClass(ctx));
+        }
+        return -1;
+    }
+
     @ExplodeLoop
-    private int findMatchingCatch(PhpContext ctx, PhpClass thrownClass) {
+    public static int findMatchingCatch(PhpContext ctx, CatchClause[] catches, PhpClass thrownClass) {
         for (int i = 0; i < catches.length; i++) {
             if (catches[i].matches(ctx, thrownClass)) {
                 return i;
             }
         }
         return -1;
+    }
+
+    @ExplodeLoop
+    private int findMatchingCatch(PhpContext ctx, PhpClass thrownClass) {
+        return findMatchingCatch(ctx, catches, thrownClass);
     }
 
     private boolean dispatchCatch(VirtualFrame frame, PhpObject exObj) {
@@ -259,5 +313,112 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         }
         catches[idx].executeCatch(frame, exObj);
         return true;
+    }
+
+    /**
+     * Bytecode form. The catch dispatch is a DSL {@code TryCatch} whose handler asks the cached
+     * clauses which one matches. {@code finally} is emitted explicitly at every exit point
+     * (normal end, {@code return}, {@code break}/{@code continue}) and around uncaught exceptions,
+     * because PHP skips it for {@code exit} (which is an unwind exception) and lets a
+     * {@code finally} that returns override a pending return or exception. A pending error is
+     * stored so a throw from the finalizer can link it as {@code previous}, as the AST does.
+     */
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (finallyBlock == null) {
+            emitTryCatch(e);
+            return;
+        }
+        Runnable fin = () -> {
+            var fb = e.builder();
+            fb.beginBlock();
+            e.stmt(finallyBlock);
+            fb.endBlock();
+        };
+        var b = e.builder();
+        var pending = e.temp();
+        e.pushFinally(fin);
+        b.beginTryCatch();
+        emitTryCatch(e);
+        // An exception escaped the try block and the catch clauses: run finally, then rethrow.
+        // The whole handler is one Block: TryCatch has exactly two children.
+        b.beginBlock();
+        b.beginStoreLocal(pending);
+        b.emitLoadException();
+        b.endStoreLocal();
+        b.beginIfThen();
+        b.beginShouldRunFinally();
+        b.emitLoadLocal(pending);
+        b.endShouldRunFinally();
+        b.beginBlock();
+        e.popFinally();
+        b.beginTryCatch();
+        fin.run();
+        b.beginBlock();
+        b.beginLinkPrevious();
+        b.emitLoadLocal(pending);
+        b.emitLoadException();
+        b.endLinkPrevious();
+        b.beginRethrow();
+        b.emitLoadException();
+        b.endRethrow();
+        b.endBlock();
+        b.endTryCatch();
+        e.pushFinally(fin);
+        b.beginRethrow();
+        b.emitLoadLocal(pending);
+        b.endRethrow();
+        b.endBlock();
+        b.endIfThen();
+        // Non-catchable errors pass through without running finally, as on the AST.
+        b.beginRethrow();
+        b.emitLoadLocal(pending);
+        b.endRethrow();
+        b.endBlock();
+        b.endTryCatch();
+        e.popFinally();
+        fin.run();
+    }
+
+    /** try + catch clauses, without a finally block. */
+    private void emitTryCatch(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginTryCatch();
+        b.beginBlock();
+        e.stmt(tryBlock);
+        b.endBlock();
+        b.beginBlock();
+        if (catches.length == 0) {
+            b.beginRethrow();
+            b.emitLoadException();
+            b.endRethrow();
+        } else {
+            var index = e.temp();
+            b.beginStoreLocal(index);
+            b.beginCatchMatch(new dev.phpruntime.bytecode.PhpBytecodeRootNode.CatchSpec(catches));
+            b.emitLoadException();
+            b.endCatchMatch();
+            b.endStoreLocal();
+            for (int i = 0; i < catches.length; i++) {
+                b.beginIfThen();
+                b.beginIdentical(false);
+                b.emitLoadLocal(index);
+                b.emitLoadConstant((long) i);
+                b.endIdentical();
+                b.beginBlock();
+                if (catches[i].varTarget() != null) {
+                    e.assign(catches[i].varTarget(), () -> {
+                        b.beginCatchValue();
+                        b.emitLoadException();
+                        b.endCatchValue();
+                    });
+                }
+                e.stmt(catches[i].body());
+                b.endBlock();
+                b.endIfThen();
+            }
+        }
+        b.endBlock();
+        b.endTryCatch();
     }
 }

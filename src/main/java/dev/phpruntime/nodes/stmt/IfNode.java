@@ -47,11 +47,10 @@ public final class IfNode extends PhpNode {
     }
 
     private static void branch(dev.phpruntime.bytecode.BytecodeEmitter e, PhpNode n) {
-        if (n == null) {
-            e.builder().beginBlock();
-            e.builder().endBlock();
-        } else {
+        e.builder().beginBlock();
+        if (n != null) {
             e.stmt(n);
         }
+        e.builder().endBlock();
     }
 }
