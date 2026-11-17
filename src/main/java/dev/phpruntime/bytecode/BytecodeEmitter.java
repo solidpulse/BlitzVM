@@ -54,6 +54,7 @@ public final class BytecodeEmitter {
     }
 
     private final PhpBytecodeRootNodeGen.Builder b;
+    private final PhpLanguage language;
     private final PhpFunctionRootNode fn;
     private final Source source;
     private final Map<Integer, BytecodeLocal> locals = new HashMap<>();
@@ -61,8 +62,9 @@ public final class BytecodeEmitter {
     private final Deque<Loop> loops = new ArrayDeque<>();
     private int currentLine = -1;
 
-    private BytecodeEmitter(PhpBytecodeRootNodeGen.Builder b, PhpFunctionRootNode fn) {
+    private BytecodeEmitter(PhpBytecodeRootNodeGen.Builder b, PhpLanguage language, PhpFunctionRootNode fn) {
         this.b = b;
+        this.language = language;
         this.fn = fn;
         this.source = fn.source();
     }
@@ -88,7 +90,7 @@ public final class BytecodeEmitter {
                 throw new Unsupported("return by reference");
             }
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, fn).emitRoot()).getNode(0);
+                    builder -> new BytecodeEmitter(builder, language, fn).emitRoot()).getNode(0);
             root.init(fn);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -102,6 +104,14 @@ public final class BytecodeEmitter {
             if (MODE.equals("all")) {
                 throw new IllegalStateException("bytecode: " + fn.getName() + ": unsupported " + u.getMessage());
             }
+            return null;
+        } catch (RuntimeException builderError) {
+            // An emitter bug (the builder rejects the operation tree): keep the AST, report it.
+            if (MODE.equals("all")) {
+                throw builderError;
+            }
+            UNSUPPORTED.computeIfAbsent("EMITTER BUG " + fn.getName() + ": " + builderError.getMessage(),
+                    k -> new AtomicInteger()).incrementAndGet();
             return null;
         }
     }
@@ -251,6 +261,8 @@ public final class BytecodeEmitter {
             ir.emitIfSet(this);
         } else if (node instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             il.emitRead(this, 1);
+        } else if (node instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
+            place(p, PhpBytecodeRootNode.P_READ_IF_SET, 0, null);
         } else {
             expr(node);
         }
@@ -297,6 +309,119 @@ public final class BytecodeEmitter {
 
     public void exitCall() {
         callDepth--;
+    }
+
+    // ------------------------------------------------------------------ places
+
+    /**
+     * Emits a non-local lvalue in {@code mode} (a {@code PhpBytecodeRootNode.P_*} constant): the
+     * key operands in evaluation order, then {@code value} if the mode takes one.
+     */
+    public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value) {
+        Form f = form(lv);
+        if (f.local() != null) {
+            b.beginVarPlace(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
+        } else {
+            b.beginObjPlace(f.spec(), mode, arg);
+        }
+        operands(f);
+        if (value != null) {
+            value.run();
+        }
+        if (f.local() != null) {
+            b.endVarPlace();
+        } else {
+            b.endObjPlace();
+        }
+    }
+
+    /** An argument that is a non-local lvalue: by reference or by value, as the callee decides. */
+    public void sendPlace(dev.phpruntime.nodes.var.LValueNode lv, int param, BytecodeLocal callee) {
+        Form f = form(lv);
+        if (f.local() != null) {
+            b.beginSendVarPlace(accessor(f.local()), info(f.local()), f.spec(), param, callee);
+        } else {
+            b.beginSendObjPlace(f.spec(), param, callee);
+        }
+        operands(f);
+        if (f.local() != null) {
+            b.endSendVarPlace();
+        } else {
+            b.endSendObjPlace();
+        }
+    }
+
+    private record Form(PhpBytecodeRootNode.PlaceSpec spec, LocalVarNode local,
+                        dev.phpruntime.nodes.var.PropertyLValueNode property, PhpNode[] keys) {
+    }
+
+    private Form form(dev.phpruntime.nodes.var.LValueNode lv) {
+        if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
+            if (il.base() instanceof LocalVarNode local) {
+                var template = il.headless(language, new dev.phpruntime.nodes.var.HeldValueBase(local.varName()));
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length, false),
+                        local, null, il.keyNodes());
+            }
+            if (il.base() instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
+                var template = il.headless(language, p.headless());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length, true),
+                        null, p, il.keyNodes());
+            }
+            throw new Unsupported("index of " + il.base().getClass().getSimpleName());
+        }
+        if (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0, true), null, p, new PhpNode[0]);
+        }
+        throw new Unsupported("place " + lv.getClass().getSimpleName()
+                + (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode ? " in a trait" : ""));
+    }
+
+    private void operands(Form f) {
+        if (f.property() != null) {
+            expr(f.property().targetExpr());
+            propertyName(f.property());
+        }
+        for (PhpNode k : f.keys()) {
+            if (k == null) {
+                b.emitLoadConstant(dev.phpruntime.nodes.var.IndexLValueNode.APPEND);
+            } else {
+                expr(k);
+            }
+        }
+    }
+
+    private void propertyName(dev.phpruntime.nodes.var.PropertyLValueNode p) {
+        if (p.staticName() != null) {
+            b.emitLoadConstant(p.staticName());
+        } else {
+            b.beginToStr();
+            expr(p.dynamicNameExpr());
+            b.endToStr();
+        }
+    }
+
+    public static boolean isPlace(PhpNode n) {
+        return n instanceof dev.phpruntime.nodes.var.IndexLValueNode || n instanceof dev.phpruntime.nodes.var.PropertyLValueNode;
+    }
+
+    /** Emits one call argument: a variable, a place, or a value, sent against the callee in {@code callee}. */
+    public void sendArgument(PhpNode arg, dev.phpruntime.nodes.var.LValueNode refTarget, int param, BytecodeLocal callee) {
+        if (arg instanceof LocalVarNode lv) {
+            b.emitSendVar(param, accessor(lv), info(lv), callee);
+        } else if (refTarget != null) {
+            if (!isPlace(refTarget)) {
+                throw new Unsupported("argument that may be by reference: " + refTarget.getClass().getSimpleName());
+            }
+            sendPlace(refTarget, param, callee);
+        } else {
+            int kind = arg instanceof dev.phpruntime.nodes.expr.NewNode ? 2
+                    : (arg instanceof dev.phpruntime.nodes.call.CallNode || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
+                    || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                    || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
+            b.beginSendValue(param, kind, callee);
+            expr(arg);
+            b.endSendValue();
+        }
     }
 
     /** Opens a loop: break and continue inside it branch to these labels. */

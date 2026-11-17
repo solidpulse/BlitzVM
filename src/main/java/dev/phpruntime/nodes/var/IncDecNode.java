@@ -102,6 +102,10 @@ public final class IncDecNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target)) {
+            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_INCDEC, (increment ? 1 : 0) | (prefix ? 2 : 0), null);
+            return;
+        }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
             throw e.unsupported("increment of " + target.getClass().getSimpleName());
         }
@@ -110,6 +114,10 @@ public final class IncDecNode extends PhpNode {
 
     @Override
     public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target)) {
+            emit(e);
+            return;
+        }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
             throw e.unsupported("increment of " + target.getClass().getSimpleName());
         }

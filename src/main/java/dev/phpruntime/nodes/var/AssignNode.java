@@ -99,6 +99,10 @@ public final class AssignNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target)) {
+            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_WRITE, 0, () -> e.expr(value));
+            return;
+        }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
             throw e.unsupported("assign to " + target.getClass().getSimpleName());
         }
@@ -109,6 +113,10 @@ public final class AssignNode extends PhpNode {
 
     @Override
     public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target)) {
+            emit(e);
+            return;
+        }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
             throw e.unsupported("assign to " + target.getClass().getSimpleName());
         }

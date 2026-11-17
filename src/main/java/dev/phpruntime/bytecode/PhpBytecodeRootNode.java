@@ -34,6 +34,7 @@ import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.nodes.call.CallArgHelper;
 import dev.phpruntime.nodes.call.CallNode;
+import dev.phpruntime.nodes.call.DispatchCallNode;
 import dev.phpruntime.nodes.call.SplBuiltinNode;
 import dev.phpruntime.nodes.expr.CompareNode;
 import dev.phpruntime.nodes.expr.CondNode;
@@ -1260,8 +1261,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, int param, LocalAccessor acc, VarInfo info, LocalAccessor calleeLocal,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
             Object callee = calleeLocal.getObject(bytecode, frame);
-            if (callee instanceof PhpFunction fn) {
-                PhpFunctionRootNode root = PhpFunctionRootNode.of(fn.callTarget().getRootNode());
+            if (!(callee instanceof Builtins.Def)) {
+                PhpFunctionRootNode root = signature(callee);
                 if (root != null && root.isParamByRef(param)) {
                     if ("this".equals(info.name())) {
                         return new PhpReference(ReadVar.read(frame, acc, info, bytecode, bci, node));
@@ -1287,14 +1288,354 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, int param, int kind, LocalAccessor calleeLocal, Object value,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
             Object callee = calleeLocal.getObject(bytecode, frame);
-            if (callee instanceof PhpFunction fn) {
-                PhpFunctionRootNode root = PhpFunctionRootNode.of(fn.callTarget().getRootNode());
+            if (!(callee instanceof Builtins.Def)) {
+                PhpFunctionRootNode root = signature(callee);
                 if (root != null && root.isParamByRef(param)) {
                     return Ops.valueToRefParam(root, param, kind, value, node, lineOf(bytecode, bci));
                 }
                 return PhpOps.copyOnAssign(value);
             }
             return value;
+        }
+    }
+
+    /** The parameters a callee declares (for by-reference checks), or null if unknown or a builtin. */
+    static PhpFunctionRootNode signature(Object callee) {
+        if (callee instanceof PhpFunction fn) {
+            return PhpFunctionRootNode.of(fn.callTarget().getRootNode());
+        }
+        if (callee instanceof MethodCallee m && m.entry() != null) {
+            return PhpFunctionRootNode.of(m.sigTarget().getRootNode());
+        }
+        return null;
+    }
+
+    /** A method call resolved on its receiver; {@code entry} is null for a {@code __call} fallback. */
+    public record MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
+                               PhpObject obj, String name, RootCallTarget magic) {
+    }
+
+    /** A method call site: the static name (null for {@code $obj->$name()}) and its method id. */
+    public record MethodSite(String name, int methodId) {
+    }
+
+    @Operation
+    @ConstantOperand(type = MethodSite.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class ResolveMethod {
+        @Specialization
+        static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor callee, Object target, Object nameValue,
+                            @Bind BytecodeNode bytecode) {
+            String name = nameValue instanceof String s ? s : Ops.toStr(nameValue);
+            if (!(target instanceof PhpObject obj)) {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Call to a member function " + name + "() on " + PhpOps.typeName(target));
+            }
+            PhpClass cls = obj.phpClass();
+            PhpClass.MethodEntry entry = site.methodId() >= 0 ? cls.methodById(site.methodId()) : cls.lookupMethod(name);
+            if (entry == null) {
+                PhpClass.MethodEntry magic = cls.callMethod();
+                if (magic != null && magic.callTarget() != null) {
+                    callee.setObject(bytecode, frame, new MethodCallee(null, obj, cls, null, obj, name, magic.callTarget()));
+                    return;
+                }
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Call to undefined method " + cls.name() + "::" + name + "()");
+            }
+            if (entry.callTarget() == null) {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()");
+            }
+            Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
+            RootCallTarget sig = entry.callTarget();
+            if (obj.closure() != null && obj.closure().callTarget() != null
+                    && sig.getRootNode() instanceof dev.phpruntime.nodes.call.ClosureInvokeRootNode) {
+                sig = obj.closure().callTarget();
+            }
+            callee.setObject(bytecode, frame, new MethodCallee(entry, thisArg, cls, sig, obj, name, null));
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class DoMethodCall {
+        @Specialization
+        static Object call(VirtualFrame frame, LocalAccessor calleeLocal, @Variadic Object[] args,
+                           @Bind BytecodeNode bytecode, @Cached("create()") DispatchCallNode dispatch) {
+            MethodCallee m = (MethodCallee) calleeLocal.getObject(bytecode, frame);
+            if (m.entry() == null) {
+                return CallArgHelper.unwrapReturn(dispatch.call(m.magic(),
+                        new Object[]{m.obj(), m.cls(), m.name(), Ops.packArgs(args)}));
+            }
+            Object[] callArgs = new Object[2 + args.length];
+            callArgs[0] = m.thisArg();
+            callArgs[1] = m.cls();
+            System.arraycopy(args, 0, callArgs, 2, args.length);
+            return CallArgHelper.unwrapReturn(dispatch.callMethod(m.entry(), callArgs));
+        }
+    }
+
+    // ------------------------------------------------------------------ places
+
+    public static final int P_READ = 0;
+    public static final int P_READ_IF_SET = 1;
+    public static final int P_ISSET = 2;
+    public static final int P_WRITE = 3;
+    public static final int P_COMPOUND = 4;
+    public static final int P_INCDEC = 5;
+    public static final int P_APPEND = 6;
+    public static final int P_CELL = 7;
+    public static final int P_UNSET = 8;
+
+    /**
+     * A non-local lvalue (an index path or a property). {@code template} is a copy of its AST
+     * node without expressions; each instruction caches its own copy and calls its read, write,
+     * cell and unset methods with the keys the bytecode evaluated, so the semantics are the AST's.
+     */
+    public static final class PlaceSpec {
+        private final dev.phpruntime.nodes.var.LValueNode template;
+        final int arrayKeys;
+        final boolean propertyBase;
+
+        public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys, boolean propertyBase) {
+            this.template = template;
+            this.arrayKeys = arrayKeys;
+            this.propertyBase = propertyBase;
+        }
+
+        public dev.phpruntime.nodes.var.LValueNode newEngine() {
+            return (dev.phpruntime.nodes.var.LValueNode) template.deepCopy();
+        }
+
+        @Override
+        public String toString() {
+            return template.describe();
+        }
+    }
+
+    /** A place on an index path rooted in a local: operands are the keys, then the value if any. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class VarPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, int mode, int arg,
+                          @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] holder = {HOLDER_EMPTY};
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Object result = Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.arrayKeys));
+            if (holder[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, holder[0]);
+            }
+            return result;
+        }
+    }
+
+    /** A property, or an index path on one: operands are the object, the name, the keys, the value. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class ObjPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.objKeys(ops, spec.arrayKeys);
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, 2 + spec.arrayKeys));
+        }
+    }
+
+    /** An argument that is an index path on a local: its cell for a by-reference parameter, else its value. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendVarPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, int param,
+                           LocalAccessor calleeLocal, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object[] holder = {HOLDER_EMPTY};
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Object result = Places.run(frame, engine, keys, mode, 0, null);
+            if (holder[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, holder[0]);
+            }
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendObjPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
+                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object result = Places.run(frame, engine, Places.objKeys(ops, spec.arrayKeys), mode, 0, null);
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
+        }
+    }
+
+    static final Object HOLDER_EMPTY = new Object();
+
+    /** The mode logic of the AST's assignment, compound, increment and append nodes, on an engine. */
+    static final class Places {
+        static Object[] varKeys(Object root, Object[] holder, Object[] ops, int n) {
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, 0, arrayKeys, 0, n);
+            return dev.phpruntime.nodes.var.IndexLValueNode.pack(
+                    dev.phpruntime.nodes.var.HeldValueBase.keys(root, holder), arrayKeys);
+        }
+
+        static Object[] objKeys(Object[] ops, int n) {
+            Object[] base = {ops[0], ops[1]};
+            if (n == 0) {
+                return base;
+            }
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, 2, arrayKeys, 0, n);
+            return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
+        }
+
+        static Object value(Object[] ops, int index) {
+            return index < ops.length ? ops[index] : null;
+        }
+
+        static int sendMode(Object callee, int param) {
+            if (!(callee instanceof Builtins.Def)) {
+                PhpFunctionRootNode root = signature(callee);
+                if (root != null && root.isParamByRef(param)) {
+                    return P_CELL;
+                }
+            }
+            return P_READ;
+        }
+
+        static Object sendValue(Object callee, int mode, Object result) {
+            return mode == P_READ && !(callee instanceof Builtins.Def) ? PhpOps.copyOnAssign(result) : result;
+        }
+
+        static Object run(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine, Object[] keys, int mode,
+                          int arg, Object value) {
+            switch (mode) {
+                case P_READ:
+                    if (engine instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
+                        return il.readOrWarn(frame, keys);
+                    }
+                    return ((dev.phpruntime.nodes.var.PropertyLValueNode) engine).executeOn(frame, keys[0], (String) keys[1]);
+                case P_READ_IF_SET: {
+                    Object v = engine.readIfSet(frame, keys);
+                    return v == null ? PhpNull.INSTANCE : v;
+                }
+                case P_ISSET:
+                    return engine.isSet(frame, keys);
+                case P_WRITE:
+                    engine.write(frame, keys, PhpOps.copyOnAssign(value));
+                    return value;
+                case P_COMPOUND:
+                    return compound(frame, engine, keys, PhpArith.Op.values()[arg], value);
+                case P_INCDEC:
+                    return incDec(frame, engine, keys, (arg & 1) != 0, (arg & 2) != 0);
+                case P_APPEND:
+                    return append(frame, engine, keys, value, arg != 0);
+                case P_CELL:
+                    return engine.obtainCell(frame, keys);
+                case P_UNSET:
+                    engine.unset(frame, keys);
+                    return PhpNull.INSTANCE;
+                default:
+                    throw CompilerDirectives.shouldNotReachHere();
+            }
+        }
+
+        private static PhpReference nestedCell(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine, Object[] keys) {
+            return engine instanceof dev.phpruntime.nodes.var.IndexLValueNode il && il.isNested()
+                    && il.usesArrayAccess(frame, keys) ? il.obtainCell(frame, keys) : null;
+        }
+
+        static Object compound(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine, Object[] keys,
+                               PhpArith.Op op, Object value) {
+            PhpReference nested = nestedCell(frame, engine, keys);
+            Object current = nested != null ? nested.getValue() : engine.read(frame, keys);
+            Object result = Ops.arith(op, current == null ? PhpNull.INSTANCE : current, value);
+            if (nested != null) {
+                nested.setValue(result);
+            } else {
+                engine.write(frame, keys, result);
+            }
+            return result;
+        }
+
+        static Object incDec(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine, Object[] keys,
+                             boolean increment, boolean prefix) {
+            PhpReference overloaded = engine instanceof dev.phpruntime.nodes.var.IndexLValueNode il
+                    && il.usesArrayAccess(frame, keys) ? il.obtainCell(frame, keys) : null;
+            Object old = overloaded != null ? overloaded.getValue() : engine.read(frame, keys);
+            Object updated = old instanceof Long l && l != Long.MAX_VALUE && l != Long.MIN_VALUE
+                    ? (Object) (increment ? l + 1 : l - 1) : Ops.incDecSlow(old, increment);
+            if (overloaded != null) {
+                overloaded.setValue(updated);
+            } else {
+                engine.write(frame, keys, updated);
+            }
+            return prefix ? updated : (old == null ? PhpNull.INSTANCE : old);
+        }
+
+        static Object append(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine, Object[] keys,
+                             Object suffix, boolean resultNeeded) {
+            if (!(suffix instanceof PhpObject)) {
+                String s = suffix instanceof String str ? str : Ops.toStr(suffix);
+                String r = engine.appendString(frame, keys, s, resultNeeded);
+                return r == null ? PhpNull.INSTANCE : r;
+            }
+            PhpReference nested = nestedCell(frame, engine, keys);
+            Object current = nested == null ? engine.read(frame, keys) : nested.getValue();
+            String result = Ops.concat(current == null ? PhpNull.INSTANCE : current, suffix);
+            if (nested == null) {
+                engine.write(frame, keys, result);
+            } else {
+                nested.setValue(result);
+            }
+            return result;
+        }
+    }
+
+    @Operation
+    public static final class ToStr {
+        @Specialization
+        static String string(String s) {
+            return s;
+        }
+
+        @Fallback
+        static String generic(Object v) {
+            return Ops.toStr(v);
+        }
+    }
+
+    /** {@code unset($x)}: a reference is unbound, a plain variable becomes undefined. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class UnsetVar {
+        @Specialization
+        static void unset(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode) {
+            if (info.kind().isCell()) {
+                acc.setObject(bytecode, frame, new PhpReference(null));
+            } else {
+                acc.clear(bytecode, frame);
+            }
         }
     }
 
@@ -1473,6 +1814,20 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static String bufferString(PhpStringBuffer buffer) {
             return buffer.asString();
+        }
+
+        @TruffleBoundary
+        static PhpError error(String message) {
+            return new PhpError(message);
+        }
+
+        @TruffleBoundary
+        static PhpArray packArgs(Object[] args) {
+            PhpArray arr = new PhpArray();
+            for (Object a : args) {
+                arr.append(a);
+            }
+            return arr;
         }
 
         @TruffleBoundary

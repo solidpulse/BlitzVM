@@ -423,18 +423,7 @@ public final class CallNode extends PhpNode {
             b.emitResolveFunction(site, callee);
             b.beginDoCall(site, callee);
             for (int i = 0; i < args.length; i++) {
-                if (args[i] instanceof dev.phpruntime.nodes.var.LocalVarNode lv) {
-                    b.emitSendVar(i, e.accessor(lv), e.info(lv), callee);
-                } else if (refTargets != null && refTargets[i] != null) {
-                    throw e.unsupported("argument that may be by reference: " + refTargets[i].getClass().getSimpleName());
-                } else {
-                    int kind = args[i] instanceof dev.phpruntime.nodes.expr.NewNode ? 2
-                            : (args[i] instanceof CallNode || args[i] instanceof MethodCallNode
-                            || args[i] instanceof StaticMethodCallNode || args[i] instanceof CallValueNode) ? 1 : 0;
-                    b.beginSendValue(i, kind, callee);
-                    e.expr(args[i]);
-                    b.endSendValue();
-                }
+                e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
             }
             b.endDoCall();
             b.endBlock();

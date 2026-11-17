@@ -36,10 +36,12 @@ public final class EchoNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginBlock();
         for (PhpNode v : values) {
             e.builder().beginEcho();
             e.expr(v);
             e.builder().endEcho();
         }
+        e.builder().endBlock();
     }
 }

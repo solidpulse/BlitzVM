@@ -36,6 +36,10 @@ public final class DispatchCallNode extends Node {
         return indirectCall != null;
     }
 
+    public static DispatchCallNode create() {
+        return new DispatchCallNode();
+    }
+
     public Object call(RootCallTarget target, Object[] args) {
         // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = directCall;

@@ -21,7 +21,8 @@ import dev.phpruntime.runtime.PhpObject;
 public final class IndexLValueNode extends LValueNode {
 
     /** Marker for an append key in the evaluated key array. */
-    private static final Object APPEND = new Object();
+    /** The key of {@code $a[]}. */
+    public static final Object APPEND = new Object();
 
     @Child private LValueNode base;
     @Children private final PhpNode[] keyNodes;
@@ -38,6 +39,37 @@ public final class IndexLValueNode extends LValueNode {
     }
 
     private record PackedKeys(Object[] baseKeys, Object[] arrayKeys) {}
+
+    /** Keys as {@link #evalKeys} builds them, for callers that evaluated the parts themselves. */
+    public static Object[] pack(Object[] baseKeys, Object[] arrayKeys) {
+        return new Object[]{new PackedKeys(baseKeys, arrayKeys)};
+    }
+
+    /**
+     * A copy with no key expressions over another base, for bytecode: the operation evaluates
+     * the keys and calls this node's read, write, cell and unset methods with them.
+     */
+    public IndexLValueNode headless(PhpLanguage language, LValueNode headlessBase) {
+        return new IndexLValueNode(language, headlessBase, new PhpNode[keyNodes.length]).at(line());
+    }
+
+    public LValueNode base() {
+        return base;
+    }
+
+    public PhpNode[] keyNodes() {
+        return keyNodes;
+    }
+
+    /** The rvalue read of {@link #execute} on evaluated keys: warns when a key is missing. */
+    public Object readOrWarn(VirtualFrame frame, Object[] keys) {
+        Object v = read(frame, keys);
+        if (v == null) {
+            warnMissing(arrayKeys(keys));
+            return PhpNull.INSTANCE;
+        }
+        return v;
+    }
 
     private static Object[] baseKeys(Object[] keys) {
         return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.baseKeys : NO_KEYS;
@@ -479,7 +511,8 @@ public final class IndexLValueNode extends LValueNode {
     /** mode 0: read with warning; 1: silent read (??, nested isset); 2: isset. */
     public void emitRead(dev.phpruntime.bytecode.BytecodeEmitter e, int mode) {
         if (!(base instanceof LocalVarNode lv)) {
-            throw e.unsupported("index of " + base.getClass().getSimpleName());
+            e.place(this, mode == 0 ? dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ : mode == 1 ? dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ_IF_SET : dev.phpruntime.bytecode.PhpBytecodeRootNode.P_ISSET, 0, null);
+            return;
         }
         for (PhpNode k : keyNodes) {
             if (k == null) {

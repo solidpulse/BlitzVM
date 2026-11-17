@@ -71,9 +71,35 @@ public final class PropertyLValueNode extends LValueNode {
         return executeOnTarget(frame, targetExpr.execute(frame));
     }
 
+    /** A copy without its expressions, for bytecode, which evaluates the object and the name. */
+    public PropertyLValueNode headless() {
+        return new PropertyLValueNode(null, staticName, null, callingClassLower, traitSelfSlot).at(line());
+    }
+
+    public PhpNode targetExpr() {
+        return targetExpr;
+    }
+
+    public String staticName() {
+        return staticName;
+    }
+
+    public PhpNode dynamicNameExpr() {
+        return dynamicNameExpr;
+    }
+
+    public boolean usesTraitSelf() {
+        return traitSelfSlot >= 0;
+    }
+
     /** Executes this property read given an already-evaluated receiver (used by nullsafe {@code ?->}). */
     public Object executeOnTarget(VirtualFrame frame, Object target) {
         String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
+        return executeOn(frame, target, name);
+    }
+
+    /** The rvalue read with the receiver and name already evaluated. */
+    public Object executeOn(VirtualFrame frame, Object target, String name) {
         if (!(target instanceof PhpObject obj)) {
             PhpContext.get(this).warning(
                     "Attempt to read property " + '"' + name + '"' + " on " + PhpOps.typeName(target), line());
@@ -587,5 +613,10 @@ public final class PropertyLValueNode extends LValueNode {
     @Override
     public String describe() {
         return staticName != null ? "$obj->" + staticName : "$obj->$prop";
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
     }
 }

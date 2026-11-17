@@ -60,6 +60,10 @@ public final class StringAppendNode extends PhpNode {
     }
 
     private void emitAppend(dev.phpruntime.bytecode.BytecodeEmitter e, boolean resultNeeded) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target)) {
+            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_APPEND, resultNeeded ? 1 : 0, () -> e.expr(value));
+            return;
+        }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
             throw e.unsupported("append to " + target.getClass().getSimpleName());
         }

@@ -60,6 +60,10 @@ public final class CompoundAssignNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target) && op != PhpArith.Op.COALESCE) {
+            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_COMPOUND, op.ordinal(), () -> e.expr(value));
+            return;
+        }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {
             throw e.unsupported("compound assign to " + target.getClass().getSimpleName());
         }
