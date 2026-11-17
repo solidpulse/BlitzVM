@@ -23,15 +23,13 @@ mvn -q -B -DskipTests package
 # Preserve compiler graphs and DSL field-offset updaters for the whole language,
 # including generated nested classes. Only run-dependent initialization is deferred.
 BUILD_INIT="dev.phpruntime"
-# Startup properties / report hook; include interval; byte-string diagnostics.
-RUN_INIT="dev.phpruntime.bytecode.BytecodeEmitter,dev.phpruntime.PhpLanguage,dev.phpruntime.runtime.PhpStrings"
-# Host lifecycle and per-process request / regex-cache state.
-RUN_INIT+=',dev.phpruntime.host,dev.phpruntime.sched,dev.phpruntime.runtime.PhpRequest,dev.phpruntime.builtins.PregFunctions'
-# Entropy sources and the runtime TZDIR / zoneinfo filesystem snapshot. Builtins
-# registration invokes HashFunctions, so its table must also initialize at runtime.
-RUN_INIT+=',dev.phpruntime.builtins.HashFunctions,dev.phpruntime.builtins.Bcrypt,dev.phpruntime.builtins.Builtins,dev.phpruntime.timelib.ZoneinfoDb'
-# Date scanner selection is a startup property, not an image-build choice.
-RUN_INIT+=',dev.phpruntime.timelib.ParseDate'
+# Report hook and byte-string diagnostics are read at start-up.
+RUN_INIT="dev.phpruntime.bytecode.BytecodeEmitter,dev.phpruntime.runtime.PhpStrings"
+# Host lifecycle and the current-request thread-local.
+RUN_INIT+=',dev.phpruntime.host,dev.phpruntime.sched,dev.phpruntime.runtime.PhpRequest'
+# TZDIR / zoneinfo filesystem snapshot and date-scanner selection are host properties.
+# (Entropy sources in builtins are lazily created, so they stay build-time initialized.)
+RUN_INIT+=',dev.phpruntime.timelib.ZoneinfoDb,dev.phpruntime.timelib.ParseDate'
 # The deployed machine's locale is a run-time property. Host formatting paths
 # (Truffle trace/diagnostics, PHP date/number text) must not require the builder's
 # locale bundle, so include them all rather than hard-coding en_US.
