@@ -554,14 +554,18 @@ public final class BytecodeEmitter {
      * A {@code finally} block for the current try: {@code loopDepth} is the loop nesting at the
      * try, so a {@code break}/{@code continue} that stays inside the try does not run it.
      */
-    private record Finally(Runnable emit, int loopDepth) {
+    private record Finally(Runnable emit, int loopDepth, BytecodeLocal exiting) {
     }
 
     private final Deque<Finally> finallyBlocks = new ArrayDeque<>();
 
-    /** Opens a try that has a finally block; it runs before any return or jump out of it. */
-    public void pushFinally(Runnable emit) {
-        finallyBlocks.push(new Finally(emit, loops.size()));
+    /**
+     * Opens a try that has a finally block; it runs before any return or jump out of it.
+     * {@code exiting} is set when the block runs inline for a return or jump, so the try's
+     * exception handler does not run it a second time if the block itself throws.
+     */
+    public void pushFinally(Runnable emit, BytecodeLocal exiting) {
+        finallyBlocks.push(new Finally(emit, loops.size(), exiting));
     }
 
     /** Ends the try: its finally is normally emitted explicitly after the try/catch. */
@@ -614,6 +618,9 @@ public final class BytecodeEmitter {
             for (int j = count - 1; j > i; j--) {
                 finallyBlocks.push(popped[j]);
             }
+            b.beginStoreLocal(popped[i].exiting());
+            b.emitLoadConstant(Boolean.TRUE);
+            b.endStoreLocal();
             popped[i].emit().run();
             for (int j = count - 1; j > i; j--) {
                 finallyBlocks.pop();

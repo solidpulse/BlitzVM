@@ -321,7 +321,9 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
      * (normal end, {@code return}, {@code break}/{@code continue}) and around uncaught exceptions,
      * because PHP skips it for {@code exit} (which is an unwind exception) and lets a
      * {@code finally} that returns override a pending return or exception. A pending error is
-     * stored so a throw from the finalizer can link it as {@code previous}, as the AST does.
+     * stored so a throw from the finalizer can link it as {@code previous}, as the AST does. A
+     * finally run inline for a return or jump sits inside the guarded range; {@code exiting}
+     * keeps the handler from running it again when it throws.
      */
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
@@ -337,7 +339,12 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         };
         var b = e.builder();
         var pending = e.temp();
-        e.pushFinally(fin);
+        var exiting = e.temp();
+        b.beginBlock();
+        b.beginStoreLocal(exiting);
+        b.emitLoadConstant(Boolean.FALSE);
+        b.endStoreLocal();
+        e.pushFinally(fin, exiting);
         b.beginTryCatch();
         emitTryCatch(e);
         // An exception escaped the try block and the catch clauses: run finally, then rethrow.
@@ -349,6 +356,7 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         b.beginIfThen();
         b.beginShouldRunFinally();
         b.emitLoadLocal(pending);
+        b.emitLoadLocal(exiting);
         b.endShouldRunFinally();
         b.beginBlock();
         e.popFinally();
@@ -364,7 +372,7 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         b.endRethrow();
         b.endBlock();
         b.endTryCatch();
-        e.pushFinally(fin);
+        e.pushFinally(fin, exiting);
         b.beginRethrow();
         b.emitLoadLocal(pending);
         b.endRethrow();
@@ -378,6 +386,7 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         b.endTryCatch();
         e.popFinally();
         fin.run();
+        b.endBlock();
     }
 
     /** try + catch clauses, without a finally block. */

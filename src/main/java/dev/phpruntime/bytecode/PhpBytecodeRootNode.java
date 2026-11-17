@@ -2332,12 +2332,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
-    /** Whether a pending throwable runs the finally block (non-catchable fatals do not). */
+    /**
+     * Whether a pending throwable runs the finally block: not when the block itself threw while
+     * running inline for a return or jump ({@code exiting}), and not for non-catchable fatals.
+     */
     @Operation
     public static final class ShouldRunFinally {
         @Specialization
-        static boolean test(Object pending) {
-            return pending instanceof Throwable t
+        static boolean test(Object pending, Object exiting) {
+            return exiting != Boolean.TRUE && pending instanceof Throwable t
                     && TryCatchNode.shouldRunFinallyFor(t);
         }
     }
