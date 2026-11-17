@@ -24,4 +24,9 @@ public final class DeclareFunctionNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().emitDeclareFunction(function);
+    }
 }

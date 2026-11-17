@@ -110,6 +110,32 @@ public final class PhpMainRootNode extends PhpRootNode {
         return isEntry ? PhpNull.INSTANCE : result;
     }
 
+    /** A root that runs a file's top-level code: this AST root or the bytecode compiled from it. */
+    public static boolean isMain(com.oracle.truffle.api.nodes.RootNode root) {
+        return root instanceof PhpMainRootNode
+                || root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b && b.mainRoot() != null;
+    }
+
+    public PhpNode body() {
+        return body;
+    }
+
+    /** Whether this file's top-level code can run without a symbol table (not a local include). */
+    public boolean usesSymbolTable() {
+        return scopeLayout != null;
+    }
+
+    public boolean hoists() {
+        return hoistedClassesSlot >= 0;
+    }
+
+    /** What execute does before the body of an included file: declarations; the hoisted flags or null. */
+    @TruffleBoundary
+    public boolean[] prologue(PhpContext ctx) {
+        declareFunctions(ctx);
+        return hoistedClassesSlot >= 0 ? hoistClasses(ctx) : null;
+    }
+
     @com.oracle.truffle.api.nodes.ExplodeLoop
     private void initializeIncludedLocals(VirtualFrame frame, dev.phpruntime.runtime.PhpSymbolTable table) {
         for (int i = 0; i < includedNames.length; i++) {

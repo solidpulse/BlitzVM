@@ -309,7 +309,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     /** Internal sources (eval) already contain PHP bytes, unlike polyglot character sources. */
     public CallTarget parseBytes(Source source) {
-        return new Parser(this, source).parseMain().getCallTarget();
+        return dev.phpruntime.bytecode.BytecodeEmitter.mainTarget(this, new Parser(this, source).parseMain());
     }
 
     /** A second engine-wide variant; its arguments supply the invocation's symbols/class scope. */

@@ -46,6 +46,29 @@ public final class IncludeNode extends PhpNode {
     private record PreparedInclude(CallTarget target, String canonicalPath) {
     }
 
+    /** A copy without the path expression, for bytecode; only for includes without a symbol table. */
+    public IncludeNode headless() {
+        return new IncludeNode(kind, null, -1).at(line());
+    }
+
+    public Object executePath(String path) {
+        Object prepared = prepare(path);
+        if (prepared instanceof PreparedInclude inc) {
+            return callNode.call(inc.target(), new Object[]{inc.canonicalPath()});
+        }
+        return prepared;
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (tableSlot >= 0) {
+            throw e.unsupported("include into a local scope");
+        }
+        e.builder().beginInclude(new dev.phpruntime.bytecode.PhpBytecodeRootNode.IncludeSpec(this));
+        e.expr(pathExpr);
+        e.builder().endInclude();
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
         String path = PhpOps.toStr(pathExpr.execute(frame));

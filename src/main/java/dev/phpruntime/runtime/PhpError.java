@@ -183,7 +183,7 @@ public final class PhpError extends AbstractTruffleException {
                         pendingType = fnRoot.isStaticMethod() ? "::" : "->";
                     }
                 }
-            } else if (root instanceof dev.phpruntime.nodes.PhpMainRootNode) {
+            } else if (dev.phpruntime.nodes.PhpMainRootNode.isMain(root)) {
                 com.oracle.truffle.api.frame.Frame frame = el.getFrame();
                 if (frame != null && frame.getArguments().length > 0) {
                     pendingFn = null;

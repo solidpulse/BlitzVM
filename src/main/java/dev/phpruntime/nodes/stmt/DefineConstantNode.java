@@ -27,4 +27,15 @@ public final class DefineConstantNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginBlock();
+        for (int i = 0; i < names.length; i++) {
+            e.builder().beginDefineConst(names[i], line());
+            e.expr(values[i]);
+            e.builder().endDefineConst();
+        }
+        e.builder().endBlock();
+    }
 }

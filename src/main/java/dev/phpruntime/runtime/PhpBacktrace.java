@@ -171,7 +171,7 @@ public final class PhpBacktrace {
                             : null;
                     pending[0] = new PendingCall(fnRoot.rawFunctionName(), null, null, null, callArgs);
                 }
-            } else if (root instanceof PhpMainRootNode) {
+            } else if (PhpMainRootNode.isMain(root)) {
                 Frame f = fi.getFrame(FrameInstance.FrameAccess.READ_ONLY);
                 Object[] rawArgs = f.getArguments();
                 if (rawArgs.length > 0) {

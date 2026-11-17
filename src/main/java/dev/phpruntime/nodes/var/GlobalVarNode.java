@@ -123,4 +123,13 @@ public final class GlobalVarNode extends LValueNode {
     public String describe() {
         return "$" + name;
     }
+
+    public GlobalVarNode headless() {
+        return new GlobalVarNode(name, globalId).at(line());
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
+    }
 }

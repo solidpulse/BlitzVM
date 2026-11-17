@@ -44,8 +44,8 @@ public final class IssetNode extends PhpNode {
                 ir.emitIsset(e);
             } else if (t instanceof IndexLValueNode il) {
                 il.emitRead(e, 2);
-            } else if (t instanceof PropertyLValueNode p) {
-                e.place(p, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_ISSET, 0, null);
+            } else if (t instanceof PropertyLValueNode || t instanceof GlobalVarNode) {
+                e.place((LValueNode) t, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_ISSET, 0, null);
             } else if (t instanceof LValueNode) {
                 throw e.unsupported("isset of " + t.getClass().getSimpleName());
             } else {

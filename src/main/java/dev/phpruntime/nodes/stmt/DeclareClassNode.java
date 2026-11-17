@@ -34,4 +34,11 @@ public final class DeclareClassNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginDeclareClass(template, hoistedSlot >= 0 ? topLevelIndex : -1);
+        e.loadHoisted();
+        e.builder().endDeclareClass();
+    }
 }

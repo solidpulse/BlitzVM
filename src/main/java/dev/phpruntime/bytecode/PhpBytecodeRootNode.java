@@ -81,9 +81,14 @@ import java.util.Map;
 public abstract class PhpBytecodeRootNode extends PhpRootNode implements BytecodeRootNode {
 
     private PhpFunctionRootNode function;
+    private dev.phpruntime.nodes.PhpMainRootNode main;
 
     protected PhpBytecodeRootNode(PhpLanguage language, FrameDescriptor frameDescriptor) {
         super(language, frameDescriptor);
+    }
+
+    dev.phpruntime.nodes.PhpMainRootNode main() {
+        return main;
     }
 
     void init(PhpFunctionRootNode fn) {
@@ -92,18 +97,29 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         initSource(fn.source(), ss != null ? ss.getStartLine() : -1);
     }
 
+    void initMain(dev.phpruntime.nodes.PhpMainRootNode m) {
+        this.main = m;
+        initSource(m.source(), 1);
+    }
+
+    /** The function this root was compiled from; null for a file's top-level code. */
     public PhpFunctionRootNode function() {
         return function;
     }
 
+    /** The file whose top-level code this root runs; null for a function. */
+    public dev.phpruntime.nodes.PhpMainRootNode mainRoot() {
+        return main;
+    }
+
     @Override
     public String getName() {
-        return function.getName();
+        return main != null ? main.getName() : function.getName();
     }
 
     @Override
     public String toString() {
-        return function.toString();
+        return main != null ? main.getName() : function.toString();
     }
 
     @Override
@@ -1137,7 +1153,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return new Cursor(null, it, null);
             }
             PhpFunctionRootNode fn = root.function;
-            return new Cursor(null, null, Ops.visibleEntries(PhpContext.get(node), object, fn.declaringClass()));
+            return new Cursor(null, null, Ops.visibleEntries(PhpContext.get(node), object, fn == null ? null : fn.declaringClass()));
         }
 
         @Fallback
@@ -1395,12 +1411,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class PlaceSpec {
         private final dev.phpruntime.nodes.var.LValueNode template;
         final int arrayKeys;
-        final boolean propertyBase;
 
-        public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys, boolean propertyBase) {
+        public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys) {
             this.template = template;
             this.arrayKeys = arrayKeys;
-            this.propertyBase = propertyBase;
         }
 
         public dev.phpruntime.nodes.var.LValueNode newEngine() {
@@ -1446,6 +1460,129 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] keys = Places.objKeys(ops, spec.arrayKeys);
             return Places.run(frame, engine, keys, mode, arg, Places.value(ops, 2 + spec.arrayKeys));
+        }
+    }
+
+    /** A global variable, or an index path on one: operands are the keys, then the value. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class GlobalPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.run(frame, engine, Places.globalKeys(ops, spec.arrayKeys), mode, arg,
+                    Places.value(ops, spec.arrayKeys));
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendGlobalPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
+                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object result = Places.run(frame, engine, Places.globalKeys(ops, spec.arrayKeys), mode, 0, null);
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
+        }
+    }
+
+    // ------------------------------------------------------------------ top-level code
+
+    /** True when this file is the request's entry script (called with no arguments). */
+    @Operation
+    public static final class IsEntry {
+        @Specialization
+        static boolean test(VirtualFrame frame) {
+            return frame.getArguments().length == 0;
+        }
+    }
+
+    /** The entry script runs on its AST root, which owns request start, finish and uncaught errors. */
+    @Operation
+    public static final class RunEntry {
+        @Specialization
+        static Object run(@Bind PhpBytecodeRootNode root, @Cached("create(root.mainRoot().getCallTarget())") DirectCallNode call) {
+            return call.call();
+        }
+    }
+
+    /** Declares the file's functions and hoists its classes; the hoisted flags for DeclareClass. */
+    @Operation
+    public static final class MainPrologue {
+        @Specialization
+        static Object prologue(@Bind PhpBytecodeRootNode root, @Bind Node node) {
+            boolean[] hoisted = root.main.prologue(PhpContext.get(node));
+            return hoisted == null ? PhpNull.INSTANCE : hoisted;
+        }
+    }
+
+    @Operation
+    public static final class MainResult {
+        @Specialization
+        static Object result(VirtualFrame frame) {
+            Object[] args = frame.getArguments();
+            return args.length > 0 && args[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE ? PhpNull.INSTANCE : 1L;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PhpFunction.class)
+    public static final class DeclareFunction {
+        @Specialization
+        static void declare(PhpFunction fn, @Bind Node node) {
+            Ops.declareFunction(PhpContext.get(node), fn);
+        }
+    }
+
+    /** Declares a class unless it was hoisted at file start ({@code index} into the hoisted flags). */
+    @Operation
+    @ConstantOperand(type = dev.phpruntime.runtime.PhpClassTemplate.class)
+    @ConstantOperand(type = int.class, name = "index")
+    public static final class DeclareClass {
+        @Specialization
+        static void declare(dev.phpruntime.runtime.PhpClassTemplate template, int index, Object hoisted, @Bind Node node) {
+            if (index >= 0 && hoisted instanceof boolean[] flags && flags[index]) {
+                return;
+            }
+            Ops.declareClass(PhpContext.get(node), template);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = String.class, name = "constName")
+    @ConstantOperand(type = int.class, name = "line")
+    public static final class DefineConst {
+        @Specialization
+        static void define(String constName, int line, Object value, @Bind Node node) {
+            Ops.defineConstant(PhpContext.get(node), constName, PhpOps.copyOnAssign(value), line);
+        }
+    }
+
+    public record IncludeSpec(dev.phpruntime.nodes.expr.IncludeNode template) {
+        public dev.phpruntime.nodes.expr.IncludeNode newEngine() {
+            return template.headless();
+        }
+
+        @Override
+        public String toString() {
+            return template.kind().toString();
+        }
+    }
+
+    /** include/require: the cached copy of the IncludeNode resolves and runs the file. */
+    @Operation
+    @ConstantOperand(type = IncludeSpec.class)
+    public static final class Include {
+        @Specialization
+        static Object include(IncludeSpec spec, Object path,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.IncludeNode engine) {
+            return engine.executePath(path instanceof String s ? s : Ops.toStr(path));
         }
     }
 
@@ -1498,6 +1635,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     dev.phpruntime.nodes.var.HeldValueBase.keys(root, holder), arrayKeys);
         }
 
+        static Object[] globalKeys(Object[] ops, int n) {
+            if (n == 0) {
+                return dev.phpruntime.nodes.var.LValueNode.NO_KEYS;
+            }
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, 0, arrayKeys, 0, n);
+            return arrayKeys;
+        }
+
         static Object[] objKeys(Object[] ops, int n) {
             Object[] base = {ops[0], ops[1]};
             if (n == 0) {
@@ -1533,7 +1679,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     if (engine instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
                         return il.readOrWarn(frame, keys);
                     }
-                    return ((dev.phpruntime.nodes.var.PropertyLValueNode) engine).executeOn(frame, keys[0], (String) keys[1]);
+                    if (engine instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
+                        return p.executeOn(frame, keys[0], (String) keys[1]);
+                    }
+                    return engine.execute(frame);
                 case P_READ_IF_SET: {
                     Object v = engine.readIfSet(frame, keys);
                     return v == null ? PhpNull.INSTANCE : v;
@@ -1860,6 +2009,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static Object classConstant(PhpContext ctx, PhpClass cls, String name) {
             return cls.lookupConstant(ctx, name);
+        }
+
+        @TruffleBoundary
+        static void declareFunction(PhpContext ctx, PhpFunction fn) {
+            ctx.declareFunction(fn);
+        }
+
+        @TruffleBoundary
+        static void declareClass(PhpContext ctx, dev.phpruntime.runtime.PhpClassTemplate template) {
+            ctx.declareClass(template);
+        }
+
+        @TruffleBoundary
+        static void defineConstant(PhpContext ctx, String name, Object value, int line) {
+            ctx.defineConstant(name, value, line);
         }
 
         @TruffleBoundary

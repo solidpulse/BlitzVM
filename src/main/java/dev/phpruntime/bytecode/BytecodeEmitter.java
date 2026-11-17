@@ -62,11 +62,76 @@ public final class BytecodeEmitter {
     private final Deque<Loop> loops = new ArrayDeque<>();
     private int currentLine = -1;
 
+    private BytecodeLocal hoisted;
+
     private BytecodeEmitter(PhpBytecodeRootNodeGen.Builder b, PhpLanguage language, PhpFunctionRootNode fn) {
+        this(b, language, fn, fn.source());
+    }
+
+    private BytecodeEmitter(PhpBytecodeRootNodeGen.Builder b, PhpLanguage language, PhpFunctionRootNode fn, Source source) {
         this.b = b;
         this.language = language;
         this.fn = fn;
-        this.source = fn.source();
+        this.source = source;
+    }
+
+    /** The call target for a file's top-level code: bytecode when it compiles, else the AST root's. */
+    public static RootCallTarget mainTarget(PhpLanguage language, dev.phpruntime.nodes.PhpMainRootNode main) {
+        if (MODE.equals("off") || main.usesSymbolTable()) {
+            return main.getCallTarget();
+        }
+        try {
+            PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
+                    builder -> new BytecodeEmitter(builder, language, null, main.source()).emitMain(main)).getNode(0);
+            root.initMain(main);
+            if (DUMP) {
+                System.err.println(root.dump());
+            }
+            COMPILED.incrementAndGet();
+            return root.getCallTarget();
+        } catch (Unsupported u) {
+            if (REPORT) {
+                UNSUPPORTED.computeIfAbsent("(file) " + u.getMessage(), k -> new AtomicInteger()).incrementAndGet();
+            }
+            return main.getCallTarget();
+        } catch (RuntimeException builderError) {
+            if (MODE.equals("all")) {
+                throw builderError;
+            }
+            UNSUPPORTED.computeIfAbsent("EMITTER BUG " + main.getName() + ": " + builderError.getMessage(),
+                    k -> new AtomicInteger()).incrementAndGet();
+            return main.getCallTarget();
+        }
+    }
+
+    private void emitMain(dev.phpruntime.nodes.PhpMainRootNode main) {
+        b.beginSource(source);
+        b.beginRoot();
+        b.beginIfThen();
+        b.emitIsEntry();
+        b.beginReturn();
+        b.emitRunEntry();
+        b.endReturn();
+        b.endIfThen();
+        hoisted = b.createLocal("#hoisted", null);
+        b.beginStoreLocal(hoisted);
+        b.emitMainPrologue();
+        b.endStoreLocal();
+        stmt(main.body());
+        b.beginReturn();
+        b.emitMainResult();
+        b.endReturn();
+        b.endRoot();
+        b.endSource();
+    }
+
+    /** The hoisted-class flags of the file being compiled (PHP null inside a function). */
+    public void loadHoisted() {
+        if (hoisted == null) {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        } else {
+            b.emitLoadLocal(hoisted);
+        }
     }
 
     /** The call target to use for {@code fn}: bytecode when it compiles, else the AST root's. */
@@ -266,8 +331,9 @@ public final class BytecodeEmitter {
             ir.emitIfSet(this);
         } else if (node instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             il.emitRead(this, 1);
-        } else if (node instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
-            place(p, PhpBytecodeRootNode.P_READ_IF_SET, 0, null);
+        } else if (node instanceof dev.phpruntime.nodes.var.PropertyLValueNode
+                || node instanceof dev.phpruntime.nodes.var.GlobalVarNode) {
+            place((dev.phpruntime.nodes.var.LValueNode) node, PhpBytecodeRootNode.P_READ_IF_SET, 0, null);
         } else {
             expr(node);
         }
@@ -326,6 +392,8 @@ public final class BytecodeEmitter {
         Form f = form(lv);
         if (f.local() != null) {
             b.beginVarPlace(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
+        } else if (f.global()) {
+            b.beginGlobalPlace(f.spec(), mode, arg);
         } else {
             b.beginObjPlace(f.spec(), mode, arg);
         }
@@ -335,6 +403,8 @@ public final class BytecodeEmitter {
         }
         if (f.local() != null) {
             b.endVarPlace();
+        } else if (f.global()) {
+            b.endGlobalPlace();
         } else {
             b.endObjPlace();
         }
@@ -345,37 +415,49 @@ public final class BytecodeEmitter {
         Form f = form(lv);
         if (f.local() != null) {
             b.beginSendVarPlace(accessor(f.local()), info(f.local()), f.spec(), param, callee);
+        } else if (f.global()) {
+            b.beginSendGlobalPlace(f.spec(), param, callee);
         } else {
             b.beginSendObjPlace(f.spec(), param, callee);
         }
         operands(f);
         if (f.local() != null) {
             b.endSendVarPlace();
+        } else if (f.global()) {
+            b.endSendGlobalPlace();
         } else {
             b.endSendObjPlace();
         }
     }
 
     private record Form(PhpBytecodeRootNode.PlaceSpec spec, LocalVarNode local,
-                        dev.phpruntime.nodes.var.PropertyLValueNode property, PhpNode[] keys) {
+                        dev.phpruntime.nodes.var.PropertyLValueNode property, PhpNode[] keys, boolean global) {
     }
 
     private Form form(dev.phpruntime.nodes.var.LValueNode lv) {
         if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             if (il.base() instanceof LocalVarNode local) {
                 var template = il.headless(language, new dev.phpruntime.nodes.var.HeldValueBase(local.varName()));
-                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length, false),
-                        local, null, il.keyNodes());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
+                        local, null, il.keyNodes(), false);
+            }
+            if (il.base() instanceof dev.phpruntime.nodes.var.GlobalVarNode g && !g.isGlobalsSuperglobal()) {
+                var template = il.headless(language, g.headless());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
+                        null, null, il.keyNodes(), true);
             }
             if (il.base() instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
                 var template = il.headless(language, p.headless());
-                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length, true),
-                        null, p, il.keyNodes());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
+                        null, p, il.keyNodes(), false);
             }
             throw new Unsupported("index of " + il.base().getClass().getSimpleName());
         }
         if (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
-            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0, true), null, p, new PhpNode[0]);
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0), null, p, new PhpNode[0], false);
+        }
+        if (lv instanceof dev.phpruntime.nodes.var.GlobalVarNode g) {
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(g.headless(), 0), null, null, new PhpNode[0], true);
         }
         throw new Unsupported("place " + lv.getClass().getSimpleName()
                 + (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode ? " in a trait" : ""));
@@ -431,7 +513,21 @@ public final class BytecodeEmitter {
     }
 
     public static boolean isPlace(PhpNode n) {
-        return n instanceof dev.phpruntime.nodes.var.IndexLValueNode || n instanceof dev.phpruntime.nodes.var.PropertyLValueNode;
+        return n instanceof dev.phpruntime.nodes.var.IndexLValueNode || n instanceof dev.phpruntime.nodes.var.PropertyLValueNode
+                || n instanceof dev.phpruntime.nodes.var.GlobalVarNode;
+    }
+
+    /** {@code target = value} where the value is already being emitted by {@code value}. */
+    public void assign(dev.phpruntime.nodes.var.LValueNode target, Runnable value) {
+        if (target instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
+            b.beginStoreVar(accessor(lv), info(lv));
+            value.run();
+            b.endStoreVar();
+        } else if (isPlace(target)) {
+            place(target, PhpBytecodeRootNode.P_WRITE, 0, value);
+        } else {
+            throw new Unsupported("assign to " + target.getClass().getSimpleName());
+        }
     }
 
     /** Emits one call argument: a variable, a place, or a value, sent against the callee in {@code callee}. */
