@@ -22,6 +22,11 @@ public final class SplBuiltinNode extends Node {
         iterator = new IteratorNode(language);
     }
 
+    /** For bytecode call sites: null when the call does not name an SPL-aware builtin. */
+    public static SplBuiltinNode create(com.oracle.truffle.api.nodes.RootNode root, String lowerName) {
+        return lowerName == null ? null : new SplBuiltinNode(root.getLanguage(dev.phpruntime.PhpLanguage.class), lowerName);
+    }
+
     public static boolean supports(String name) {
         return name.equals("count") || name.equals("sizeof") || name.equals("iterator_to_array")
                 || name.equals("iterator_count");
@@ -88,6 +93,7 @@ public final class SplBuiltinNode extends Node {
         return name.equals("iterator_count") ? size : result;
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private static long countRecursive(PhpArray array) {
         long count = array.size();
         for (Object value : array.values()) {
