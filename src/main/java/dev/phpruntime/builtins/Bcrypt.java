@@ -114,7 +114,22 @@ final class Bcrypt {
 
     private static final String B64 = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     private static final byte[] MAGIC = PhpStrings.bytes("OrpheanBeholderScryDoubt");
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static volatile SecureRandom random;
+
+    /** Created on first use: a SecureRandom must not be seeded and frozen at image build time. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static SecureRandom random() {
+        SecureRandom r = random;
+        if (r == null) {
+            synchronized (Bcrypt.class) {
+                r = random;
+                if (r == null) {
+                    random = r = new SecureRandom();
+                }
+            }
+        }
+        return r;
+    }
 
     private final int[] p = P_INIT.clone();
     private final int[] s = S_INIT.clone();
@@ -125,7 +140,7 @@ final class Bcrypt {
     /** A new hash of the password with a random salt. */
     static String hash(byte[] password, int cost) {
         byte[] salt = new byte[16];
-        RANDOM.nextBytes(salt);
+        random().nextBytes(salt);
         return crypt(password, cost, salt, "2y");
     }
 

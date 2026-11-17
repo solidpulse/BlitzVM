@@ -102,11 +102,11 @@ final class MathFunctions {
         }
         long range = hi - lo + 1;
         if (range > 0) {
-            return lo + HashFunctions.RANDOM.nextLong(range);
+            return lo + HashFunctions.random().nextLong(range);
         }
         long value;
         do {
-            value = HashFunctions.RANDOM.nextLong();
+            value = HashFunctions.random().nextLong();
         } while (value < lo || value > hi);
         return value;
     }

@@ -119,12 +119,27 @@ final class HashFunctions {
                 throw new PhpError(PhpError.VALUE_ERROR, "random_bytes(): Argument #1 ($length) must be greater than 0", null);
             }
             byte[] raw = new byte[(int) length];
-            RANDOM.nextBytes(raw);
+            random().nextBytes(raw);
             return PhpStrings.of(raw);
         });
     }
 
-    static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+    private static volatile java.security.SecureRandom random;
+
+    /** Created on first use: a SecureRandom must not be seeded and frozen at image build time. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    static java.security.SecureRandom random() {
+        java.security.SecureRandom r = random;
+        if (r == null) {
+            synchronized (HashFunctions.class) {
+                r = random;
+                if (r == null) {
+                    random = r = new java.security.SecureRandom();
+                }
+            }
+        }
+        return r;
+    }
 
     private static Algo crypto(String algo, String fn) {
         Algo spec = ALGOS.get(algo);

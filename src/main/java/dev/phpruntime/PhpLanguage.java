@@ -48,7 +48,11 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
      * How long a resolved include stays trusted without touching the file system, like
      * opcache.revalidate_freq. 0 checks on every include.
      */
-    private static final long INCLUDE_REVALIDATE_NANOS = Long.getLong("blitz.include.revalidateMs", 2000L) * 1_000_000L;
+    /**
+     * Read when the language instance is created, not during class initialization:
+     * the class must be image-build-time initialized so its engine can be cached.
+     */
+    private final long includeRevalidateNanos = Long.getLong("blitz.include.revalidateMs", 2000L) * 1_000_000L;
     private final ConcurrentHashMap<String, Integer> functionIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextFunctionId = new AtomicInteger();
     private final ConcurrentHashMap<String, Integer> methodIds = new ConcurrentHashMap<>();
@@ -212,6 +216,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
         return classIds.computeIfAbsent(PhpStrings.lower(name), k -> nextClassId.getAndIncrement());
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public int globalId(String name) {
         Integer existing = globalIds.get(name);
         if (existing != null) {
@@ -265,7 +270,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     /** The cached resolution for this include key, or null if absent or due for revalidation. */
     public ResolvedInclude cachedInclude(String key) {
         ResolvedInclude r = includes.get(key);
-        if (r != null && INCLUDE_REVALIDATE_NANOS > 0 && System.nanoTime() - r.checkedAt() < INCLUDE_REVALIDATE_NANOS) {
+        if (r != null && includeRevalidateNanos > 0 && System.nanoTime() - r.checkedAt() < includeRevalidateNanos) {
             return r;
         }
         return null;
