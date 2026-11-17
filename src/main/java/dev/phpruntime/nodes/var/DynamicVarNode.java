@@ -69,19 +69,24 @@ public final class DynamicVarNode extends LValueNode {
     }
 
     @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
-        if (literal && keys[0].equals("this")) {
+        if (literal && isThisKey(keys[0])) {
             Object value = table(frame).thisValue;
             return value != null && value != PhpNull.INSTANCE;
         }
-        return (literal || !keys[0].equals("this")) && super.isSet(frame, keys);
+        return (literal || !isThisKey(keys[0])) && super.isSet(frame, keys);
     }
 
     @Override public Object readIfSet(VirtualFrame frame, Object[] keys) {
-        if (literal && keys[0].equals("this")) {
+        if (literal && isThisKey(keys[0])) {
             Object value = table(frame).thisValue;
             return value == PhpNull.INSTANCE ? null : value;
         }
-        return !literal && keys[0].equals("this") ? null : read(frame, keys);
+        return !literal && isThisKey(keys[0]) ? null : read(frame, keys);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static boolean isThisKey(Object key) {
+        return key.equals("this");
     }
 
     private void writable(String name) {
@@ -161,10 +166,15 @@ public final class DynamicVarNode extends LValueNode {
         Object[] keys = evalKeys(frame);
         Object value = read(frame, keys);
         if (value == null) {
-            PhpContext.get(this).warning("Undefined variable $" + keys[0], line());
+            warnUndefined(keys[0]);
             return PhpNull.INSTANCE;
         }
         return value;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private void warnUndefined(Object key) {
+        PhpContext.get(this).warning("Undefined variable $" + key, line());
     }
 
     @Override public String describe() { return "${...}"; }

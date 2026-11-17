@@ -83,7 +83,7 @@ public final class ForeachNode extends PhpNode {
             }
             entries = PhpClass.visibleEntries(PhpContext.get(this), obj, caller);
         } else {
-            PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(s) + " given", line());
+            warnInvalidSubject(s);
             return null;
         }
         int count = 0;
@@ -92,9 +92,9 @@ public final class ForeachNode extends PhpNode {
                 TruffleSafepoint.poll(this);
                 count++;
                 if (keyTarget != null) {
-                    keyTarget.write(frame, keyTarget.evalKeys(frame), e.getKey());
+                    keyTarget.write(frame, keyTarget.evalKeys(frame), entryKey(e));
                 }
-                Object rawVal = e.getValue();
+                Object rawVal = entryValue(e);
                 Object curVal = rawVal instanceof PhpReference ref ? ref.getValue() : rawVal;
                 valueTarget.write(frame, valueTarget.evalKeys(frame), PhpOps.copyOnAssign(curVal));
                 try {
@@ -114,6 +114,16 @@ public final class ForeachNode extends PhpNode {
             LoopNode.reportLoopCount(this, count);
         }
         return null;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static Object entryKey(Map.Entry<Object, ?> entry) {
+        return entry.getKey();
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static <T> T entryValue(Map.Entry<Object, T> entry) {
+        return entry.getValue();
     }
 
     private Object executeArray(VirtualFrame frame, PhpArray arr) {
@@ -156,7 +166,7 @@ public final class ForeachNode extends PhpNode {
             Object[] sk = subjectLValue.evalKeys(frame);
             Object cur = subjectLValue.read(frame, sk);
             if (cur == null) {
-                PhpContext.get(this).warning("Undefined variable " + subjectLValue.describe(), line());
+                warnUndefinedSubject();
                 cur = PhpNull.INSTANCE;
             }
             if (cur instanceof PhpArray arr) {
@@ -237,9 +247,9 @@ public final class ForeachNode extends PhpNode {
                     TruffleSafepoint.poll(this);
                     count++;
                     if (keyTarget != null) {
-                        keyTarget.write(frame, keyTarget.evalKeys(frame), e.getKey());
+                        keyTarget.write(frame, keyTarget.evalKeys(frame), entryKey(e));
                     }
-                    valueTarget.bindCell(frame, valueTarget.evalKeys(frame), e.getValue());
+                    valueTarget.bindCell(frame, valueTarget.evalKeys(frame), entryValue(e));
                     try {
                         body.executeVoid(frame);
                     } catch (ControlFlow.Break b) {
@@ -258,8 +268,18 @@ public final class ForeachNode extends PhpNode {
             }
             return null;
         }
-        PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(s) + " given", line());
+        warnInvalidSubject(s);
         return null;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private void warnInvalidSubject(Object subject) {
+        PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(subject) + " given", line());
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private void warnUndefinedSubject() {
+        PhpContext.get(this).warning("Undefined variable " + subjectLValue.describe(), line());
     }
 
     private Object executeIterator(VirtualFrame frame, PhpObject it) {

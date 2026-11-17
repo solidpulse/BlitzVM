@@ -35,11 +35,13 @@ public final class PhpParseError extends AbstractTruffleException {
     }
 
     @ExportMessage
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     boolean hasSourceLocation() {
         return source != null && line > 0 && line <= source.getLineCount();
     }
 
     @ExportMessage(name = "getSourceLocation")
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     SourceSection sourceLocation() throws com.oracle.truffle.api.interop.UnsupportedMessageException {
         if (!hasSourceLocation()) {
             throw com.oracle.truffle.api.interop.UnsupportedMessageException.create();

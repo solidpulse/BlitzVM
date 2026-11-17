@@ -462,6 +462,7 @@ public final class PhpConstants {
     }
 
     /** Looks up a case-sensitive compile-time constant, or null if absent. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public static Object compileTime(String name) {
         Object v = COMPILE_TIME.get(name);
         return v != null ? v : MysqliConstants.MAP.get(name);

@@ -140,8 +140,8 @@ public abstract class PhpBytecodeRootNode extends RootNode implements BytecodeRo
 
     @Operation
     public static final class Concat {
-        @Specialization static String strings(String a, String b) { return a.concat(b); }
-        @Fallback static String generic(Object a, Object b) { return PhpOps.toStr(a).concat(PhpOps.toStr(b)); }
+        @Specialization @TruffleBoundary static String strings(String a, String b) { return a.concat(b); }
+        @Fallback @TruffleBoundary static String generic(Object a, Object b) { return PhpOps.toStr(a).concat(PhpOps.toStr(b)); }
     }
 
     @Operation

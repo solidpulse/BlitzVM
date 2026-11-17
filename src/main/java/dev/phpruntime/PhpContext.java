@@ -180,6 +180,7 @@ public final class PhpContext {
         }
     }
 
+    @TruffleBoundary
     public void exposeAutoGlobalById(int id) { exposeAutoGlobal(language.globalName(id)); }
 
     /** extract can create an ordinary symbol called GLOBALS; literal $GLOBALS remains special. */

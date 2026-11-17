@@ -119,5 +119,6 @@ public final class Main {
 
     private static void usage() {
         System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [docroot]");
+        System.err.println("       php-truffle --engine-options   list runtime and engine option descriptors");
     }
 }

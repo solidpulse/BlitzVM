@@ -81,10 +81,20 @@ public final class YieldFromNode extends PhpNode {
             return cursor.iterator != null && cursor.iterator.nativeState() instanceof PhpGenerator inner
                     ? inner.getReturn(this) : PhpNull.INSTANCE;
         }
-        Object value = cursor.iterator != null ? protocol.current(cursor.iterator) : cursor.entries.get(cursor.index).getValue();
-        Object key = cursor.iterator != null ? protocol.key(cursor.iterator) : cursor.entries.get(cursor.index).getKey();
+        Object value = cursor.iterator != null ? protocol.current(cursor.iterator) : entryValue(cursor);
+        Object key = cursor.iterator != null ? protocol.key(cursor.iterator) : entryKey(cursor);
         outer.checkYield(this);
         cursor.suspended = true;
         throw new ControlFlow.Yield(key, PhpOps.copyOnAssign(value));
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static Object entryKey(Cursor cursor) {
+        return cursor.entries.get(cursor.index).getKey();
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static Object entryValue(Cursor cursor) {
+        return cursor.entries.get(cursor.index).getValue();
     }
 }

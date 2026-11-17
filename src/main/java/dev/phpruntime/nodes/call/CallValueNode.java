@@ -115,7 +115,7 @@ public final class CallValueNode extends PhpNode {
             if (sc != null && sc.rawName.equals(s)) {
                 return callCachedString(frame, sc);
             }
-            if (sc == null && s.indexOf("::") < 0) {
+            if (sc == null && !isStaticCallable(s)) {
                 sc = specializeString(s);
                 if (sc != null) {
                     return callCachedString(frame, sc);
@@ -123,6 +123,11 @@ public final class CallValueNode extends PhpNode {
             }
         }
         return callSlow(frame, target, outerThisSlot >= 0 ? frame.getObject(outerThisSlot) : PhpNull.INSTANCE);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static boolean isStaticCallable(String name) {
+        return name.indexOf("::") >= 0;
     }
 
     private Object callCachedString(VirtualFrame frame, StringCache sc) {

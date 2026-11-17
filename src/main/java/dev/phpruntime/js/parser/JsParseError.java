@@ -32,11 +32,13 @@ public final class JsParseError extends AbstractTruffleException {
     }
 
     @ExportMessage
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     boolean hasSourceLocation() {
         return source != null && line > 0 && line <= source.getLineCount();
     }
 
     @ExportMessage(name = "getSourceLocation")
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     SourceSection sourceLocation() throws UnsupportedMessageException {
         if (!hasSourceLocation()) {
             throw UnsupportedMessageException.create();

@@ -310,10 +310,7 @@ public final class PhpCallable {
                 return ref;
             }
             if (ctx != null) {
-                String fnDesc = fnRoot.qualifiedCallableName();
-                String pName = fnRoot.paramName(paramIdx);
-                String desc = pName != null ? fnDesc + "(): Argument #" + (paramIdx + 1) + " ($" + pName + ")" : fnDesc + "(): Argument #" + (paramIdx + 1);
-                ctx.warning(desc + " must be passed by reference, value given", loc instanceof dev.phpruntime.nodes.PhpNode pn ? pn.line() : 0);
+                warnValueForRef(fnRoot, paramIdx, ctx, loc);
             }
             return new PhpReference(PhpOps.copyOnAssign(arg));
         }
@@ -321,6 +318,14 @@ public final class PhpCallable {
             return ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
         }
         return PhpOps.copyOnAssign(arg);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static void warnValueForRef(PhpFunctionRootNode fnRoot, int paramIdx, PhpContext ctx, Node loc) {
+        String fnDesc = fnRoot.qualifiedCallableName();
+        String pName = fnRoot.paramName(paramIdx);
+        String desc = pName != null ? fnDesc + "(): Argument #" + (paramIdx + 1) + " ($" + pName + ")" : fnDesc + "(): Argument #" + (paramIdx + 1);
+        ctx.warning(desc + " must be passed by reference, value given", loc instanceof dev.phpruntime.nodes.PhpNode pn ? pn.line() : 0);
     }
 
     private static PhpArray buildMagicArray(Object[] userArgs) {

@@ -76,7 +76,7 @@ public final class ResumableForeachNode extends PhpNode {
                 cursor.entries = byRef ? PhpClass.visibleRefEntries(PhpContext.get(this), obj, caller)
                         : PhpClass.visibleEntries(PhpContext.get(this), obj, caller);
             } else {
-                PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(value) + " given", line());
+                warnInvalidSubject(value);
                 return null;
             }
             frame.setObject(slot, cursor);
@@ -87,9 +87,9 @@ public final class ResumableForeachNode extends PhpNode {
                 TruffleSafepoint.poll(this);
                 count++;
                 if (!cursor.inBody) {
-                    Object value = cursor.iterator != null ? protocol.current(cursor.iterator) : cursor.entries.get(cursor.index).getValue();
+                    Object value = cursor.iterator != null ? protocol.current(cursor.iterator) : entryValue(cursor);
                     if (keyTarget != null) {
-                        Object key = cursor.iterator != null ? protocol.key(cursor.iterator) : cursor.entries.get(cursor.index).getKey();
+                        Object key = cursor.iterator != null ? protocol.key(cursor.iterator) : entryKey(cursor);
                         keyTarget.write(frame, keyTarget.evalKeys(frame), key);
                     }
                     if (byRef && value instanceof PhpReference ref) {
@@ -123,5 +123,20 @@ public final class ResumableForeachNode extends PhpNode {
         }
         frame.setObject(slot, null);
         return null;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private void warnInvalidSubject(Object subject) {
+        PhpContext.get(this).warning("foreach() argument must be of type array|object, " + PhpOps.typeName(subject) + " given", line());
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static Object entryKey(Cursor cursor) {
+        return cursor.entries.get(cursor.index).getKey();
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static Object entryValue(Cursor cursor) {
+        return cursor.entries.get(cursor.index).getValue();
     }
 }

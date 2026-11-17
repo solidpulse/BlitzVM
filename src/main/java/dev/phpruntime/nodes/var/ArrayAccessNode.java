@@ -118,6 +118,7 @@ public final class ArrayAccessNode extends Node {
         return new PhpReference(PhpOps.copyOnAssign(raw));
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public void indirectNotice(PhpObject obj) {
         Node parent = getParent();
         PhpContext.get(this).notice("Indirect modification of overloaded element of "

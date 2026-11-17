@@ -924,6 +924,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     public static final class Concat {
         @Specialization
+        @TruffleBoundary
         static String strings(String a, String b) {
             return a.concat(b);
         }
@@ -1133,6 +1134,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             this.iterator = iterator;
             this.entries = entries;
         }
+
+        @TruffleBoundary
+        Object entryKey() {
+            return entries.get(pos).getKey();
+        }
+
+        @TruffleBoundary
+        Object entryValue() {
+            return entries.get(pos).getValue();
+        }
     }
 
     /** Starts a foreach: a cursor, or PHP null (after the warning) when there is nothing to iterate. */
@@ -1158,8 +1169,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @Fallback
         static Object other(Object value, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
-            Ops.warn(node, "foreach() argument must be of type array|object, " + PhpOps.typeName(value) + " given",
-                    lineOf(bytecode, bci));
+            Ops.warnForeach(node, value, lineOf(bytecode, bci));
             return PhpNull.INSTANCE;
         }
     }
@@ -1205,7 +1215,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (c.iterator != null) {
                 return iterator.key(c.iterator);
             }
-            return c.entries.get(c.pos).getKey();
+            return c.entryKey();
         }
     }
 
@@ -1220,7 +1230,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             } else if (c.iterator != null) {
                 raw = iterator.current(c.iterator);
             } else {
-                raw = c.entries.get(c.pos).getValue();
+                raw = c.entryValue();
             }
             Object v = raw instanceof PhpReference ref ? ref.getValue() : raw;
             return v == null ? PhpNull.INSTANCE : v;
@@ -2096,6 +2106,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static void warn(Node node, String message, int line) {
             PhpContext.get(node).warning(message, line);
+        }
+
+        @TruffleBoundary
+        static void warnForeach(Node node, Object value, int line) {
+            warn(node, "foreach() argument must be of type array|object, " + PhpOps.typeName(value) + " given", line);
         }
 
         @TruffleBoundary
