@@ -178,6 +178,10 @@ public final class ForeachNode extends PhpNode {
                 } else {
                     s = ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue();
                 }
+            } else if (raw instanceof PhpArray arr) {
+                // A temporary (literal, call result): iterate a private copy, never an array
+                // that other owners or other executions of a constant literal still see.
+                s = arr.forWrite();
             } else {
                 s = raw;
             }
