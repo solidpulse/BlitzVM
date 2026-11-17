@@ -32,7 +32,19 @@ public class LoadGen {
             case "load" -> load(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
             case "probe" -> probe(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
             case "once" -> once(args[1]);
+            case "curve" -> curve(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]));
             default -> throw new IllegalArgumentException(args[0]);
+        }
+    }
+
+    /** Consecutive windows without a new Java launcher between samples. */
+    private static void curve(String url, int concurrency, int windowSeconds, int samples) throws Exception {
+        long start = System.nanoTime();
+        for (int sample = 1; sample <= samples; sample++) {
+            String machineLoad = java.nio.file.Files.readString(java.nio.file.Path.of("/proc/loadavg")).strip();
+            System.out.printf("sample=%d start=%.3fs load=%s ", sample, (System.nanoTime() - start) / 1e9, machineLoad);
+            load(url, concurrency, windowSeconds);
+            System.out.flush();
         }
     }
 

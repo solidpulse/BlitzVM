@@ -30,6 +30,22 @@ public final class Main {
             usage();
             System.exit(64);
         }
+        if (args[0].equals("--engine-options")) {
+            try (org.graalvm.polyglot.Engine engine = org.graalvm.polyglot.Engine.newBuilder("php")
+                    .allowExperimentalOptions(true).build()) {
+                System.out.printf("%s %s; supportsCompilation=%s%n", engine.getImplementationName(),
+                        engine.getVersion(), org.graalvm.polyglot.Engine.supportsCompilation());
+                com.oracle.truffle.api.TruffleRuntime runtime = com.oracle.truffle.api.Truffle.getRuntime();
+                System.out.printf("TruffleRuntime=%s; name=%s%n", runtime.getClass().getName(), runtime.getName());
+                java.util.stream.StreamSupport.stream(engine.getOptions().spliterator(), false)
+                        .sorted(java.util.Comparator.comparing(org.graalvm.options.OptionDescriptor::getName))
+                        .forEach(option -> System.out.printf("%s default=%s experimental=%s: %s%n",
+                                option.getName(), option.getKey().getDefaultValue(),
+                                option.getStability() == org.graalvm.options.OptionStability.EXPERIMENTAL,
+                                option.getHelp()));
+            }
+            return;
+        }
         if (args[0].equals("serve")) {
             serve(args);
             return;
