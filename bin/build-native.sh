@@ -7,11 +7,19 @@ if [[ ! -x "$GRAALVM_HOME/bin/native-image" ]]; then
   echo "native-image not found in $GRAALVM_HOME; set GRAALVM_HOME to the matching GraalVM." >&2
   exit 1
 fi
+REQUIRED_VERSION="$(sed -n 's|.*<graalvm.version>\(.*\)</graalvm.version>.*|\1|p' "$ROOT/pom.xml")"
+if [[ "$("$GRAALVM_HOME/bin/native-image" --version)" != *"$REQUIRED_VERSION"* ]]; then
+  echo "GraalVM must match pom.xml's Truffle version ($REQUIRED_VERSION)." >&2
+  exit 1
+fi
 cd "$ROOT"
 mvn -q -B -DskipTests package
 # Truffle keeps stateless providers and interop exports in the image heap. Class
 # initialization directives do not implicitly include a class's nested classes.
 BUILD_INIT="dev.phpruntime.PhpLanguageProvider,dev.phpruntime.js.JsLanguageProvider,dev.phpruntime.bc.BytecodeLanguageProvider"
+# DSL cache updaters must be created before SVM deletes their hosted-only field
+# names and recomputes Unsafe offsets for the native object layout.
+BUILD_INIT+=',dev.phpruntime.bytecode.PhpBytecodeRootNodeFactory$CallCalleeNodeGen,dev.phpruntime.js.nodes.JsCallsFactory$DispatchNodeGen'
 for PREFIX in dev/phpruntime/parser/PhpParseErrorGen dev/phpruntime/js/parser/JsParseErrorGen dev/phpruntime/runtime/PhpNullGen; do
   for FILE in "$ROOT/target/classes/$PREFIX"*.class; do
     CLASS="${FILE#"$ROOT/target/classes/"}"

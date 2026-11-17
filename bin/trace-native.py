@@ -58,6 +58,10 @@ def main():
     parser.add_argument("--skip-tests", action="store_true", help="reuse completed test traces")
     args = parser.parse_args()
     graal = Path(os.environ.get("GRAALVM_HOME", ROOT / ".graalvm/current")).resolve()
+    if not args.docroot.is_dir():
+        parser.error("docroot must be an existing WordPress directory")
+    if not (graal / "bin/native-image-utils").is_file():
+        parser.error(f"native-image-utils not found in {graal}")
     run = ROOT / "target/native-agent"
     run.mkdir(parents=True, exist_ok=True)
     # Do not include the Maven/JUnit runner's own reflection in the executable.

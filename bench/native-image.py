@@ -116,6 +116,7 @@ def server(config, docroot, run, label, port):
             try:
                 status, body = get(port, "/")
                 if status != 200 or len(body) < 10000:
+                    (run / f"{label}.startup-error.body").write_bytes(body)
                     raise RuntimeError(f"Invalid first front page: HTTP {status}, {len(body)} bytes")
                 break
             except (ConnectionError, urllib.error.URLError):
@@ -254,9 +255,45 @@ def micro(args):
                 save(args.run, "micro.json", rows)
 
 
+def summarize(args):
+    rows = json.loads((args.run / "measurements.json").read_text())
+    text = ["| Configuration | Warm-up / | Boot p50 ms | Front p50 ms | / req/s, 4 conns | Startup ms | RSS MiB |",
+            "|---|---:|---:|---:|---:|---:|---:|"]
+    for warmup in sorted({row["front_warmup_s"] for row in rows}):
+        for config in ("native-ast", "native-bc", "jvm-ast", "jvm-bc", "fpm"):
+            selected = [row for row in rows if row["configuration"] == config
+                        and row["front_warmup_s"] == warmup]
+            if not selected:
+                continue
+            boot = statistics.median(row["boot"]["p50_ms"] for row in selected)
+            front = statistics.median(row["front"]["p50_ms"] for row in selected)
+            rps = statistics.median(row["throughput"]["rps"] for row in selected)
+            startup = statistics.median(row["startup_ms"] for row in selected)
+            rss = statistics.median(row["rss_mib"] for row in selected)
+            text.append(f"| {config} | {warmup} s + 30 s boot | {boot:.2f} | {front:.2f} | {rps:.0f} | {startup:.0f} | {rss:.0f} |")
+    text += ["", "Per-run values and 1-minute load (startup / boot / front / throughput):", "",
+             "| Configuration | Warm-up / | Run | Boot ms | Front ms | req/s | Startup ms | RSS MiB | Load |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    for row in rows:
+        load = " / ".join(f"{value:.2f}" for value in [row["startup_load"][0], row["boot"]["load"][0],
+                                                    row["front"]["load"][0], row["throughput"]["load"][0]])
+        text.append(f"| {row['configuration']} | {row['front_warmup_s']} s | {row['repeat']} | "
+                    f"{row['boot']['p50_ms']:.2f} | {row['front']['p50_ms']:.2f} | {row['throughput']['rps']} | "
+                    f"{row['startup_ms']:.0f} | {row['rss_mib']:.0f} | {load} |")
+    if (args.run / "micro.json").exists():
+        text += ["", "| Interpreter kernel | Mode | Run | Median rounds 7–9 ms | Load (1/5/15 min) |",
+                 "|---|---|---:|---:|---|"]
+        for row in json.loads((args.run / "micro.json").read_text()):
+            load = "/".join(f"{value:.2f}" for value in row["load"])
+            text.append(f"| {row['kernel']} | {row['configuration']} | {row['repeat']} | "
+                        f"{row['last_three_median_ms']:.2f} | {load} |")
+    (args.run / "summary.md").write_text("\n".join(text) + "\n")
+    print("\n".join(text))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("check", "measure", "micro"))
+    parser.add_argument("action", choices=("check", "measure", "micro", "summarize"))
     parser.add_argument("docroot", type=Path)
     parser.add_argument("--run", type=Path, default=ROOT / "target/native-bench")
     parser.add_argument("--port", type=int, default=18088)
@@ -265,6 +302,8 @@ def main():
     args.docroot = args.docroot.resolve()
     args.run = args.run.resolve()
     args.run.mkdir(parents=True, exist_ok=True)
+    if args.repeats < 1:
+        parser.error("--repeats must be positive")
     globals()[args.action](args)
 
 
