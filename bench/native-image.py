@@ -212,6 +212,10 @@ def check(args):
         fixtures[config] = {"total": len(scripts), "failures": failures}
         print(f"{config}: {len(scripts) - len(failures)}/{len(scripts)} fixtures passed", flush=True)
     save(args.run, "fixtures.json", fixtures)
+    if any(not row["equal"] for config, values in summary.items() if config != "fpm" for row in values):
+        raise RuntimeError("Native/JVM page comparison failed; see pages.json")
+    if any(values["failures"] for values in fixtures.values()):
+        raise RuntimeError("Native fixture comparison failed; see fixtures.json")
 
 
 def measure(args):
