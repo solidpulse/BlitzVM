@@ -67,4 +67,59 @@ public final class StaticDeclNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (included) {
+            throw e.unsupported("static in an included file's local scope");
+        }
+        var b = e.builder();
+        b.beginBlock();
+        for (int i = 0; i < names.length; i++) {
+            var cell = e.temp();
+            b.beginStoreLocal(cell);
+            b.beginStaticCell(names[i], global);
+            owner(e);
+            b.endStaticCell();
+            b.endStoreLocal();
+            b.beginIfThen();
+            b.beginNot();
+            b.beginIsNonNull();
+            b.emitLoadLocal(cell);
+            b.endIsNonNull();
+            b.endNot();
+            b.beginStoreLocal(cell);
+            b.beginInitStaticCell(names[i], global);
+            owner(e);
+            b.beginCopy();
+            if (initExprs[i] != null) {
+                e.expr(initExprs[i]);
+            } else {
+                b.emitLoadConstant(PhpNull.INSTANCE);
+            }
+            b.endCopy();
+            b.endInitStaticCell();
+            b.endStoreLocal();
+            b.endIfThen();
+            if (global) {
+                b.beginBindGlobalById(globalIds[i]);
+                b.emitLoadLocal(cell);
+                b.endBindGlobalById();
+            } else {
+                b.beginStoreLocal(e.accessor(slots[i], names[i]));
+                b.emitLoadLocal(cell);
+                b.endStoreLocal();
+            }
+        }
+        b.endBlock();
+    }
+
+    /** The owner key the AST reads: the closure object inside a closure, else the root's function. */
+    private void owner(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (closureObjSlot >= 0) {
+            e.builder().emitLoadLocal(e.accessor(closureObjSlot, "#closureObj"));
+        } else {
+            e.builder().emitLoadConstant(PhpNull.INSTANCE);
+        }
+    }
 }

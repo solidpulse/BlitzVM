@@ -58,4 +58,18 @@ public final class ReadConstantNode extends PhpNode {
         }
         return value;
     }
+
+    public String name() {
+        return name;
+    }
+
+    /** A fresh copy for the bytecode {@code ReadConstant} operation, with no resolved builtin yet. */
+    public ReadConstantNode headless() {
+        return new ReadConstantNode(name, nsName).at(line());
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().emitReadConstant(new dev.phpruntime.bytecode.PhpBytecodeRootNode.ConstantSpec(this));
+    }
 }

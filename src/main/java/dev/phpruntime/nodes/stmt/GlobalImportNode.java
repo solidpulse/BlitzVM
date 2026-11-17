@@ -52,4 +52,21 @@ public final class GlobalImportNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (targets != null) {
+            // Only an included file's symbol-table scope builds targets; those roots stay on the
+            // AST (BytecodeEmitter.mainTarget checks usesSymbolTable).
+            throw e.unsupported("global with a dynamic-scope target");
+        }
+        var b = e.builder();
+        b.beginBlock();
+        for (int i = 0; i < slots.length; i++) {
+            b.beginStoreLocal(e.accessor(slots[i], "#global" + i));
+            b.emitGlobalRef(globalIds[i]);
+            b.endStoreLocal();
+        }
+        b.endBlock();
+    }
 }

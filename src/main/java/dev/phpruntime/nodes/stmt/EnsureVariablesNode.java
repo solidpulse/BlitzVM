@@ -25,4 +25,16 @@ public final class EnsureVariablesNode extends PhpNode {
         }
         return null;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginBlock();
+        for (LValueNode t : targets) {
+            if (!(t instanceof dev.phpruntime.nodes.var.GlobalVarNode)) {
+                throw e.unsupported("ensure " + t.getClass().getSimpleName());
+            }
+            e.place(t, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_CELL, 0, null);
+        }
+        e.builder().endBlock();
+    }
 }

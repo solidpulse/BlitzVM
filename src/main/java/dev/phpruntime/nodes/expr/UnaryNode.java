@@ -1,6 +1,7 @@
 package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpOps;
 
@@ -17,15 +18,26 @@ public final class UnaryNode extends PhpNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        Object v = operand.execute(frame);
+        return apply(operand.execute(frame), bitNot, this);
+    }
+
+    /** The conversion, shared with the bytecode {@code Unary} operation. */
+    public static Object apply(Object v, boolean bitNot, Node location) {
         try {
             if (bitNot && v instanceof String s) {
                 return invertBytes(s);
             }
             return bitNot ? ~PhpOps.toLong(v) : PhpOps.toNumber(v);
         } catch (dev.phpruntime.runtime.PhpError e) {
-            throw e.at(this);
+            throw e.at(location);
         }
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginUnary(bitNot);
+        e.expr(operand);
+        e.builder().endUnary();
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
