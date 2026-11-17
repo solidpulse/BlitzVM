@@ -17,6 +17,7 @@ bench/engine-cache.py store /path/to/wordpress \
   --cache target/wordpress.image --run target/cache-store --policy hot
 
 # Compare uncached/loaded responses and all PHP CLI fixture outputs.
+# Omit --cache for uncached bytecode correctness before the cache-enabled build.
 bench/engine-cache.py check /path/to/wordpress \
   --cache target/wordpress.image --run target/cache-check
 
@@ -37,7 +38,10 @@ is never overwritten by `store`.
 
 `curve` uses one Java load-generator process for 18 consecutive ten-second
 windows, four connections. Each sample reports front-page req/s, p50 at those
-four connections, and the 1/5/15-minute load averages. Startup is the time from
+four connections, and the 1/5/15-minute load averages. Sample epoch timestamps
+also retain the offsets from server launch (including Java source-launch overhead
+and the initial response); nominal windows are relative to the load phase.
+Startup is the time from
 server launch to the first complete successful WordPress `/` response. FPM
 startup includes its nginx container launch. `measure` uses task 18's warm-up
 and steady-state phases: 90 s `/`, 30 s boot, 15 s boot/front p50 at one
@@ -47,6 +51,8 @@ connection, 15 s front throughput at four connections.
 configure experiments. Use a fresh directory for each `CacheCompile` variant.
 `--gc` enables native Serial GC logs without changing heap sizes or collector.
 FPM always uses four static children, opcache enabled and JIT disabled.
+The harness checks runtime load/patch confirmation, records separate cache
+prepare/persist/write/load times, and tests fixtures both loaded and uncached.
 
 Cache compilation policies are `none`, `compiled`, `hot`, `aot`, and `executed`.
 All seven pages are requested during training before at least 120 seconds of

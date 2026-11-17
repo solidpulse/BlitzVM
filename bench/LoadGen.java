@@ -43,7 +43,8 @@ public class LoadGen {
         long start = System.nanoTime();
         for (int sample = 1; sample <= samples; sample++) {
             String machineLoad = java.nio.file.Files.readString(java.nio.file.Path.of("/proc/loadavg")).strip();
-            System.out.printf("sample=%d start=%.3fs load=%s ", sample, (System.nanoTime() - start) / 1e9, machineLoad);
+            System.out.printf("sample=%d start=%.3fs epoch_ms=%d load=%s ", sample,
+                    (System.nanoTime() - start) / 1e9, System.currentTimeMillis(), machineLoad);
             load(url, concurrency, windowSeconds);
             System.out.flush();
         }
