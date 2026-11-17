@@ -84,7 +84,12 @@ public abstract class LValueNode extends PhpNode {
     /** Reading an lvalue as an expression yields its value, warning when undefined. */
     @Override
     public Object execute(VirtualFrame frame) {
-        Object v = read(frame, evalKeys(frame));
+        return readValue(frame, evalKeys(frame));
+    }
+
+    /** The rvalue read on evaluated keys: the value, or null with php's undefined warning. */
+    public Object readValue(VirtualFrame frame, Object[] keys) {
+        Object v = read(frame, keys);
         if (v == null) {
             return undefined();
         }

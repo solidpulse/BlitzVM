@@ -12,4 +12,10 @@ public final class GetDefinedVarsNode extends PhpNode {
         return tableSlot < 0 ? PhpContext.get(this).buildGlobalsSnapshot()
                 : ((PhpSymbolTable) frame.getObject(tableSlot)).snapshot();
     }
+
+    @Override public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginGetDefinedVars();
+        e.loadTable(tableSlot);
+        e.builder().endGetDefinedVars();
+    }
 }

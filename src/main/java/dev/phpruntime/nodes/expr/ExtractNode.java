@@ -14,13 +14,95 @@ public final class ExtractNode extends PhpNode {
     @Child private PhpNode flags;
     @Child private PhpNode prefix;
     private final int tableSlot;
+    private final boolean hasPrefix;
 
     public ExtractNode(PhpNode array, LValueNode arrayTarget, PhpNode flags, PhpNode prefix, int tableSlot) {
+        this(array, arrayTarget, flags, prefix, tableSlot, prefix != null);
+    }
+
+    private ExtractNode(PhpNode array, LValueNode arrayTarget, PhpNode flags, PhpNode prefix, int tableSlot, boolean hasPrefix) {
         this.array = array;
         this.arrayTarget = arrayTarget;
         this.flags = flags;
         this.prefix = prefix;
         this.tableSlot = tableSlot;
+        this.hasPrefix = hasPrefix;
+    }
+
+    /** A copy for bytecode: the operation evaluates the arguments and calls {@link #run}. */
+    public ExtractNode headless() {
+        return new ExtractNode(null, null, null, null, tableSlot, hasPrefix).at(line());
+    }
+
+    /**
+     * Bytecode form. EXTR_REFS separates the array and writes it back into the argument
+     * variable; only flags that cannot contain it are supported.
+     */
+    @Override public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (arrayTarget != null && flags != null && !withoutRefs(flags)) {
+            throw e.unsupported("extract with EXTR_REFS");
+        }
+        var b = e.builder();
+        b.beginExtract(new dev.phpruntime.bytecode.PhpBytecodeRootNode.ExtractSpec(this));
+        e.loadTable(tableSlot);
+        if (arrayTarget != null) {
+            e.rawRead(arrayTarget);
+        } else {
+            e.expr(array);
+        }
+        if (flags != null) {
+            e.expr(flags);
+        } else {
+            b.emitLoadConstant(0L);
+        }
+        if (prefix != null) {
+            e.expr(prefix);
+        } else {
+            b.emitLoadConstant("");
+        }
+        b.endExtract();
+    }
+
+    private static boolean withoutRefs(PhpNode flags) {
+        if (flags instanceof ConstNode c) {
+            return c.value() instanceof Long l && (l & 256) == 0;
+        }
+        if (flags instanceof ReadConstantNode r) {
+            String name = r.name();
+            name = name.substring(name.lastIndexOf('\\') + 1);
+            return name.startsWith("EXTR_") && !name.equals("EXTR_REFS");
+        }
+        return false;
+    }
+
+    /** The extraction on evaluated arguments (no write-back for EXTR_REFS: see {@link #emit}). */
+    public Object run(Object table, Object value, Object rawFlags, Object rawPrefix) {
+        long flag = checkFlags(rawFlags, rawPrefix);
+        String pre = PhpOps.toStr(rawPrefix);
+        if (!(value instanceof PhpArray input)) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+            throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #1 ($array) must be of type array, " + PhpOps.typeName(value) + " given", this);
+        }
+        boolean refs = (flag & 256) != 0;
+        if (refs) {
+            input = input.forWrite();
+        }
+        return extract(input, (int) flag & 255, refs, pre, table instanceof PhpSymbolTable t ? t : null);
+    }
+
+    private long checkFlags(Object rawFlags, Object rawPrefix) {
+        if (!(rawFlags == PhpNull.INSTANCE || rawFlags instanceof Long || rawFlags instanceof Double
+                || rawFlags instanceof Boolean || rawFlags instanceof String s && PhpOps.isNumericString(s))) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+            throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #2 ($flags) must be of type int, " + PhpOps.typeName(rawFlags) + " given", this);
+        }
+        if (rawPrefix instanceof PhpArray || rawPrefix instanceof PhpObject) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+            throw new PhpError(PhpError.TYPE_ERROR, "extract(): Argument #3 ($prefix) must be of type string, " + PhpOps.typeName(rawPrefix) + " given", this);
+        }
+        long flag = PhpOps.toLong(rawFlags);
+        validate(flag, PhpOps.toStr(rawPrefix));
+        return flag;
     }
 
     @Override public Object execute(VirtualFrame frame) {
@@ -70,7 +152,7 @@ public final class ExtractNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #2 ($flags) must be a valid extract type", this);
         }
-        if ((type == 2 || type == 3 || type == 4 || type == 5) && this.prefix == null) {
+        if ((type == 2 || type == 3 || type == 4 || type == 5) && !hasPrefix) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.VALUE_ERROR, "extract(): Argument #3 ($prefix) is required when using this extract type", this);
         }

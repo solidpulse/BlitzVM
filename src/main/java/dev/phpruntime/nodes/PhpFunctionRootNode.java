@@ -347,26 +347,47 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     @ExplodeLoop
     private void initializeSymbols(VirtualFrame frame) {
-        dev.phpruntime.runtime.PhpClass lexical = traitSelfSlot >= 0
-                ? (dev.phpruntime.runtime.PhpClass) frame.getObject(traitSelfSlot)
-                : declaringClassId >= 0 ? dev.phpruntime.PhpContext.get(this).classById(declaringClassId) : null;
-        dev.phpruntime.runtime.PhpSymbolTable table = new dev.phpruntime.runtime.PhpSymbolTable(scopeLayout,
-                thisSlot >= 0 ? frame.getObject(thisSlot) : PhpNull.INSTANCE,
-                calledClassSlot >= 0 ? (dev.phpruntime.runtime.PhpClass) frame.getObject(calledClassSlot) : null, lexical);
+        Object[] values = new Object[captureSlots.length + paramSlots.length];
         for (int i = 0; i < captureSlots.length; i++) {
-            int slot = captureSlots[i];
-            Object value = frame.getValue(slot);
-            table.cells[slot] = captureByRef[i] ? ((PhpReference) value).alias()
+            values[i] = frame.getValue(captureSlots[i]);
+        }
+        for (int i = 0; i < paramSlots.length; i++) {
+            values[captureSlots.length + i] = frame.getValue(paramSlots[i]);
+        }
+        dev.phpruntime.runtime.PhpSymbolTable table = newSymbolTable(dev.phpruntime.PhpContext.get(this),
+                thisSlot >= 0 ? frame.getObject(thisSlot) : PhpNull.INSTANCE,
+                calledClassSlot >= 0 ? frame.getObject(calledClassSlot) : null,
+                traitSelfSlot >= 0 ? frame.getObject(traitSelfSlot) : null, values);
+        frame.setObject(scopeLayout.tableSlot(), table);
+    }
+
+    /**
+     * The invocation's symbol table: {@code values} holds the captured variables' then the
+     * parameters' frame values (cells for by-reference ones), in slot order. Shared with the
+     * bytecode prologue.
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public dev.phpruntime.runtime.PhpSymbolTable newSymbolTable(dev.phpruntime.PhpContext ctx, Object thisValue,
+                                                                Object calledClass, Object traitSelf, Object[] values) {
+        dev.phpruntime.runtime.PhpClass lexical = traitSelf instanceof dev.phpruntime.runtime.PhpClass c ? c
+                : declaringClassId >= 0 ? ctx.classById(declaringClassId) : null;
+        dev.phpruntime.runtime.PhpSymbolTable table = new dev.phpruntime.runtime.PhpSymbolTable(scopeLayout,
+                thisValue == null ? PhpNull.INSTANCE : thisValue,
+                calledClass instanceof dev.phpruntime.runtime.PhpClass c ? c : null, lexical);
+        for (int i = 0; i < captureSlots.length; i++) {
+            Object value = values[i];
+            table.cells[captureSlots[i]] = captureByRef[i] ? ((PhpReference) value).alias()
                     : PhpReference.local(value instanceof PhpReference ref ? ref.getValue() : value);
         }
         for (int i = 0; i < paramSlots.length; i++) {
-            int slot = paramSlots[i];
-            Object value = frame.getValue(slot);
-            table.cells[slot] = paramByRef[i] && !(variadic && i == paramSlots.length - 1) ? ((PhpReference) value).alias()
+            Object value = values[captureSlots.length + i];
+            table.cells[paramSlots[i]] = paramByRef[i] && !(variadic && i == paramSlots.length - 1) ? ((PhpReference) value).alias()
                     : PhpReference.local(value instanceof PhpReference ref ? ref.getValue() : value);
         }
-        frame.setObject(scopeLayout.tableSlot(), table);
+        return table;
     }
+
+    public dev.phpruntime.runtime.PhpScopeLayout scopeLayout() { return scopeLayout; }
 
     @ExplodeLoop
     private void initializeGeneratorSlots(VirtualFrame frame) {

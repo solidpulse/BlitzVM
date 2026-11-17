@@ -23,6 +23,41 @@ public final class CompactNode extends PhpNode {
         this.tableSlot = tableSlot;
     }
 
+    /** A copy for bytecode: arguments arrive evaluated (literal names as raw variable reads). */
+    public CompactNode headless() {
+        return new CompactNode(new PhpNode[args.length], new LValueNode[reads.length], names, tableSlot).at(line());
+    }
+
+    /** {@code values[i]}: the raw read of literal name i ({@code UNDEFINED} if unset), else argument i. */
+    @TruffleBoundary
+    public Object build(Object table, Object[] values) {
+        PhpArray result = new PhpArray();
+        PhpSymbolTable symbols = table instanceof PhpSymbolTable t ? t : null;
+        for (int i = 0; i < values.length; i++) {
+            if (names[i] != null) {
+                Object v = values[i];
+                put(result, names[i], v == dev.phpruntime.bytecode.PhpBytecodeRootNode.UNDEFINED ? null : v);
+            } else {
+                collect(result, values[i], symbols, i + 1);
+            }
+        }
+        return result;
+    }
+
+    @Override public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginCompact(new dev.phpruntime.bytecode.PhpBytecodeRootNode.CompactSpec(this));
+        e.loadTable(tableSlot);
+        for (int i = 0; i < args.length; i++) {
+            if (reads[i] != null) {
+                e.rawRead(reads[i]);
+            } else {
+                e.expr(args[i]);
+            }
+        }
+        b.endCompact();
+    }
+
     @Override @ExplodeLoop public Object execute(VirtualFrame frame) {
         PhpArray result = new PhpArray();
         for (int i = 0; i < args.length; i++) {

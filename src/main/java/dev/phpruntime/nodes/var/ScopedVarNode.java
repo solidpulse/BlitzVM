@@ -11,30 +11,42 @@ public final class ScopedVarNode extends LValueNode {
     private final int tableSlot;
     private final int slot;
     private final String name;
+    /** Bytecode copy: the table is base key 0 (key 1 is the name, unused here), not a frame slot. */
+    private final boolean headless;
 
     public ScopedVarNode(int tableSlot, int slot, String name) {
+        this(tableSlot, slot, name, false);
+    }
+
+    private ScopedVarNode(int tableSlot, int slot, String name, boolean headless) {
         this.tableSlot = tableSlot;
         this.slot = slot;
         this.name = name;
+        this.headless = headless;
     }
 
     public String varName() { return name; }
 
-    private PhpSymbolTable table(VirtualFrame frame) { return (PhpSymbolTable) frame.getObject(tableSlot); }
+    /** A copy for bytecode places, whose keys are (table, name). */
+    public ScopedVarNode headless() { return new ScopedVarNode(-1, slot, name, true).at(line()); }
+
+    private PhpSymbolTable table(VirtualFrame frame, Object[] keys) {
+        return (PhpSymbolTable) (headless ? keys[0] : frame.getObject(tableSlot));
+    }
 
     @Override public Object read(VirtualFrame frame, Object[] keys) {
         if (name.equals("this")) {
-            Object value = table(frame).thisValue;
+            Object value = table(frame, keys).thisValue;
             if (value == null || value == PhpNull.INSTANCE) { throw new PhpError("Using $this when not in object context", this); }
             return value;
         }
-        PhpReference cell = table(frame).cells[slot];
+        PhpReference cell = table(frame, keys).cells[slot];
         return cell == null ? null : cell.getValue();
     }
 
     @Override public boolean isSet(VirtualFrame frame, Object[] keys) {
         if (name.equals("this")) {
-            Object value = table(frame).thisValue;
+            Object value = table(frame, keys).thisValue;
             return value != null && value != PhpNull.INSTANCE;
         }
         return super.isSet(frame, keys);
@@ -42,7 +54,7 @@ public final class ScopedVarNode extends LValueNode {
 
     @Override public Object readIfSet(VirtualFrame frame, Object[] keys) {
         if (name.equals("this")) {
-            Object value = table(frame).thisValue;
+            Object value = table(frame, keys).thisValue;
             return value == PhpNull.INSTANCE ? null : value;
         }
         return read(frame, keys);
@@ -54,7 +66,7 @@ public final class ScopedVarNode extends LValueNode {
 
     @Override public void write(VirtualFrame frame, Object[] keys, Object value) {
         writable();
-        PhpReference[] cells = table(frame).cells;
+        PhpReference[] cells = table(frame, keys).cells;
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = PhpReference.local(value); }
         else { cell.setValue(value); }
@@ -66,7 +78,7 @@ public final class ScopedVarNode extends LValueNode {
             return new PhpReference(read(frame, keys));
         }
         writable();
-        PhpReference[] cells = table(frame).cells;
+        PhpReference[] cells = table(frame, keys).cells;
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = cell = new PhpReference(PhpNull.INSTANCE); }
         else { cell.ensureDefined(); }
@@ -75,7 +87,7 @@ public final class ScopedVarNode extends LValueNode {
 
     @Override public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
         writable();
-        PhpReference[] cells = table(frame).cells;
+        PhpReference[] cells = table(frame, keys).cells;
         PhpReference cell = cells[slot];
         if (cell == null) { cells[slot] = cell = PhpReference.local(null); }
         return cell.appendString(suffix, resultNeeded);
@@ -83,13 +95,17 @@ public final class ScopedVarNode extends LValueNode {
 
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         writable();
-        table(frame).cells[slot] = cell.alias();
+        table(frame, keys).cells[slot] = cell.alias();
     }
 
     @Override public void unset(VirtualFrame frame, Object[] keys) {
         if (name.equals("this")) { throw new PhpError("Cannot unset $this", this); }
-        table(frame).cells[slot] = null;
+        table(frame, keys).cells[slot] = null;
     }
 
     @Override public String describe() { return "$" + name; }
+
+    @Override public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
+    }
 }

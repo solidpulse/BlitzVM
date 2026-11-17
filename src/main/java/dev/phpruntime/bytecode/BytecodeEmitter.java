@@ -145,9 +145,6 @@ public final class BytecodeEmitter {
             return null;
         }
         try {
-            if (fn.usesSymbolTable()) {
-                throw new Unsupported("dynamic scope");
-            }
             if (fn.isGenerator()) {
                 throw new Unsupported("generator");
             }
@@ -204,6 +201,9 @@ public final class BytecodeEmitter {
         b.emitEnter();
         bindSpecialSlots();
         bindParameters();
+        if (fn.usesSymbolTable()) {
+            initSymbols();
+        }
         stmt(fn.body());
         b.beginReturn();
         b.emitLoadConstant(PhpNull.INSTANCE);
@@ -236,6 +236,63 @@ public final class BytecodeEmitter {
             }
         } else if (fn.traitSelfSlot() >= 0) {
             storeArgument(fn.traitSelfSlot(), 2);
+        }
+    }
+
+    /**
+     * Dynamic scope ({@code $$x}, {@code extract}, include into the function): every variable
+     * lives in a {@code PhpSymbolTable}, built here from the bound parameters and captures as
+     * the AST's prologue does, and held in the table local. Variable nodes are places on it.
+     */
+    private void initSymbols() {
+        b.beginStoreLocal(tableLocal());
+        b.beginInitSymbols();
+        loadSlotOr(fn.thisSlot(), PhpNull.INSTANCE);
+        loadSlotOr(fn.calledClassSlot(), PhpNull.INSTANCE);
+        loadSlotOr(fn.traitSelfSlot(), PhpNull.INSTANCE);
+        for (int slot : fn.captureSlots()) {
+            b.emitLoadLocal(locals.get(slot));
+        }
+        for (int slot : fn.paramSlots()) {
+            b.emitLoadLocal(locals.get(slot));
+        }
+        b.endInitSymbols();
+        b.endStoreLocal();
+    }
+
+    private void loadSlotOr(int slot, Object fallback) {
+        if (slot >= 0 && locals.containsKey(slot)) {
+            b.emitLoadLocal(locals.get(slot));
+        } else {
+            b.emitLoadConstant(fallback);
+        }
+    }
+
+    /** The local holding the symbol table of a dynamic-scope function. */
+    public BytecodeLocal tableLocal() {
+        if (fn == null || !fn.usesSymbolTable()) {
+            throw new Unsupported("symbol table outside a dynamic-scope function");
+        }
+        return local(fn.scopeLayout().tableSlot(), "#symbols");
+    }
+
+    /** A variable's value without the undefined warning, or {@code PhpBytecodeRootNode.UNDEFINED}. */
+    public void rawRead(dev.phpruntime.nodes.var.LValueNode v) {
+        if (v instanceof LocalVarNode lv) {
+            b.emitReadVarRaw(accessor(lv));
+        } else if (isPlace(v)) {
+            place(v, PhpBytecodeRootNode.P_RAW, 0, null);
+        } else {
+            throw new Unsupported("raw read of " + v.getClass().getSimpleName());
+        }
+    }
+
+    /** The symbol table for a node's {@code tableSlot}: the table local, or null for globals. */
+    public void loadTable(int tableSlot) {
+        if (tableSlot < 0) {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        } else {
+            b.emitLoadLocal(tableLocal());
         }
     }
 
@@ -332,7 +389,7 @@ public final class BytecodeEmitter {
         } else if (node instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             il.emitRead(this, 1);
         } else if (node instanceof dev.phpruntime.nodes.var.PropertyLValueNode
-                || node instanceof dev.phpruntime.nodes.var.GlobalVarNode) {
+                || node instanceof dev.phpruntime.nodes.var.GlobalVarNode || isTableVar(node)) {
             place((dev.phpruntime.nodes.var.LValueNode) node, PhpBytecodeRootNode.P_READ_IF_SET, 0, null);
         } else {
             expr(node);
@@ -430,8 +487,42 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** {@code base} emits the base keys of an object place: (object, name) or (table, name). */
     private record Form(PhpBytecodeRootNode.PlaceSpec spec, LocalVarNode local,
-                        dev.phpruntime.nodes.var.PropertyLValueNode property, PhpNode[] keys, boolean global) {
+                        Runnable base, PhpNode[] keys, boolean global) {
+    }
+
+    /** A variable of a dynamic-scope function, or a computed variable name. */
+    public static boolean isTableVar(PhpNode n) {
+        return n instanceof dev.phpruntime.nodes.var.ScopedVarNode || n instanceof dev.phpruntime.nodes.var.DynamicVarNode;
+    }
+
+    private dev.phpruntime.nodes.var.LValueNode tableHeadless(dev.phpruntime.nodes.var.LValueNode v) {
+        return v instanceof dev.phpruntime.nodes.var.ScopedVarNode sv ? sv.headless()
+                : ((dev.phpruntime.nodes.var.DynamicVarNode) v).headless();
+    }
+
+    private Runnable tableBase(dev.phpruntime.nodes.var.LValueNode v) {
+        if (v instanceof dev.phpruntime.nodes.var.ScopedVarNode sv) {
+            return () -> {
+                b.emitLoadLocal(tableLocal());
+                b.emitLoadConstant(sv.varName());
+            };
+        }
+        var dv = (dev.phpruntime.nodes.var.DynamicVarNode) v;
+        return () -> {
+            loadTable(dv.tableSlot());
+            b.beginToStr();
+            expr(dv.nameExpr());
+            b.endToStr();
+        };
+    }
+
+    private Runnable propertyBase(dev.phpruntime.nodes.var.PropertyLValueNode p) {
+        return () -> {
+            expr(p.targetExpr());
+            propertyName(p);
+        };
     }
 
     private Form form(dev.phpruntime.nodes.var.LValueNode lv) {
@@ -449,12 +540,20 @@ public final class BytecodeEmitter {
             if (il.base() instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
                 var template = il.headless(language, p.headless());
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
-                        null, p, il.keyNodes(), false);
+                        null, propertyBase(p), il.keyNodes(), false);
+            }
+            if (isTableVar(il.base())) {
+                var template = il.headless(language, tableHeadless(il.base()));
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
+                        null, tableBase(il.base()), il.keyNodes(), false);
             }
             throw new Unsupported("index of " + il.base().getClass().getSimpleName());
         }
         if (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
-            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0), null, p, new PhpNode[0], false);
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0), null, propertyBase(p), new PhpNode[0], false);
+        }
+        if (isTableVar(lv)) {
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(tableHeadless(lv), 0), null, tableBase(lv), new PhpNode[0], false);
         }
         if (lv instanceof dev.phpruntime.nodes.var.GlobalVarNode g) {
             return new Form(new PhpBytecodeRootNode.PlaceSpec(g.headless(), 0), null, null, new PhpNode[0], true);
@@ -464,9 +563,8 @@ public final class BytecodeEmitter {
     }
 
     private void operands(Form f) {
-        if (f.property() != null) {
-            expr(f.property().targetExpr());
-            propertyName(f.property());
+        if (f.base() != null) {
+            f.base().run();
         }
         for (PhpNode k : f.keys()) {
             if (k == null) {
@@ -514,7 +612,7 @@ public final class BytecodeEmitter {
 
     public static boolean isPlace(PhpNode n) {
         return n instanceof dev.phpruntime.nodes.var.IndexLValueNode || n instanceof dev.phpruntime.nodes.var.PropertyLValueNode
-                || n instanceof dev.phpruntime.nodes.var.GlobalVarNode;
+                || n instanceof dev.phpruntime.nodes.var.GlobalVarNode || isTableVar(n);
     }
 
     /** {@code target = value} where the value is already being emitted by {@code value}. */

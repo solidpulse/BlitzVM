@@ -1,0 +1,41 @@
+42 L
+Array
+(
+    [name] => foo
+    [local] => L
+)
+2
+unset
+Array
+(
+    [name] => foo
+    [v] => 42
+    [local] => L
+    [arr] => Array
+        (
+            [name] => foo
+            [local] => L
+        )
+
+    [xy] => Array
+        (
+            [0] => 5
+            [1] => 6
+        )
+
+)
+T 1 2
+2 3 X
+inc sees T and K
+set-by-include
+6 ab 4
+global-g global-g 1
+global-g global-g 2
+7 7
+9
+dyn!
+Array
+(
+    [a] => 1
+    [b] => 
+)

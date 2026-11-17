@@ -63,6 +63,13 @@ public final class GlobalImportNode extends PhpNode {
         var b = e.builder();
         b.beginBlock();
         for (int i = 0; i < slots.length; i++) {
+            if (tableSlot >= 0) {
+                b.beginSetTableCell(slots[i]);
+                b.emitLoadLocal(e.tableLocal());
+                b.emitGlobalRef(globalIds[i]);
+                b.endSetTableCell();
+                continue;
+            }
             b.beginStoreLocal(e.accessor(slots[i], "#global" + i));
             b.emitGlobalRef(globalIds[i]);
             b.endStoreLocal();
