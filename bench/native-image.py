@@ -177,6 +177,21 @@ def check(args):
                                                 fromfile="jvm-ast", tofile=config)
                     (args.run / f"page-{config}-{index}.diff").write_text("\n".join(diff) + "\n")
                 pages[config].append((status, body))
+    # FPM is not the task's equality oracle, but record its seven bodies too so
+    # inherited PHP-compatibility gaps cannot be mistaken for native-image ones.
+    with server("fpm", args.docroot, args.run, "check-fpm", args.port):
+        pages["fpm"] = []
+        for index, path in enumerate(PAGES):
+            status, body = get(args.port, path)
+            (args.run / f"page-fpm-{index}.body").write_bytes(body)
+            same = (status, body) == pages["jvm-ast"][index]
+            print(f"fpm {path}: HTTP {status}, {len(body)} bytes, equal={same}", flush=True)
+            if not same:
+                diff = difflib.unified_diff(pages["jvm-ast"][index][1].decode(errors="replace").splitlines(),
+                                            body.decode(errors="replace").splitlines(),
+                                            fromfile="jvm-ast", tofile="fpm")
+                (args.run / f"page-fpm-{index}.diff").write_text("\n".join(diff) + "\n")
+            pages["fpm"].append((status, body))
     summary = {config: [{"path": path, "status": result[0], "bytes": len(result[1]),
                         "equal": result == pages["jvm-ast"][index]}
                        for index, (path, result) in enumerate(zip(PAGES, values))]
@@ -200,13 +215,19 @@ def check(args):
 
 
 def measure(args):
-    results = []
+    results = json.loads((args.run / "measurements.json").read_text()) if (args.run / "measurements.json").exists() else []
     # Three pairs (standing measurement rules), never concurrent servers.
-    schedules = [(["native-ast", "native-bc", "jvm-ast", "jvm-bc", "fpm"], 90)]
-    schedules += [(["native-ast", "native-bc"], 300)]
+    schedules = []
+    if args.variant in ("both", "standard"):
+        schedules.append((["native-ast", "native-bc", "jvm-ast", "jvm-bc", "fpm"], 90))
+    if args.variant in ("both", "long"):
+        schedules.append((["native-ast", "native-bc"], 300))
     for configs, front_warmup in schedules:
         for repeat in range(1, args.repeats + 1):
             for config in configs:
+                if any(row["configuration"] == config and row["repeat"] == repeat
+                       and row["front_warmup_s"] == front_warmup for row in results):
+                    continue
                 label = f"{front_warmup}s-{repeat}-{config}"
                 before = load_average()
                 print(f"Starting {label} at {datetime.datetime.now().isoformat()} load={before}", flush=True)
@@ -298,6 +319,7 @@ def main():
     parser.add_argument("--run", type=Path, default=ROOT / "target/native-bench")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--variant", choices=("both", "standard", "long"), default="both")
     args = parser.parse_args()
     args.docroot = args.docroot.resolve()
     args.run = args.run.resolve()
