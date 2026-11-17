@@ -268,6 +268,11 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** The local at {@code slot} (a special slot the root may not have), or PHP null. */
+    public void loadSlotOrNull(int slot) {
+        loadSlotOr(slot, PhpNull.INSTANCE);
+    }
+
     /** The local holding the symbol table of a dynamic-scope function. */
     public BytecodeLocal tableLocal() {
         if (fn == null || !fn.usesSymbolTable()) {

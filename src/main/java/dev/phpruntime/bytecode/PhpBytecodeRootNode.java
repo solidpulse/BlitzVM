@@ -1348,7 +1348,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** A method call resolved on its receiver; {@code entry} is null for a {@code __call} fallback. */
     public record MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
-                               PhpObject obj, String name, RootCallTarget magic) {
+                               Object obj, String name, RootCallTarget magic) {
     }
 
     /** A method call site: the static name (null for {@code $obj->$name()}) and its method id. */
@@ -2493,6 +2493,67 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object include(IncludeSpec spec, Object table, Object path,
                               @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.IncludeNode engine) {
             return engine.executePath(path instanceof String s ? s : Ops.toStr(path), table);
+        }
+    }
+
+    // ---- 17a: objects and calls
+
+    /**
+     * A {@code Cls::m()} call: the forwarding rule of {@code StaticMethodCallNode.executeRaw}.
+     * Operands are the class, the method name, {@code $this} and the called class. The result is
+     * a {@link MethodCallee}, which {@link DoMethodCall} then calls unchanged.
+     */
+    @Operation
+    @ConstantOperand(type = MethodSite.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    @ConstantOperand(type = boolean.class, name = "forwarding")
+    public static final class ResolveStaticMethod {
+        @Specialization
+        static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor calleeLocal, boolean forwarding,
+                            PhpClass targetClass, Object nameValue, Object thisValue, Object calledClassValue,
+                            @Bind BytecodeNode bytecode) {
+            String name = nameValue instanceof String s ? s : Ops.toStr(nameValue);
+            PhpClass.MethodEntry entry = site.methodId() >= 0 ? targetClass.methodById(site.methodId())
+                    : targetClass.lookupMethod(name);
+            PhpClass calledArg = forwarding && calledClassValue instanceof PhpClass c ? c : targetClass;
+            if (entry == null) {
+                PhpClass.MethodEntry magic = targetClass.callMethod();
+                if (forwarding && thisValue instanceof PhpObject thisObj
+                        && magic != null && magic.callTarget() != null) {
+                    calleeLocal.setObject(bytecode, frame,
+                            new MethodCallee(null, thisObj, calledArg, null, thisObj, name, magic.callTarget()));
+                    return;
+                }
+                PhpClass.MethodEntry magicStatic = targetClass.callStaticMethod();
+                if (magicStatic != null && magicStatic.callTarget() != null) {
+                    calleeLocal.setObject(bytecode, frame,
+                            new MethodCallee(null, PhpNull.INSTANCE, calledArg, null, PhpNull.INSTANCE, name,
+                                    magicStatic.callTarget()));
+                    return;
+                }
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Call to undefined method " + targetClass.name() + "::" + name + "()");
+            }
+            if (entry.callTarget() == null) {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Cannot call abstract method " + entry.declaringClass().name() + "::"
+                        + entry.name() + "()");
+            }
+            Object thisArg;
+            if (entry.isStatic()) {
+                thisArg = PhpNull.INSTANCE;
+            } else if (thisValue instanceof PhpObject thisObj
+                    && thisObj.phpClass().isInstanceOf(entry.declaringClass())) {
+                thisArg = thisObj;
+            } else {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Non-static method " + entry.declaringClass().name() + "::" + entry.name()
+                        + "() cannot be called statically");
+            }
+            RootCallTarget sig = entry.callTarget();
+            PhpObject obj = thisValue instanceof PhpObject o ? o : null;
+            calleeLocal.setObject(bytecode, frame,
+                    new MethodCallee(entry, thisArg, calledArg, sig, obj, name, null));
         }
     }
 }

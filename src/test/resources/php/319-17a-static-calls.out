@@ -1,0 +1,11 @@
+self:base:ScBase
+self:base:ScChild
+static:base:ScBase
+static:child:ScChild
+parent:base:ScChild
+own:label:ScBase|own:label:ScChild
+child:ScChild
+callStatic:ScMagic:missing(3,4)
+call:ScMagic:missing(1,2)
+call:ScMagic:other(x)
+5:5
