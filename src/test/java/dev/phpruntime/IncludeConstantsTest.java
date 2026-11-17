@@ -191,4 +191,42 @@ class IncludeConstantsTest {
         assertFalse(failRes.bodyText().contains("ok"));
         assertTrue(failRes.bodyText().contains("Call to undefined function dyn_fn()"), failRes.bodyText());
     }
+
+    @Test
+    void sharedClassesKeepPerRequestState(@TempDir Path dir) throws Exception {
+        // Classes are linked once and shared by requests; statics, constants built from
+        // per-request values, and property defaults must still start fresh in each request.
+        Path script = Files.writeString(dir.resolve("classes.php"), """
+                <?php
+                $v = $_GET['v'];
+                define('BASE', $v);
+                if ($v === 'a') {
+                    class P { public static $shared = 0; public function who() { return 'Pa'; } }
+                } else {
+                    class P { public static $shared = 0; public function who() { return 'Pb'; } }
+                }
+                trait T { public static $traitCount = 0; }
+                class C extends P {
+                    use T;
+                    const K = BASE . '!';
+                    const L = 'lit';
+                    public static $own = BASE;
+                    public $prop = [BASE, 'x'];
+                }
+                C::$shared += 5; P::$shared += 1; C::$traitCount++; C::$own .= '+';
+                $o = new C();
+                $o->prop[] = 'y';
+                $o2 = new C();
+                echo implode(',', [P::$shared, C::$shared, C::$traitCount, C::$own, C::K, C::L,
+                    implode('', $o->prop), implode('', $o2->prop), $o->who()]);
+                """);
+        String[] modes = {"a", "b", "a", "a", "b"};
+        for (String m : modes) {
+            PhpRequest req = new PhpRequest();
+            req.get.put("v", m);
+            PhpEngine.Result res = engine.execute(script, req);
+            assertEquals(200, res.status(), res.bodyText());
+            assertEquals("6,6,1," + m + "+," + m + "!,lit," + m + "xy," + m + "x,P" + m, res.bodyText());
+        }
+    }
 }

@@ -8,9 +8,42 @@ import java.util.Map;
 
 /**
  * Shared, immutable description of a parsed PHP class, interface, or trait.
- * Lives on the AST / engine across requests; per-request state lives in {@link PhpClass}.
+ * Lives on the AST / engine across requests; the linked form is {@link PhpClass}.
  */
 public final class PhpClassTemplate {
+
+    /**
+     * The class most recently linked from this template and what it was linked against.
+     * A request whose parent, interfaces and traits are these same classes reuses it.
+     */
+    public record Linked(PhpClass cls, PhpClass parent, PhpClass[] interfaces, PhpClass[] traits) {
+        public boolean matches(PhpClass p, List<PhpClass> ifaces, List<PhpClass> trs) {
+            if (parent != p || interfaces.length != ifaces.size() || traits.length != trs.size()) {
+                return false;
+            }
+            for (int i = 0; i < interfaces.length; i++) {
+                if (interfaces[i] != ifaces.get(i)) {
+                    return false;
+                }
+            }
+            for (int i = 0; i < traits.length; i++) {
+                if (traits[i] != trs.get(i)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    private volatile Linked linked;
+
+    public Linked linked() {
+        return linked;
+    }
+
+    public void setLinked(Linked l) {
+        linked = l;
+    }
 
     public record PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
                                Object constDefault, RootCallTarget defaultTarget) {

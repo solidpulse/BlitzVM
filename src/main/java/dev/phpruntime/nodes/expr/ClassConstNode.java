@@ -24,7 +24,7 @@ public final class ClassConstNode extends PhpNode {
             return classRef.staticName();
         }
         PhpClass cls = classRef.resolve(frame);
-        Object val = cls.lookupConstant(constName);
+        Object val = cls.lookupConstant(dev.phpruntime.PhpContext.get(this), constName);
         if (val == null) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Undefined constant " + cls.name() + "::" + constName, this);

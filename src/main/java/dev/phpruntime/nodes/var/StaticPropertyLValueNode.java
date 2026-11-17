@@ -61,7 +61,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
-        PhpClass.StaticSlot slot = cls.lookupStaticProperty(name);
+        PhpClass.StaticSlot slot = cls.lookupStaticProperty(PhpContext.get(this), name);
         if (slot == null || !isAccessible(cls, slot, caller)) {
             return null;
         }
@@ -99,7 +99,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
 
     @TruffleBoundary
     private PhpClass.StaticSlot requireSlot(PhpClass cls, String name, PhpClass traitCaller) {
-        PhpClass.StaticSlot slot = cls.lookupStaticProperty(name);
+        PhpClass.StaticSlot slot = cls.lookupStaticProperty(PhpContext.get(this), name);
         if (slot == null) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Access to undeclared static property " + cls.name() + "::$" + name, this);

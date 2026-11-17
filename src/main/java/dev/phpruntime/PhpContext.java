@@ -58,6 +58,7 @@ public final class PhpContext {
     private PhpFunction[] functionsById = new PhpFunction[256];
     private final Map<String, PhpClass> classes = new HashMap<>();
     private PhpClass[] classesById = new PhpClass[128];
+    private final IdentityHashMap<PhpClass, PhpClass.RequestState> classStates = new IdentityHashMap<>();
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
@@ -670,6 +671,7 @@ public final class PhpContext {
             ifaces.add(iface);
         }
         Map<String, PhpClass> resolvedTraits = template.traitUses().isEmpty() ? Map.of() : new HashMap<>();
+        List<PhpClass> traitOrder = template.traitUses().isEmpty() ? List.of() : new ArrayList<>();
         for (PhpClassTemplate.TraitUse use : template.traitUses()) {
             for (String traitName : use.traitNames()) {
                 String tLower = PhpStrings.lower(traitName);
@@ -682,9 +684,34 @@ public final class PhpContext {
                         throw PhpError.fatal(template.name() + " cannot use " + tr.name() + " - it is not a trait");
                     }
                     resolvedTraits.put(tLower, tr);
+                    traitOrder.add(tr);
                 }
             }
         }
+        // Linking depends only on the template and these resolved classes, so a request that
+        // resolves the same ones reuses the class another request built and validated.
+        PhpClassTemplate.Linked linked = template.linked();
+        PhpClass cls;
+        if (linked != null && linked.matches(parent, ifaces, traitOrder)) {
+            cls = linked.cls();
+        } else {
+            cls = linkClass(template, isBuiltin, parent, ifaces, resolvedTraits);
+            template.setLinked(new PhpClassTemplate.Linked(cls, parent,
+                    ifaces.toArray(new PhpClass[0]), traitOrder.toArray(new PhpClass[0])));
+        }
+        classes.put(lower, cls);
+        int id = cls.classId();
+        if (id >= classesById.length) {
+            classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
+        }
+        classesById[id] = cls;
+        return cls;
+    }
+
+    /** Builds and validates the class for one combination of parent, interfaces and traits. */
+    private PhpClass linkClass(PhpClassTemplate template, boolean isBuiltin, PhpClass parent,
+                               List<PhpClass> declaredIfaces, Map<String, PhpClass> resolvedTraits) {
+        List<PhpClass> ifaces = new ArrayList<>(declaredIfaces);
         if (!isBuiltin && parent != null) {
             for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
                 PhpClass.MethodEntry inherited = parent.lookupMethod(m.lowerName());
@@ -714,13 +741,18 @@ public final class PhpContext {
                 validateSplMethods(cls, cls);
             }
         }
-        classes.put(lower, cls);
-        int id = language.classId(lower);
-        if (id >= classesById.length) {
-            classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
-        }
-        classesById[id] = cls;
         return cls;
+    }
+
+    /** This request's state of a shared class (static property values, evaluated constants). */
+    @TruffleBoundary
+    public PhpClass.RequestState classState(PhpClass cls) {
+        PhpClass.RequestState state = classStates.get(cls);
+        if (state == null) {
+            state = new PhpClass.RequestState();
+            classStates.put(cls, state);
+        }
+        return state;
     }
 
     private void validateSplMethods(PhpClass cls, PhpClass inherited) {
@@ -778,7 +810,7 @@ public final class PhpContext {
         int sep = n.indexOf("::");
         if (sep > 0) {
             PhpClass cls = lookupClass(n.substring(0, sep));
-            return cls != null && cls.lookupConstant(n.substring(sep + 2)) != null;
+            return cls != null && cls.lookupConstant(this, n.substring(sep + 2)) != null;
         }
         return PhpConstants.lookupBuiltin(n) != null || constants.containsKey(n);
     }
@@ -795,7 +827,7 @@ public final class PhpContext {
         int sep = n.indexOf("::");
         if (sep > 0) {
             PhpClass cls = lookupClass(n.substring(0, sep));
-            return cls == null ? null : cls.lookupConstant(n.substring(sep + 2));
+            return cls == null ? null : cls.lookupConstant(this, n.substring(sep + 2));
         }
         Object builtin = PhpConstants.lookupBuiltin(n);
         if (builtin != null) {

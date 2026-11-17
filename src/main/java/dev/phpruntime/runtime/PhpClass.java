@@ -16,9 +16,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Per-request runtime representation of a PHP class, interface, or trait.
- * Holds resolved inheritance links, composed traits, method table, static property
- * slots, and evaluated class constants for a single {@link PhpContext}.
+ * A linked PHP class, interface, or trait: resolved inheritance links, composed traits,
+ * method table, property layout and constant declarations. Immutable after construction
+ * and shared by every request that links the same template to the same parent, interfaces
+ * and traits (php's immutable classes). What changes per request, static property values
+ * and evaluated constants and defaults, lives in the request's {@link RequestState}.
  */
 public final class PhpClass {
 
@@ -98,6 +100,23 @@ public final class PhpClass {
         }
     }
 
+    /** A declared static property; its value lives in each request's {@link RequestState}. */
+    public record StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
+                             Object constDefault, RootCallTarget defaultTarget) {
+    }
+
+    /** One request's state of one class: static property values, evaluated constants and defaults. */
+    public static final class RequestState {
+        private final HashMap<String, StaticSlot> statics = new HashMap<>();
+        private HashMap<String, Object> constants;
+        private HashSet<String> evaluatingConstants;
+        private Object[] defaultValues;
+    }
+
+    /** Property defaults: storage keys and constant values, or null where an initializer must run. */
+    private record Defaults(String[] keys, Object[] values, boolean dynamic) {
+    }
+
     /** Sentinel stored in {@link PhpObject} for an uninitialized {@code readonly} property. */
     public static final Object UNINITIALIZED = new Object();
 
@@ -111,6 +130,7 @@ public final class PhpClass {
 
     private final PhpClassTemplate template;
     private final long hierarchyId;
+    private final int classId;
     private final PhpClass parent;
     private final List<PhpClass> interfaces;
     private final List<PhpClass> usedTraits;
@@ -118,17 +138,14 @@ public final class PhpClass {
     private final List<PhpClassTemplate.ConstantDecl> traitConstants;
     private final Map<String, MethodEntry> methods = new HashMap<>();
     private MethodEntry[] methodsById;
-    private final Map<String, StaticSlot> staticProperties = new HashMap<>();
+    private final Map<String, StaticDecl> staticDecls = new HashMap<>();
     private final Map<String, PhpClassTemplate.ConstantDecl> constantDecls = new LinkedHashMap<>();
-    private final Map<String, Object> constants = new HashMap<>();
-    private final Set<String> evaluatingConstants = new HashSet<>();
     private final List<InstanceProp> instanceProps = new ArrayList<>();
     private final Map<String, InstanceProp> visibleProps = new HashMap<>();
     private final Map<String, InstanceProp> privateProps = new HashMap<>();
     private final Set<String> declaredPropNames = new HashSet<>();
 
-    private String[] defaultPropKeys;
-    private Object[] defaultPropValues;
+    private volatile Defaults defaults;
     private MethodEntry constructMethod;
     private MethodEntry getMethod;
     private MethodEntry setMethod;
@@ -180,6 +197,7 @@ public final class PhpClass {
             chain.add(c.template);
         }
         this.hierarchyId = language.hierarchyId(chain);
+        this.classId = language.classId(template.lowerName());
 
         // Inherit methods from parent, compose traits, then overlay this class's declared methods.
         int maxMethodId = parent != null ? parent.methodsById.length : 0;
@@ -217,7 +235,7 @@ public final class PhpClass {
 
         // Inherit instance & static property descriptors from parent.
         if (parent != null) {
-            this.staticProperties.putAll(parent.staticProperties);
+            this.staticDecls.putAll(parent.staticDecls);
             this.instanceProps.addAll(parent.instanceProps);
             this.visibleProps.putAll(parent.visibleProps);
             this.privateProps.putAll(parent.privateProps);
@@ -363,7 +381,7 @@ public final class PhpClass {
     private void applyPropertyDecl(PhpClassTemplate.PropertyDecl p) {
         this.declaredPropNames.add(p.name());
         if (p.isStatic()) {
-            this.staticProperties.put(p.name(), new StaticSlot(p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget()));
+            this.staticDecls.put(p.name(), new StaticDecl(p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget()));
         } else if (p.visibility() == Visibility.PRIVATE) {
             String storageKey = "\0" + template.name() + "\0" + p.name();
             Object defVal = p.isReadonly() ? UNINITIALIZED : p.constDefault();
@@ -393,6 +411,11 @@ public final class PhpClass {
 
     public long hierarchyId() {
         return hierarchyId;
+    }
+
+    /** The engine-wide id of this class's name, the index into each context's class table. */
+    public int classId() {
+        return classId;
     }
 
     public String name() {
@@ -504,9 +527,21 @@ public final class PhpClass {
         return parent != null && parent.isInstanceOf(target);
     }
 
+    /** This request's slot for a static property, or null if the class has none by that name. */
     @TruffleBoundary
-    public StaticSlot lookupStaticProperty(String name) {
-        return staticProperties.get(name);
+    public StaticSlot lookupStaticProperty(PhpContext ctx, String name) {
+        StaticDecl decl = staticDecls.get(name);
+        if (decl == null) {
+            return null;
+        }
+        // Inherited statics share the declaring class's slot, so parent and child see one value.
+        RequestState state = ctx.classState(decl.declaringClass());
+        StaticSlot slot = state.statics.get(name);
+        if (slot == null) {
+            slot = new StaticSlot(decl.name(), decl.visibility(), decl.declaringClass(), decl.constDefault(), decl.defaultTarget());
+            state.statics.put(name, slot);
+        }
+        return slot;
     }
 
     @TruffleBoundary
@@ -520,44 +555,49 @@ public final class PhpClass {
     }
 
     @TruffleBoundary
-    public Object lookupConstant(String name) {
+    public Object lookupConstant(PhpContext ctx, String name) {
         if (name.equalsIgnoreCase("class")) {
             return template.name();
         }
-        Object cached = constants.get(name);
-        if (cached != null) {
-            return cached;
-        }
         PhpClassTemplate.ConstantDecl own = constantDecls.get(name);
         if (own != null) {
-            if (!evaluatingConstants.add(name)) {
+            if (own.valueTarget() == null) {
+                return own.constValue();
+            }
+            // An initializer can read global constants, which differ per request.
+            RequestState state = ctx.classState(this);
+            if (state.constants == null) {
+                state.constants = new HashMap<>();
+                state.evaluatingConstants = new HashSet<>();
+            }
+            Object cached = state.constants.get(name);
+            if (cached != null) {
+                return cached;
+            }
+            if (!state.evaluatingConstants.add(name)) {
                 throw new PhpError("Cannot declare self-referencing constant " + template.name() + "::" + name);
             }
             try {
                 Object val = evalExpr(own.constValue(), own.valueTarget(), this);
-                constants.put(name, val);
+                state.constants.put(name, val);
                 return val;
             } finally {
-                evaluatingConstants.remove(name);
+                state.evaluatingConstants.remove(name);
             }
         }
         if (parent != null) {
-            Object p = parent.lookupConstantOrNull(name);
+            Object p = parent.lookupConstant(ctx, name);
             if (p != null) {
                 return p;
             }
         }
         for (PhpClass iface : interfaces) {
-            Object iv = iface.lookupConstantOrNull(name);
+            Object iv = iface.lookupConstant(ctx, name);
             if (iv != null) {
                 return iv;
             }
         }
         return null;
-    }
-
-    private Object lookupConstantOrNull(String name) {
-        return lookupConstant(name);
     }
 
     @TruffleBoundary
@@ -598,21 +638,48 @@ public final class PhpClass {
         if (instanceProps.isEmpty()) {
             return;
         }
-        if (defaultPropKeys == null) {
-            String[] keys = new String[instanceProps.size()];
-            Object[] vals = new Object[instanceProps.size()];
-            for (int i = 0; i < instanceProps.size(); i++) {
-                InstanceProp p = instanceProps.get(i);
-                keys[i] = p.storageKey();
-                vals[i] = evalExpr(p.constDefault(), p.defaultTarget(), this);
+        Defaults d = defaults;
+        if (d == null) {
+            d = buildDefaults();
+            defaults = d;
+        }
+        Object[] vals = d.values();
+        if (d.dynamic()) {
+            // Initializers can read global constants, so they run once per request.
+            RequestState state = PhpContext.get(null).classState(this);
+            if (state.defaultValues == null) {
+                Object[] evaluated = vals.clone();
+                for (int i = 0; i < evaluated.length; i++) {
+                    InstanceProp p = instanceProps.get(i);
+                    if (p.defaultTarget() != null) {
+                        evaluated[i] = evalExpr(p.constDefault(), p.defaultTarget(), this);
+                    }
+                }
+                state.defaultValues = evaluated;
             }
-            this.defaultPropKeys = keys;
-            this.defaultPropValues = vals;
+            vals = state.defaultValues;
         }
+        String[] keys = d.keys();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
-        for (int i = 0; i < defaultPropKeys.length; i++) {
-            put.execute(obj, defaultPropKeys[i], PhpOps.copyOnAssign(defaultPropValues[i]));
+        for (int i = 0; i < keys.length; i++) {
+            put.execute(obj, keys[i], PhpOps.copyOnAssign(vals[i]));
         }
+    }
+
+    private Defaults buildDefaults() {
+        String[] keys = new String[instanceProps.size()];
+        Object[] vals = new Object[instanceProps.size()];
+        boolean dynamic = false;
+        for (int i = 0; i < instanceProps.size(); i++) {
+            InstanceProp p = instanceProps.get(i);
+            keys[i] = p.storageKey();
+            if (p.defaultTarget() != null) {
+                dynamic = true;
+            } else {
+                vals[i] = p.constDefault();
+            }
+        }
+        return new Defaults(keys, vals, dynamic);
     }
 
     private static Object evalExpr(Object constVal, RootCallTarget target, PhpClass selfClass) {
