@@ -35,6 +35,7 @@ RUN_INIT+=',dev.phpruntime.timelib.ZoneinfoDb,dev.phpruntime.timelib.ParseDate'
 # locale bundle, so include them all rather than hard-coding en_US.
 # Bound build resources on the shared machine. Additional native-image options may
 # be passed as arguments, e.g. bin/build-native.sh --parallelism=2 -J-Xmx4g.
+echo "native build: engine-cache=$ENGINE_CACHE flags=${CACHE_FLAGS[*]}" >&2
 exec "$GRAALVM_HOME/bin/native-image" \
   --parallelism=4 -J-Xmx6g \
   -H:+AddAllCharsets \
