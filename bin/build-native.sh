@@ -31,6 +31,7 @@ done
 # be passed as arguments, e.g. bin/build-native.sh --parallelism=2 -J-Xmx4g.
 exec "$GRAALVM_HOME/bin/native-image" \
   --parallelism=4 -J-Xmx6g \
+  -H:+AddAllCharsets \
   -J--enable-native-access=ALL-UNNAMED \
   -J--sun-misc-unsafe-memory-access=allow \
   "--initialize-at-build-time=$BUILD_INIT" \
