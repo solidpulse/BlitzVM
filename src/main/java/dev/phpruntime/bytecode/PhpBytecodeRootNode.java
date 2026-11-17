@@ -1422,6 +1422,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final int P_APPEND = 6;
     public static final int P_CELL = 7;
     public static final int P_UNSET = 8;
+    /** The value without the undefined warning, or {@link #UNDEFINED} (compact, extract). */
+    public static final int P_RAW = 9;
 
     /**
      * A non-local lvalue (an index path or a property). {@code template} is a copy of its AST
@@ -1702,7 +1704,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     if (engine instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
                         return p.executeOn(frame, keys[0], (String) keys[1]);
                     }
-                    return engine.execute(frame);
+                    return engine.readValue(frame, keys);
                 case P_READ_IF_SET: {
                     Object v = engine.readIfSet(frame, keys);
                     return v == null ? PhpNull.INSTANCE : v;
@@ -1723,6 +1725,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 case P_UNSET:
                     engine.unset(frame, keys);
                     return PhpNull.INSTANCE;
+                case P_RAW: {
+                    Object v = engine.read(frame, keys);
+                    return v == null ? UNDEFINED : v;
+                }
                 default:
                     throw CompilerDirectives.shouldNotReachHere();
             }
@@ -2378,5 +2384,115 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @SuppressWarnings("unchecked")
     static <E extends Throwable> RuntimeException unchecked(Throwable t) throws E {
         throw (E) t;
+    }
+
+    // ---- dynamic scope
+
+    /** Builds the symbol table of a dynamic-scope function (see {@code PhpFunctionRootNode.newSymbolTable}). */
+    @Operation
+    public static final class InitSymbols {
+        @Specialization
+        static Object init(Object thisValue, Object calledClass, Object traitSelf, @Variadic Object[] values,
+                           @Bind PhpBytecodeRootNode root, @Bind Node node) {
+            return root.function.newSymbolTable(PhpContext.get(node), thisValue, calledClass, traitSelf, values);
+        }
+    }
+
+    /** What a raw variable read yields for an undefined variable (compact and extract need the difference). */
+    public static final Object UNDEFINED = new Object() {
+        @Override
+        public String toString() {
+            return "undefined";
+        }
+    };
+
+    /** A variable's value without the undefined warning, or {@link #UNDEFINED}. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    public static final class ReadVarRaw {
+        @Specialization
+        static Object read(VirtualFrame frame, LocalAccessor acc, @Bind BytecodeNode bytecode) {
+            Object v = current(frame, acc, bytecode);
+            return v == null ? UNDEFINED : v;
+        }
+    }
+
+    /** {@code global}/{@code static} in a dynamic-scope function: binds a table slot to a cell. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "slot")
+    public static final class SetTableCell {
+        @Specialization
+        static void set(int slot, Object table, Object cell) {
+            ((dev.phpruntime.runtime.PhpSymbolTable) table).cells[slot] = (PhpReference) cell;
+        }
+    }
+
+    @Operation
+    public static final class GetDefinedVars {
+        @Specialization
+        static Object vars(Object table, @Bind Node node) {
+            return table instanceof dev.phpruntime.runtime.PhpSymbolTable t ? t.snapshot()
+                    : globalsSnapshot(PhpContext.get(node));
+        }
+
+        @TruffleBoundary
+        private static Object globalsSnapshot(PhpContext ctx) {
+            return ctx.buildGlobalsSnapshot();
+        }
+    }
+
+    public record CompactSpec(dev.phpruntime.nodes.expr.CompactNode template) {
+        public dev.phpruntime.nodes.expr.CompactNode newEngine() {
+            return template.headless();
+        }
+
+        @Override
+        public String toString() {
+            return "compact";
+        }
+    }
+
+    /** compact(): operands are the table (or null), then per argument a raw read or the value. */
+    @Operation
+    @ConstantOperand(type = CompactSpec.class)
+    public static final class Compact {
+        @Specialization
+        static Object compact(CompactSpec spec, Object table, @Variadic Object[] values,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.CompactNode engine) {
+            return engine.build(table, values);
+        }
+    }
+
+    public record ExtractSpec(dev.phpruntime.nodes.expr.ExtractNode template) {
+        public dev.phpruntime.nodes.expr.ExtractNode newEngine() {
+            return template.headless();
+        }
+
+        @Override
+        public String toString() {
+            return "extract";
+        }
+    }
+
+    /** extract(): operands are the table (or null), the array (raw read), the flags and the prefix. */
+    @Operation
+    @ConstantOperand(type = ExtractSpec.class)
+    public static final class Extract {
+        @Specialization
+        static Object extract(ExtractSpec spec, Object table, Object array, Object flags, Object prefix,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ExtractNode engine) {
+            return engine.run(table, array == UNDEFINED ? null : array, flags, prefix);
+        }
+    }
+
+    /** include/require into a function's local scope: the included code shares the symbol table. */
+    @Operation
+    @ConstantOperand(type = IncludeSpec.class)
+    public static final class IncludeLocal {
+        @Specialization
+        static Object include(IncludeSpec spec, Object table, Object path,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.IncludeNode engine) {
+            return engine.executePath(path instanceof String s ? s : Ops.toStr(path), table);
+        }
     }
 }

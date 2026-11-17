@@ -24,7 +24,8 @@ class DynamicScopeTest {
         dev.phpruntime.builtins.Builtins.def("__scope_shape_check", 0, 0, (ctx, args) -> {
             for (String name : new String[]{"ordinary", "literal", "nested", "dynamic"}) {
                 var function = ctx.lookupFunction(name);
-                var functionRoot = function.callTarget().getRootNode();
+                // The AST root carries the scope shape, also when the function runs as bytecode.
+                var functionRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(function.callTarget().getRootNode());
                 functionRoot.adoptChildren();
                 boolean dynamic = function.name().equals("dynamic");
                 assertEquals(dynamic, functionRoot.getFrameDescriptor().getInfo() instanceof dev.phpruntime.runtime.PhpScopeLayout);

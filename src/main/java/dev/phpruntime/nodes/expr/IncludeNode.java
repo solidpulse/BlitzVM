@@ -46,9 +46,9 @@ public final class IncludeNode extends PhpNode {
     private record PreparedInclude(CallTarget target, String canonicalPath) {
     }
 
-    /** A copy without the path expression, for bytecode; only for includes without a symbol table. */
+    /** A copy without the path expression, for bytecode. */
     public IncludeNode headless() {
-        return new IncludeNode(kind, null, -1).at(line());
+        return new IncludeNode(kind, null, tableSlot).at(line());
     }
 
     public Object executePath(String path) {
@@ -59,12 +59,26 @@ public final class IncludeNode extends PhpNode {
         return prepared;
     }
 
+    /** An include into a function's local scope: the included file shares {@code table}. */
+    public Object executePath(String path, Object table) {
+        Object prepared = prepare(path);
+        if (prepared instanceof PreparedInclude inc) {
+            return callNode.call(inc.target(), new Object[]{inc.canonicalPath(), table});
+        }
+        return prepared;
+    }
+
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var spec = new dev.phpruntime.bytecode.PhpBytecodeRootNode.IncludeSpec(this);
         if (tableSlot >= 0) {
-            throw e.unsupported("include into a local scope");
+            e.builder().beginIncludeLocal(spec);
+            e.loadTable(tableSlot);
+            e.expr(pathExpr);
+            e.builder().endIncludeLocal();
+            return;
         }
-        e.builder().beginInclude(new dev.phpruntime.bytecode.PhpBytecodeRootNode.IncludeSpec(this));
+        e.builder().beginInclude(spec);
         e.expr(pathExpr);
         e.builder().endInclude();
     }

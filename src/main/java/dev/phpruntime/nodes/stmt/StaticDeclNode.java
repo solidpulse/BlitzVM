@@ -105,6 +105,11 @@ public final class StaticDeclNode extends PhpNode {
                 b.beginBindGlobalById(globalIds[i]);
                 b.emitLoadLocal(cell);
                 b.endBindGlobalById();
+            } else if (tableSlot >= 0) {
+                b.beginSetTableCell(slots[i]);
+                b.emitLoadLocal(e.tableLocal());
+                b.emitLoadLocal(cell);
+                b.endSetTableCell();
             } else {
                 b.beginStoreLocal(e.accessor(slots[i], names[i]));
                 b.emitLoadLocal(cell);
