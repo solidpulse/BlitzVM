@@ -31,7 +31,8 @@ bench/engine-cache.py gc_summary /path/to/wordpress --run target/cache-perf
 
 Do not reuse a cache with a rebuilt native executable: caches are bound to that
 exact binary. Use separate output directories for changed binaries or runtime
-options. The harness records and checks the binary SHA-256. It does not install
+options. The harness records and checks the binary and loaded-cache SHA-256,
+runtime flags and document root. It does not install
 tools, modify WordPress, run destructive JDBC fixtures, or stop existing servers.
 It only stops child PIDs and nginx containers it creates. An existing cache file
 is never overwritten by `store`.

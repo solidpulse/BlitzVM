@@ -144,8 +144,10 @@ def check(args):
         for script in scripts:
             result = subprocess.run([str(args.binary), *flags(args, cache=cache), str(script.relative_to(ROOT))],
                                     cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
-            if result.returncode or result.stdout != script.with_suffix(".out").read_bytes():
+            loaded = not cache or cache_events(result.stderr.decode(errors="replace"))["load_patched"]
+            if result.returncode or result.stdout != script.with_suffix(".out").read_bytes() or not loaded:
                 failure = {"script": script.name, "exit": result.returncode,
+                           "cache_loaded": loaded,
                            "stderr": result.stderr.decode(errors="replace")}
                 failures.append(failure)
                 (args.run / f"fixture-{label}-{script.stem}.actual").write_bytes(result.stdout)
@@ -290,7 +292,12 @@ def main():
         return
     identity = {"path": str(args.binary), "bytes": args.binary.stat().st_size,
                 "sha256": hashlib.sha256(args.binary.read_bytes()).hexdigest(), "vm_options": args.vm_option,
-                "gc": args.gc}
+                "gc": args.gc, "docroot": str(args.docroot)}
+    if args.cache and args.action != "store":
+        if not args.cache.is_file():
+            parser.error("cache file does not exist")
+        identity["cache"] = {"path": str(args.cache), "bytes": args.cache.stat().st_size,
+                             "sha256": hashlib.sha256(args.cache.read_bytes()).hexdigest()}
     previous = args.run / "binary.json"
     if previous.exists() and json.loads(previous.read_text()) != identity:
         parser.error("result directory belongs to another binary/options; use a fresh --run directory")

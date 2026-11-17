@@ -109,24 +109,29 @@ public class LoadGen {
             }
             threads.add(Thread.ofPlatform().start(() -> {
                 RawConnection conn = null;
-                while (System.nanoTime() < end) {
-                    long t = System.nanoTime();
-                    try {
-                        if (conn == null) {
-                            conn = new RawConnection(host, port);
-                        }
-                        int status = conn.exchange(request);
-                        if (status != 200) {
+                try {
+                    while (System.nanoTime() < end) {
+                        long t = System.nanoTime();
+                        try {
+                            if (conn == null) {
+                                conn = new RawConnection(host, port);
+                            }
+                            int status = conn.exchange(request);
+                            if (status != 200) {
+                                errors.incrementAndGet();
+                            }
+                            if (conn.closed) {
+                                conn = null;
+                            }
+                        } catch (Exception e) {
                             errors.incrementAndGet();
-                        }
-                        if (conn.closed) {
+                            if (conn != null) { conn.close(); }
                             conn = null;
                         }
-                    } catch (Exception e) {
-                        errors.incrementAndGet();
-                        conn = null;
+                        lat.add(System.nanoTime() - t);
                     }
-                    lat.add(System.nanoTime() - t);
+                } finally {
+                    if (conn != null) { conn.close(); }
                 }
             }));
         }
@@ -148,6 +153,11 @@ public class LoadGen {
             socket.setSoTimeout(60_000);
             out = socket.getOutputStream();
             in = new java.io.BufferedInputStream(socket.getInputStream(), 16384);
+        }
+
+        void close() {
+            closed = true;
+            try { socket.close(); } catch (java.io.IOException ignored) { }
         }
 
         int exchange(byte[] request) throws java.io.IOException {
