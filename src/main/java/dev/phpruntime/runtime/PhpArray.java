@@ -35,14 +35,32 @@ public final class PhpArray implements TruffleObject {
     private int shared;
     /** Internal pointer as a live slot, or -1 when invalid. */
     private int pointer = -1;
+    /**
+     * Never written again, and safe to share between requests and threads: the value of a
+     * constant array literal, built once at parse time (php's immutable arrays). Owners are
+     * not counted, and {@link #forWrite()} always copies.
+     */
+    private boolean immutable;
 
     public PhpArray() {
+    }
+
+    /** Makes this array immutable; every array nested in it must already be immutable. */
+    public PhpArray freeze() {
+        immutable = true;
+        return this;
+    }
+
+    public boolean isImmutable() {
+        return immutable;
     }
 
     /** Called on assignment; returns the same instance with an extra owner. */
     @TruffleBoundary
     public PhpArray share() {
-        shared++;
+        if (!immutable) {
+            shared++;
+        }
         return this;
     }
 
@@ -57,10 +75,12 @@ public final class PhpArray implements TruffleObject {
     /** Returns an instance safe to mutate: this one if unshared, otherwise a deep-enough copy. */
     @TruffleBoundary
     public PhpArray forWrite() {
-        if (shared == 0) {
+        if (shared == 0 && !immutable) {
             return this;
         }
-        shared--;
+        if (!immutable) {
+            shared--;
+        }
         PhpArray result = new PhpArray();
         result.values = Arrays.copyOf(values, values.length);
         for (int pos = 0; pos < used; pos++) {
@@ -291,6 +311,7 @@ public final class PhpArray implements TruffleObject {
     /** Renumber integer keys from 0, keeping string keys (used by sort, array_shift...). */
     @TruffleBoundary
     public void reindex() {
+        assert !immutable : "write to an immutable array";
         if (keys == null) {
             nextIndex = size;
             nextIndexInitialized = true;
@@ -370,6 +391,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     private void store(Object key, Object value, boolean replaceRef) {
+        assert !immutable : "write to an immutable array";
         if (keys == null && key instanceof Long l && l >= 0 && l <= size) {
             int pos = (int) l.longValue();
             if (pos == size) {
@@ -428,6 +450,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     private void replace(int pos, Object value, boolean replaceRef) {
+        assert !immutable : "write to an immutable array";
         if (!replaceRef && values[pos] instanceof PhpReference ref && !(value instanceof PhpReference)) {
             ref.setValue(value);
         } else {
@@ -437,6 +460,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     private void insertPacked(Object value) {
+        assert !immutable : "write to an immutable array";
         if (size == values.length) {
             values = Arrays.copyOf(values, Math.max(8, size * 2));
         }
@@ -520,6 +544,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     private void delete(int pos) {
+        assert !immutable : "write to an immutable array";
         if (keys == null && pos != size - 1) {
             toHash();
         }
@@ -596,17 +621,20 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     public void pointerReset() {
+        assert !immutable : "write to an immutable array";
         pointer = firstPos();
     }
 
     @TruffleBoundary
     public void pointerEnd() {
+        assert !immutable : "write to an immutable array";
         pointer = lastPos();
     }
 
     /** Moves forward; a pointer already past either end stays there. */
     @TruffleBoundary
     public void pointerNext() {
+        assert !immutable : "write to an immutable array";
         if (pointer >= 0) {
             pointer = nextPos(pointer);
         }
@@ -614,6 +642,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     public void pointerPrev() {
+        assert !immutable : "write to an immutable array";
         if (pointer >= 0) {
             do {
                 pointer--;

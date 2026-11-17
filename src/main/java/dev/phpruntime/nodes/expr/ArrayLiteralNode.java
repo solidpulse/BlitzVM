@@ -27,6 +27,11 @@ public final class ArrayLiteralNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final boolean[] byRef;
     @CompilationFinal(dimensions = 1) private final boolean[] spread;
     @Child private IteratorNode iterator;
+    /**
+     * The value when every key and value is a literal: built once here and returned by every
+     * execution, in every request, as an immutable array (writers copy it first).
+     */
+    private final PhpArray constant;
 
     public ArrayLiteralNode(PhpNode[] keys, PhpNode[] values) {
         this(keys, values, new boolean[values.length], new boolean[values.length]);
@@ -37,6 +42,7 @@ public final class ArrayLiteralNode extends PhpNode {
         this.values = values;
         this.byRef = byRef;
         this.spread = spread;
+        this.constant = buildConstant(keys, values, byRef, spread);
     }
 
     public ArrayLiteralNode(PhpLanguage language, PhpNode[] keys, PhpNode[] values, boolean[] refs, boolean[] spreads) {
@@ -44,9 +50,52 @@ public final class ArrayLiteralNode extends PhpNode {
         iterator = new IteratorNode(language);
     }
 
+    /** The immutable value of an all-literal array, or null if anything must run per execution. */
+    private static PhpArray buildConstant(PhpNode[] keys, PhpNode[] values, boolean[] byRef, boolean[] spread) {
+        PhpArray a = new PhpArray();
+        for (int i = 0; i < values.length; i++) {
+            if (byRef[i] || spread[i]) {
+                return null;
+            }
+            Object v;
+            if (values[i] instanceof ConstNode c && isScalar(c.value())) {
+                v = c.value();
+            } else if (values[i] instanceof ArrayLiteralNode inner && inner.constant != null) {
+                v = inner.constant;
+            } else {
+                return null;
+            }
+            if (keys[i] == null) {
+                try {
+                    a.append(v);
+                } catch (PhpError e) {
+                    return null;
+                }
+            } else if (keys[i] instanceof ConstNode c && isScalar(c.value()) && !(c.value() instanceof Double)) {
+                // Float keys are left out: php reports a lossy conversion on each execution.
+                try {
+                    a.put(c.value(), v);
+                } catch (PhpError e) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+        return a.freeze();
+    }
+
+    private static boolean isScalar(Object v) {
+        return v instanceof Long || v instanceof Double || v instanceof String || v instanceof Boolean
+                || v == PhpNull.INSTANCE;
+    }
+
     @Override
     @ExplodeLoop
     public Object execute(VirtualFrame frame) {
+        if (constant != null) {
+            return constant;
+        }
         PhpArray a = new PhpArray();
         for (int i = 0; i < values.length; i++) {
             if (spread[i]) {
