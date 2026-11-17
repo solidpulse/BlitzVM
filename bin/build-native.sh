@@ -9,10 +9,23 @@ if [[ ! -x "$GRAALVM_HOME/bin/native-image" ]]; then
 fi
 cd "$ROOT"
 mvn -q -B -DskipTests package
+# Truffle keeps stateless providers and interop exports in the image heap. Class
+# initialization directives do not implicitly include a class's nested classes.
+BUILD_INIT="dev.phpruntime.PhpLanguageProvider,dev.phpruntime.js.JsLanguageProvider,dev.phpruntime.bc.BytecodeLanguageProvider"
+for PREFIX in dev/phpruntime/parser/PhpParseErrorGen dev/phpruntime/js/parser/JsParseErrorGen dev/phpruntime/runtime/PhpNullGen; do
+  for FILE in "$ROOT/target/classes/$PREFIX"*.class; do
+    CLASS="${FILE#"$ROOT/target/classes/"}"
+    CLASS="${CLASS%.class}"
+    BUILD_INIT+=",${CLASS//\//.}"
+  done
+done
 # Bound build resources on the shared machine. Additional native-image options may
 # be passed as arguments, e.g. bin/build-native.sh --parallelism=2 -J-Xmx4g.
 exec "$GRAALVM_HOME/bin/native-image" \
-  --no-fallback --parallelism=4 -J-Xmx6g \
-  --enable-native-access=ALL-UNNAMED \
+  --parallelism=4 -J-Xmx6g \
+  -J--enable-native-access=ALL-UNNAMED \
+  -J--sun-misc-unsafe-memory-access=allow \
+  "--initialize-at-build-time=$BUILD_INIT" \
+  --enable-native-access=ALL-UNNAMED,org.graalvm.truffle \
   -cp "$ROOT/target/classes:$ROOT/target/lib/*" \
   "$@" dev.phpruntime.host.Main "$ROOT/target/blitzvm"
