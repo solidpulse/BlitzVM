@@ -29,9 +29,11 @@ bench/engine-cache.py measure /path/to/wordpress \
 bench/engine-cache.py gc_summary /path/to/wordpress --run target/cache-perf
 ```
 
-Do not reuse a cache with a rebuilt native executable: caches are bound to that
-exact binary. Use separate output directories for changed binaries or runtime
-options. The harness records and checks the binary and loaded-cache SHA-256,
+The cache-capable binary must be built with
+`BLITZ_NATIVE_ENGINE_CACHE=1 bin/build-native.sh`; a binary built without it
+stores nothing. Do not reuse a cache with a rebuilt native executable: caches are
+bound to that exact binary. Use separate output directories for changed binaries
+or runtime options. The harness records and checks the binary and loaded-cache SHA-256,
 runtime flags and document root. It does not install
 tools, modify WordPress, run destructive JDBC fixtures, or stop existing servers.
 It only stops child PIDs and nginx containers it creates. An existing cache file
