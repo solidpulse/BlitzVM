@@ -40,6 +40,19 @@ public final class CallNode extends PhpNode {
     @Child private IndirectCallNode indirectCall;
     @CompilationFinal private Builtins.Def builtin;
     @Child private SplBuiltinNode spl;
+    /** A builtin compiled inline, like php's zend_try_compile_special_func; see {@link #intrinsicFor}. */
+    @CompilationFinal private int intrinsic = NO_INTRINSIC;
+
+    private static final int NO_INTRINSIC = 0;
+    private static final int IS_ARRAY = 1;
+    private static final int IS_STRING = 2;
+    private static final int IS_INT = 3;
+    private static final int IS_FLOAT = 4;
+    private static final int IS_BOOL = 5;
+    private static final int IS_NULL = 6;
+    private static final int IS_OBJECT = 7;
+    private static final int STRLEN = 8;
+    private static final int ARRAY_KEY_EXISTS = 9;
 
     public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets) {
         this(null, -1, name, functionId, args, refTargets, null, null);
@@ -147,7 +160,11 @@ public final class CallNode extends PhpNode {
         lock.lock();
         try {
             if (builtin == null) {
-                builtin = Builtins.lookup(name);
+                Builtins.Def def = Builtins.lookup(name);
+                if (def != null && !hasSpreadOrNamed && spl == null) {
+                    intrinsic = intrinsicFor(def.name(), args.length);
+                }
+                builtin = def;
             }
             return builtin;
         } finally {
@@ -214,9 +231,63 @@ public final class CallNode extends PhpNode {
         return values;
     }
 
+    /**
+     * Type checks, strlen and array_key_exists with the exact argument count run inline: a
+     * generic builtin call evaluates into an argument array and crosses a boundary, about 1 KB
+     * of machine code each, and these are among the most called functions in WordPress. Any
+     * other argument type takes the generic path, which owns coercion and errors.
+     */
+    private static int intrinsicFor(String name, int argc) {
+        if (argc == 1) {
+            return switch (name) {
+                case "is_array" -> IS_ARRAY;
+                case "is_string" -> IS_STRING;
+                case "is_int", "is_integer", "is_long" -> IS_INT;
+                case "is_float", "is_double" -> IS_FLOAT;
+                case "is_bool" -> IS_BOOL;
+                case "is_null" -> IS_NULL;
+                case "is_object" -> IS_OBJECT;
+                case "strlen" -> STRLEN;
+                default -> NO_INTRINSIC;
+            };
+        }
+        return argc == 2 && name.equals("array_key_exists") ? ARRAY_KEY_EXISTS : NO_INTRINSIC;
+    }
+
+    private Object callIntrinsic(VirtualFrame frame, int kind) {
+        Object a = args[0].execute(frame);
+        switch (kind) {
+            case IS_ARRAY: return a instanceof dev.phpruntime.runtime.PhpArray;
+            case IS_STRING: return a instanceof String;
+            case IS_INT: return a instanceof Long;
+            case IS_FLOAT: return a instanceof Double;
+            case IS_BOOL: return a instanceof Boolean;
+            case IS_NULL: return a == dev.phpruntime.runtime.PhpNull.INSTANCE;
+            case IS_OBJECT: return a instanceof dev.phpruntime.runtime.PhpObject;
+            case STRLEN:
+                if (a instanceof String str) {
+                    return (long) str.length();
+                }
+                return invoke(builtin, new Object[]{a});
+            case ARRAY_KEY_EXISTS: {
+                Object b = args[1].execute(frame);
+                if (b instanceof dev.phpruntime.runtime.PhpArray arr) {
+                    return arr.containsKey(a);
+                }
+                return invoke(builtin, new Object[]{a, b});
+            }
+            default:
+                throw CompilerDirectives.shouldNotReachHere();
+        }
+    }
+
     /** Exploded so each argument and ref-target node is a PE constant: no virtual calls, no frame escape. */
     @ExplodeLoop
     private Object callBuiltin(VirtualFrame frame) {
+        int kind = intrinsic;
+        if (kind != NO_INTRINSIC) {
+            return callIntrinsic(frame, kind);
+        }
         Builtins.Def def = builtin;
         // zend.assertions is -1 in this build: assert() compiles to nothing, not even
         // evaluating its arguments. The parser is shared with other work, so skip here.
