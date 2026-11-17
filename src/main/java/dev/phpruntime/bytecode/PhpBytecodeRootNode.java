@@ -1611,6 +1611,47 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /**
+     * A class reference ({@code Foo}, {@code self}, {@code parent}, {@code static}, an expression):
+     * the cached copy of its {@code ClassRefNode} resolves it from the operand the emitter loads
+     * (the called-class local, the expression's value, or null).
+     */
+    public record ClassRefSpec(dev.phpruntime.nodes.expr.ClassRefNode template) {
+        public dev.phpruntime.nodes.expr.ClassRefNode newEngine() {
+            return template.headless();
+        }
+
+        @Override
+        public String toString() {
+            return String.valueOf(template.staticName());
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = ClassRefSpec.class, name = "ref")
+    public static final class ResolveClass {
+        @Specialization
+        static PhpClass resolve(ClassRefSpec ref, Object operand,
+                                @Cached("ref.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
+            return engine.resolveValue(operand == PhpNull.INSTANCE ? null : operand);
+        }
+    }
+
+    /** {@code Cls::NAME}: the class comes from {@link ResolveClass}. */
+    @Operation
+    @ConstantOperand(type = String.class, name = "constName")
+    public static final class ClassConst {
+        @Specialization
+        static Object read(String constName, PhpClass cls, @Bind Node node) {
+            Object val = Ops.classConstant(PhpContext.get(node), cls, constName);
+            if (val == null) {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Undefined constant " + cls.name() + "::" + constName);
+            }
+            return val;
+        }
+    }
+
     @Operation
     public static final class ToStr {
         @Specialization
@@ -1814,6 +1855,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static String bufferString(PhpStringBuffer buffer) {
             return buffer.asString();
+        }
+
+        @TruffleBoundary
+        static Object classConstant(PhpContext ctx, PhpClass cls, String name) {
+            return cls.lookupConstant(ctx, name);
         }
 
         @TruffleBoundary

@@ -68,6 +68,61 @@ public final class ClassRefNode extends PhpNode {
         return kind;
     }
 
+    /** The frame slot STATIC and the TRAIT kinds read (the called class or trait self), else -1. */
+    public int slot() {
+        return kind == Kind.STATIC || kind == Kind.TRAIT_SELF || kind == Kind.TRAIT_PARENT ? calledClassSlot : -1;
+    }
+
+    public PhpNode dynamicExpr() {
+        return expr;
+    }
+
+    /** A copy without its expression, for bytecode: see {@link #resolveValue}. */
+    public ClassRefNode headless() {
+        return new ClassRefNode(kind, name, classId, calledClassSlot, null, anonymousTemplate).at(line());
+    }
+
+    /**
+     * {@link #resolve} with what it would read from the frame already read: for STATIC and the
+     * TRAIT kinds the class in {@link #slot()}, for DYNAMIC the expression's value, else unused.
+     */
+    public PhpClass resolveValue(Object operand) {
+        PhpClass cls = resolveValueOrNull(operand);
+        if (cls == null) {
+            CompilerDirectives.transferToInterpreter();
+            if (kind == Kind.PARENT) {
+                throw new PhpError("Class \"" + name + "\" has no parent", this);
+            }
+            if (kind == Kind.TRAIT_PARENT) {
+                throw new PhpError("Class \"" + (operand instanceof PhpClass c ? c.name() : "") + "\" has no parent", this);
+            }
+            if (kind == Kind.STATIC) {
+                throw new PhpError("Cannot use \"static\" when no class scope is active", this);
+            }
+            throw new PhpError("Class \"" + name + "\" not found", this);
+        }
+        return cls;
+    }
+
+    public PhpClass resolveValueOrNull(Object operand) {
+        return switch (kind) {
+            case STATIC, TRAIT_SELF -> operand instanceof PhpClass c ? c : null;
+            case TRAIT_PARENT -> operand instanceof PhpClass c ? c.parent() : null;
+            case DYNAMIC -> {
+                if (operand instanceof PhpObject o) {
+                    yield o.phpClass();
+                }
+                String clsName = PhpOps.toStr(operand);
+                PhpClass c = PhpContext.get(this).lookupOrAutoloadClass(clsName);
+                if (c == null && !clsName.isEmpty()) {
+                    yield throwMissing(clsName);
+                }
+                yield c;
+            }
+            default -> resolveOrNull(null);
+        };
+    }
+
     public boolean isForwarding() {
         return kind == Kind.SELF || kind == Kind.PARENT || kind == Kind.STATIC
                 || kind == Kind.TRAIT_SELF || kind == Kind.TRAIT_PARENT;

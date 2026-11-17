@@ -31,4 +31,15 @@ public final class ClassConstNode extends PhpNode {
         }
         return val;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (literalClassName) {
+            e.builder().emitLoadConstant(classRef.staticName());
+            return;
+        }
+        e.builder().beginClassConst(constName);
+        e.classRef(classRef);
+        e.builder().endClassConst();
+    }
 }

@@ -132,7 +132,9 @@ public final class BytecodeEmitter {
         b.beginRoot();
         SourceSection whole = fn.getSourceSection();
         if (whole != null) {
+            // Everything on the declaration's line reports that line; deeper nodes nest their own.
             currentLine = whole.getStartLine();
+            b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.emitEnter();
         bindSpecialSlots();
@@ -141,6 +143,9 @@ public final class BytecodeEmitter {
         b.beginReturn();
         b.emitLoadConstant(PhpNull.INSTANCE);
         b.endReturn();
+        if (whole != null) {
+            b.endSourceSection();
+        }
         b.endRoot();
         b.endSource();
     }
@@ -397,6 +402,31 @@ public final class BytecodeEmitter {
             b.beginToStr();
             expr(p.dynamicNameExpr());
             b.endToStr();
+        }
+    }
+
+    /** Emits a class reference as an operation producing the {@code PhpClass}. */
+    public void classRef(dev.phpruntime.nodes.expr.ClassRefNode ref) {
+        if (ref.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.ANONYMOUS) {
+            throw new Unsupported("anonymous class");
+        }
+        b.beginResolveClass(new PhpBytecodeRootNode.ClassRefSpec(ref));
+        classRefOperand(ref);
+        b.endResolveClass();
+    }
+
+    /** The value a class reference resolves from: the called-class local, the expression, or null. */
+    public void classRefOperand(dev.phpruntime.nodes.expr.ClassRefNode ref) {
+        if (ref.slot() >= 0) {
+            if (!locals.containsKey(ref.slot())) {
+                b.emitLoadConstant(PhpNull.INSTANCE);
+            } else {
+                b.emitLoadLocal(locals.get(ref.slot()));
+            }
+        } else if (ref.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.DYNAMIC) {
+            expr(ref.dynamicExpr());
+        } else {
+            b.emitLoadConstant(PhpNull.INSTANCE);
         }
     }
 
