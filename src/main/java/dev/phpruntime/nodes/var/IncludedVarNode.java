@@ -9,6 +9,8 @@ public final class IncludedVarNode extends LValueNode {
     private final int slot;
     private final String name;
     public IncludedVarNode(int slot, String name) { this.slot = slot; this.name = name; }
+    public int slot() { return slot; }
+    public String varName() { return name; }
     public IncludedVarNode copyForRead() { return new IncludedVarNode(slot, name).at(line()); }
     private PhpSymbolTable.Access access(VirtualFrame frame) { return (PhpSymbolTable.Access) frame.getObject(slot); }
     @Override public Object read(VirtualFrame frame, Object[] keys) { return access(frame).read(); }

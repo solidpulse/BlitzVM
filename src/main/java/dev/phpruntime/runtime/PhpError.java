@@ -180,7 +180,7 @@ public final class PhpError extends AbstractTruffleException {
                 }
             } else if (dev.phpruntime.nodes.PhpMainRootNode.isMain(root)) {
                 com.oracle.truffle.api.frame.Frame frame = el.getFrame();
-                if (frame != null && frame.getArguments().length > 0) {
+                if (frame != null && !dev.phpruntime.nodes.PhpMainRootNode.isEntryArgs(frame.getArguments())) {
                     pendingFn = null;
                     pendingArgs = new Object[0];
                 } else {
