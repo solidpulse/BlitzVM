@@ -686,7 +686,8 @@ public final class PhpClass {
         if (target == null) {
             return constVal;
         }
-        if (target.getRootNode() instanceof PhpExprRootNode ern && ern.hasTraitSelf()) {
+        if (target.getRootNode() instanceof PhpExprRootNode ern && ern.hasTraitSelf()
+                || target.getRootNode() instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode brn && brn.hasTraitSelf()) {
             return target.call(selfClass);
         }
         return target.call();

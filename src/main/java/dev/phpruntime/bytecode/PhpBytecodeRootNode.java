@@ -96,6 +96,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     private PhpFunctionRootNode function;
     private dev.phpruntime.nodes.PhpMainRootNode main;
+    /** The trait-self slot of an expression root, or -1. */
+    private int exprTraitSelfSlot = -1;
 
     protected PhpBytecodeRootNode(PhpLanguage language, FrameDescriptor frameDescriptor) {
         super(language, frameDescriptor);
@@ -116,6 +118,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         initSource(m.source(), 1);
     }
 
+    /** A member initializer expression root; {@code traitSelfSlot} is -1 outside a trait. */
+    void initExpression(com.oracle.truffle.api.source.Source source, int line, int traitSelfSlot) {
+        this.exprTraitSelfSlot = traitSelfSlot;
+        initSource(source, line);
+    }
+
+    /** Whether this expression root takes the using class as argument 0, as {@code PhpExprRootNode} does. */
+    public boolean hasTraitSelf() {
+        return exprTraitSelfSlot >= 0;
+    }
+
     /** The function this root was compiled from; null for a file's top-level code. */
     public PhpFunctionRootNode function() {
         return function;
@@ -128,12 +141,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Override
     public String getName() {
-        return main != null ? main.getName() : function.getName();
+        if (main != null) {
+            return main.getName();
+        }
+        return function != null ? function.getName() : "{member initializer}";
     }
 
     @Override
     public String toString() {
-        return main != null ? main.getName() : function.toString();
+        return getName();
     }
 
     @Override

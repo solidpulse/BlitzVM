@@ -115,6 +115,73 @@ public final class BytecodeEmitter {
         }
     }
 
+    /**
+     * The call target for a class constant, property default or static property default
+     * expression: bytecode when it compiles, else the AST expression root's ({@code null} lets
+     * the caller fall back). {@code traitSelfSlot} is the local the using class is passed in,
+     * or -1 outside a trait.
+     */
+    public static RootCallTarget exprTarget(PhpLanguage language, Source source,
+                                            dev.phpruntime.nodes.PhpNode expr, int traitSelfSlot) {
+        if (MODE.equals("off")) {
+            return null;
+        }
+        try {
+            PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
+                    builder -> new BytecodeEmitter(builder, language, null, source)
+                            .emitExpression(expr, traitSelfSlot)).getNode(0);
+            root.initExpression(source, expr.line(), traitSelfSlot);
+            if (DUMP) {
+                System.err.println(root.dump());
+            }
+            COMPILED.incrementAndGet();
+            return root.getCallTarget();
+        } catch (Unsupported u) {
+            if (REPORT) {
+                UNSUPPORTED.computeIfAbsent("(member initializer) " + u.getMessage(), k -> new AtomicInteger())
+                        .incrementAndGet();
+            }
+            if (MODE.equals("all")) {
+                throw new IllegalStateException("bytecode: member initializer: unsupported " + u.getMessage());
+            }
+            return null;
+        } catch (RuntimeException builderError) {
+            if (MODE.equals("all")) {
+                throw builderError;
+            }
+            UNSUPPORTED.computeIfAbsent("EMITTER BUG member initializer: " + builderError.getMessage(),
+                    k -> new AtomicInteger()).incrementAndGet();
+            return null;
+        }
+    }
+
+    /**
+     * A member initializer expression: no parameters and no {@code $this}. In a trait the
+     * using class is argument 0 and goes into the trait-self local before the expression.
+     */
+    private void emitExpression(dev.phpruntime.nodes.PhpNode expr, int traitSelfSlot) {
+        b.beginSource(source);
+        b.beginRoot();
+        int line = expr.line();
+        SourceSection whole = line > 0 && source != null && line <= source.getLineCount()
+                ? source.createSection(line) : null;
+        if (whole != null) {
+            currentLine = line;
+            b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
+        }
+        if (traitSelfSlot >= 0) {
+            storeArgument(traitSelfSlot, 0);
+        }
+        b.beginReturn();
+        expr(expr);
+        b.endReturn();
+        if (whole != null) {
+            b.endSourceSection();
+        }
+        b.endRoot();
+        b.endSource();
+    }
+
     private void emitMain(dev.phpruntime.nodes.PhpMainRootNode main) {
         b.beginSource(source);
         b.beginRoot();

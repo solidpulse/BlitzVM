@@ -1,0 +1,43 @@
+int(11)
+int(12)
+string(3) "hi!"
+array(4) {
+  [0]=>
+  int(10)
+  [1]=>
+  int(11)
+  [11]=>
+  int(10)
+  [12]=>
+  int(21)
+}
+int(30)
+array(1) {
+  [10]=>
+  string(2) "hi"
+}
+array(5) {
+  [0]=>
+  int(10)
+  [1]=>
+  array(2) {
+    [0]=>
+    int(5)
+    [1]=>
+    int(6)
+  }
+  [2]=>
+  int(7)
+  [3]=>
+  int(6)
+  [4]=>
+  int(5)
+}
+int(6)
+int(5)
+A
+Error: Undefined constant "UNDEFINED_CONSTANT"
+again: Undefined constant "UNDEFINED_CONSTANT"
+property: Undefined constant "UNDEFINED_PROPERTY"
+static: Undefined constant "UNDEFINED_STATIC_PROPERTY"
+static again: Undefined constant "UNDEFINED_STATIC_PROPERTY"

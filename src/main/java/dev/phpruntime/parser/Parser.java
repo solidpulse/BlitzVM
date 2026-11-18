@@ -1280,8 +1280,13 @@ public final class Parser {
         if (expr instanceof ConstNode) {
             return null;
         }
+        int traitSelfSlot = exprScope != null ? exprScope.traitSelfSlot() : -1;
+        RootCallTarget target = dev.phpruntime.bytecode.BytecodeEmitter.exprTarget(language, source, expr, traitSelfSlot);
+        if (target != null) {
+            return target;
+        }
         if (exprScope != null) {
-            return new PhpExprRootNode(language, exprScope.build(), source, expr, exprScope.traitSelfSlot())
+            return new PhpExprRootNode(language, exprScope.build(), source, expr, traitSelfSlot)
                     .getCallTarget();
         }
         return new PhpExprRootNode(language, source, expr).getCallTarget();
