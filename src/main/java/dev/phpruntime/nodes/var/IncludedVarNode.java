@@ -22,4 +22,7 @@ public final class IncludedVarNode extends LValueNode {
     @Override public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) { access(frame).bind(cell.alias()); }
     @Override public void unset(VirtualFrame frame, Object[] keys) { access(frame).bind(null); }
     @Override public String describe() { return "$" + name; }
+    @Override public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
+    }
 }

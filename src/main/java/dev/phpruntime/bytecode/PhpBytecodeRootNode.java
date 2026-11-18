@@ -1833,6 +1833,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ------------------------------------------------------------------ top-level code
 
+    /** Binds a name in a symbol table to a cell ({@code static} in an included file). */
+    @Operation
+    @ConstantOperand(type = String.class)
+    public static final class TableBindName {
+        @Specialization
+        static void bind(String name, Object table, Object cell) {
+            Ops.tableBind((dev.phpruntime.runtime.PhpSymbolTable) table, name, (PhpReference) cell);
+        }
+    }
+
     /** {@code $this}, the called class or the lexical class of the scope an included file runs in. */
     @Operation
     @ConstantOperand(type = int.class)
@@ -2352,6 +2362,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Slow paths behind boundaries, so operations stay small when compiled. */
     static final class Ops {
+        @TruffleBoundary
+        static void tableBind(dev.phpruntime.runtime.PhpSymbolTable table, String name, PhpReference cell) {
+            table.bind(name, cell);
+        }
+
         @TruffleBoundary
         static String sourcePathOf(BytecodeNode bytecode, int bci) {
             com.oracle.truffle.api.source.SourceSection s = bytecode.getSourceLocation(bci);

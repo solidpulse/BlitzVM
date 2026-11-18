@@ -70,10 +70,25 @@ public final class StaticDeclNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (included) {
-            throw e.unsupported("static in an included file's local scope");
-        }
         var b = e.builder();
+        if (included) {
+            // As execute does: a new cell each time, bound by name in the caller's table.
+            b.beginBlock();
+            for (int i = 0; i < names.length; i++) {
+                b.beginTableBindName(names[i]);
+                b.emitLoadLocal(e.tableLocal());
+                b.beginBoxRefCopy();
+                if (initExprs[i] != null) {
+                    e.expr(initExprs[i]);
+                } else {
+                    b.emitLoadConstant(PhpNull.INSTANCE);
+                }
+                b.endBoxRefCopy();
+                b.endTableBindName();
+            }
+            b.endBlock();
+            return;
+        }
         b.beginBlock();
         for (int i = 0; i < names.length; i++) {
             var cell = e.temp();
