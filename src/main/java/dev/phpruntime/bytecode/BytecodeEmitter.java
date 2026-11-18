@@ -379,34 +379,6 @@ public final class BytecodeEmitter {
                 || node instanceof dev.phpruntime.nodes.stmt.GotoIfNode;
     }
 
-    /**
-     * Emits a statement list without opening a scope operation, so a php {@code goto} label
-     * inside it is declared in the same operation as the branches that target it.
-     */
-    public void stmtFlat(PhpNode node) {
-        if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
-            for (PhpNode s : block.statements()) {
-                stmt(s);
-            }
-            return;
-        }
-        stmt(node);
-    }
-
-    /**
-     * As {@link #stmtFlat}, without per-statement source sections: a source section is an
-     * operation, and a label must be created and emitted in the same operation.
-     */
-    public void stmtFlatNoSource(PhpNode node) {
-        if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
-            for (PhpNode s : block.statements()) {
-                stmtFlatNoSource(s);
-            }
-            return;
-        }
-        node.emitStatement(this);
-    }
-
     /** Emits a node whose value, if any, is not used. */
     public void stmt(PhpNode node) {
         if (isGotoStructure(node)) {
@@ -1242,7 +1214,7 @@ public final class BytecodeEmitter {
                     b.emitBranch(end);
                     continue;
                 } else {
-                    stmtFlatNoSource(piece.node);
+                    stmt(piece.node);
                 }
                 b.beginStoreLocal(pc);
                 b.emitLoadConstant((long) (i + 1));
