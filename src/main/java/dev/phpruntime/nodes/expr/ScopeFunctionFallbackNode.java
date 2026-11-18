@@ -1,7 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
-import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 
 /** Unqualified calls inside namespaces must still prefer a user function over the global builtin. */
@@ -14,10 +12,6 @@ public final class ScopeFunctionFallbackNode extends PhpNode {
         this.userCall = userCall;
         this.builtin = builtin;
     }
-    @Override public Object execute(VirtualFrame frame) {
-        return PhpContext.get(this).functionById(functionId) != null ? userCall.execute(frame) : builtin.execute(frame);
-    }
-
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         var b = e.builder();

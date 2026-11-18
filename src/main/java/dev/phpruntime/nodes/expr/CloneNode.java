@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
@@ -17,16 +16,9 @@ import dev.phpruntime.runtime.PhpOps;
 public final class CloneNode extends PhpNode {
 
     @Child private PhpNode targetExpr;
-    @Child private DispatchCallNode dispatch;
 
     public CloneNode(PhpNode targetExpr) {
         this.targetExpr = targetExpr;
-        this.dispatch = new DispatchCallNode();
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return cloneValue(targetExpr.execute(frame), this, dispatch);
     }
 
     /** The semantics of {@code clone $value}; the bytecode operation passes this instruction's site. */

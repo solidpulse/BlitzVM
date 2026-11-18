@@ -1,9 +1,6 @@
 package dev.phpruntime.nodes.stmt;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
-import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 
 /**
@@ -32,25 +29,6 @@ public final class GlobalImportNode extends PhpNode {
         this.names = names;
         slots = null;
         globalIds = null;
-    }
-
-    @Override
-    @ExplodeLoop
-    public Object execute(VirtualFrame frame) {
-        PhpContext ctx = PhpContext.get(this);
-        if (targets != null) {
-            for (int i = 0; i < targets.length; i++) {
-                String name = dev.phpruntime.runtime.PhpOps.toStr(names[i].execute(frame));
-                targets[i].bindCell(frame, new Object[]{name}, ctx.globalSymbolRef(name));
-            }
-            return null;
-        }
-        for (int i = 0; i < slots.length; i++) {
-            if (tableSlot >= 0) {
-                ((dev.phpruntime.runtime.PhpSymbolTable) frame.getObject(tableSlot)).cells[slots[i]] = ctx.globalRefById(globalIds[i]);
-            } else { frame.setObject(slots[i], ctx.globalRefById(globalIds[i])); }
-        }
-        return null;
     }
 
     @Override

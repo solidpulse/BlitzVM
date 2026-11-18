@@ -1,66 +1,20 @@
 package dev.phpruntime.nodes.generator;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
-import dev.phpruntime.PhpContext;
-import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.var.LValueNode;
-import dev.phpruntime.runtime.PhpGenerator;
 import dev.phpruntime.runtime.PhpNull;
-import dev.phpruntime.runtime.PhpOps;
-import dev.phpruntime.runtime.PhpReference;
 
-/** One yield site. Its state and intermediate operands are in hidden per-invocation slots. */
+/** One yield site. The bytecode emitter writes the suspend instruction. */
 public final class YieldNode extends PhpNode {
     @Child private PhpNode key;
     @Child private PhpNode value;
-    private final int stateSlot;
-    private final int generatorSlot;
     /** The enclosing function is declared {@code function &f()}: yield the value's cell. */
     private final boolean byRef;
 
-    public YieldNode(int generatorSlot, int stateSlot, PhpNode key, PhpNode value) {
-        this(generatorSlot, stateSlot, key, value, false);
-    }
-
-    public YieldNode(int generatorSlot, int stateSlot, PhpNode key, PhpNode value, boolean byRef) {
-        this.generatorSlot = generatorSlot;
-        this.stateSlot = stateSlot;
+    public YieldNode(PhpNode key, PhpNode value, boolean byRef) {
         this.key = key;
         this.value = value;
         this.byRef = byRef;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        PhpGenerator generator = (PhpGenerator) frame.getObject(generatorSlot);
-        if (frame.getInt(stateSlot) == 1) {
-            frame.setInt(stateSlot, 0);
-            return generator.takeInput();
-        }
-        Object yieldedKey = key == null ? null : key.execute(frame);
-        Object yieldedValue = yieldValue(frame);
-        generator.checkYield(this);
-        yieldedKey = key == null ? generator.autoKey() : generator.explicitKey(yieldedKey);
-        frame.setInt(stateSlot, 1);
-        throw new ControlFlow.Yield(yieldedKey, yieldedValue);
-    }
-
-    private Object yieldValue(VirtualFrame frame) {
-        if (!byRef) {
-            return value == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(value.execute(frame));
-        }
-        if (value == null) {
-            return new PhpReference(PhpNull.INSTANCE);
-        }
-        Object raw = value instanceof LValueNode lv
-                ? lv.obtainCell(frame, lv.evalKeys(frame))
-                : value.executeForRef(frame);
-        if (raw instanceof PhpReference ref) {
-            return ref;
-        }
-        PhpContext.get(this).warning("Only variable references should be yielded by reference", line());
-        return new PhpReference(PhpOps.copyOnAssign(raw));
     }
 
     @Override

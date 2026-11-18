@@ -2,18 +2,10 @@ package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.RootCallTarget;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
-import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
-import dev.phpruntime.nodes.var.GlobalVarNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
-import dev.phpruntime.runtime.PhpClass;
-import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpNull;
-import dev.phpruntime.runtime.PhpOps;
-import dev.phpruntime.runtime.PhpReference;
 
 /**
  * Anonymous closure or arrow function creation expression.
@@ -54,28 +46,6 @@ public final class ClosureNode extends PhpNode {
         this.captureReads = captureReads;
         this.warnIfUndefined = warnIfUndefined;
         this.byRef = byRef;
-    }
-
-    @Override
-    @ExplodeLoop
-    public Object execute(VirtualFrame frame) {
-        PhpContext ctx = PhpContext.get(this);
-        Object boundThis = bindThis && outerThisSlot >= 0 ? frame.getObject(outerThisSlot) : PhpNull.INSTANCE;
-        PhpClass calledClass = outerCalledClassSlot >= 0 ? (PhpClass) frame.getObject(outerCalledClassSlot) : null;
-        PhpClass traitSelf = outerTraitSelfSlot >= 0 ? (PhpClass) frame.getObject(outerTraitSelfSlot)
-                : lexicalClassId >= 0 ? ctx.classById(lexicalClassId) : null;
-        Object[] caps = new Object[captureReads.length];
-        for (int i = 0; i < captureReads.length; i++) {
-            if (byRef[i]) {
-                caps[i] = captureReads[i].obtainCell(frame, captureReads[i].evalKeys(frame));
-            } else {
-                Object v = warnIfUndefined[i]
-                        ? captureReads[i].execute(frame)
-                        : captureReads[i].read(frame, captureReads[i].evalKeys(frame));
-                caps[i] = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
-            }
-        }
-        return ctx.newClosure(PhpClosure.closure(callTarget, boundThis, calledClass, traitSelf, caps));
     }
 
     @Override

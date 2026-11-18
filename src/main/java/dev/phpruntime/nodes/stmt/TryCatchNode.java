@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.stmt;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.PhpContext;
@@ -11,7 +10,6 @@ import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpException;
-import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpObject;
 
 /**
@@ -80,17 +78,6 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
             return body;
         }
 
-        public void executeCatch(VirtualFrame frame, PhpObject exObj) {
-            if (varTarget != null) {
-                varTarget.write(frame, varTarget.evalKeys(frame), exObj);
-            }
-            body.executeVoid(frame);
-        }
-
-        public void resumeCatch(VirtualFrame frame) {
-            body.executeVoid(frame);
-        }
-
         private static boolean matchesClass(PhpClass actual, PhpClass target) {
             if (actual == target) {
                 return true;
@@ -134,120 +121,9 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
         return tryBlock instanceof GotoEnterable ge ? ge.exportedLabelIds() : new int[0];
     }
 
-    @Override
-    public Object execute(VirtualFrame frame) {
-        if (finallyBlock == null) {
-            executeTryCatchOnly(frame, -1);
-            return null;
-        }
-        executeWithFinally(frame, -1);
-        return null;
-    }
-
-    @Override
-    public void executeEnter(VirtualFrame frame, int labelId) {
-        if (finallyBlock == null) {
-            executeTryCatchOnly(frame, labelId);
-        } else {
-            executeWithFinally(frame, labelId);
-        }
-    }
-
-    private void runTryBlock(VirtualFrame frame, int enterLabel) {
-        if (enterLabel >= 0 && tryBlock instanceof GotoEnterable ge) {
-            ge.executeEnter(frame, enterLabel);
-        } else {
-            tryBlock.executeVoid(frame);
-        }
-    }
-
-    private void executeTryCatchOnly(VirtualFrame frame, int enterLabel) {
-        try {
-            runTryBlock(frame, enterLabel);
-        } catch (PhpException ex) {
-            if (!dispatchCatch(frame, ex.exceptionObject())) {
-                throw ex;
-            }
-        } catch (PhpError err) {
-            if (!err.isCatchable()) {
-                throw err;
-            }
-            PhpContext ctx = PhpContext.get(this);
-            PhpClass errCls = err.resolveErrorClass(ctx);
-            int idx = findMatchingCatch(ctx, errCls);
-            if (idx < 0) {
-                throw err;
-            }
-            catches[idx].executeCatch(frame, err.toPhpObject(ctx, this));
-        }
-    }
-
-    private void executeWithFinally(VirtualFrame frame, int enterLabel) {
-        Throwable pending = null;
-        try {
-            try {
-                runTryBlock(frame, enterLabel);
-            } catch (PhpException ex) {
-                if (!dispatchCatch(frame, ex.exceptionObject())) {
-                    pending = ex;
-                }
-            } catch (PhpError err) {
-                if (!err.isCatchable()) {
-                    throw err;
-                }
-                PhpContext ctx = PhpContext.get(this);
-                PhpClass errCls = err.resolveErrorClass(ctx);
-                int idx = findMatchingCatch(ctx, errCls);
-                if (idx < 0) {
-                    pending = err;
-                } else {
-                    catches[idx].executeCatch(frame, err.toPhpObject(ctx, this));
-                }
-            }
-        } catch (ControlFlow.Exit exit) {
-            // PHP skips finally blocks when exit/die is executed.
-            throw exit;
-        } catch (Throwable t) {
-            pending = t;
-        }
-
-        // If pending is non-catchable host/Truffle cancellation (neither ControlFlow, PhpException nor catchable PhpError):
-        if (pending != null && !shouldRunFinallyFor(pending)) {
-            rethrowUnchecked(pending);
-        }
-
-        try {
-            finallyBlock.executeVoid(frame);
-        } catch (PhpException newEx) {
-            if (pending != null) {
-                PhpObject prevObj = extractPendingThrowableObject(pending);
-                if (prevObj != null) {
-                    PhpExceptions.linkPrevious(newEx.exceptionObject(), prevObj);
-                }
-            }
-            throw newEx;
-        } catch (PhpError newErr) {
-            if (newErr.isCatchable() && pending != null) {
-                PhpObject prevObj = extractPendingThrowableObject(pending);
-                if (prevObj != null) {
-                    PhpObject newObj = newErr.toPhpObject(PhpContext.get(this), finallyBlock);
-                    PhpExceptions.linkPrevious(newObj, prevObj);
-                    throw new PhpException(newObj, finallyBlock);
-                }
-            }
-            throw newErr;
-        }
-
-        if (pending != null) {
-            rethrowUnchecked(pending);
-        }
-    }
-
-    /** Whether an active {@code finally} runs for this pending throwable (the AST's rule). */
+    /** Whether an active {@code finally} runs for this pending throwable. */
     public static boolean shouldRunFinallyFor(Throwable t) {
-        if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break
-                || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto
-                || t instanceof ControlFlow.GeneratorClose || t instanceof dev.phpruntime.runtime.GeneratorCloseSignal) {
+        if (t instanceof dev.phpruntime.runtime.GeneratorCloseSignal) {
             return true;
         }
         if (t instanceof PhpException) {
@@ -268,10 +144,6 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
             return err.toPhpObject(ctx, fallback);
         }
         return null;
-    }
-
-    private PhpObject extractPendingThrowableObject(Throwable pending) {
-        return throwableObject(PhpContext.get(this), pending, this);
     }
 
     @SuppressWarnings("unchecked")
@@ -298,21 +170,6 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
             }
         }
         return -1;
-    }
-
-    @ExplodeLoop
-    private int findMatchingCatch(PhpContext ctx, PhpClass thrownClass) {
-        return findMatchingCatch(ctx, catches, thrownClass);
-    }
-
-    private boolean dispatchCatch(VirtualFrame frame, PhpObject exObj) {
-        PhpContext ctx = PhpContext.get(this);
-        int idx = findMatchingCatch(ctx, exObj.phpClass());
-        if (idx < 0) {
-            return false;
-        }
-        catches[idx].executeCatch(frame, exObj);
-        return true;
     }
 
     /**

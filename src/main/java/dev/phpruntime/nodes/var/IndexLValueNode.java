@@ -40,7 +40,7 @@ public final class IndexLValueNode extends LValueNode {
 
     private record PackedKeys(Object[] baseKeys, Object[] arrayKeys) {}
 
-    /** Keys as {@link #evalKeys} builds them, for callers that evaluated the parts themselves. */
+    /** Keys as {@link #pack} builds them, for callers that evaluated the parts themselves. */
     public static Object[] pack(Object[] baseKeys, Object[] arrayKeys) {
         return new Object[]{new PackedKeys(baseKeys, arrayKeys)};
     }
@@ -71,23 +71,19 @@ public final class IndexLValueNode extends LValueNode {
         return v;
     }
 
+    @TruffleBoundary
+    private void warnMissing(Object[] keys) {
+        Object k = PhpArray.normalizeKey(keys[keys.length - 1]);
+        String shown = k instanceof String ? "\"" + k + "\"" : PhpOps.toStr(k);
+        PhpContext.get(this).warning("Undefined array key " + shown, line());
+    }
+
     private static Object[] baseKeys(Object[] keys) {
         return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.baseKeys : NO_KEYS;
     }
 
     private static Object[] arrayKeys(Object[] keys) {
         return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.arrayKeys : keys;
-    }
-
-    @Override
-    @ExplodeLoop
-    public Object[] evalKeys(VirtualFrame frame) {
-        Object[] baseKeys = base.evalKeys(frame);
-        Object[] keys = new Object[keyNodes.length];
-        for (int i = 0; i < keyNodes.length; i++) {
-            keys[i] = keyNodes[i] == null ? APPEND : keyNodes[i].execute(frame);
-        }
-        return baseKeys == NO_KEYS ? keys : new Object[]{new PackedKeys(baseKeys, keys)};
     }
 
     @Override
@@ -483,24 +479,6 @@ public final class IndexLValueNode extends LValueNode {
         }
         arr.remove(keys[keys.length - 1]);
         return top;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        Object[] keys = evalKeys(frame);
-        Object v = read(frame, keys);
-        if (v == null) {
-            warnMissing(arrayKeys(keys));
-            return PhpNull.INSTANCE;
-        }
-        return v;
-    }
-
-    @TruffleBoundary
-    private void warnMissing(Object[] keys) {
-        Object k = PhpArray.normalizeKey(keys[keys.length - 1]);
-        String shown = k instanceof String ? "\"" + k + "\"" : PhpOps.toStr(k);
-        PhpContext.get(this).warning("Undefined array key " + shown, line());
     }
 
     @Override

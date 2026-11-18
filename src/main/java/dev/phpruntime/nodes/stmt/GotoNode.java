@@ -1,10 +1,8 @@
 package dev.phpruntime.nodes.stmt;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
-import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpNode;
 
-/** {@code goto label;}: transfers control via {@link ControlFlow.Goto}. */
+/** {@code goto label;}: the emitter turns it into a pc assignment. */
 public final class GotoNode extends PhpNode {
 
     private final int labelId;
@@ -15,11 +13,6 @@ public final class GotoNode extends PhpNode {
 
     public int labelId() {
         return labelId;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        throw new ControlFlow.Goto(labelId);
     }
 
     @Override

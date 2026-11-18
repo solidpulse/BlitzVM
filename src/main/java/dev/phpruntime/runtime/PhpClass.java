@@ -5,7 +5,6 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
-import dev.phpruntime.nodes.PhpExprRootNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -686,9 +685,8 @@ public final class PhpClass {
         if (target == null) {
             return constVal;
         }
-        if ((target.getRootNode() instanceof PhpExprRootNode ern && ern.hasTraitSelf())
-                || (target.getRootNode() instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode brn
-                && brn.hasTraitSelf())) {
+        if (target.getRootNode() instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode brn
+                && brn.hasTraitSelf()) {
             return target.call(selfClass);
         }
         return target.call();

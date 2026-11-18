@@ -67,18 +67,6 @@ public final class PropertyLValueNode extends LValueNode {
         this.callingClassLower = callingClassLower;
     }
 
-    @Override
-    public Object[] evalKeys(VirtualFrame frame) {
-        Object target = targetExpr.execute(frame);
-        String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
-        return new Object[]{target, name};
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return executeOnTarget(frame, targetExpr.execute(frame));
-    }
-
     /** A copy without its expressions, for bytecode, which evaluates the object and the name. */
     public PropertyLValueNode headless() {
         return new PropertyLValueNode(null, staticName, null, callingClassLower, -1, traitSelfSlot >= 0).at(line());
@@ -102,12 +90,6 @@ public final class PropertyLValueNode extends LValueNode {
 
     public int traitSelfSlot() {
         return traitSelfSlot;
-    }
-
-    /** Executes this property read given an already-evaluated receiver (used by nullsafe {@code ?->}). */
-    public Object executeOnTarget(VirtualFrame frame, Object target) {
-        String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
-        return executeOn(frame, target, name);
     }
 
     /** The rvalue read with the receiver and name already evaluated. */

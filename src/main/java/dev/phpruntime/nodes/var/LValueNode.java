@@ -12,10 +12,6 @@ public abstract class LValueNode extends PhpNode {
 
     public static final Object[] NO_KEYS = new Object[0];
 
-    public Object[] evalKeys(VirtualFrame frame) {
-        return NO_KEYS;
-    }
-
     /** Current value, or Java {@code null} if undefined. */
     public abstract Object read(VirtualFrame frame, Object[] keys);
 
@@ -67,25 +63,10 @@ public abstract class LValueNode extends PhpNode {
                 (assignment ? "Cannot assign by reference to " : "Cannot take reference to ") + describe(), this);
     }
 
-    /** Typed writes; variables store these unboxed, everything else boxes. */
-    public void writeLong(VirtualFrame frame, Object[] keys, long value) {
-        write(frame, keys, value);
-    }
-
-    public void writeDouble(VirtualFrame frame, Object[] keys, double value) {
-        write(frame, keys, value);
-    }
-
     public abstract void unset(VirtualFrame frame, Object[] keys);
 
     /** Name used in diagnostics, e.g. "$x". */
     public abstract String describe();
-
-    /** Reading an lvalue as an expression yields its value, warning when undefined. */
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return readValue(frame, evalKeys(frame));
-    }
 
     /** The rvalue read on evaluated keys: the value, or null with php's undefined warning. */
     public Object readValue(VirtualFrame frame, Object[] keys) {

@@ -26,7 +26,6 @@ public final class ReadConstantNode extends PhpNode {
         this.plain = !name.startsWith("\\") && !name.contains("::");
     }
 
-    @Override
     public Object execute(VirtualFrame frame) {
         PhpContext ctx = PhpContext.get(this);
         if (nsName != null) {

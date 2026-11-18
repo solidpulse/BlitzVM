@@ -3,7 +3,6 @@ package dev.phpruntime.parser;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpLanguage;
-import dev.phpruntime.nodes.PhpExprRootNode;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.nodes.PhpNode;
@@ -554,10 +553,7 @@ public final class Parser {
         } else if (segments.isEmpty() || maxDirectSeg >= segments.size()) {
             segments.add(new BlockNode(new PhpNode[0]));
         }
-        int pcSlot = scope.intSlot("@gotoPc_" + scope.gotoScope().nextDispatchId());
-        int enterSlot = childIds.isEmpty() ? -1 : scope.intSlot("@gotoEnter_" + scope.gotoScope().nextDispatchId());
         return new GotoDispatchNode(
-                pcSlot, enterSlot,
                 segments.toArray(new PhpNode[0]),
                 toIntArray(directIds), toIntArray(directSegs),
                 toIntArray(childIds), toIntArray(childSegs));
@@ -576,11 +572,6 @@ public final class Parser {
 
         LabelMarkerNode(int labelId) {
             this.labelId = labelId;
-        }
-
-        @Override
-        public Object execute(com.oracle.truffle.api.frame.VirtualFrame frame) {
-            return null;
         }
     }
 
@@ -726,7 +717,7 @@ public final class Parser {
         } finally {
             scope.gotoScope().exitLoop();
         }
-        return new ForeachNode(language, subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
+        return new ForeachNode(subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
     }
 
     private LValueNode parseForeachTarget(boolean outerByRef) {
@@ -991,20 +982,15 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            PhpNode generatorSource = null;
-            if (scope.isGenerator()) {
-                // The bytecode compiles the body as written; the AST runs the lowered copy.
-                generatorSource = (PhpNode) body.deepCopy();
-                body = new GeneratorLowering(scope, language).lower(body);
-            }
-            PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
+            PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                    new PhpFunctionRootNode(
                     language, scope.build(), source, nameTok.line(),
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
                     params.defaults(), params.variadic(), body));
             if (scope.isGenerator()) {
-                root.asGenerator(language, scope.generatorSlot());
+                root.asGenerator();
             }
             PhpFunction fn = new PhpFunction(name, dev.phpruntime.bytecode.BytecodeEmitter.target(language, root));
             if (topLevel) {
@@ -1087,12 +1073,6 @@ public final class Parser {
     }
 
     private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params, PhpNode body, int line, String fnName) {
-        PhpNode generatorSource = null;
-        if (scope.isGenerator()) {
-            // The bytecode compiles the body as written; the AST runs the lowered copy.
-            generatorSource = (PhpNode) body.deepCopy();
-            body = new GeneratorLowering(scope, language).lower(body);
-        }
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -1107,7 +1087,8 @@ public final class Parser {
             warn[i] = c.warnIfUndefined();
             byRef[i] = c.byRef();
         }
-        PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
+        PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                new PhpFunctionRootNode(
                 language, scope.build(), source, line,
                 currentClass, fnName, !bindThis, returnsRef, scope.thisSlot(), scope.calledClassSlot(),
                 scope.closureObjSlot(), scope.traitSelfSlot(),
@@ -1115,7 +1096,7 @@ public final class Parser {
                 params.names(), params.slots(), params.kinds(), params.byRef(),
                 params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis()));
         if (scope.isGenerator()) {
-            root.asGenerator(language, scope.generatorSlot());
+            root.asGenerator();
         }
         return new ClosureNode(dev.phpruntime.bytecode.BytecodeEmitter.target(language, root), bindThis,
                 outer.thisSlot(), outer.calledClassSlot(), outer.traitSelfSlot(), outerReads, warn, byRef)
@@ -1281,15 +1262,7 @@ public final class Parser {
             return null;
         }
         int traitSelfSlot = exprScope != null ? exprScope.traitSelfSlot() : -1;
-        RootCallTarget target = dev.phpruntime.bytecode.BytecodeEmitter.exprTarget(language, source, expr, traitSelfSlot);
-        if (target != null) {
-            return target;
-        }
-        if (exprScope != null) {
-            return new PhpExprRootNode(language, exprScope.build(), source, expr, traitSelfSlot)
-                    .getCallTarget();
-        }
-        return new PhpExprRootNode(language, source, expr).getCallTarget();
+        return dev.phpruntime.bytecode.BytecodeEmitter.exprTarget(language, source, expr, traitSelfSlot);
     }
 
     private PhpClassTemplate.TraitUse parseTraitUse() {
@@ -1386,20 +1359,15 @@ public final class Parser {
                     initStmts.add(body);
                     body = block(initStmts);
                 }
-                PhpNode generatorSource = null;
-                if (scope.isGenerator()) {
-                    // The bytecode compiles the body as written; the AST runs the lowered copy.
-                    generatorSource = (PhpNode) body.deepCopy();
-                    body = new GeneratorLowering(scope, language).lower(body);
-                }
-                PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
+                PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                        new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
                         params.defaults(), params.variadic(), body));
                 if (scope.isGenerator()) {
-                    root.asGenerator(language, scope.generatorSlot());
+                    root.asGenerator();
                 }
                 callTarget = dev.phpruntime.bytecode.BytecodeEmitter.target(language, root);
             }
@@ -1507,30 +1475,30 @@ public final class Parser {
 
     private static PhpNode makeBinary(String op, PhpNode l, PhpNode r) {
         return switch (op) {
-            case "+" -> AddNodeGen.create(l, r);
-            case "-" -> SubNodeGen.create(l, r);
-            case "*" -> MulNodeGen.create(l, r);
-            case "/" -> DivNodeGen.create(l, r);
-            case "%" -> ModNodeGen.create(l, r);
-            case "." -> ConcatNodeGen.create(l, r);
+            case "+" -> new AddNode(l, r);
+            case "-" -> new SubNode(l, r);
+            case "*" -> new MulNode(l, r);
+            case "/" -> new DivNode(l, r);
+            case "%" -> new ModNode(l, r);
+            case "." -> new ConcatNode(l, r);
             case "**" -> new ArithNode(PhpArith.Op.POW, l, r);
             case "&" -> new ArithNode(PhpArith.Op.BIT_AND, l, r);
             case "|" -> new ArithNode(PhpArith.Op.BIT_OR, l, r);
             case "^" -> new ArithNode(PhpArith.Op.BIT_XOR, l, r);
             case "<<" -> new ArithNode(PhpArith.Op.SHL, l, r);
             case ">>" -> new ArithNode(PhpArith.Op.SHR, l, r);
-            case "<" -> CompareNodeGen.create(CompareNode.Kind.LT, l, r);
-            case "<=" -> CompareNodeGen.create(CompareNode.Kind.LE, l, r);
-            case ">" -> CompareNodeGen.create(CompareNode.Kind.GT, l, r);
-            case ">=" -> CompareNodeGen.create(CompareNode.Kind.GE, l, r);
-            case "<=>" -> CompareNodeGen.create(CompareNode.Kind.SPACESHIP, l, r);
-            case "==" -> EqualNodeGen.create(false, l, r);
-            case "!=", "<>" -> EqualNodeGen.create(true, l, r);
-            case "===" -> IdenticalNodeGen.create(false, l, r);
-            case "!==" -> IdenticalNodeGen.create(true, l, r);
+            case "<" -> new CompareNode(CompareNode.Kind.LT, l, r);
+            case "<=" -> new CompareNode(CompareNode.Kind.LE, l, r);
+            case ">" -> new CompareNode(CompareNode.Kind.GT, l, r);
+            case ">=" -> new CompareNode(CompareNode.Kind.GE, l, r);
+            case "<=>" -> new CompareNode(CompareNode.Kind.SPACESHIP, l, r);
+            case "==" -> new EqualNode(false, l, r);
+            case "!=", "<>" -> new EqualNode(true, l, r);
+            case "===" -> new IdenticalNode(false, l, r);
+            case "!==" -> new IdenticalNode(true, l, r);
             case "&&", "and" -> new AndNode(l, r);
             case "||", "or" -> new OrNode(l, r);
-            case "xor" -> IdenticalNodeGen.create(true, new NotNode(new NotNode(l)), new NotNode(new NotNode(r)));
+            case "xor" -> new IdenticalNode(true, new NotNode(new NotNode(l)), new NotNode(new NotNode(r)));
             case "??" -> new CoalesceNode(l, r);
             default -> throw new IllegalStateException(op);
         };
@@ -1554,7 +1522,7 @@ public final class Parser {
                     if (operand instanceof ConstNode c && c.value() instanceof Double d) {
                         return new ConstNode(-d).at(line);
                     }
-                    return NegNodeGen.create(operand).at(line);
+                    return new NegNode(operand).at(line);
                 }
                 case "+" -> {
                     next();
@@ -1591,13 +1559,12 @@ public final class Parser {
                 if (scope.isGlobal()) {
                     throw error("The \"yield\" expression can only be used inside a function");
                 }
-                int generatorSlot = scope.generatorSlot();
+                scope.markGenerator();
                 if (acceptKeyword("from")) {
                     if (currentReturnsRef) {
                         throw error("Cannot use \"yield from\" inside a by-reference generator");
                     }
-                    return new dev.phpruntime.nodes.generator.YieldFromNode(language, generatorSlot,
-                            scope.objectSlot(), binary(4)).at(line);
+                    return new dev.phpruntime.nodes.generator.YieldFromNode(binary(4)).at(line);
                 }
                 PhpNode key = null;
                 PhpNode value = null;
@@ -1609,7 +1576,7 @@ public final class Parser {
                         value = binary(4);
                     }
                 }
-                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value,
+                return new dev.phpruntime.nodes.generator.YieldNode(key, value,
                         currentReturnsRef).at(line);
             }
             if (kw.equals("print")) {
@@ -1798,7 +1765,7 @@ public final class Parser {
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
-                    e = new IndexReadNode(language, e, key).at(line);
+                    e = new IndexReadNode(e, key).at(line);
                 }
             } else if (acceptOp("?->")) {
                 nullsafeChain = true;
@@ -2429,7 +2396,7 @@ public final class Parser {
             refArr[i] = byRefs.get(i);
             spreadArr[i] = spreads.get(i);
         }
-        return new ArrayLiteralNode(language, keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
+        return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
     }
 
     private boolean isBracketDestructuringAt(int bracketPos) {
@@ -2568,7 +2535,7 @@ public final class Parser {
             idxArr[i] = autoIndices.get(i);
             refArr[i] = byRefs.get(i);
         }
-        return new DestructureLValueNode(language,
+        return new DestructureLValueNode(
                 keyNodes.toArray(new PhpNode[0]),
                 targets.toArray(new LValueNode[0]),
                 idxArr,

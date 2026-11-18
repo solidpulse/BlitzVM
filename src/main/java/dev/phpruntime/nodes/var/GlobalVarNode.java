@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.var;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpReference;
@@ -43,34 +42,6 @@ public final class GlobalVarNode extends LValueNode {
             return ctx.buildGlobalsSnapshot();
         }
         return ctx.readGlobalById(globalId);
-    }
-
-    @Override
-    public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
-        if (globalId >= 0) {
-            PhpContext ctx = PhpContext.get(this);
-            if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
-            Object v = ctx.readGlobalById(globalId);
-            if (v instanceof Long l) {
-                return l;
-            }
-            throw new UnexpectedResultException(v == null ? undefined() : v);
-        }
-        throw new UnexpectedResultException(execute(frame));
-    }
-
-    @Override
-    public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
-        if (globalId >= 0) {
-            PhpContext ctx = PhpContext.get(this);
-            if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
-            Object v = ctx.readGlobalById(globalId);
-            if (v instanceof Double d) {
-                return d;
-            }
-            throw new UnexpectedResultException(v == null ? undefined() : v);
-        }
-        throw new UnexpectedResultException(execute(frame));
     }
 
     @Override

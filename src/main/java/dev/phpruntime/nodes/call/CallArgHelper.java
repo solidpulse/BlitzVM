@@ -40,54 +40,6 @@ public final class CallArgHelper {
     }
 
     /** Evaluates one positional argument for a user function parameter that may be by-reference. */
-    public static Object evalArgForParam(VirtualFrame frame, PhpNode argNode, LValueNode refTarget,
-                                         PhpFunctionRootNode fnRoot, int paramIdx, Node site) {
-        if (fnRoot != null && fnRoot.isParamByRef(paramIdx)) {
-            return evalByRefArg(frame, argNode, refTarget, fnRoot, paramIdx, site);
-        }
-        return PhpOps.copyOnAssign(argNode.execute(frame));
-    }
-
-    public static Object evalByRefArg(VirtualFrame frame, PhpNode argNode, LValueNode refTarget,
-                                      PhpFunctionRootNode fnRoot, int paramIdx, Node site) {
-        if (refTarget != null) {
-            if (refTarget instanceof dev.phpruntime.nodes.var.GlobalVarNode gv && gv.isGlobalsSuperglobal()) {
-                throw cannotPassByRef(fnRoot, paramIdx, site);
-            }
-            if (refTarget instanceof LocalVarNode lv && "this".equals(lv.varName())) {
-                // php passes $this by reference as a temporary: the callee may reassign its
-                // parameter, which never rebinds $this (WP_Upgrader::init does this).
-                return new PhpReference(argNode.execute(frame));
-            }
-            if (refTarget instanceof dev.phpruntime.nodes.var.ScopedVarNode sv && "this".equals(sv.varName())) {
-                throw cannotPassByRef(fnRoot, paramIdx, site);
-            }
-            return refTarget.obtainCell(frame, refTarget.evalKeys(frame));
-        }
-        if (isFunctionOrNewResult(argNode)) {
-            Object res = argNode.executeForRef(frame);
-            if (res instanceof PhpReference ref) {
-                ref.ensureDefined();
-                return ref;
-            }
-            if (!(argNode instanceof dev.phpruntime.nodes.expr.NewNode)) {
-                PhpContext.get(site).notice("Only variables should be passed by reference",
-                        site instanceof PhpNode pn ? pn.line() : 0);
-            }
-            return new PhpReference(PhpOps.copyOnAssign(res));
-        }
-        throw cannotPassByRef(fnRoot, paramIdx, site);
-    }
-
-    private static boolean isFunctionOrNewResult(PhpNode node) {
-        return node instanceof CallNode
-                || node instanceof MethodCallNode
-                || node instanceof StaticMethodCallNode
-                || node instanceof CallValueNode
-                || node instanceof dev.phpruntime.nodes.expr.NullsafeMemberNode
-                || node instanceof dev.phpruntime.nodes.expr.NewNode;
-    }
-
     @TruffleBoundary
     public static PhpError cannotPassByRef(PhpFunctionRootNode fnRoot, int paramIdx, Node site) {
         String fnDesc = fnRoot != null ? fnRoot.qualifiedCallableName() : "unknown";
@@ -100,14 +52,6 @@ public final class CallArgHelper {
      * Evaluates a call site that has spread ({@code ...$x}) or named ({@code k: v}) arguments
      * for a target {@link RootCallTarget}, packing prefix slots + resolved parameter values.
      */
-    public static Object[] evalComplexUserArgs(VirtualFrame frame, RootCallTarget target, Object[] prefix,
-                                               PhpNode[] args, LValueNode[] refTargets,
-                                               String[] argNames, boolean[] spreads, Node site) {
-        PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode r ? r : null;
-        RawCallArgs raw = evaluateCallSite(frame, args, refTargets, argNames, spreads, fnRoot, site);
-        return bindToFunction(prefix, raw, fnRoot, site);
-    }
-
     public record RawCallArgs(List<Object> positional, List<LValueNode> posRefTargets,
                               List<Object[]> posRefKeys, List<PhpNode> posNodes,
                               Map<String, Object> named, Map<String, LValueNode> namedRefTargets,
@@ -120,109 +64,7 @@ public final class CallArgHelper {
                 new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
     }
 
-    public static RawCallArgs evaluateCallSite(VirtualFrame frame, PhpNode[] args, LValueNode[] refTargets,
-                                               String[] argNames, boolean[] spreads,
-                                               PhpFunctionRootNode fnRoot, Node site) {
-        return evaluateCallSite(frame, args, refTargets, argNames, spreads, fnRoot, false, site);
-    }
-
     /** Exploded so each argument and ref-target node is a PE constant (no virtual calls, no frame escape). */
-    @ExplodeLoop
-    public static RawCallArgs evaluateCallSite(VirtualFrame frame, PhpNode[] args, LValueNode[] refTargets,
-                                               String[] argNames, boolean[] spreads,
-                                               PhpFunctionRootNode fnRoot, boolean builtinHasRefs, Node site) {
-        List<Object> positional = new ArrayList<>(args.length);
-        List<LValueNode> posRefs = new ArrayList<>(args.length);
-        List<Object[]> posKeys = new ArrayList<>(args.length);
-        List<PhpNode> posNodes = new ArrayList<>(args.length);
-        Map<String, Object> named = null;
-        Map<String, LValueNode> namedRefs = null;
-        Map<String, Object[]> namedKeys = null;
-        Map<String, PhpNode> namedNodes = null;
-        boolean seenNamed = false;
-
-        for (int i = 0; i < args.length; i++) {
-            String name = argNames != null ? argNames[i] : null;
-            boolean isSpread = spreads != null && spreads[i];
-            if (isSpread) {
-                LValueNode spreadLv = refTargets != null ? refTargets[i] : null;
-                Object unpacked;
-                PhpArray writableSpread = null;
-                boolean needRefFromSpread = spreadLv != null && (builtinHasRefs || (fnRoot != null && fnRoot.hasAnyRefParam()));
-                if (needRefFromSpread) {
-                    Object[] sk = spreadLv.evalKeys(frame);
-                    Object cur = spreadLv.read(frame, sk);
-                    if (cur instanceof PhpArray arr) {
-                        PhpReference cell = spreadLv.obtainCell(frame, sk);
-                        writableSpread = arr.forWrite();
-                        cell.setValue(writableSpread);
-                        unpacked = writableSpread;
-                    } else {
-                        unpacked = cur == null ? PhpNull.INSTANCE : cur;
-                    }
-                } else {
-                    unpacked = args[i].execute(frame);
-                }
-                unpackCallArg(unpacked, writableSpread, positional, posRefs, posKeys, posNodes,
-                        named == null ? (named = newMap()) : named, seenNamed, site);
-                if (hasNamed(named)) {
-                    seenNamed = true;
-                }
-            } else if (name != null) {
-                seenNamed = true;
-                if (named == null) {
-                    named = newMap();
-                }
-                if (namedRefs == null) {
-                    namedRefs = newMap();
-                    namedKeys = newMap();
-                    namedNodes = newMap();
-                }
-                checkDuplicateNamed(named, name, site);
-                LValueNode lv = refTargets != null ? refTargets[i] : null;
-                int pIdx = fnRoot != null ? findParamIndex(fnRoot, name) : -1;
-                if (fnRoot != null && pIdx >= 0 && fnRoot.isParamByRef(pIdx)) {
-                    putMap(named, name, evalByRefArg(frame, args[i], lv, fnRoot, pIdx, site));
-                } else if (fnRoot != null && pIdx < 0 && fnRoot.isVariadic() && fnRoot.isParamByRef(fnRoot.normalParamCount())) {
-                    putMap(named, name, evalByRefArg(frame, args[i], lv, fnRoot, fnRoot.normalParamCount(), site));
-                } else {
-                    if (lv != null) {
-                        Object[] ek = lv.evalKeys(frame);
-                        Object v = lv.read(frame, ek);
-                        putMap(named, name, v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v));
-                        putMap(namedRefs, name, lv);
-                        putMap(namedKeys, name, ek);
-                    } else {
-                        putMap(named, name, PhpOps.copyOnAssign(args[i].execute(frame)));
-                    }
-                    putMap(namedNodes, name, args[i]);
-                }
-            } else {
-                LValueNode lv = refTargets != null ? refTargets[i] : null;
-                int pIdx = positional.size();
-                if (fnRoot != null && fnRoot.isParamByRef(pIdx)) {
-                    addList(positional, evalByRefArg(frame, args[i], lv, fnRoot, pIdx, site));
-                    addList(posRefs, null);
-                    addList(posKeys, null);
-                } else {
-                    if (lv != null) {
-                        Object[] ek = lv.evalKeys(frame);
-                        Object v = lv.read(frame, ek);
-                        addList(positional, v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v));
-                        addList(posRefs, lv);
-                        addList(posKeys, ek);
-                    } else {
-                        addList(positional, PhpOps.copyOnAssign(args[i].execute(frame)));
-                        addList(posRefs, null);
-                        addList(posKeys, null);
-                    }
-                }
-                addList(posNodes, args[i]);
-            }
-        }
-        return new RawCallArgs(positional, posRefs, posKeys, posNodes, named, namedRefs, namedKeys, namedNodes);
-    }
-
     @TruffleBoundary
     private static <K, V> Map<K, V> newMap() {
         return new LinkedHashMap<>();
@@ -381,13 +223,6 @@ public final class CallArgHelper {
     }
 
     /** Evaluates spread/named arguments for a builtin function, handling by-reference writeback. */
-    public static Object callComplexBuiltin(VirtualFrame frame, Builtins.Def def, PhpNode[] args,
-                                            LValueNode[] refTargets, String[] argNames, boolean[] spreads,
-                                            Node site) {
-        RawCallArgs raw = evaluateCallSite(frame, args, refTargets, argNames, spreads, null, def.refMask() != 0, site);
-        return callComplexBuiltinRaw(frame, def, raw, site);
-    }
-
     /** Binds and calls a builtin on already-evaluated raw arguments. */
     public static Object callComplexBuiltinRaw(VirtualFrame frame, Builtins.Def def, RawCallArgs raw, Node site) {
         BuiltinBound bound = hasNamed(raw.named())

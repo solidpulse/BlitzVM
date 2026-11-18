@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.var.LValueNode;
@@ -147,18 +146,6 @@ public final class ExtractNode extends PhpNode {
         long flag = PhpOps.toLong(rawFlags);
         validate(flag, PhpOps.toStr(rawPrefix));
         return flag;
-    }
-
-    @Override public Object execute(VirtualFrame frame) {
-        Object[] keys = arrayTarget == null ? null : arrayTarget.evalKeys(frame);
-        Object value = arrayTarget == null ? array.execute(frame) : arrayTarget.read(frame, keys);
-        Object rawFlags = flags == null ? 0L : flags.execute(frame);
-        Object rawPrefix = prefix == null ? "" : prefix.execute(frame);
-        Prepared p = prepare(value, rawFlags, rawPrefix);
-        if (p.refs() && arrayTarget != null) {
-            arrayTarget.write(frame, keys, p.input());
-        }
-        return extractPrepared(tableSlot < 0 ? null : (PhpSymbolTable) frame.getObject(tableSlot), p);
     }
 
     public static boolean identifier(String name) {

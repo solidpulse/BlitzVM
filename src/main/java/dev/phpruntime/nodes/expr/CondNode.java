@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpOps;
 
@@ -11,15 +10,6 @@ public final class CondNode extends PhpNode {
 
     public CondNode(PhpNode operand) {
         this.operand = operand;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return executeCondition(frame);
-    }
-
-    public boolean executeCondition(VirtualFrame frame) {
-        return toBool(operand.execute(frame));
     }
 
     public static boolean toBool(Object v) {

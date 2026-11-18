@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpError;
@@ -14,11 +13,6 @@ public final class ThrowNode extends PhpNode {
 
     public ThrowNode(PhpNode expr) {
         this.expr = expr;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return throwValue(expr.execute(frame), this);
     }
 
     /** The validation and throw itself, shared with the bytecode {@code Throw} operation. */

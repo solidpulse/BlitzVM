@@ -1,19 +1,16 @@
 package dev.phpruntime.nodes.stmt;
 
-import com.oracle.truffle.api.Truffle;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.LoopNode;
 import dev.phpruntime.nodes.PhpNode;
 
-/** while, for and do-while. The for-loop init runs before the Truffle loop. */
+/** while, for and do-while. The for-loop init runs before the loop. */
 public final class LoopStmtNode extends PhpNode {
 
     @Child private PhpNode init;
-    @Child private LoopNode loop;
+    @Child private LoopBodyNode body;
 
     private LoopStmtNode(PhpNode init, LoopBodyNode body) {
         this.init = init;
-        this.loop = Truffle.getRuntime().createLoopNode(body);
+        this.body = body;
     }
 
     public static LoopStmtNode whileLoop(PhpNode cond, PhpNode body) {
@@ -29,21 +26,12 @@ public final class LoopStmtNode extends PhpNode {
     }
 
     @Override
-    public Object execute(VirtualFrame frame) {
-        if (init != null) {
-            init.executeVoid(frame);
-        }
-        loop.execute(frame);
-        return null;
-    }
-
-    @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         e.builder().beginBlock();
         if (init != null) {
             e.stmt(init);
         }
-        ((LoopBodyNode) loop.getRepeatingNode()).emitLoop(e);
+        body.emitLoop(e);
         e.builder().endBlock();
     }
 }

@@ -2,8 +2,6 @@ package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.var.LValueNode;
@@ -56,20 +54,6 @@ public final class CompactNode extends PhpNode {
             }
         }
         b.endCompact();
-    }
-
-    @Override @ExplodeLoop public Object execute(VirtualFrame frame) {
-        PhpArray result = new PhpArray();
-        for (int i = 0; i < args.length; i++) {
-            if (reads[i] != null) {
-                Object value = reads[i].read(frame, reads[i].evalKeys(frame));
-                put(result, names[i], value);
-            } else {
-                Object value = args[i].execute(frame);
-                collect(result, value, tableSlot < 0 ? null : (PhpSymbolTable) frame.getObject(tableSlot), i + 1);
-            }
-        }
-        return result;
     }
 
     @TruffleBoundary private void put(PhpArray result, String name, Object value) {

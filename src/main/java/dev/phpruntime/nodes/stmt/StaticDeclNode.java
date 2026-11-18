@@ -1,13 +1,8 @@
 package dev.phpruntime.nodes.stmt;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
-import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpNull;
-import dev.phpruntime.runtime.PhpOps;
-import dev.phpruntime.runtime.PhpReference;
 
 /**
  * {@code static $a [= expr], $b [= expr];}.
@@ -35,37 +30,6 @@ public final class StaticDeclNode extends PhpNode {
         this.slots = slots;
         this.globalIds = globalIds;
         this.initExprs = initExprs;
-    }
-
-    @Override
-    @ExplodeLoop
-    public Object execute(VirtualFrame frame) {
-        PhpContext ctx = PhpContext.get(this);
-        if (global) {
-            for (int i = 0; i < names.length; i++) {
-                PhpReference cell = ctx.getStaticLocal(ctx, names[i]);
-                if (cell == null) {
-                    Object init = initExprs[i] != null ? PhpOps.copyOnAssign(initExprs[i].execute(frame)) : PhpNull.INSTANCE;
-                    cell = ctx.initStaticLocal(ctx, names[i], init);
-                }
-                ctx.bindGlobalById(globalIds[i], cell);
-            }
-            return null;
-        }
-        Object owner = closureObjSlot >= 0 ? frame.getObject(closureObjSlot) : getRootNode();
-        for (int i = 0; i < names.length; i++) {
-            PhpReference cell = included ? null : ctx.getStaticLocal(owner, names[i]);
-            if (cell == null) {
-                Object init = initExprs[i] != null ? PhpOps.copyOnAssign(initExprs[i].execute(frame)) : PhpNull.INSTANCE;
-                cell = included ? new PhpReference(init) : ctx.initStaticLocal(owner, names[i], init);
-            }
-            if (tableSlot >= 0) {
-                dev.phpruntime.runtime.PhpSymbolTable table = (dev.phpruntime.runtime.PhpSymbolTable) frame.getObject(tableSlot);
-                if (included) { table.bind(names[i], cell); }
-                else { table.cells[slots[i]] = cell; }
-            } else { frame.setObject(slots[i], cell); }
-        }
-        return null;
     }
 
     @Override

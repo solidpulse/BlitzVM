@@ -3,7 +3,6 @@ package dev.phpruntime.nodes;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.frame.FrameDescriptor;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
@@ -32,16 +31,12 @@ public final class PhpMainRootNode extends PhpRootNode {
     private final int hoistedClassesSlot;
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
     @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final String[] globalNames;
-    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final String[] includedNames;
-    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1) private final int[] includedSlots;
 
     public PhpMainRootNode(PhpLanguage language, FrameDescriptor fd, Source source, PhpNode body,
                            List<PhpFunction> functions, List<PhpClassTemplate> topLevelClasses, int hoistedClassesSlot) {
         super(language, fd, source, 1);
         scopeLayout = fd.getInfo() instanceof dev.phpruntime.runtime.PhpScopeLayout layout ? layout : null;
         globalNames = fd.getInfo() instanceof dev.phpruntime.runtime.PhpGlobalLayout layout ? layout.names() : new String[0];
-        includedNames = scopeLayout == null ? new String[0] : scopeLayout.locals().keySet().toArray(new String[0]);
-        includedSlots = scopeLayout == null ? new int[0] : scopeLayout.locals().values().stream().mapToInt(Integer::intValue).toArray();
         for (String sg : INIT_GLOBALS) {
             language.globalId(sg);
         }
@@ -58,41 +53,6 @@ public final class PhpMainRootNode extends PhpRootNode {
     /** Whether a file root's arguments are the request's entry script rather than an include. */
     public static boolean isEntryArgs(Object[] args) {
         return args.length == 0 || args[0] == ENTRY_BODY;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        if (dev.phpruntime.bytecode.BytecodeEmitter.ALL) {
-            throw dev.phpruntime.bytecode.BytecodeEmitter.astExecuted(this);
-        }
-        boolean isEntry = frame.getArguments().length == 0;
-        if (isEntry) {
-            return runEntry(PhpContext.get(this), () -> runBody(frame, false));
-        }
-        return runBody(frame, frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE);
-    }
-
-    private Object runBody(VirtualFrame frame, boolean eval) {
-        PhpContext ctx = PhpContext.get(this);
-        if (scopeLayout != null) {
-            dev.phpruntime.runtime.PhpSymbolTable table = (dev.phpruntime.runtime.PhpSymbolTable) frame.getArguments()[1];
-            frame.setObject(scopeLayout.tableSlot(), table);
-            frame.setObject(scopeLayout.thisSlot(), table.thisValue);
-            frame.setObject(scopeLayout.calledClassSlot(), table.calledClass);
-            frame.setObject(scopeLayout.lexicalClassSlot(), table.lexicalClass);
-            initializeIncludedLocals(frame, table);
-        }
-        Object result = eval ? PhpNull.INSTANCE : 1L;
-        try {
-            declareFunctions(ctx);
-            if (hoistedClassesSlot >= 0) {
-                frame.setObject(hoistedClassesSlot, hoistClasses(ctx));
-            }
-            body.executeVoid(frame);
-        } catch (ControlFlow.Return r) {
-            result = r.value;
-        }
-        return result;
     }
 
     /**
@@ -159,13 +119,6 @@ public final class PhpMainRootNode extends PhpRootNode {
     public boolean[] prologue(PhpContext ctx) {
         declareFunctions(ctx);
         return hoistedClassesSlot >= 0 ? hoistClasses(ctx) : null;
-    }
-
-    @com.oracle.truffle.api.nodes.ExplodeLoop
-    private void initializeIncludedLocals(VirtualFrame frame, dev.phpruntime.runtime.PhpSymbolTable table) {
-        for (int i = 0; i < includedNames.length; i++) {
-            frame.setObject(includedSlots[i], table.access(includedNames[i]));
-        }
     }
 
     @TruffleBoundary

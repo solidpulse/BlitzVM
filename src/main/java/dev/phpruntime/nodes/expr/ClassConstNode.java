@@ -1,9 +1,6 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
-import dev.phpruntime.runtime.PhpClass;
-import dev.phpruntime.runtime.PhpError;
 
 /** {@code Foo::CONST}, {@code self::CONST}, {@code static::CONST}, {@code parent::CONST}, {@code $obj::class}. */
 public final class ClassConstNode extends PhpNode {
@@ -16,20 +13,6 @@ public final class ClassConstNode extends PhpNode {
         this.classRef = classRef;
         this.constName = constName;
         this.literalClassName = constName.equalsIgnoreCase("class") && classRef.kind() == ClassRefNode.Kind.NAMED;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        if (literalClassName) {
-            return classRef.staticName();
-        }
-        PhpClass cls = classRef.resolve(frame);
-        Object val = cls.lookupConstant(dev.phpruntime.PhpContext.get(this), constName);
-        if (val == null) {
-            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Undefined constant " + cls.name() + "::" + constName, this);
-        }
-        return val;
     }
 
     @Override

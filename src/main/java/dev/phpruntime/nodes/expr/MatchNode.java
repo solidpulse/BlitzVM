@@ -1,8 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpError;
@@ -20,20 +17,6 @@ public final class MatchNode extends PhpNode {
             this.conditions = conditions;
             this.body = body;
         }
-
-        @ExplodeLoop
-        boolean matches(VirtualFrame frame, Object subjectValue) {
-            for (PhpNode cond : conditions) {
-                if (PhpOps.strictEquals(subjectValue, cond.execute(frame))) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        Object executeBody(VirtualFrame frame) {
-            return body.execute(frame);
-        }
     }
 
     @Child private PhpNode subject;
@@ -44,22 +27,6 @@ public final class MatchNode extends PhpNode {
         this.subject = subject;
         this.arms = arms;
         this.defaultBody = defaultBody;
-    }
-
-    @Override
-    @ExplodeLoop
-    public Object execute(VirtualFrame frame) {
-        Object v = subject.execute(frame);
-        for (MatchArm arm : arms) {
-            if (arm.matches(frame, v)) {
-                return arm.executeBody(frame);
-            }
-        }
-        if (defaultBody != null) {
-            return defaultBody.execute(frame);
-        }
-        CompilerDirectives.transferToInterpreter();
-        throw unhandled(v, this);
     }
 
     /** php's {@code UnhandledMatchError} for a subject; null {@code location} lets the root locate it. */

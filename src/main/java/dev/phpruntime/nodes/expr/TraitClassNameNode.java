@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpClass;
 
@@ -20,11 +19,6 @@ public final class TraitClassNameNode extends PhpNode {
     /** The using class's name for {@code __CLASS__}, or an empty string when there is none. */
     public static String nameOf(Object traitSelf) {
         return traitSelf instanceof PhpClass cls ? cls.name() : "";
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return nameOf(frame.getObject(traitSelfSlot));
     }
 
     @Override
