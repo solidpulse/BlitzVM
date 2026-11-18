@@ -595,6 +595,11 @@ public final class BytecodeEmitter {
         if (ref.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.ANONYMOUS) {
             throw new Unsupported("anonymous class");
         }
+        if (ref.line() <= 0 && currentLine > 0) {
+            // The parser only puts the line on the expression around the class reference; the
+            // cached copy reports errors (missing class, no parent) and needs it.
+            ref.at(currentLine);
+        }
         b.beginResolveClass(new PhpBytecodeRootNode.ClassRefSpec(ref));
         classRefOperand(ref);
         b.endResolveClass();

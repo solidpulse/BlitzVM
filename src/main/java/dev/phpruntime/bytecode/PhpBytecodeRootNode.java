@@ -1893,7 +1893,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                               @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl) {
             if (spl != null) {
                 CallNode.checkArity(def, args.length, location);
-                return spl.execute(args);
+                return spl.execute(args, location);
             }
             return Ops.callBuiltin(def, args, location);
         }
@@ -2554,6 +2554,72 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpObject obj = thisValue instanceof PhpObject o ? o : null;
             calleeLocal.setObject(bytecode, frame,
                     new MethodCallee(entry, thisArg, calledArg, sig, obj, name, null));
+        }
+    }
+
+    /** {@code new Cls(...)}: validates the class, creates the object and populates its defaults. */
+    @Operation
+    public static final class NewObject {
+        @Specialization
+        static PhpObject create(PhpClass cls, @Bind Node node, @Bind BytecodeNode bytecode,
+                                @Bind("$bytecodeIndex") int bci,
+                                @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            PhpContext ctx = PhpContext.get(node);
+            if (cls == ctx.closureClass()) {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Instantiation of Closure is not allowed");
+            }
+            if (cls.isInterface() || cls.isTrait() || cls.isAbstract()) {
+                String kind = cls.isInterface() ? "interface " : (cls.isTrait() ? "trait " : "abstract class ");
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Cannot instantiate " + kind + cls.name());
+            }
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            cls.populateDefaults(obj);
+            if (cls.isThrowable()) {
+                dev.phpruntime.runtime.PhpExceptions.initNewThrowable(obj, location);
+            }
+            return obj;
+        }
+    }
+
+    /**
+     * The constructor call of a {@code new}, resolved into the call local as {@link ResolveMethod}
+     * does so its by-reference parameters work. No constructor stores PHP null.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class ResolveConstructor {
+        @Specialization
+        static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj,
+                            @Bind BytecodeNode bytecode) {
+            PhpClass cls = obj.phpClass();
+            PhpClass.MethodEntry ctor = cls.constructMethod();
+            if (ctor == null) {
+                calleeLocal.setObject(bytecode, frame, PhpNull.INSTANCE);
+                return;
+            }
+            calleeLocal.setObject(bytecode, frame,
+                    new MethodCallee(ctor, obj, cls, ctor.callTarget(), obj, ctor.name(), null));
+        }
+    }
+
+    /** Runs the constructor resolved by {@link ResolveConstructor}; the object is the result. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class DoConstructorCall {
+        @Specialization
+        static Object call(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj, @Variadic Object[] args,
+                           @Bind BytecodeNode bytecode, @Cached("create()") DispatchCallNode dispatch) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
+            if (callee instanceof MethodCallee m) {
+                Object[] callArgs = new Object[2 + args.length];
+                callArgs[0] = m.thisArg();
+                callArgs[1] = m.cls();
+                System.arraycopy(args, 0, callArgs, 2, args.length);
+                dispatch.callMethod(m.entry(), callArgs);
+            }
+            return obj;
         }
     }
 }
