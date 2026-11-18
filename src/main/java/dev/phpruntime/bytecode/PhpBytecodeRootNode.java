@@ -52,6 +52,7 @@ import dev.phpruntime.runtime.PhpArith;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpBacktrace;
 import dev.phpruntime.runtime.PhpClass;
+import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpException;
 import dev.phpruntime.runtime.PhpExceptions;
@@ -2791,6 +2792,43 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 case BUILTIN -> Ops.callBuiltinValue(cb.builtin(), args, location);
             };
             return CallArgHelper.unwrapReturn(result);
+        }
+    }
+
+    /** A closure creation site: its target and which captures are by reference. */
+    public record ClosureSpec(RootCallTarget callTarget, boolean[] byRef) {
+        @Override
+        public String toString() {
+            return "closure";
+        }
+    }
+
+    /**
+     * Creates a closure: operands are {@code $this}, the called class, the trait self and one
+     * value or reference cell per capture, as {@code ClosureNode.execute} reads them.
+     */
+    @Operation
+    @ConstantOperand(type = ClosureSpec.class)
+    @ConstantOperand(type = boolean.class, name = "bindThis")
+    @ConstantOperand(type = boolean.class, name = "hasTraitSlot")
+    @ConstantOperand(type = int.class, name = "lexicalClassId")
+    public static final class NewClosure {
+        @Specialization
+        static PhpObject create(ClosureSpec spec, boolean bindThis, boolean hasTraitSlot, int lexicalClassId,
+                                Object thisValue, Object calledClassValue, Object traitSelfValue,
+                                @Variadic Object[] captureValues, @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            Object boundThis = bindThis ? thisValue : PhpNull.INSTANCE;
+            PhpClass calledClass = calledClassValue instanceof PhpClass c ? c : null;
+            PhpClass traitSelf = hasTraitSlot ? (traitSelfValue instanceof PhpClass c ? c : null)
+                    : lexicalClassId >= 0 ? ctx.classById(lexicalClassId) : null;
+            boolean[] byRef = spec.byRef();
+            Object[] caps = new Object[byRef.length];
+            for (int i = 0; i < byRef.length; i++) {
+                caps[i] = byRef[i] ? captureValues[i]
+                        : (captureValues[i] == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(captureValues[i]));
+            }
+            return ctx.newClosure(PhpClosure.closure(spec.callTarget(), boundThis, calledClass, traitSelf, caps));
         }
     }
 }
