@@ -1851,6 +1851,35 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** Whether the user function with this id is declared (ScopeFunctionFallbackNode). */
+    @Operation
+    @ConstantOperand(type = int.class)
+    public static final class FunctionDefined {
+        @Specialization
+        static boolean defined(int functionId, @Bind Node node) {
+            return PhpContext.get(node).functionById(functionId) != null;
+        }
+    }
+
+    /**
+     * {@code eval($code)}: the code runs in the global scope, or in the caller's symbol table
+     * when the function has one (EvalNode).
+     */
+    @Operation
+    public static final class Eval {
+        @Specialization
+        static Object eval(Object code, Object table, @Bind Node node, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci,
+                           @Cached com.oracle.truffle.api.nodes.IndirectCallNode call) {
+            boolean local = table != PhpNull.INSTANCE;
+            com.oracle.truffle.api.CallTarget target = dev.phpruntime.nodes.expr.EvalNode.prepare(
+                    PhpContext.get(node), PhpOps.toStr(code), local, Ops.sourcePathOf(bytecode, bci),
+                    lineOf(bytecode, bci), null);
+            return call.call(target, local ? new Object[]{dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE, table}
+                    : new Object[]{dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE});
+        }
+    }
+
     /** Declares the file's functions and hoists its classes; the hoisted flags for DeclareClass. */
     @Operation
     public static final class MainPrologue {
@@ -2326,6 +2355,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Slow paths behind boundaries, so operations stay small when compiled. */
     static final class Ops {
+        @TruffleBoundary
+        static String sourcePathOf(BytecodeNode bytecode, int bci) {
+            com.oracle.truffle.api.source.SourceSection s = bytecode.getSourceLocation(bci);
+            if (s == null) {
+                s = bytecode.getRootNode().getSourceSection();
+            }
+            return s != null && s.getSource() != null ? s.getSource().getPath() : null;
+        }
 
         /** A call's result: the returned reference itself in a reference context, else its value. */
         static Object ret(boolean keepRef, Object result) {

@@ -17,4 +17,14 @@ public final class ScopeFunctionFallbackNode extends PhpNode {
     @Override public Object execute(VirtualFrame frame) {
         return PhpContext.get(this).functionById(functionId) != null ? userCall.execute(frame) : builtin.execute(frame);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginConditional();
+        b.emitFunctionDefined(functionId);
+        e.expr(userCall);
+        e.expr(builtin);
+        b.endConditional();
+    }
 }
