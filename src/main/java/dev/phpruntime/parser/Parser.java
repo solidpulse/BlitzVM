@@ -991,10 +991,13 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
+            PhpNode generatorSource = null;
             if (scope.isGenerator()) {
+                // The bytecode compiles the body as written; the AST runs the lowered copy.
+                generatorSource = (PhpNode) body.deepCopy();
                 body = new GeneratorLowering(scope, language).lower(body);
             }
-            PhpFunctionRootNode root = DynamicScopeLowering.finish(new PhpFunctionRootNode(
+            PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
                     language, scope.build(), source, nameTok.line(),
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
@@ -1084,7 +1087,10 @@ public final class Parser {
     }
 
     private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params, PhpNode body, int line, String fnName) {
+        PhpNode generatorSource = null;
         if (scope.isGenerator()) {
+            // The bytecode compiles the body as written; the AST runs the lowered copy.
+            generatorSource = (PhpNode) body.deepCopy();
             body = new GeneratorLowering(scope, language).lower(body);
         }
         List<Scope.Capture> caps = scope.captures();
@@ -1101,7 +1107,7 @@ public final class Parser {
             warn[i] = c.warnIfUndefined();
             byRef[i] = c.byRef();
         }
-        PhpFunctionRootNode root = DynamicScopeLowering.finish(new PhpFunctionRootNode(
+        PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
                 language, scope.build(), source, line,
                 currentClass, fnName, !bindThis, returnsRef, scope.thisSlot(), scope.calledClassSlot(),
                 scope.closureObjSlot(), scope.traitSelfSlot(),
@@ -1375,10 +1381,13 @@ public final class Parser {
                     initStmts.add(body);
                     body = block(initStmts);
                 }
+                PhpNode generatorSource = null;
                 if (scope.isGenerator()) {
+                    // The bytecode compiles the body as written; the AST runs the lowered copy.
+                    generatorSource = (PhpNode) body.deepCopy();
                     body = new GeneratorLowering(scope, language).lower(body);
                 }
-                PhpFunctionRootNode root = DynamicScopeLowering.finish(new PhpFunctionRootNode(
+                PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],

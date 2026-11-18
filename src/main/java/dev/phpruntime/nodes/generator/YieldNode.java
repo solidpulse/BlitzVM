@@ -35,4 +35,26 @@ public final class YieldNode extends PhpNode {
         frame.setInt(stateSlot, 1);
         throw new ControlFlow.Yield(yieldedKey, yieldedValue);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginGenTakeInput();
+        b.beginYield();
+        b.beginGenSuspend(key == null ? 0 : 1);
+        b.emitLoadLocal(e.generatorLocal());
+        if (key != null) {
+            e.expr(key);
+        } else {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        }
+        if (value != null) {
+            e.expr(value);
+        } else {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        }
+        b.endGenSuspend();
+        b.endYield();
+        b.endGenTakeInput();
+    }
 }

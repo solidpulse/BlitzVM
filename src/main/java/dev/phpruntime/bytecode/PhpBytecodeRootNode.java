@@ -57,6 +57,7 @@ import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpException;
+import dev.phpruntime.runtime.PhpGenerator;
 import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
@@ -77,7 +78,7 @@ import java.util.Map;
  * from, {@link #function()}; callers find it through {@link PhpFunctionRootNode#of}. The
  * calling convention is the AST root's, so call sites do not care which one they call.
  */
-@GenerateBytecode(languageClass = PhpLanguage.class, enableQuickening = true,
+@GenerateBytecode(languageClass = PhpLanguage.class, enableQuickening = true, enableYield = true,
         boxingEliminationTypes = {long.class, double.class, boolean.class},
         enableBlockScoping = false,
         // exit/die skips finally blocks in PHP: it must pass through guest handlers.
@@ -2952,6 +2953,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         @TruffleBoundary
+        static Object cursorKey(YieldFromCursor cursor) {
+            return cursor.entries.get(cursor.index).getKey();
+        }
+
+        @TruffleBoundary
+        static Object cursorValue(YieldFromCursor cursor) {
+            return cursor.entries.get(cursor.index).getValue();
+        }
+
+        @TruffleBoundary
         static Object callBuiltin(Builtins.Def def, Object[] args, SiteNode site) {
             if (def.name().equals("assert")) {
                 return true;
@@ -4310,6 +4321,146 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static PhpReference cell(RefCursor c) {
             return c.element;
+        }
+    }
+
+    // ---- generators (phase 6)
+
+    /**
+     * Before a {@code yield}: the generator records the key and the copied value it suspends
+     * with, as {@code YieldNode} does. {@code keyMode} 0 is an auto key, 1 an explicit key.
+     * The result is what the following Yield suspends with (unused).
+     */
+    @Operation
+    @ConstantOperand(type = int.class, name = "keyMode")
+    public static final class GenSuspend {
+        @Specialization
+        static Object suspend(int keyMode, Object generator, Object key, Object value,
+                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            PhpGenerator gen = (PhpGenerator) generator;
+            Object copied = PhpOps.copyOnAssign(value);
+            gen.checkYield(location);
+            gen.suspendWith(keyMode == 0 ? gen.autoKey() : gen.explicitKey(key), copied);
+            return PhpNull.INSTANCE;
+        }
+    }
+
+    /**
+     * After a {@code yield} resumes: the resumed value is the generator; the yield's value is
+     * the sent input, or the exception thrown in (including the close signal) is raised here.
+     */
+    @Operation
+    public static final class GenTakeInput {
+        @Specialization
+        static Object take(Object resumed) {
+            return ((PhpGenerator) resumed).takeInput();
+        }
+    }
+
+    /** The state of one {@code yield from}: an array's entries or a Traversable's iterator. */
+    public static final class YieldFromCursor {
+        java.util.List<java.util.Map.Entry<Object, Object>> entries;
+        PhpObject iterator;
+        int index;
+    }
+
+    /** {@code yield from $source}: the cursor, as {@code YieldFromNode} builds it. */
+    @Operation
+    public static final class YieldFromStart {
+        @Specialization
+        static YieldFromCursor start(Object source, @Bind PhpBytecodeRootNode root,
+                                     @Cached("create(root)") IteratorNode protocol) {
+            YieldFromCursor cursor = new YieldFromCursor();
+            if (source instanceof PhpArray array) {
+                cursor.entries = array.entries();
+            } else if (source instanceof PhpObject obj
+                    && dev.phpruntime.runtime.SplInterfaces.has(obj, dev.phpruntime.runtime.SplInterfaces.TRAVERSABLE)) {
+                cursor.iterator = protocol.resolve(obj);
+                if (!(cursor.iterator.nativeState() instanceof PhpGenerator)) {
+                    protocol.rewind(cursor.iterator);
+                }
+            } else {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Can use \"yield from\" only with arrays and Traversables");
+            }
+            return cursor;
+        }
+    }
+
+    /** Whether the delegate has a current element. */
+    @Operation
+    public static final class YieldFromValid {
+        @Specialization
+        static boolean valid(YieldFromCursor cursor, @Bind PhpBytecodeRootNode root,
+                             @Cached("create(root)") IteratorNode protocol) {
+            return cursor.iterator != null ? protocol.valid(cursor.iterator) : cursor.index < cursor.entries.size();
+        }
+    }
+
+    /** Suspends with the delegate's current key and value; delegated keys do not advance auto keys. */
+    @Operation
+    public static final class YieldFromSuspend {
+        @Specialization
+        static Object suspend(Object generator, YieldFromCursor cursor, @Bind PhpBytecodeRootNode root,
+                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                              @Cached("create(root)") IteratorNode protocol) {
+            PhpGenerator outer = (PhpGenerator) generator;
+            Object value = cursor.iterator != null ? protocol.current(cursor.iterator) : Ops.cursorValue(cursor);
+            Object key = cursor.iterator != null ? protocol.key(cursor.iterator) : Ops.cursorKey(cursor);
+            outer.checkYield(location);
+            outer.suspendWith(key, PhpOps.copyOnAssign(value));
+            return PhpNull.INSTANCE;
+        }
+    }
+
+    /**
+     * After a delegated yield resumes: forwards the sent value, a thrown-in exception or the
+     * close to an inner generator, else advances the delegate, as {@code YieldFromNode} does.
+     */
+    @Operation
+    public static final class YieldFromResume {
+        @Specialization
+        static void resume(Object generator, YieldFromCursor cursor, Object resumed,
+                           @Bind PhpBytecodeRootNode root, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") IteratorNode protocol,
+                           @Cached("create()") DispatchCallNode dispatch) {
+            PhpGenerator outer = (PhpGenerator) generator;
+            if (cursor.iterator != null && cursor.iterator.nativeState() instanceof PhpGenerator inner) {
+                Object input;
+                try {
+                    input = outer.takeInput();
+                } catch (PhpException error) {
+                    inner.throwInto(error.exceptionObject(), dispatch, location);
+                    input = null;
+                } catch (dev.phpruntime.runtime.GeneratorCloseSignal close) {
+                    inner.close(dispatch, location);
+                    throw close;
+                }
+                if (input != null) {
+                    inner.send(input, dispatch, location);
+                }
+            } else {
+                outer.takeInput();
+                cursor.index++;
+                if (cursor.iterator != null) {
+                    protocol.next(cursor.iterator);
+                }
+            }
+        }
+    }
+
+    /** The value of {@code yield from}: an inner generator's return value, else null. */
+    @Operation
+    public static final class YieldFromResult {
+        @Specialization
+        static Object result(YieldFromCursor cursor, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            return cursor.iterator != null && cursor.iterator.nativeState() instanceof PhpGenerator inner
+                    ? inner.getReturn(location) : PhpNull.INSTANCE;
         }
     }
 }
