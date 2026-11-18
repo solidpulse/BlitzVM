@@ -40,6 +40,7 @@ import dev.phpruntime.nodes.call.SplBuiltinNode;
 import dev.phpruntime.nodes.expr.CastNode;
 import dev.phpruntime.nodes.expr.CompareNode;
 import dev.phpruntime.nodes.expr.CondNode;
+import dev.phpruntime.nodes.expr.FirstClassCallableNode;
 import dev.phpruntime.nodes.expr.FuncArgsNode;
 import dev.phpruntime.nodes.expr.ReadConstantNode;
 import dev.phpruntime.nodes.expr.ThrowNode;
@@ -3590,6 +3591,71 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object fail(Object subject) {
             CompilerDirectives.transferToInterpreter();
             throw dev.phpruntime.nodes.expr.MatchNode.unhandled(subject, null);
+        }
+    }
+
+    /** {@code strlen(...)}: a closure for a function or builtin name. */
+    @Operation
+    @ConstantOperand(type = String.class, name = "nsName")
+    @ConstantOperand(type = int.class, name = "nsFunctionId")
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = int.class, name = "functionId")
+    public static final class FirstClassFunction {
+        @Specialization
+        static Object create(String nsName, int nsFunctionId, String name, int functionId, @Bind Node node,
+                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Cached(value = "lookup(name)", neverDefault = false) Builtins.Def builtin,
+                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            return FirstClassCallableNode.createFunction(PhpContext.get(node),
+                    nsName.isEmpty() ? null : nsName, nsFunctionId, name, functionId, builtin, location);
+        }
+
+        @TruffleBoundary
+        static Builtins.Def lookup(String name) {
+            return Builtins.lookup(name);
+        }
+    }
+
+    /** {@code $obj->method(...)}: a closure bound to the receiver. */
+    @Operation
+    @ConstantOperand(type = MethodSite.class)
+    public static final class FirstClassMethod {
+        @Specialization
+        static Object create(MethodSite site, Object target, Object nameValue, @Bind Node node,
+                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            String name = site.name() != null ? site.name() : Ops.toStr(nameValue);
+            return FirstClassCallableNode.createMethod(PhpContext.get(node), target, name, site.methodId(), location);
+        }
+    }
+
+    /** {@code Foo::method(...)}: a closure, with the AST's forwarding rules. */
+    @Operation
+    @ConstantOperand(type = MethodSite.class)
+    @ConstantOperand(type = boolean.class, name = "forwarding")
+    @ConstantOperand(type = boolean.class, name = "hasCalledClass")
+    public static final class FirstClassStaticMethod {
+        @Specialization
+        static Object create(MethodSite site, boolean forwarding, boolean hasCalledClass, PhpClass targetClass,
+                             Object nameValue, Object thisValue, Object calledClassValue, @Bind Node node,
+                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            String name = site.name() != null ? site.name() : Ops.toStr(nameValue);
+            Object calledArg = forwarding && hasCalledClass ? calledClassValue : targetClass;
+            return FirstClassCallableNode.createStaticMethod(PhpContext.get(node), targetClass, name, site.methodId(),
+                    forwarding, thisValue, calledArg, location);
+        }
+    }
+
+    /** {@code $callable(...)}: a closure for any callable value. */
+    @Operation
+    public static final class FirstClassCallable {
+        @Specialization
+        static Object create(Object target, Object callerThis, @Bind Node node,
+                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            return dev.phpruntime.runtime.PhpCallable.toClosure(
+                    PhpContext.get(node), target, callerThis, location);
         }
     }
 
