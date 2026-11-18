@@ -2622,4 +2622,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return obj;
         }
     }
+
+    /**
+     * {@code $value instanceof Cls}: the resolved value and the class reference's operand. As in
+     * {@code InstanceofNode}, a missing class or a non-object value is just false.
+     */
+    @Operation
+    @ConstantOperand(type = ClassRefSpec.class)
+    public static final class Instanceof {
+        @Specialization
+        static boolean test(ClassRefSpec spec, Object value, Object operand,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
+            PhpClass target = engine.resolveForInstanceof(operand);
+            return value instanceof PhpObject obj && target != null && obj.phpClass().isInstanceOf(target);
+        }
+    }
 }

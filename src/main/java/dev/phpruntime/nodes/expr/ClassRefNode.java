@@ -227,4 +227,21 @@ public final class ClassRefNode extends PhpNode {
         }
         return resolveOrNull(frame);
     }
+
+    /** {@link #resolveForInstanceof(VirtualFrame)} with the operand it would read already evaluated. */
+    public PhpClass resolveForInstanceof(Object operand) {
+        if (kind == Kind.NAMED) {
+            return PhpContext.get(this).classById(classId);
+        }
+        if (kind == Kind.DYNAMIC) {
+            if (operand instanceof PhpObject o) {
+                return o.phpClass();
+            }
+            if (operand instanceof String s) {
+                return PhpContext.get(this).lookupClass(s);
+            }
+            return null;
+        }
+        return resolveValueOrNull(operand);
+    }
 }

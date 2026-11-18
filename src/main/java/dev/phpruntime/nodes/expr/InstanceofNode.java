@@ -22,4 +22,13 @@ public final class InstanceofNode extends PhpNode {
         PhpClass target = right.resolveForInstanceof(frame);
         return lv instanceof PhpObject obj && target != null && obj.phpClass().isInstanceOf(target);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginInstanceof(new dev.phpruntime.bytecode.PhpBytecodeRootNode.ClassRefSpec(right));
+        e.expr(left);
+        e.classRefOperand(right);
+        b.endInstanceof();
+    }
 }
