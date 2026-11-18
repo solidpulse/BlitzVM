@@ -2750,7 +2750,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             @Bind BytecodeNode bytecode, @Bind Node node) {
             dev.phpruntime.runtime.PhpCallable callable =
                     Ops.resolveCallable(PhpContext.get(node), targetValue, callerThis);
-            PhpFunctionRootNode sig = callable.callTarget() == null ? null
+            // A magic call collects its arguments into an array, so its target's parameters do
+            // not describe the call site (the AST evaluates those arguments as plain values).
+            PhpFunctionRootNode sig = callable.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL
+                    || callable.callTarget() == null ? null
                     : PhpFunctionRootNode.of(callable.callTarget().getRootNode());
             calleeLocal.setObject(bytecode, frame, new ValueCallee(callable, sig));
         }
