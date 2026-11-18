@@ -3584,6 +3584,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ---- 17d: last coverage
 
+    /** {@code __CLASS__} inside a trait method: the using class's name. */
+    @Operation
+    public static final class TraitClassName {
+        @Specialization
+        static String name(Object traitSelf) {
+            return dev.phpruntime.nodes.expr.TraitClassNameNode.nameOf(traitSelf);
+        }
+    }
+
     /** {@code match} with no matching arm and no default. */
     @Operation
     public static final class UnhandledMatch {

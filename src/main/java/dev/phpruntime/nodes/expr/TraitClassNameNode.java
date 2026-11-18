@@ -13,9 +13,25 @@ public final class TraitClassNameNode extends PhpNode {
         this.traitSelfSlot = traitSelfSlot;
     }
 
+    public int traitSelfSlot() {
+        return traitSelfSlot;
+    }
+
+    /** The using class's name for {@code __CLASS__}, or an empty string when there is none. */
+    public static String nameOf(Object traitSelf) {
+        return traitSelf instanceof PhpClass cls ? cls.name() : "";
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
-        PhpClass cls = (PhpClass) frame.getObject(traitSelfSlot);
-        return cls != null ? cls.name() : "";
+        return nameOf(frame.getObject(traitSelfSlot));
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginTraitClassName();
+        e.loadSlotOrNull(traitSelfSlot);
+        b.endTraitClassName();
     }
 }
