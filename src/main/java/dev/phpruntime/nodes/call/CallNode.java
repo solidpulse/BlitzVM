@@ -380,9 +380,6 @@ public final class CallNode extends PhpNode {
      * first; when it is the builtin, return true without evaluating the arguments.
      */
     private void emitNamespacedAssert(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("namespaced assert with spread or named arguments");
-        }
         var b = e.builder();
         dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
                 new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId, null);
@@ -402,11 +399,21 @@ public final class CallNode extends PhpNode {
             b.endNot();
             b.beginBlock();
             b.beginStoreLocal(result);
-            b.beginDoCall(site, callee);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexFunction();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexFunction();
+            } else {
+                b.beginDoCall(site, callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+                }
+                b.endDoCall();
             }
-            b.endDoCall();
             b.endStoreLocal();
             b.endBlock();
             b.endIfThen();
@@ -430,11 +437,8 @@ public final class CallNode extends PhpNode {
             emitNamespacedAssert(e);
             return;
         }
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("call with spread or named arguments");
-        }
         if (def != null) {
-            if (nsName == null) {
+            if (nsName == null && !hasSpreadOrNamed) {
                 int kind = intrinsicFor(def.name(), args.length);
                 if (kind == STRLEN) {
                     b.beginStrlen(def);
@@ -464,11 +468,21 @@ public final class CallNode extends PhpNode {
         try {
             b.beginBlock();
             b.emitResolveFunction(site, callee);
-            b.beginDoCall(site, callee);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexFunction();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexFunction();
+            } else {
+                b.beginDoCall(site, callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+                }
+                b.endDoCall();
             }
-            b.endDoCall();
             b.endBlock();
         } finally {
             e.exitCall();

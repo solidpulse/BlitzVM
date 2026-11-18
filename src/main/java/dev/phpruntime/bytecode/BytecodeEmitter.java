@@ -995,6 +995,58 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** Starts a spread/named call's raw argument list local. */
+    public void beginRawArgs(BytecodeLocal raw) {
+        b.beginStoreLocal(raw);
+        b.emitNewRawArgs();
+        b.endStoreLocal();
+    }
+
+    /** Evaluates each argument of a spread/named call into its raw argument list. */
+    public void complexArgs(PhpNode[] args, dev.phpruntime.nodes.var.LValueNode[] refTargets,
+                            String[] argNames, boolean[] spreads, BytecodeLocal callee, BytecodeLocal raw) {
+        for (int i = 0; i < args.length; i++) {
+            complexArg(args[i], refTargets != null ? refTargets[i] : null,
+                    argNames != null ? argNames[i] : null,
+                    spreads != null && spreads[i], callee, raw);
+        }
+    }
+
+    /**
+     * One argument of a spread/named call. A variable or place keeps its cell/keys so a
+     * by-reference parameter or a by-reference builtin still receives the right cell.
+     */
+    public void complexArg(PhpNode arg, dev.phpruntime.nodes.var.LValueNode refTarget, String name,
+                           boolean spread, BytecodeLocal callee, BytecodeLocal raw) {
+        String n = name == null ? "" : name;
+        if (refTarget instanceof LocalVarNode lv) {
+            b.emitRawVarArg(accessor(lv), info(lv), n, spread, callee, raw);
+            return;
+        }
+        if (refTarget != null && isPlace(refTarget)) {
+            BytecodeLocal prepared = temp();
+            b.beginStoreLocal(prepared);
+            place(refTarget, PhpBytecodeRootNode.P_KEYS, 0, null);
+            b.endStoreLocal();
+            b.beginRawPlaceArg(placeSpec(refTarget), n, spread, callee, raw);
+            b.emitLoadLocal(prepared);
+            b.endRawPlaceArg();
+            return;
+        }
+        if (refTarget == null) {
+            int kind = arg instanceof dev.phpruntime.nodes.expr.NewNode ? 2
+                    : (arg instanceof dev.phpruntime.nodes.call.CallNode
+                    || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
+                    || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                    || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
+            b.beginRawValueArg(n, spread, kind, callee, raw);
+            expr(arg);
+            b.endRawValueArg();
+            return;
+        }
+        throw new Unsupported("complex argument from " + refTarget.getClass().getSimpleName());
+    }
+
     /** Emits one call argument: a variable, a place, or a value, sent against the callee in {@code callee}. */
     public void sendArgument(PhpNode arg, dev.phpruntime.nodes.var.LValueNode refTarget, int param, BytecodeLocal callee) {
         if (arg instanceof LocalVarNode lv) {

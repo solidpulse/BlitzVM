@@ -431,9 +431,6 @@ public final class CallValueNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("call with spread or named arguments");
-        }
         var b = e.builder();
         com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
         try {
@@ -442,11 +439,21 @@ public final class CallValueNode extends PhpNode {
             e.expr(targetExpr);
             e.loadSlotOrNull(outerThisSlot);
             b.endResolveCallable();
-            b.beginDoValueCall(callee);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets[i], i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexValue();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexValue();
+            } else {
+                b.beginDoValueCall(callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets[i], i, callee);
+                }
+                b.endDoValueCall();
             }
-            b.endDoValueCall();
             b.endBlock();
         } finally {
             e.exitCall();

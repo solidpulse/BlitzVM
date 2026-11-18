@@ -169,9 +169,6 @@ public final class MethodCallNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("method call with spread or named arguments");
-        }
         emitOnTarget(e, () -> e.expr(targetExpr));
     }
 
@@ -189,11 +186,21 @@ public final class MethodCallNode extends PhpNode {
                 e.expr(dynamicNameExpr);
             }
             b.endResolveMethod();
-            b.beginDoMethodCall(callee);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets[i], i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexMethod();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexMethod();
+            } else {
+                b.beginDoMethodCall(callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets[i], i, callee);
+                }
+                b.endDoMethodCall();
             }
-            b.endDoMethodCall();
             b.endBlock();
         } finally {
             e.exitCall();

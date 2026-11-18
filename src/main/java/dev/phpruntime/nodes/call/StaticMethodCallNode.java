@@ -186,9 +186,6 @@ public final class StaticMethodCallNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("static method call with spread or named arguments");
-        }
         var b = e.builder();
         com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
         try {
@@ -204,11 +201,21 @@ public final class StaticMethodCallNode extends PhpNode {
             e.loadSlotOrNull(thisSlot);
             e.loadSlotOrNull(calledClassSlot);
             b.endResolveStaticMethod();
-            b.beginDoMethodCall(callee);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets[i], i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexMethod();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexMethod();
+            } else {
+                b.beginDoMethodCall(callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets[i], i, callee);
+                }
+                b.endDoMethodCall();
             }
-            b.endDoMethodCall();
             b.endBlock();
         } finally {
             e.exitCall();
