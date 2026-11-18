@@ -159,8 +159,8 @@ public final class BytecodeEmitter {
             if (fn.isGenerator() && fn.generatorSource() == null) {
                 throw new Unsupported("generator");
             }
-            if (fn.returnsRef()) {
-                throw new Unsupported("return by reference");
+            if (fn.returnsRef() && fn.isGenerator()) {
+                throw new Unsupported("by-reference generator");
             }
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
                     builder -> new BytecodeEmitter(builder, language, fn).emitRoot()).getNode(0);
@@ -402,6 +402,33 @@ public final class BytecodeEmitter {
     private static boolean isGotoStructure(PhpNode node) {
         return node instanceof dev.phpruntime.nodes.stmt.GotoDispatchNode
                 || node instanceof dev.phpruntime.nodes.stmt.GotoIfNode;
+    }
+
+    /** The call being emitted where its by-reference result is wanted as the reference. */
+    private PhpNode refRequest;
+
+    /**
+     * Emits {@code node} where a reference is wanted ({@code =&}, a by-reference argument, a
+     * by-reference element): a call then leaves a by-reference result as the reference itself,
+     * as the AST's {@code executeForRef} does. Any other node emits its value.
+     */
+    public void exprForRef(PhpNode node) {
+        PhpNode previous = refRequest;
+        refRequest = node;
+        try {
+            expr(node);
+        } finally {
+            refRequest = previous;
+        }
+    }
+
+    /** Whether {@code call} is emitted for its reference; a call asks once, before its arguments. */
+    public boolean takeRef(PhpNode call) {
+        if (refRequest == call) {
+            refRequest = null;
+            return true;
+        }
+        return false;
     }
 
     /** Emits a node whose value, if any, is not used. */
@@ -1037,7 +1064,7 @@ public final class BytecodeEmitter {
                     || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
                     || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
             b.beginRawValueArg(n, spread, kind, callee, raw);
-            expr(arg);
+            exprForRef(arg);
             b.endRawValueArg();
             return;
         }
@@ -1059,7 +1086,7 @@ public final class BytecodeEmitter {
                     || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
                     || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
             b.beginSendValue(param, kind, callee);
-            expr(arg);
+            exprForRef(arg);
             b.endSendValue();
         }
     }

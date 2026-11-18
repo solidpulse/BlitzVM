@@ -381,6 +381,7 @@ public final class CallNode extends PhpNode {
      */
     private void emitNamespacedAssert(dev.phpruntime.bytecode.BytecodeEmitter e) {
         var b = e.builder();
+        boolean keepRef = false;
         dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
                 new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId, null);
         com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
@@ -403,12 +404,12 @@ public final class CallNode extends PhpNode {
                 com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
                 e.beginRawArgs(raw);
                 e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexFunction();
+                b.beginDoComplexFunction(keepRef);
                 b.emitLoadLocal(callee);
                 b.emitLoadLocal(raw);
                 b.endDoComplexFunction();
             } else {
-                b.beginDoCall(site, callee);
+                b.beginDoCall(site.withKeepRef(keepRef), callee);
                 for (int i = 0; i < args.length; i++) {
                     e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
                 }
@@ -427,6 +428,7 @@ public final class CallNode extends PhpNode {
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         var b = e.builder();
+        boolean keepRef = e.takeRef(this);
         Builtins.Def def = Builtins.lookup(name);
         if (def != null && def.name().equals("assert")) {
             // zend.assertions is -1: assert() compiles to true and evaluates nothing.
@@ -472,12 +474,12 @@ public final class CallNode extends PhpNode {
                 com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
                 e.beginRawArgs(raw);
                 e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexFunction();
+                b.beginDoComplexFunction(keepRef);
                 b.emitLoadLocal(callee);
                 b.emitLoadLocal(raw);
                 b.endDoComplexFunction();
             } else {
-                b.beginDoCall(site, callee);
+                b.beginDoCall(site.withKeepRef(keepRef), callee);
                 for (int i = 0; i < args.length; i++) {
                     e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
                 }

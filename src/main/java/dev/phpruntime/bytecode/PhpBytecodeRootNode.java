@@ -173,7 +173,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     }
 
     /** A call site: the function name and ids as {@code CallNode} has them. */
-    public record CallSite(String name, int functionId, String nsName, int nsFunctionId, String splName) {
+    public record CallSite(String name, int functionId, String nsName, int nsFunctionId, String splName,
+                           boolean keepRef) {
+        /** A call whose by-reference result is unwrapped (every context but {@code =&}, by-ref arguments...). */
+        public CallSite(String name, int functionId, String nsName, int nsFunctionId, String splName) {
+            this(name, functionId, nsName, nsFunctionId, splName, false);
+        }
+
+        public CallSite withKeepRef(boolean keep) {
+            return keep == keepRef ? this : new CallSite(name, functionId, nsName, nsFunctionId, splName, keep);
+        }
     }
 
     /** A bytecode local seen as an lvalue, for builtin by-reference writeback. */
@@ -436,7 +445,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class BoxRefCopy {
         @Specialization
         static PhpReference box(Object value) {
-            return new PhpReference(PhpOps.copyOnAssign(value));
+            // A by-reference return ([&f()]) keeps its reference, as ArrayLiteralNode does.
+            return value instanceof PhpReference ref ? ref : new PhpReference(PhpOps.copyOnAssign(value));
         }
     }
 
@@ -1510,6 +1520,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, int param, int kind, LocalAccessor calleeLocal, Object value,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
             Object callee = calleeLocal.getObject(bytecode, frame);
+            if (value instanceof PhpReference returned) {
+                // Only a call result (kind 1) emitted for its reference: a by-reference return.
+                return Ops.sendReturnedRef(callee, param, returned);
+            }
             Builtins.Def builtin = builtinCallee(callee);
             if (builtin != null) {
                 if (builtin.isRef(param)) {
@@ -1605,21 +1619,22 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     }
 
     @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
     @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class DoMethodCall {
         @Specialization
-        static Object call(VirtualFrame frame, LocalAccessor calleeLocal, @Variadic Object[] args,
+        static Object call(VirtualFrame frame, boolean keepRef, LocalAccessor calleeLocal, @Variadic Object[] args,
                            @Bind BytecodeNode bytecode, @Cached("create()") DispatchCallNode dispatch) {
             MethodCallee m = (MethodCallee) calleeLocal.getObject(bytecode, frame);
             if (m.entry() == null) {
-                return CallArgHelper.unwrapReturn(dispatch.call(m.magic(),
+                return Ops.ret(keepRef, dispatch.call(m.magic(),
                         new Object[]{m.obj(), m.cls(), m.name(), Ops.packArgs(args)}));
             }
             Object[] callArgs = new Object[2 + args.length];
             callArgs[0] = m.thisArg();
             callArgs[1] = m.cls();
             System.arraycopy(args, 0, callArgs, 2, args.length);
-            return CallArgHelper.unwrapReturn(dispatch.callMethod(m.entry(), callArgs));
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), callArgs));
         }
     }
 
@@ -2228,13 +2243,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object direct(CallSite site, PhpFunction fn, Object[] args, SiteNode location,
                              @Cached("fn.callTarget()") RootCallTarget cachedTarget,
                              @Cached("create(cachedTarget)") DirectCallNode call) {
-            return CallArgHelper.unwrapReturn(call.call(args));
+            return Ops.ret(site.keepRef(), call.call(args));
         }
 
         @Specialization(replaces = "direct")
         static Object indirect(CallSite site, PhpFunction fn, Object[] args, SiteNode location,
                                @Cached IndirectCallNode call) {
-            return CallArgHelper.unwrapReturn(call.call(fn.callTarget(), args));
+            return Ops.ret(site.keepRef(), call.call(fn.callTarget(), args));
         }
 
         @Specialization
@@ -2311,6 +2326,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Slow paths behind boundaries, so operations stay small when compiled. */
     static final class Ops {
+
+        /** A call's result: the returned reference itself in a reference context, else its value. */
+        static Object ret(boolean keepRef, Object result) {
+            return keepRef ? result : CallArgHelper.unwrapReturn(result);
+        }
+
         @TruffleBoundary
         static Object arith(PhpArith.Op op, Object a, Object b) {
             return PhpArith.apply(op, a, b);
@@ -2549,6 +2570,22 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return new PhpReference(PhpOps.copyOnAssign(value));
         }
 
+        /**
+         * A by-reference return passed as an argument: a by-reference parameter receives the
+         * reference itself (CallArgHelper.evalArgForParam), any other parameter its value.
+         */
+        @TruffleBoundary
+        static Object sendReturnedRef(Object callee, int param, PhpReference returned) {
+            Builtins.Def builtin = builtinCallee(callee);
+            PhpFunctionRootNode root = builtin == null ? signature(callee) : null;
+            boolean byRef = builtin != null ? builtin.isRef(param) : root != null && root.isParamByRef(param);
+            if (byRef) {
+                returned.ensureDefined();
+                return returned;
+            }
+            return CallArgHelper.unwrapReturn(returned);
+        }
+
         @TruffleBoundary
         static Object builtinValueToRefParam(Builtins.Def def, int param, int kind, Object value, Node node, int line) {
             // CallNode.callBuiltin: a call result may be passed with a notice; anything else
@@ -2649,6 +2686,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         /** A plain expression argument: the AST's by-value and by-reference rules. */
         static void addRawValueArg(CallArgHelper.RawCallArgs raw, Object callee, Object value, int kind,
                                    String name, boolean spread, Node site) {
+            PhpReference returned = value instanceof PhpReference r ? r : null;
+            if (returned != null) {
+                value = CallArgHelper.unwrapReturn(returned);
+            }
             Builtins.Def builtin = builtinCallee(callee);
             if (spread) {
                 CallArgHelper.unpackCallArg(value, null, raw.positional(), raw.posRefTargets(), raw.posRefKeys(),
@@ -2662,7 +2703,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpFunctionRootNode fnRoot = signature(callee);
             if (name != null) {
                 boolean byRef = fnRoot != null && isNamedByRef(fnRoot, name);
-                Object v = byRef
+                Object v = byRef && returned != null ? defined(returned) : byRef
                         ? byRefValue(value, kind, fnRoot,
                         CallArgHelper.findParamIndex(fnRoot, name) >= 0
                                 ? CallArgHelper.findParamIndex(fnRoot, name) : fnRoot.normalParamCount(), site)
@@ -2672,8 +2713,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             int idx = raw.positional().size();
             boolean byRef = fnRoot != null && fnRoot.isParamByRef(idx);
-            Object v = byRef ? byRefValue(value, kind, fnRoot, idx, site) : PhpOps.copyOnAssign(value);
+            Object v = byRef && returned != null ? defined(returned)
+                    : byRef ? byRefValue(value, kind, fnRoot, idx, site) : PhpOps.copyOnAssign(value);
             putArg(raw, null, v, null, null, site);
+        }
+
+        private static PhpReference defined(PhpReference ref) {
+            ref.ensureDefined();
+            return ref;
         }
 
         /** A variable argument, evaluated with the AST's place/by-ref rules. */
@@ -3488,10 +3535,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Calls the {@link ValueCallee} written by {@link ResolveCallable}, laying out its frame. */
     @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
     @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class DoValueCall {
         @Specialization
-        static Object call(VirtualFrame frame, LocalAccessor calleeLocal, @Variadic Object[] args,
+        static Object call(VirtualFrame frame, boolean keepRef, LocalAccessor calleeLocal, @Variadic Object[] args,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached("create()") DispatchCallNode dispatch) {
@@ -3523,7 +3571,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)});
                 case BUILTIN -> Ops.callBuiltinValue(cb.builtin(), args, location);
             };
-            return CallArgHelper.unwrapReturn(result);
+            return Ops.ret(keepRef, result);
         }
     }
 
@@ -3900,9 +3948,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** {@code f(...)}: bind the evaluated raw arguments to the function and call it. */
     @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
     public static final class DoComplexFunction {
         @Specialization
-        static Object call(VirtualFrame frame, Object callee, Object rawArgs,
+        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached("create()") DispatchCallNode dispatch) {
@@ -3914,27 +3963,28 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpFunction fn = (PhpFunction) callee;
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
             Object[] args = CallArgHelper.bindToFunction(new Object[0], raw, fnRoot, location);
-            return CallArgHelper.unwrapReturn(dispatch.call(fn.callTarget(), args));
+            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args));
         }
     }
 
     /** {@code $obj->m(...)} / {@code C::m(...)} with spread or named arguments. */
     @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
     public static final class DoComplexMethod {
         @Specialization
-        static Object call(VirtualFrame frame, Object callee, Object rawArgs,
+        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached("create()") DispatchCallNode dispatch) {
             MethodCallee m = (MethodCallee) callee;
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
             if (m.entry() == null) {
-                return CallArgHelper.unwrapReturn(dispatch.call(m.magic(), new Object[]{
+                return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
                         m.obj(), m.cls(), m.name(), CallArgHelper.magicArray(raw)}));
             }
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
             Object[] args = CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location);
-            return CallArgHelper.unwrapReturn(dispatch.callMethod(m.entry(), args));
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
         }
     }
 
@@ -3962,9 +4012,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** {@code $f(...)} with spread or named arguments. */
     @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
     public static final class DoComplexValue {
         @Specialization
-        static Object call(VirtualFrame frame, Object callee, Object rawArgs,
+        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached("create()") DispatchCallNode dispatch) {
@@ -3987,7 +4038,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         cb.boundThis(), cb.calledClass(), cb.magicMethodName(), CallArgHelper.magicArray(raw)});
                 case BUILTIN -> CallArgHelper.callComplexBuiltinRaw(frame, cb.builtin(), raw, location);
             };
-            return CallArgHelper.unwrapReturn(result);
+            return Ops.ret(keepRef, result);
         }
     }
 

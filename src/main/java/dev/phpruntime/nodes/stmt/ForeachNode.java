@@ -374,7 +374,7 @@ public final class ForeachNode extends PhpNode {
             e.refStart(subjectLValue, subjectLValue.describe());
         } else {
             b.beginForeachRefStartValue(e.callerConstant());
-            e.expr(subject);
+            e.exprForRef(subject);
             e.traitSelfOperand();
             b.endForeachRefStartValue();
         }
