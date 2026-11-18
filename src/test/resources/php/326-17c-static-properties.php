@@ -19,6 +19,12 @@ class S {
     public static function secret() {
         return self::$secret;
     }
+    public static function touch() {
+        self::$cache['c'] = 1;
+        static::$list[] = 4;
+        self::$n += 1;
+        return isset(self::$x['a']) ? 'yes' : 'no';
+    }
 }
 
 function cache_set($key, $value) {
@@ -116,3 +122,5 @@ class C {
 }
 
 echo (new C())->viaClosure(), ',', C::viaArrow(), "\n";
+
+echo S::touch(), ',', S::$cache['c'], ',', implode(',', S::$list), ',', S::$n, "\n";

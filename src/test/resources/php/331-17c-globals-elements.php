@@ -18,7 +18,7 @@ function set_and_read() {
 }
 
 function nested_isset() {
-    return isset($GLOBALS['x']['y']) ? 'yes' : 'no';
+    return (isset($GLOBALS['x']) ? 'yes' : 'no') . ',' . (isset($GLOBALS['x']['y']) ? 'yes' : 'no');
 }
 
 function unset_element() {
