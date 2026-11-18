@@ -23,6 +23,9 @@ function variadic($a, ...$rest) { $rest[0] = 9; var_dump(func_get_args()); var_d
 variadic(1, 2, 3);
 variadic(1, named: 2);
 
+function dynamicScope($a) { $name = 'a'; $$name = 8; var_dump(func_get_args()); }
+dynamicScope(1);
+
 function byRefVariadic(&...$rest) { $rest[0] = 9; var_dump(func_get_args()); }
 $p = 1;
 $q = 2;
