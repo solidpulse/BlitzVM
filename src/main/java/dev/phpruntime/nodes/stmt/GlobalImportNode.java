@@ -56,9 +56,30 @@ public final class GlobalImportNode extends PhpNode {
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         if (targets != null) {
-            // Only an included file's symbol-table scope builds targets; those roots stay on the
-            // AST (BytecodeEmitter.mainTarget checks usesSymbolTable).
-            throw e.unsupported("global with a dynamic-scope target");
+            // global $$name: bind the symbol-table slot for the computed name to the global's cell.
+            var b = e.builder();
+            b.beginBlock();
+            for (int i = 0; i < targets.length; i++) {
+                if (!(targets[i] instanceof dev.phpruntime.nodes.var.DynamicVarNode dynamic)) {
+                    throw e.unsupported("global target " + targets[i].getClass().getSimpleName());
+                }
+                com.oracle.truffle.api.bytecode.BytecodeLocal name = e.temp();
+                b.beginStoreLocal(name);
+                b.beginToStr();
+                e.expr(names[i]);
+                b.endToStr();
+                b.endStoreLocal();
+                var spec = new dev.phpruntime.bytecode.PhpBytecodeRootNode.PlaceSpec(dynamic.headless(), 0);
+                b.beginObjPlace(spec, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_BIND, 0);
+                e.loadTable(dynamic.tableSlot());
+                b.emitLoadLocal(name);
+                b.beginGlobalSymbolRef();
+                b.emitLoadLocal(name);
+                b.endGlobalSymbolRef();
+                b.endObjPlace();
+            }
+            b.endBlock();
+            return;
         }
         var b = e.builder();
         b.beginBlock();

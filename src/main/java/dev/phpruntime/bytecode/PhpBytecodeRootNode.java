@@ -2797,6 +2797,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** {@code global $$name}: the global variable's cell for a computed name. */
+    @Operation
+    public static final class GlobalSymbolRef {
+        @Specialization
+        static PhpReference ref(String name, @Bind Node node) {
+            return PhpContext.get(node).globalSymbolRef(name);
+        }
+    }
+
     /** {@code global $x;}: the global variable's reference cell, stored into the local by the emitter. */
     @Operation
     @ConstantOperand(type = int.class, name = "globalId")
