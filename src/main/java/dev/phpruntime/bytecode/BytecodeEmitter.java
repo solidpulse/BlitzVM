@@ -17,6 +17,7 @@ import dev.phpruntime.runtime.PhpNull;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -355,6 +356,10 @@ public final class BytecodeEmitter {
 
     /** Emits a node that produces a value. */
     public void expr(PhpNode node) {
+        if (isGotoStructure(node)) {
+            node.emit(this);
+            return;
+        }
         int line = node.line();
         if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
             SourceSection s = source.createSection(line);
@@ -369,8 +374,45 @@ public final class BytecodeEmitter {
         }
     }
 
+    private static boolean isGotoStructure(PhpNode node) {
+        return node instanceof dev.phpruntime.nodes.stmt.GotoDispatchNode
+                || node instanceof dev.phpruntime.nodes.stmt.GotoIfNode;
+    }
+
+    /**
+     * Emits a statement list without opening a scope operation, so a php {@code goto} label
+     * inside it is declared in the same operation as the branches that target it.
+     */
+    public void stmtFlat(PhpNode node) {
+        if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
+            for (PhpNode s : block.statements()) {
+                stmt(s);
+            }
+            return;
+        }
+        stmt(node);
+    }
+
+    /**
+     * As {@link #stmtFlat}, without per-statement source sections: a source section is an
+     * operation, and a label must be created and emitted in the same operation.
+     */
+    public void stmtFlatNoSource(PhpNode node) {
+        if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
+            for (PhpNode s : block.statements()) {
+                stmtFlatNoSource(s);
+            }
+            return;
+        }
+        node.emitStatement(this);
+    }
+
     /** Emits a node whose value, if any, is not used. */
     public void stmt(PhpNode node) {
+        if (isGotoStructure(node)) {
+            node.emitStatement(this);
+            return;
+        }
         int line = node.line();
         if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
             SourceSection s = source.createSection(line);
@@ -1052,6 +1094,173 @@ public final class BytecodeEmitter {
         for (int j = count - 1; j >= 0; j--) {
             finallyBlocks.push(popped[j]);
         }
+    }
+
+    /**
+     * One goto structure lowered to a flat piece list. The bytecode builder rejects backward
+     * branches, so the pieces run inside a {@code while (true)}: each piece sets a program
+     * counter and branches forward to the end of the loop body, which dispatches to the next
+     * piece. A {@code goto} is a pc assignment, forward or backward, so loops need no special
+     * casing.
+     */
+    private static final class GotoPiece {
+        static final int STMT = 0;
+        static final int COND = 1;
+        static final int JUMP = 2;
+
+        final int kind;
+        final PhpNode node;
+        int target;
+
+        GotoPiece(int kind, PhpNode node, int target) {
+            this.kind = kind;
+            this.node = node;
+            this.target = target;
+        }
+    }
+
+    private static final class GotoMachine {
+        final BytecodeLocal pc;
+        final BytecodeLabel end;
+        final Map<Integer, Integer> labels;
+
+        GotoMachine(BytecodeLocal pc, BytecodeLabel end, Map<Integer, Integer> labels) {
+            this.pc = pc;
+            this.end = end;
+            this.labels = labels;
+        }
+    }
+
+    private final Deque<GotoMachine> gotoMachines = new ArrayDeque<>();
+
+    /** Lowers a goto dispatch (or a goto-if) into a pc machine and emits it. */
+    public void emitGotoMachine(PhpNode root) {
+        List<GotoPiece> pieces = new java.util.ArrayList<>();
+        Map<Integer, Integer> labels = new HashMap<>();
+        compileGoto(root, pieces, labels);
+        if (pieces.isEmpty()) {
+            return;
+        }
+        b.beginBlock();
+        BytecodeLocal pc = temp();
+        b.beginStoreLocal(pc);
+        b.emitLoadConstant(0L);
+        b.endStoreLocal();
+        BytecodeLabel exit = b.createLabel();
+        b.beginWhile();
+        b.emitLoadConstant(true);
+        b.beginBlock();
+        int count = pieces.size();
+        BytecodeLabel[] targets = new BytecodeLabel[count];
+        for (int i = 0; i < count; i++) {
+            targets[i] = b.createLabel();
+        }
+        for (int i = 0; i < count; i++) {
+            b.beginIfThen();
+            b.beginIdentical(false);
+            b.emitLoadLocal(pc);
+            b.emitLoadConstant((long) i);
+            b.endIdentical();
+            b.emitBranch(targets[i]);
+            b.endIfThen();
+        }
+        b.emitBranch(exit);
+        BytecodeLabel end = b.createLabel();
+        gotoMachines.push(new GotoMachine(pc, end, labels));
+        try {
+            for (int i = 0; i < count; i++) {
+                b.emitLabel(targets[i]);
+                GotoPiece piece = pieces.get(i);
+                if (piece.kind == GotoPiece.COND) {
+                    b.beginIfThen();
+                    b.beginNot();
+                    expr(piece.node);
+                    b.endNot();
+                    b.beginBlock();
+                    b.beginStoreLocal(pc);
+                    b.emitLoadConstant((long) piece.target);
+                    b.endStoreLocal();
+                    b.emitBranch(end);
+                    b.endBlock();
+                    b.endIfThen();
+                } else if (piece.kind == GotoPiece.JUMP) {
+                    b.beginStoreLocal(pc);
+                    b.emitLoadConstant((long) piece.target);
+                    b.endStoreLocal();
+                    b.emitBranch(end);
+                    continue;
+                } else {
+                    stmtFlatNoSource(piece.node);
+                }
+                b.beginStoreLocal(pc);
+                b.emitLoadConstant((long) (i + 1));
+                b.endStoreLocal();
+                b.emitBranch(end);
+            }
+            b.emitLabel(end);
+        } finally {
+            gotoMachines.pop();
+        }
+        b.endBlock();
+        b.endWhile();
+        b.emitLabel(exit);
+        b.endBlock();
+    }
+
+    private void compileGoto(PhpNode node, List<GotoPiece> pieces, Map<Integer, Integer> labels) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.GotoDispatchNode dispatch) {
+            PhpNode[] segments = dispatch.segments();
+            int[] ids = dispatch.directLabelIds();
+            int[] segmentsOf = dispatch.directLabelSegments();
+            for (int segment = 0; segment < segments.length; segment++) {
+                for (int i = 0; i < ids.length; i++) {
+                    if (segmentsOf[i] == segment) {
+                        labels.put(ids[i], pieces.size());
+                    }
+                }
+                compileGoto(segments[segment], pieces, labels);
+            }
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.GotoIfNode conditional) {
+            GotoPiece cond = new GotoPiece(GotoPiece.COND, conditional.conditionNode(), -1);
+            pieces.add(cond);
+            compileGoto(conditional.thenNode(), pieces, labels);
+            GotoPiece jump = new GotoPiece(GotoPiece.JUMP, null, -1);
+            pieces.add(jump);
+            cond.target = pieces.size();
+            compileGoto(conditional.elseNode(), pieces, labels);
+            jump.target = pieces.size();
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
+            for (PhpNode statement : block.statements()) {
+                compileGoto(statement, pieces, labels);
+            }
+            return;
+        }
+        pieces.add(new GotoPiece(GotoPiece.STMT, node, 0));
+    }
+
+    /** A php {@code goto}: set the nearest machine's pc and jump to its dispatch. */
+    public void gotoJump(int labelId) {
+        for (GotoMachine machine : gotoMachines) {
+            Integer target = machine.labels.get(labelId);
+            if (target != null) {
+                if (hasFinallies()) {
+                    emitFinallies();
+                }
+                b.beginStoreLocal(machine.pc);
+                b.emitLoadConstant((long) target);
+                b.endStoreLocal();
+                b.emitBranch(machine.end);
+                return;
+            }
+        }
+        throw new Unsupported("goto label outside a dispatch");
     }
 
     /** Opens a loop: break and continue inside it branch to these labels. */

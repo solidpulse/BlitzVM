@@ -13,8 +13,22 @@ public final class GotoNode extends PhpNode {
         this.labelId = labelId;
     }
 
+    public int labelId() {
+        return labelId;
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
         throw new ControlFlow.Goto(labelId);
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.gotoJump(labelId);
+    }
+
+    @Override
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emit(e);
     }
 }

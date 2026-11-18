@@ -42,6 +42,18 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
         return exportedLabelIds;
     }
 
+    public PhpNode[] segments() {
+        return repeating.segments;
+    }
+
+    public int[] directLabelIds() {
+        return repeating.directLabelIds;
+    }
+
+    public int[] directLabelSegments() {
+        return repeating.directLabelSegments;
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
         if (generatorActiveSlot < 0 || frame.getInt(generatorActiveSlot) == 0) {
@@ -64,6 +76,21 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
     public GotoDispatchNode resumable(int activeSlot) {
         generatorActiveSlot = activeSlot;
         return this;
+    }
+
+    /**
+     * Bytecode has labels and branches: the segments stay in order and each direct label is a
+     * branch target before its segment. Labels inside {@code if}/try segments are emitted by the
+     * nested dispatch that owns them, sharing the emitter's label map with earlier {@code goto}s.
+     */
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.emitGotoMachine(this);
+    }
+
+    @Override
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emit(e);
     }
 
     @Override

@@ -34,6 +34,18 @@ public final class GotoIfNode extends PhpNode implements GotoEnterable {
         return allLabelIds;
     }
 
+    public PhpNode thenNode() {
+        return thenBranch;
+    }
+
+    public PhpNode elseNode() {
+        return elseBranch;
+    }
+
+    public PhpNode conditionNode() {
+        return condition;
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
         if (profile.profile(condition.executeCondition(frame))) {
@@ -69,5 +81,10 @@ public final class GotoIfNode extends PhpNode implements GotoEnterable {
             }
         }
         return false;
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.emitGotoMachine(this);
     }
 }
