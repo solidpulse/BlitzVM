@@ -3584,6 +3584,35 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ---- 17d: last coverage
 
+    /** A prepared place's current value as {@code LValueNode.read}: no warning for a miss. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class PreparedReadNullable {
+        @Specialization
+        static Object read(VirtualFrame frame, PlaceSpec spec, Object prepared,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return engine.read(frame, ((PreparedPlace) prepared).keys());
+        }
+    }
+
+    /** {@code extract($place, EXTR_REFS)}: make writable, write back, then bind the names. */
+    @Operation
+    @ConstantOperand(type = ExtractSpec.class)
+    @ConstantOperand(type = PlaceSpec.class, name = "place")
+    public static final class ExtractRefs {
+        @Specialization
+        static Object run(VirtualFrame frame, ExtractSpec spec, PlaceSpec placeSpec, Object table, Object array,
+                          Object flags, Object prefix, Object prepared,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ExtractNode engine,
+                          @Cached("placeSpec.newEngine()") dev.phpruntime.nodes.var.LValueNode placeEngine) {
+            dev.phpruntime.nodes.expr.ExtractNode.Prepared p = engine.prepare(array, flags, prefix);
+            if (p.refs()) {
+                placeEngine.write(frame, ((PreparedPlace) prepared).keys(), p.input());
+            }
+            return engine.extractPrepared(table, p);
+        }
+    }
+
     /** {@code __CLASS__} inside a trait method: the using class's name. */
     @Operation
     public static final class TraitClassName {

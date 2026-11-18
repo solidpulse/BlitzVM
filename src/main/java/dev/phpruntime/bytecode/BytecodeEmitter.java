@@ -450,6 +450,11 @@ public final class BytecodeEmitter {
      * Emits a non-local lvalue in {@code mode} (a {@code PhpBytecodeRootNode.P_*} constant): the
      * key operands in evaluation order, then {@code value} if the mode takes one.
      */
+    /** The cached template and operand layout of a place, for operations that evaluate its keys. */
+    public PhpBytecodeRootNode.PlaceSpec placeSpec(dev.phpruntime.nodes.var.LValueNode lv) {
+        return form(lv).spec();
+    }
+
     public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value) {
         Form f = form(lv);
         if (f.local() != null) {
