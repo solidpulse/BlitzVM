@@ -1621,6 +1621,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return (dev.phpruntime.nodes.var.LValueNode) template.deepCopy();
         }
 
+        dev.phpruntime.nodes.var.LValueNode template() {
+            return template;
+        }
+
         @Override
         public String toString() {
             return template.describe();
@@ -1702,6 +1706,36 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
             Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            Object result = Places.run(frame, engine, keys, mode, 0, null);
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
+        }
+    }
+
+    /** A {@code $GLOBALS[...]} element, or an index path on one. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class GlobalsPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendGlobalsPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
+                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
             Object result = Places.run(frame, engine, keys, mode, 0, null);
             return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
         }
@@ -1886,6 +1920,20 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
         }
 
+        /** {@code $GLOBALS} element base keys (0 for a constant name, 1 for an expression), then array keys. */
+        static Object[] globalsElementKeys(Object[] ops, int baseCount, int n) {
+            Object[] base = baseCount == 0 ? dev.phpruntime.nodes.var.LValueNode.NO_KEYS : new Object[baseCount];
+            if (baseCount != 0) {
+                System.arraycopy(ops, 0, base, 0, baseCount);
+            }
+            if (n == 0) {
+                return base;
+            }
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, baseCount, arrayKeys, 0, n);
+            return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
+        }
+
         static Object[] objKeys(Object[] ops, int n) {
             Object[] base = {ops[0], ops[1]};
             if (n == 0) {
@@ -1928,6 +1976,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     }
                     if (engine instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
                         return sp.executeWithKeys(frame, keys);
+                    }
+                    if (engine instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode ge) {
+                        return ge.executeWithKeys(frame, keys);
                     }
                     return engine.readValue(frame, keys);
                 case P_READ_IF_SET: {
@@ -3447,6 +3498,25 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureGlobalsStep {
+        @Specialization
+        static Object step(VirtualFrame frame, PlaceSpec spec, boolean byRef, DestructureState state,
+                           Object sourceKey, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            Places.destructureStep(frame, engine,
+                    Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys), item);
+            return state;
+        }
+    }
+
     // ---- foreach by reference
 
     /** A {@code foreach} subject that is a plain local: read it, then take its cell if an array. */
@@ -3541,6 +3611,22 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
                             @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartGlobals {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
             return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
                     traitSelf, declaringClass);
         }

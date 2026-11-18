@@ -458,6 +458,8 @@ public final class BytecodeEmitter {
             b.beginGlobalPlace(f.spec(), mode, arg);
         } else if (f.staticProperty()) {
             b.beginStaticPlace(f.spec(), mode, arg);
+        } else if (isGlobalsElement(f.spec())) {
+            b.beginGlobalsPlace(f.spec(), mode, arg);
         } else {
             b.beginObjPlace(f.spec(), mode, arg);
         }
@@ -471,6 +473,8 @@ public final class BytecodeEmitter {
             b.endGlobalPlace();
         } else if (f.staticProperty()) {
             b.endStaticPlace();
+        } else if (isGlobalsElement(f.spec())) {
+            b.endGlobalsPlace();
         } else {
             b.endObjPlace();
         }
@@ -485,6 +489,8 @@ public final class BytecodeEmitter {
             b.beginSendGlobalPlace(f.spec(), param, callee);
         } else if (f.staticProperty()) {
             b.beginSendStaticPlace(f.spec(), param, callee);
+        } else if (isGlobalsElement(f.spec())) {
+            b.beginSendGlobalsPlace(f.spec(), param, callee);
         } else {
             b.beginSendObjPlace(f.spec(), param, callee);
         }
@@ -495,9 +501,18 @@ public final class BytecodeEmitter {
             b.endSendGlobalPlace();
         } else if (f.staticProperty()) {
             b.endSendStaticPlace();
+        } else if (isGlobalsElement(f.spec())) {
+            b.endSendGlobalsPlace();
         } else {
             b.endSendObjPlace();
         }
+    }
+
+    /** Whether a place is a {@code $GLOBALS[...]} element or an index path rooted in one. */
+    private static boolean isGlobalsElement(PhpBytecodeRootNode.PlaceSpec spec) {
+        return spec.template() instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode
+                || (spec.template() instanceof dev.phpruntime.nodes.var.IndexLValueNode il
+                && il.base() instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode);
     }
 
     /** The reference cell of a local or a place, for {@code =&} / destructuring / foreach by reference. */
@@ -551,6 +566,8 @@ public final class BytecodeEmitter {
                 b.beginDestructureGlobalStep(f.spec(), refs[i]);
             } else if (f.staticProperty()) {
                 b.beginDestructureStaticStep(f.spec(), refs[i]);
+            } else if (isGlobalsElement(f.spec())) {
+                b.beginDestructureGlobalsStep(f.spec(), refs[i]);
             } else {
                 b.beginDestructureObjStep(f.spec(), refs[i]);
             }
@@ -563,6 +580,8 @@ public final class BytecodeEmitter {
                 b.endDestructureGlobalStep();
             } else if (f.staticProperty()) {
                 b.endDestructureStaticStep();
+            } else if (isGlobalsElement(f.spec())) {
+                b.endDestructureGlobalsStep();
             } else {
                 b.endDestructureObjStep();
             }
@@ -606,6 +625,8 @@ public final class BytecodeEmitter {
             b.beginForeachRefStartGlobal(f.spec(), describe, caller);
         } else if (f.staticProperty()) {
             b.beginForeachRefStartStatic(f.spec(), describe, caller);
+        } else if (isGlobalsElement(f.spec())) {
+            b.beginForeachRefStartGlobals(f.spec(), describe, caller);
         } else {
             b.beginForeachRefStartObj(f.spec(), describe, caller);
         }
@@ -617,6 +638,8 @@ public final class BytecodeEmitter {
             b.endForeachRefStartGlobal();
         } else if (f.staticProperty()) {
             b.endForeachRefStartStatic();
+        } else if (isGlobalsElement(f.spec())) {
+            b.endForeachRefStartGlobals();
         } else {
             b.endForeachRefStartObj();
         }
@@ -696,6 +719,22 @@ public final class BytecodeEmitter {
         return p.usesTraitSelf() ? 3 : 2;
     }
 
+    private static int globalsBaseCount(dev.phpruntime.nodes.var.GlobalsElementLValueNode g) {
+        return g.hasConstantName() ? 0 : 1;
+    }
+
+    private Runnable globalsBase(dev.phpruntime.nodes.var.GlobalsElementLValueNode g) {
+        return () -> {
+            if (g.hasConstantName()) {
+                return;
+            }
+            if (g.keyNode() == null) {
+                throw new Unsupported("append to $GLOBALS");
+            }
+            expr(g.keyNode());
+        };
+    }
+
     private Form form(dev.phpruntime.nodes.var.LValueNode lv) {
         if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             if (il.base() instanceof LocalVarNode local) {
@@ -717,6 +756,11 @@ public final class BytecodeEmitter {
                 var template = il.headless(language, sp.headless());
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length,
                         staticBaseCount(sp)), null, staticBase(sp), il.keyNodes(), false, true);
+            }
+            if (il.base() instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode g) {
+                var template = il.headless(language, g.headless());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length,
+                        globalsBaseCount(g)), null, globalsBase(g), il.keyNodes(), false, false);
             }
             if (isTableVar(il.base())) {
                 var template = il.headless(language, tableHeadless(il.base()));
@@ -740,6 +784,10 @@ public final class BytecodeEmitter {
         if (lv instanceof dev.phpruntime.nodes.var.GlobalVarNode g) {
             return new Form(new PhpBytecodeRootNode.PlaceSpec(g.headless(), 0), null, null,
                     new PhpNode[0], true, false);
+        }
+        if (lv instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode g) {
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(g.headless(), 0, globalsBaseCount(g)),
+                    null, globalsBase(g), new PhpNode[0], false, false);
         }
         throw new Unsupported("place " + lv.getClass().getSimpleName()
                 + (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode ? " in a trait" : ""));
@@ -801,7 +849,8 @@ public final class BytecodeEmitter {
     public static boolean isPlace(PhpNode n) {
         return n instanceof dev.phpruntime.nodes.var.IndexLValueNode || n instanceof dev.phpruntime.nodes.var.PropertyLValueNode
                 || n instanceof dev.phpruntime.nodes.var.GlobalVarNode
-                || n instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode || isTableVar(n);
+                || n instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode
+                || n instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode || isTableVar(n);
     }
 
     /** {@code target = value} where the value is already being emitted by {@code value}. */

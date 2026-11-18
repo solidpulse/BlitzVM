@@ -100,13 +100,31 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        Object[] keys = evalKeys(frame);
+        return executeWithKeys(frame, evalKeys(frame));
+    }
+
+    /** {@link #execute} with the key already evaluated. */
+    public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
         Object v = read(frame, keys);
         if (v == null) {
             warnMissing(keys);
             return PhpNull.INSTANCE;
         }
         return v;
+    }
+
+    /** A copy without its key expression, for bytecode, which evaluates the key. */
+    public GlobalsElementLValueNode headless() {
+        return new GlobalsElementLValueNode(null, constName, constGlobalId).at(line());
+    }
+
+    /** True for {@code $GLOBALS['name']} (no key operand), false for {@code $GLOBALS[$key]}. */
+    public boolean hasConstantName() {
+        return constName != null;
+    }
+
+    public PhpNode keyNode() {
+        return keyNode;
     }
 
     @TruffleBoundary
@@ -130,5 +148,10 @@ public final class GlobalsElementLValueNode extends LValueNode {
     @Override
     public String describe() {
         return "$GLOBALS[...]";
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
     }
 }
