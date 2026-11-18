@@ -30,6 +30,9 @@ function list_add($value) {
 function has_a() {
     return isset(S::$x['a']);
 }
+function has_x() {
+    return isset(S::$x) ? 'yes' : 'no';
+}
 function bump_global() {
     S::$n += 1;
 }
@@ -51,6 +54,7 @@ list_add(2);
 S::addToList(3);
 echo implode(',', S::$list), "\n";
 echo has_a() ? 'yes' : 'no', "\n";
+echo has_x(), "\n";
 bump_global();
 bump_global();
 S::bump();
