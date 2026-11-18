@@ -991,20 +991,15 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            PhpNode generatorSource = null;
-            if (scope.isGenerator()) {
-                // The bytecode compiles the body as written; the AST runs the lowered copy.
-                generatorSource = (PhpNode) body.deepCopy();
-                body = new GeneratorLowering(scope, language).lower(body);
-            }
-            PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
+            PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                    new PhpFunctionRootNode(
                     language, scope.build(), source, nameTok.line(),
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
                     params.defaults(), params.variadic(), body));
             if (scope.isGenerator()) {
-                root.asGenerator(language, scope.generatorSlot());
+                root.asGenerator();
             }
             PhpFunction fn = new PhpFunction(name, dev.phpruntime.bytecode.BytecodeEmitter.target(language, root));
             if (topLevel) {
@@ -1087,12 +1082,6 @@ public final class Parser {
     }
 
     private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params, PhpNode body, int line, String fnName) {
-        PhpNode generatorSource = null;
-        if (scope.isGenerator()) {
-            // The bytecode compiles the body as written; the AST runs the lowered copy.
-            generatorSource = (PhpNode) body.deepCopy();
-            body = new GeneratorLowering(scope, language).lower(body);
-        }
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -1107,7 +1096,8 @@ public final class Parser {
             warn[i] = c.warnIfUndefined();
             byRef[i] = c.byRef();
         }
-        PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
+        PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                new PhpFunctionRootNode(
                 language, scope.build(), source, line,
                 currentClass, fnName, !bindThis, returnsRef, scope.thisSlot(), scope.calledClassSlot(),
                 scope.closureObjSlot(), scope.traitSelfSlot(),
@@ -1115,7 +1105,7 @@ public final class Parser {
                 params.names(), params.slots(), params.kinds(), params.byRef(),
                 params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis()));
         if (scope.isGenerator()) {
-            root.asGenerator(language, scope.generatorSlot());
+            root.asGenerator();
         }
         return new ClosureNode(dev.phpruntime.bytecode.BytecodeEmitter.target(language, root), bindThis,
                 outer.thisSlot(), outer.calledClassSlot(), outer.traitSelfSlot(), outerReads, warn, byRef)
@@ -1378,20 +1368,15 @@ public final class Parser {
                     initStmts.add(body);
                     body = block(initStmts);
                 }
-                PhpNode generatorSource = null;
-                if (scope.isGenerator()) {
-                    // The bytecode compiles the body as written; the AST runs the lowered copy.
-                    generatorSource = (PhpNode) body.deepCopy();
-                    body = new GeneratorLowering(scope, language).lower(body);
-                }
-                PhpFunctionRootNode root = DynamicScopeLowering.finish(generatorSource, new PhpFunctionRootNode(
+                PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                        new PhpFunctionRootNode(
                         language, scope.build(), source, nameTok.line(),
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
                         params.defaults(), params.variadic(), body));
                 if (scope.isGenerator()) {
-                    root.asGenerator(language, scope.generatorSlot());
+                    root.asGenerator();
                 }
                 callTarget = dev.phpruntime.bytecode.BytecodeEmitter.target(language, root);
             }
@@ -1583,13 +1568,12 @@ public final class Parser {
                 if (scope.isGlobal()) {
                     throw error("The \"yield\" expression can only be used inside a function");
                 }
-                int generatorSlot = scope.generatorSlot();
+                scope.generatorSlot();
                 if (acceptKeyword("from")) {
                     if (currentReturnsRef) {
                         throw error("Cannot use \"yield from\" inside a by-reference generator");
                     }
-                    return new dev.phpruntime.nodes.generator.YieldFromNode(language, generatorSlot,
-                            scope.objectSlot(), binary(4)).at(line);
+                    return new dev.phpruntime.nodes.generator.YieldFromNode(binary(4)).at(line);
                 }
                 PhpNode key = null;
                 PhpNode value = null;
@@ -1601,7 +1585,7 @@ public final class Parser {
                         value = binary(4);
                     }
                 }
-                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value,
+                return new dev.phpruntime.nodes.generator.YieldNode(key, value,
                         currentReturnsRef).at(line);
             }
             if (kw.equals("print")) {

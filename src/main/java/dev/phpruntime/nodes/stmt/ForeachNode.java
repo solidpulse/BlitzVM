@@ -72,8 +72,7 @@ public final class ForeachNode extends PhpNode {
                 return executeIterator(frame, iterator.resolve(obj));
             }
             String caller = null;
-            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function
-                    : getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode root ? root.signature : null;
+            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function : null;
             if (fn != null) {
                 if (fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts) {
                     caller = ts.name();
@@ -270,8 +269,7 @@ public final class ForeachNode extends PhpNode {
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("An iterator cannot be used with foreach by reference", this);
             }
-            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function
-                    : getRootNode() instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode root ? root.signature : null;
+            PhpFunctionRootNode fn = getRootNode() instanceof PhpFunctionRootNode function ? function : null;
             String caller = fn != null ? fn.traitSelfSlot() >= 0 && frame.getObject(fn.traitSelfSlot()) instanceof PhpClass ts
                     ? ts.name() : fn.declaringClass() : null;
             List<Map.Entry<Object, PhpReference>> entries = PhpClass.visibleRefEntries(PhpContext.get(this), obj, caller);

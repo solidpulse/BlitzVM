@@ -23,7 +23,9 @@ public abstract class PhpNode extends Node {
     /** Source line for error messages; -1 if unknown. */
     private int line = -1;
 
-    public abstract Object execute(VirtualFrame frame);
+    public Object execute(VirtualFrame frame) {
+        throw new IllegalStateException("AST execution removed: " + getClass().getSimpleName());
+    }
 
     /** Executes this expression preserving a {@code PhpReference} cell when returned by reference. */
     public Object executeForRef(VirtualFrame frame) {

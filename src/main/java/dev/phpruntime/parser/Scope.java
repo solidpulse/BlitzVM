@@ -267,10 +267,6 @@ final class Scope {
         return usesThis;
     }
 
-    int resumeSlot() {
-        return frame.addSlot(FrameSlotKind.Int, "@resume" + hiddenId++, null);
-    }
-
     int objectSlot() {
         return frame.addSlot(FrameSlotKind.Object, "@saved" + hiddenId++, null);
     }

@@ -1,16 +1,11 @@
 package dev.phpruntime.runtime;
 
-import com.oracle.truffle.api.RootCallTarget;
-import com.oracle.truffle.api.frame.MaterializedFrame;
 import com.oracle.truffle.api.nodes.Node;
-import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.call.DispatchCallNode;
 
 /** A request-thread continuation. No threads, context switching, or AST-local mutable state. */
 public final class PhpGenerator implements PhpNativeState {
-    public final MaterializedFrame frame;
-    public final RootCallTarget resumeTarget;
     public final PhpFunctionRootNode signature;
     private boolean started;
     private boolean closed;
@@ -28,25 +23,17 @@ public final class PhpGenerator implements PhpNativeState {
 
     /**
      * A bytecode generator: the continuation of its latest yield (the first one is the start
-     * yield after the arguments are bound). Null on the AST, and once the body has finished.
+     * yield after the arguments are bound), or null once the body has finished.
      */
     private com.oracle.truffle.api.bytecode.ContinuationResult continuation;
 
-    public PhpGenerator(MaterializedFrame frame, RootCallTarget resumeTarget, PhpFunctionRootNode signature) {
-        this.frame = frame;
-        this.resumeTarget = resumeTarget;
-        this.signature = signature;
-    }
-
     /** A bytecode generator, suspended at its start yield. */
     public PhpGenerator(com.oracle.truffle.api.bytecode.ContinuationResult start, PhpFunctionRootNode signature) {
-        this.frame = null;
-        this.resumeTarget = null;
         this.signature = signature;
         this.continuation = start;
     }
 
-    /** The key and value a bytecode yield suspends with (the AST passes them in ControlFlow.Yield). */
+    /** The key and value a bytecode yield suspends with. */
     public void suspendWith(Object key, Object value) {
         this.key = key;
         this.value = value;
@@ -94,29 +81,21 @@ public final class PhpGenerator implements PhpNativeState {
         if (yields > 0) { advanced = true; }
         running = true;
         try {
-            if (resumeTarget == null) {
-                // Bytecode: resume the continuation; the yield (or the start yield) receives
-                // this generator, and a yield sets the key and value before suspending.
-                com.oracle.truffle.api.bytecode.ContinuationResult c = continuation;
-                Object result = dispatch.call(c.getContinuationCallTarget(), new Object[]{c.getFrame(), this});
-                if (result instanceof com.oracle.truffle.api.bytecode.ContinuationResult next) {
-                    continuation = next;
-                    yields++;
-                    return;
-                }
-                continuation = null;
-                returnValue = result;
-            } else {
-                returnValue = dispatch.call(resumeTarget, new Object[]{this});
+            // Resume the continuation; the yield (or the start yield) receives this
+            // generator, and a yield sets the key and value before suspending.
+            com.oracle.truffle.api.bytecode.ContinuationResult c = continuation;
+            Object result = dispatch.call(c.getContinuationCallTarget(), new Object[]{c.getFrame(), this});
+            if (result instanceof com.oracle.truffle.api.bytecode.ContinuationResult next) {
+                continuation = next;
+                yields++;
+                return;
             }
+            continuation = null;
+            returnValue = result;
             returned = true;
             closed = true;
             value = key = PhpNull.INSTANCE;
-        } catch (ControlFlow.Yield yield) {
-            key = yield.key;
-            value = yield.value;
-            yields++;
-        } catch (ControlFlow.GeneratorClose | GeneratorCloseSignal close) {
+        } catch (GeneratorCloseSignal close) {
             continuation = null;
             closed = true;
             value = key = PhpNull.INSTANCE;
@@ -189,7 +168,7 @@ public final class PhpGenerator implements PhpNativeState {
         if (!closed && started) {
             closing = true;
             try {
-                injected = resumeTarget == null ? new GeneratorCloseSignal() : new ControlFlow.GeneratorClose();
+                injected = new GeneratorCloseSignal();
                 resume(dispatch, site);
             } finally {
                 closed = true;
