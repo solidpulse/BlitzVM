@@ -379,6 +379,40 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** {@code &$this}: a temporary cell holding the object. */
+    @Operation
+    public static final class BoxRef {
+        @Specialization
+        static PhpReference box(Object value) {
+            return new PhpReference(value);
+        }
+    }
+
+    /** The cell of a non-lvalue RHS: a returned cell, else a notice and a copy in a new cell. */
+    @Operation
+    public static final class RefFromValue {
+        @Specialization
+        static PhpReference box(Object raw, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                @Bind Node node) {
+            if (raw instanceof PhpReference ref) {
+                ref.ensureDefined();
+                return ref;
+            }
+            PhpContext.get(node).notice("Only variables should be assigned by reference", lineOf(bytecode, bci));
+            return new PhpReference(PhpOps.copyOnAssign(raw));
+        }
+    }
+
+    /** The value of a reference cell, as {@code AssignRefNode.execute} returns it. */
+    @Operation
+    public static final class RefValue {
+        @Specialization
+        static Object value(PhpReference cell) {
+            Object v = cell.getValue();
+            return v == null ? PhpNull.INSTANCE : v;
+        }
+    }
+
     /** {@code $x++;} as a statement. */
     @Operation
     @ConstantOperand(type = LocalAccessor.class)
