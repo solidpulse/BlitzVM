@@ -695,7 +695,15 @@ public final class BytecodeEmitter {
         return () -> {
             expr(p.targetExpr());
             propertyName(p);
+            if (p.usesTraitSelf()) {
+                loadSlotOrNull(p.traitSelfSlot());
+            }
         };
+    }
+
+    /** The base-operand count of a property place: object, name and, in a trait, the caller. */
+    private static int propertyBaseCount(dev.phpruntime.nodes.var.PropertyLValueNode p) {
+        return p.usesTraitSelf() ? 3 : 2;
     }
 
     private Runnable staticBase(dev.phpruntime.nodes.var.StaticPropertyLValueNode p) {
@@ -747,10 +755,10 @@ public final class BytecodeEmitter {
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
                         null, null, il.keyNodes(), true, false);
             }
-            if (il.base() instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
+            if (il.base() instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
                 var template = il.headless(language, p.headless());
-                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
-                        null, propertyBase(p), il.keyNodes(), false, false);
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length,
+                        propertyBaseCount(p)), null, propertyBase(p), il.keyNodes(), false, false);
             }
             if (il.base() instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
                 var template = il.headless(language, sp.headless());
@@ -769,9 +777,9 @@ public final class BytecodeEmitter {
             }
             throw new Unsupported("index of " + il.base().getClass().getSimpleName());
         }
-        if (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
-            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0), null, propertyBase(p),
-                    new PhpNode[0], false, false);
+        if (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0, propertyBaseCount(p)),
+                    null, propertyBase(p), new PhpNode[0], false, false);
         }
         if (lv instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
             return new Form(new PhpBytecodeRootNode.PlaceSpec(sp.headless(), 0, staticBaseCount(sp)),

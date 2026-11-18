@@ -1662,8 +1662,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
-            Object[] keys = Places.objKeys(ops, spec.arrayKeys);
-            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, 2 + spec.arrayKeys));
+            Object[] keys = Places.objKeys(ops, spec.arrayKeys, spec.baseCount);
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
         }
     }
 
@@ -1883,7 +1883,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
-            Object result = Places.run(frame, engine, Places.objKeys(ops, spec.arrayKeys), mode, 0, null);
+            Object result = Places.run(frame, engine, Places.objKeys(ops, spec.arrayKeys, spec.baseCount), mode, 0, null);
             return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
         }
     }
@@ -1934,13 +1934,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
         }
 
-        static Object[] objKeys(Object[] ops, int n) {
-            Object[] base = {ops[0], ops[1]};
+        static Object[] objKeys(Object[] ops, int n, int baseCount) {
+            Object[] base = new Object[baseCount];
+            System.arraycopy(ops, 0, base, 0, baseCount);
             if (n == 0) {
                 return base;
             }
             Object[] arrayKeys = new Object[n];
-            System.arraycopy(ops, 2, arrayKeys, 0, n);
+            System.arraycopy(ops, baseCount, arrayKeys, 0, n);
             return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
         }
 
@@ -1972,7 +1973,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         return il.readOrWarn(frame, keys);
                     }
                     if (engine instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
-                        return p.executeOn(frame, keys[0], (String) keys[1]);
+                        return p.executeOn(frame, keys[0], (String) keys[1], keys);
                     }
                     if (engine instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
                         return sp.executeWithKeys(frame, keys);
@@ -3456,7 +3457,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
                     lineOf(bytecode, bci));
-            Places.destructureStep(frame, engine, Places.objKeys(ops, spec.arrayKeys), item);
+            Places.destructureStep(frame, engine, Places.objKeys(ops, spec.arrayKeys, spec.baseCount), item);
             return state;
         }
     }
@@ -3578,7 +3579,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             Object traitSelf, @Variadic Object[] ops,
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
                             @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
-            Object[] keys = Places.objKeys(ops, spec.arrayKeys);
+            Object[] keys = Places.objKeys(ops, spec.arrayKeys, spec.baseCount);
             return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
                     traitSelf, declaringClass);
         }

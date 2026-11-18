@@ -25,6 +25,8 @@ public final class PropertyLValueNode extends LValueNode {
     private final String callingClassLower;
     /** Frame slot holding the using class inside a trait method (the caller for visibility), else -1. */
     private final int traitSelfSlot;
+    /** Bytecode headless copies take the using class from keys[2] instead of the frame. */
+    private final boolean traitCallerInKeys;
     private final com.oracle.truffle.api.profiles.CountingConditionProfile arrayPropertyProfile =
             com.oracle.truffle.api.profiles.CountingConditionProfile.create();
 
@@ -47,12 +49,18 @@ public final class PropertyLValueNode extends LValueNode {
     @CompilationFinal private Resolution cache;
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
-        this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1);
+        this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1, false);
     }
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr,
                               String callingClassLower, int traitSelfSlot) {
+        this(targetExpr, staticName, dynamicNameExpr, callingClassLower, traitSelfSlot, false);
+    }
+
+    private PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr,
+                               String callingClassLower, int traitSelfSlot, boolean traitCallerInKeys) {
         this.traitSelfSlot = traitSelfSlot;
+        this.traitCallerInKeys = traitCallerInKeys;
         this.targetExpr = targetExpr;
         this.staticName = staticName;
         this.dynamicNameExpr = dynamicNameExpr;
@@ -73,7 +81,7 @@ public final class PropertyLValueNode extends LValueNode {
 
     /** A copy without its expressions, for bytecode, which evaluates the object and the name. */
     public PropertyLValueNode headless() {
-        return new PropertyLValueNode(null, staticName, null, callingClassLower, traitSelfSlot).at(line());
+        return new PropertyLValueNode(null, staticName, null, callingClassLower, -1, traitSelfSlot >= 0).at(line());
     }
 
     public PhpNode targetExpr() {
@@ -89,7 +97,11 @@ public final class PropertyLValueNode extends LValueNode {
     }
 
     public boolean usesTraitSelf() {
-        return traitSelfSlot >= 0;
+        return traitSelfSlot >= 0 || traitCallerInKeys;
+    }
+
+    public int traitSelfSlot() {
+        return traitSelfSlot;
     }
 
     /** Executes this property read given an already-evaluated receiver (used by nullsafe {@code ?->}). */
@@ -100,6 +112,11 @@ public final class PropertyLValueNode extends LValueNode {
 
     /** The rvalue read with the receiver and name already evaluated. */
     public Object executeOn(VirtualFrame frame, Object target, String name) {
+        return executeOn(frame, target, name, null);
+    }
+
+    /** The rvalue read with evaluated bytecode place keys (the trait caller is keys[2]). */
+    public Object executeOn(VirtualFrame frame, Object target, String name, Object[] keys) {
         if (!(target instanceof PhpObject obj)) {
             warnNonObject(target, name);
             return PhpNull.INSTANCE;
@@ -107,11 +124,11 @@ public final class PropertyLValueNode extends LValueNode {
         if (arrayProperties(obj, name)) {
             return arrayAccess().get(obj, name);
         }
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v == PhpClass.UNINITIALIZED) {
-                return readUninitialized(obj, name, effectiveCallerLower(frame));
+                return readUninitialized(obj, name, effectiveCallerLower(frame, keys));
             }
             if (v instanceof PhpReference ref) {
                 v = ref.getValue();
@@ -120,7 +137,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
         }
-        return readFallback(obj, name, storageKey == null, true, effectiveCallerLower(frame));
+        return readFallback(obj, name, storageKey == null, true, effectiveCallerLower(frame, keys));
     }
 
     @TruffleBoundary
@@ -138,11 +155,11 @@ public final class PropertyLValueNode extends LValueNode {
         if (arrayProperties(obj, name)) {
             return arrayAccess().get(obj, name);
         }
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v == PhpClass.UNINITIALIZED) {
-                return readUninitialized(obj, name, effectiveCallerLower(frame));
+                return readUninitialized(obj, name, effectiveCallerLower(frame, keys));
             }
             if (v instanceof PhpReference ref) {
                 v = ref.getValue();
@@ -151,7 +168,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
             }
         }
-        return readFallback(obj, name, storageKey == null, false, effectiveCallerLower(frame));
+        return readFallback(obj, name, storageKey == null, false, effectiveCallerLower(frame, keys));
     }
 
     @Override
@@ -163,7 +180,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (arrayProperties(obj, name)) {
             return arrayAccess().isSet(obj, name);
         }
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v == PhpClass.UNINITIALIZED) {
@@ -188,7 +205,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (arrayProperties(obj, name)) {
             return arrayAccess().readIfSet(obj, name);
         }
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
         if (storageKey != null) {
             Object v = getNode.execute(obj, storageKey, null);
             if (v == PhpClass.UNINITIALIZED) {
@@ -224,10 +241,10 @@ public final class PropertyLValueNode extends LValueNode {
             arrayAccess().set(obj, name, value);
             return;
         }
-        Resolution fast = fastResolution(frame, obj, name);
+        Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
             if (!fast.accessible()) {
-                writeFallback(obj, name, value, true, effectiveCallerLower(frame));
+                writeFallback(obj, name, value, true, effectiveCallerLower(frame, keys));
                 return;
             }
             String storageKey = fast.storageKey();
@@ -244,10 +261,10 @@ public final class PropertyLValueNode extends LValueNode {
                 putNode.execute(obj, storageKey, value);
                 return;
             }
-            writeFallback(obj, name, value, false, effectiveCallerLower(frame));
+            writeFallback(obj, name, value, false, effectiveCallerLower(frame, keys));
             return;
         }
-        writeDynamic(obj, name, value, effectiveCallerLower(frame));
+        writeDynamic(obj, name, value, effectiveCallerLower(frame, keys));
     }
 
     private void writeDynamic(PhpObject obj, String name, Object value, String callerLower) {
@@ -293,7 +310,7 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         String name = (String) keys[1];
-        Resolution fast = fastResolution(frame, obj, name);
+        Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
             if (fast.isReadonly()) {
                 String owner = fast.declaringClass() != null ? fast.declaringClass() : obj.phpClass().name();
@@ -302,7 +319,7 @@ public final class PropertyLValueNode extends LValueNode {
             }
             return;
         }
-        checkNotReadonlyBoundary(obj, name, effectiveCallerLower(frame));
+        checkNotReadonlyBoundary(obj, name, effectiveCallerLower(frame, keys));
     }
 
     @TruffleBoundary
@@ -327,9 +344,9 @@ public final class PropertyLValueNode extends LValueNode {
             return arrayAccess().cell(obj, name);
         }
         checkNotReadonlyForIndirectWrite(frame, keys);
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
         if (storageKey == null) {
-            throw inaccessibleError(obj, name, effectiveCallerLower(frame));
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
         Object existing = getNode.execute(obj, storageKey, null);
         if (existing instanceof PhpReference ref) {
@@ -358,9 +375,9 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         checkNotReadonlyForIndirectWrite(frame, keys);
-        String storageKey = resolveKeyIfAccessible(frame, obj, name);
+        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
         if (storageKey == null) {
-            throw inaccessibleError(obj, name, effectiveCallerLower(frame));
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
         putNode.execute(obj, storageKey, cell);
     }
@@ -377,7 +394,7 @@ public final class PropertyLValueNode extends LValueNode {
             arrayAccess().unset(obj, name);
             return;
         }
-        PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame));
+        PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame, keys));
         if (res.accessible() && res.isReadonly()) {
             Object existing = getNode.execute(obj, res.storageKey(), null);
             if (existing != PhpClass.UNINITIALIZED || !res.canInitReadonly()) {
@@ -395,7 +412,7 @@ public final class PropertyLValueNode extends LValueNode {
             }
             return;
         }
-        unsetFallback(obj, name, storageKey == null, effectiveCallerLower(frame));
+        unsetFallback(obj, name, storageKey == null, effectiveCallerLower(frame, keys));
     }
 
     @TruffleBoundary
@@ -497,21 +514,21 @@ public final class PropertyLValueNode extends LValueNode {
         }
     }
 
-    private Resolution fastResolution(VirtualFrame frame, PhpObject obj, String name) {
+    private Resolution fastResolution(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
             Resolution c = cache;
             if (c != null && h == c.hierarchyId()
-                    && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame))) {
+                    && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
                 return c;
             }
             if (c != MEGAMORPHIC) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                cacheResolution(cls, h, effectiveCallerLower(frame), callerHierarchyId(frame));
+                cacheResolution(cls, h, effectiveCallerLower(frame, keys), callerHierarchyId(frame, keys));
                 c = cache;
                 if (c != null && c != MEGAMORPHIC && h == c.hierarchyId()
-                        && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame))) {
+                        && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
                     return c;
                 }
             }
@@ -519,12 +536,13 @@ public final class PropertyLValueNode extends LValueNode {
         return null;
     }
 
-    private String resolveKeyIfAccessible(VirtualFrame frame, PhpObject obj, String name) {
-        Resolution fast = fastResolution(frame, obj, name);
+    private String resolveKeyIfAccessible(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
+        Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
             return fast.accessible() ? fast.storageKey() : null;
         }
-        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name, effectiveCallerLower(frame));
+        PhpClass.PropertyResolution res = obj.phpClass().resolveProperty(PhpContext.get(this), name,
+                effectiveCallerLower(frame, keys));
         return res.accessible() ? res.storageKey() : null;
     }
 
@@ -544,7 +562,8 @@ public final class PropertyLValueNode extends LValueNode {
             if (cache == null) {
                 cache = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED,
                         res.accessible(), res.isReadonly(), res.canInitReadonly(), res.declaringClass());
-            } else if (cache.hierarchyId() != h || ((traitSelfSlot >= 0 || res.visibility() == Visibility.PROTECTED || res.isReadonly())
+            } else if (cache.hierarchyId() != h || ((traitSelfSlot >= 0 || traitCallerInKeys
+                    || res.visibility() == Visibility.PROTECTED || res.isReadonly())
                     && cache.callerHierarchyId() != callerH)) {
                 cache = MEGAMORPHIC;
             }
@@ -556,10 +575,14 @@ public final class PropertyLValueNode extends LValueNode {
 
     /** Whether a cached resolution depends on the caller (inside a trait method it varies by using class). */
     private boolean callerSensitive(Resolution c) {
-        return traitSelfSlot >= 0 || c.isProtected() || c.isReadonly();
+        return traitSelfSlot >= 0 || traitCallerInKeys || c.isProtected() || c.isReadonly();
     }
 
-    private String effectiveCallerLower(VirtualFrame frame) {
+    private String effectiveCallerLower(VirtualFrame frame, Object[] keys) {
+        if (traitCallerInKeys) {
+            PhpClass c = keys != null && keys.length > 2 && keys[2] instanceof PhpClass pc ? pc : null;
+            return c != null ? c.template().lowerName() : null;
+        }
         if (traitSelfSlot >= 0) {
             PhpClass c = (PhpClass) frame.getObject(traitSelfSlot);
             return c != null ? c.template().lowerName() : null;
@@ -591,7 +614,11 @@ public final class PropertyLValueNode extends LValueNode {
         }
     }
 
-    private long callerHierarchyId(VirtualFrame frame) {
+    private long callerHierarchyId(VirtualFrame frame, Object[] keys) {
+        if (traitCallerInKeys) {
+            PhpClass c = keys != null && keys.length > 2 && keys[2] instanceof PhpClass pc ? pc : null;
+            return c != null ? c.hierarchyId() : -1;
+        }
         if (traitSelfSlot >= 0) {
             PhpClass c = (PhpClass) frame.getObject(traitSelfSlot);
             return c != null ? c.hierarchyId() : -1;
