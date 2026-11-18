@@ -55,6 +55,14 @@ public final class AssignRefNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (value instanceof dev.phpruntime.nodes.call.CallNode
+                || value instanceof dev.phpruntime.nodes.call.MethodCallNode
+                || value instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                || value instanceof dev.phpruntime.nodes.call.CallValueNode) {
+            // The bytecode call operations unwrap a by-reference return, so the AST's
+            // executeForRef is the only path that binds the returned reference.
+            throw e.unsupported("reference assignment from a call");
+        }
         var b = e.builder();
         b.beginBlock();
         com.oracle.truffle.api.bytecode.BytecodeLocal cell = e.temp();
