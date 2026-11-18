@@ -1468,10 +1468,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class PlaceSpec {
         private final dev.phpruntime.nodes.var.LValueNode template;
         final int arrayKeys;
+        /** Base operands before the array keys: 2 object/name, 3 static class/name/caller. */
+        final int baseCount;
 
         public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys) {
+            this(template, arrayKeys, 2);
+        }
+
+        public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys, int baseCount) {
             this.template = template;
             this.arrayKeys = arrayKeys;
+            this.baseCount = baseCount;
         }
 
         public dev.phpruntime.nodes.var.LValueNode newEngine() {
@@ -1531,6 +1538,36 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             return Places.run(frame, engine, Places.globalKeys(ops, spec.arrayKeys), mode, arg,
                     Places.value(ops, spec.arrayKeys));
+        }
+    }
+
+    /** A static property, or an index path on one: operands are class, name, caller, keys, value. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class StaticPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendStaticPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
+                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            Object result = Places.run(frame, engine, keys, mode, 0, null);
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
         }
     }
 
@@ -1701,6 +1738,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return arrayKeys;
         }
 
+        /** Base keys (class, name, caller?) then array keys, packed for an index path. */
+        static Object[] staticKeys(Object[] ops, int n, int baseCount) {
+            Object[] base = new Object[baseCount];
+            System.arraycopy(ops, 0, base, 0, baseCount);
+            if (n == 0) {
+                return base;
+            }
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, baseCount, arrayKeys, 0, n);
+            return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
+        }
+
         static Object[] objKeys(Object[] ops, int n) {
             Object[] base = {ops[0], ops[1]};
             if (n == 0) {
@@ -1740,6 +1789,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     }
                     if (engine instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
                         return p.executeOn(frame, keys[0], (String) keys[1]);
+                    }
+                    if (engine instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
+                        return sp.executeWithKeys(frame, keys);
                     }
                     return engine.readValue(frame, keys);
                 case P_READ_IF_SET: {

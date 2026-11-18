@@ -456,6 +456,8 @@ public final class BytecodeEmitter {
             b.beginVarPlace(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
         } else if (f.global()) {
             b.beginGlobalPlace(f.spec(), mode, arg);
+        } else if (f.staticProperty()) {
+            b.beginStaticPlace(f.spec(), mode, arg);
         } else {
             b.beginObjPlace(f.spec(), mode, arg);
         }
@@ -467,6 +469,8 @@ public final class BytecodeEmitter {
             b.endVarPlace();
         } else if (f.global()) {
             b.endGlobalPlace();
+        } else if (f.staticProperty()) {
+            b.endStaticPlace();
         } else {
             b.endObjPlace();
         }
@@ -479,6 +483,8 @@ public final class BytecodeEmitter {
             b.beginSendVarPlace(accessor(f.local()), info(f.local()), f.spec(), param, callee);
         } else if (f.global()) {
             b.beginSendGlobalPlace(f.spec(), param, callee);
+        } else if (f.staticProperty()) {
+            b.beginSendStaticPlace(f.spec(), param, callee);
         } else {
             b.beginSendObjPlace(f.spec(), param, callee);
         }
@@ -487,14 +493,16 @@ public final class BytecodeEmitter {
             b.endSendVarPlace();
         } else if (f.global()) {
             b.endSendGlobalPlace();
+        } else if (f.staticProperty()) {
+            b.endSendStaticPlace();
         } else {
             b.endSendObjPlace();
         }
     }
 
-    /** {@code base} emits the base keys of an object place: (object, name) or (table, name). */
+    /** {@code base} emits the base keys of a property or static place; {@code keys} the indexes. */
     private record Form(PhpBytecodeRootNode.PlaceSpec spec, LocalVarNode local,
-                        Runnable base, PhpNode[] keys, boolean global) {
+                        Runnable base, PhpNode[] keys, boolean global, boolean staticProperty) {
     }
 
     /** A variable of a dynamic-scope function, or a computed variable name. */
@@ -530,38 +538,71 @@ public final class BytecodeEmitter {
         };
     }
 
+    private Runnable staticBase(dev.phpruntime.nodes.var.StaticPropertyLValueNode p) {
+        return () -> {
+            classRef(p.classRef());
+            if (p.staticName() != null) {
+                b.emitLoadConstant(p.staticName());
+            } else {
+                b.beginToStr();
+                expr(p.dynamicNameExpr());
+                b.endToStr();
+            }
+            if (p.usesTraitSelf()) {
+                loadSlotOrNull(p.traitSelfSlot());
+            }
+        };
+    }
+
+    /** The base-operand count of a static property place: class, name and the trait caller. */
+    private static int staticBaseCount(dev.phpruntime.nodes.var.StaticPropertyLValueNode p) {
+        return p.usesTraitSelf() ? 3 : 2;
+    }
+
     private Form form(dev.phpruntime.nodes.var.LValueNode lv) {
         if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             if (il.base() instanceof LocalVarNode local) {
                 var template = il.headless(language, new dev.phpruntime.nodes.var.HeldValueBase(local.varName()));
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
-                        local, null, il.keyNodes(), false);
+                        local, null, il.keyNodes(), false, false);
             }
             if (il.base() instanceof dev.phpruntime.nodes.var.GlobalVarNode g && !g.isGlobalsSuperglobal()) {
                 var template = il.headless(language, g.headless());
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
-                        null, null, il.keyNodes(), true);
+                        null, null, il.keyNodes(), true, false);
             }
             if (il.base() instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
                 var template = il.headless(language, p.headless());
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
-                        null, propertyBase(p), il.keyNodes(), false);
+                        null, propertyBase(p), il.keyNodes(), false, false);
+            }
+            if (il.base() instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
+                var template = il.headless(language, sp.headless());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length,
+                        staticBaseCount(sp)), null, staticBase(sp), il.keyNodes(), false, true);
             }
             if (isTableVar(il.base())) {
                 var template = il.headless(language, tableHeadless(il.base()));
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
-                        null, tableBase(il.base()), il.keyNodes(), false);
+                        null, tableBase(il.base()), il.keyNodes(), false, false);
             }
             throw new Unsupported("index of " + il.base().getClass().getSimpleName());
         }
         if (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode p && !p.usesTraitSelf()) {
-            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0), null, propertyBase(p), new PhpNode[0], false);
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(p.headless(), 0), null, propertyBase(p),
+                    new PhpNode[0], false, false);
+        }
+        if (lv instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(sp.headless(), 0, staticBaseCount(sp)),
+                    null, staticBase(sp), new PhpNode[0], false, true);
         }
         if (isTableVar(lv)) {
-            return new Form(new PhpBytecodeRootNode.PlaceSpec(tableHeadless(lv), 0), null, tableBase(lv), new PhpNode[0], false);
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(tableHeadless(lv), 0), null, tableBase(lv),
+                    new PhpNode[0], false, false);
         }
         if (lv instanceof dev.phpruntime.nodes.var.GlobalVarNode g) {
-            return new Form(new PhpBytecodeRootNode.PlaceSpec(g.headless(), 0), null, null, new PhpNode[0], true);
+            return new Form(new PhpBytecodeRootNode.PlaceSpec(g.headless(), 0), null, null,
+                    new PhpNode[0], true, false);
         }
         throw new Unsupported("place " + lv.getClass().getSimpleName()
                 + (lv instanceof dev.phpruntime.nodes.var.PropertyLValueNode ? " in a trait" : ""));
@@ -622,7 +663,8 @@ public final class BytecodeEmitter {
 
     public static boolean isPlace(PhpNode n) {
         return n instanceof dev.phpruntime.nodes.var.IndexLValueNode || n instanceof dev.phpruntime.nodes.var.PropertyLValueNode
-                || n instanceof dev.phpruntime.nodes.var.GlobalVarNode || isTableVar(n);
+                || n instanceof dev.phpruntime.nodes.var.GlobalVarNode
+                || n instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode || isTableVar(n);
     }
 
     /** {@code target = value} where the value is already being emitted by {@code value}. */
