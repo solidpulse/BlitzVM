@@ -149,7 +149,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Override
     public String toString() {
-        return getName();
+        if (main != null) {
+            return main.getName();
+        }
+        return function != null ? function.toString() : "{member initializer}";
     }
 
     @Override
