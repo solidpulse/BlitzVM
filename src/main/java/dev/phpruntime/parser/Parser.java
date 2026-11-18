@@ -1280,8 +1280,13 @@ public final class Parser {
         if (expr instanceof ConstNode) {
             return null;
         }
+        int traitSelfSlot = exprScope != null ? exprScope.traitSelfSlot() : -1;
+        RootCallTarget target = dev.phpruntime.bytecode.BytecodeEmitter.exprTarget(language, source, expr, traitSelfSlot);
+        if (target != null) {
+            return target;
+        }
         if (exprScope != null) {
-            return new PhpExprRootNode(language, exprScope.build(), source, expr, exprScope.traitSelfSlot())
+            return new PhpExprRootNode(language, exprScope.build(), source, expr, traitSelfSlot)
                     .getCallTarget();
         }
         return new PhpExprRootNode(language, source, expr).getCallTarget();
@@ -1588,6 +1593,9 @@ public final class Parser {
                 }
                 int generatorSlot = scope.generatorSlot();
                 if (acceptKeyword("from")) {
+                    if (currentReturnsRef) {
+                        throw error("Cannot use \"yield from\" inside a by-reference generator");
+                    }
                     return new dev.phpruntime.nodes.generator.YieldFromNode(language, generatorSlot,
                             scope.objectSlot(), binary(4)).at(line);
                 }
@@ -1601,7 +1609,8 @@ public final class Parser {
                         value = binary(4);
                     }
                 }
-                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value).at(line);
+                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value,
+                        currentReturnsRef).at(line);
             }
             if (kw.equals("print")) {
                 next();

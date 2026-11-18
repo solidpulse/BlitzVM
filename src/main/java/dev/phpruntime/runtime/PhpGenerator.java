@@ -132,7 +132,17 @@ public final class PhpGenerator implements PhpNativeState {
 
     public Object current(DispatchCallNode dispatch, Node site) {
         ensureStarted(dispatch, site);
-        return value;
+        return currentValue();
+    }
+
+    /** The yielded value: a by-reference generator stores the cell it suspends with. */
+    private Object currentValue() {
+        return value instanceof PhpReference ref ? ref.getValue() : value;
+    }
+
+    /** The cell a by-reference generator suspends with, for {@code foreach (... as &$x)}. */
+    public PhpReference currentCell() {
+        return value instanceof PhpReference ref ? ref : new PhpReference(value);
     }
 
     public Object key(DispatchCallNode dispatch, Node site) {
@@ -161,7 +171,7 @@ public final class PhpGenerator implements PhpNativeState {
         ensureStarted(dispatch, site);
         this.input = PhpOps.copyOnAssign(input);
         resume(dispatch, site);
-        return value;
+        return currentValue();
     }
 
     public Object throwInto(PhpObject exception, DispatchCallNode dispatch, Node site) {
@@ -172,7 +182,7 @@ public final class PhpGenerator implements PhpNativeState {
         }
         injected = error;
         resume(dispatch, site);
-        return value;
+        return currentValue();
     }
 
     public void close(DispatchCallNode dispatch, Node site) {
@@ -209,6 +219,21 @@ public final class PhpGenerator implements PhpNativeState {
         dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(site);
         return new PhpException(PhpExceptions.createBuiltinThrowable(ctx, "Exception", message, 0L,
                 PhpBacktrace.sourcePath(site), PhpBacktrace.sourceLine(site), null), site);
+    }
+
+    /** A by-value generator cannot be iterated with {@code foreach (... as &$x)}. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public static PhpException referenceIterationError(Node site) {
+        return referenceIterationError(site, PhpBacktrace.sourceLine(site));
+    }
+
+    /** The same, with the line of a bytecode instruction instead of the root's. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public static PhpException referenceIterationError(Node site, int line) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(site);
+        return new PhpException(PhpExceptions.createBuiltinThrowable(ctx, "Exception",
+                "You can only iterate a generator by-reference if it declared that it yields by-reference",
+                0L, PhpBacktrace.sourcePath(site), line, null), site);
     }
 
     @Override

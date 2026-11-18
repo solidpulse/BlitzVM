@@ -96,6 +96,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     private PhpFunctionRootNode function;
     private dev.phpruntime.nodes.PhpMainRootNode main;
+    /** The trait-self slot of an expression root, or -1. */
+    private int exprTraitSelfSlot = -1;
 
     protected PhpBytecodeRootNode(PhpLanguage language, FrameDescriptor frameDescriptor) {
         super(language, frameDescriptor);
@@ -116,6 +118,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         initSource(m.source(), 1);
     }
 
+    /** A member initializer expression root; {@code traitSelfSlot} is -1 outside a trait. */
+    void initExpression(com.oracle.truffle.api.source.Source source, int line, int traitSelfSlot) {
+        this.exprTraitSelfSlot = traitSelfSlot;
+        initSource(source, line);
+    }
+
+    /** Whether this expression root takes the using class as argument 0, as {@code PhpExprRootNode} does. */
+    public boolean hasTraitSelf() {
+        return exprTraitSelfSlot >= 0;
+    }
+
     /** The function this root was compiled from; null for a file's top-level code. */
     public PhpFunctionRootNode function() {
         return function;
@@ -128,12 +141,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Override
     public String getName() {
-        return main != null ? main.getName() : function.getName();
+        if (main != null) {
+            return main.getName();
+        }
+        return function != null ? function.getName() : "{member initializer}";
     }
 
     @Override
     public String toString() {
-        return main != null ? main.getName() : function.toString();
+        if (main != null) {
+            return main.getName();
+        }
+        return function != null ? function.toString() : "{member initializer}";
     }
 
     @Override
@@ -1422,6 +1441,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         final PhpReference cell;
         final List<Object> keys;
         final List<Map.Entry<Object, PhpReference>> entries;
+        /** A by-reference generator's object and state: {@code array} and friends are null. */
+        final PhpObject generatorObject;
+        final PhpGenerator generator;
+        boolean generatorStarted;
         int pos = -1;
         Object key;
         PhpReference element;
@@ -1432,6 +1455,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             this.cell = cell;
             this.keys = keys;
             this.entries = entries;
+            this.generatorObject = null;
+            this.generator = null;
+        }
+
+        RefCursor(PhpObject generatorObject, PhpGenerator generator) {
+            this.array = null;
+            this.cell = null;
+            this.keys = null;
+            this.entries = null;
+            this.generatorObject = generatorObject;
+            this.generator = generator;
         }
 
         @TruffleBoundary
@@ -3040,6 +3074,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return new RefCursor(writable, cell, writable.keys(), null);
             }
             if (value instanceof PhpObject obj) {
+                if (obj.nativeState() instanceof PhpGenerator generator) {
+                    if (!generator.signature.returnsRef()) {
+                        CompilerDirectives.transferToInterpreter();
+                        throw PhpGenerator.referenceIterationError(node, line);
+                    }
+                    return new RefCursor(obj, generator);
+                }
                 if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
                     CompilerDirectives.transferToInterpreter();
                     throw new PhpError("An iterator cannot be used with foreach by reference");
@@ -4396,8 +4437,23 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     public static final class ForeachRefNext {
         @Specialization
-        static boolean next(RefCursor c, @Bind Node node) {
+        static boolean next(RefCursor c, @Bind Node node, @Bind PhpBytecodeRootNode root,
+                            @Cached("create(root)") IteratorNode protocol) {
             TruffleSafepoint.poll(node);
+            if (c.generator != null) {
+                if (c.generatorStarted) {
+                    protocol.next(c.generatorObject);
+                } else {
+                    c.generatorStarted = true;
+                    protocol.rewind(c.generatorObject);
+                }
+                if (!protocol.valid(c.generatorObject)) {
+                    return false;
+                }
+                c.key = protocol.key(c.generatorObject);
+                c.element = c.generator.currentCell();
+                return true;
+            }
             if (c.array != null) {
                 while (true) {
                     c.pos++;
@@ -4580,6 +4636,39 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             return cursor.iterator != null && cursor.iterator.nativeState() instanceof PhpGenerator inner
                     ? inner.getReturn(location) : PhpNull.INSTANCE;
+        }
+    }
+
+    // ---- task 20
+
+    /**
+     * A yield of a by-reference generator: the generator suspends with the cell of an lvalue
+     * (or a by-reference call result), so a by-reference foreach writes through it. A value
+     * that is not a reference gets php's "Only variable references should be yielded by
+     * reference" notice and a temporary cell, as {@code YieldNode} does on the AST.
+     */
+    @Operation
+    @ConstantOperand(type = int.class, name = "keyMode")
+    @ConstantOperand(type = boolean.class, name = "hasValue")
+    public static final class GenSuspendRef {
+        @Specialization
+        static Object suspend(int keyMode, boolean hasValue, Object generator, Object key, Object value,
+                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            PhpGenerator gen = (PhpGenerator) generator;
+            Object cell;
+            if (value instanceof PhpReference ref) {
+                cell = ref;
+            } else if (!hasValue) {
+                cell = new PhpReference(PhpNull.INSTANCE);
+            } else {
+                PhpContext.get(node).warning("Only variable references should be yielded by reference",
+                        lineOf(bytecode, bci));
+                cell = new PhpReference(PhpOps.copyOnAssign(value));
+            }
+            gen.checkYield(location);
+            gen.suspendWith(keyMode == 0 ? gen.autoKey() : gen.explicitKey(key), cell);
+            return PhpNull.INSTANCE;
         }
     }
 }
