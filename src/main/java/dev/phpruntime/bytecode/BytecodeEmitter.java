@@ -23,29 +23,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Compiles a function's AST to bytecode. Each node class emits itself through
- * {@link PhpNode#emit}; a node that cannot yet throws {@link Unsupported} and the function
- * keeps running on the AST.
- *
- * <p>{@code -Dblitz.bytecode=off|auto|all}: off compiles nothing; auto (the default) compiles
- * what it can; all fails on the first unsupported node. {@code -Dblitz.bytecode.report=true}
- * prints, at exit, how many functions compiled and the most common unsupported nodes.
+ * {@link PhpNode#emit}; a node without a bytecode form throws {@link Unsupported}, which is
+ * an error: every root runs on bytecode. {@code -Dblitz.bytecode.report=true} prints, at
+ * exit, how many functions compiled.
  */
 public final class BytecodeEmitter {
 
-    private static final String MODE = System.getProperty("blitz.bytecode", "auto");
     private static final boolean REPORT = Boolean.getBoolean("blitz.bytecode.report");
-    /** {@code -Dblitz.bytecode=all}: everything must compile, and AST roots must never run. */
-    public static final boolean ALL = MODE.equals("all");
-
-    /** Thrown by an AST root's execute under {@code all}: something still reached the AST. */
-    public static RuntimeException astExecuted(com.oracle.truffle.api.nodes.RootNode root) {
-        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-        return new IllegalStateException("AST root executed under blitz.bytecode=all: "
-                + root.getClass().getSimpleName() + " " + root.getName());
-    }
     private static final boolean DUMP = Boolean.getBoolean("blitz.bytecode.dump");
     private static final AtomicInteger COMPILED = new AtomicInteger();
-    private static final Map<String, AtomicInteger> UNSUPPORTED = new java.util.concurrent.ConcurrentHashMap<>();
 
     static {
         if (REPORT) {
@@ -95,11 +81,8 @@ public final class BytecodeEmitter {
         this.source = source;
     }
 
-    /** The call target for a file's top-level code: bytecode when it compiles, else the AST root's. */
+    /** The call target for a file's top-level code. */
     public static RootCallTarget mainTarget(PhpLanguage language, dev.phpruntime.nodes.PhpMainRootNode main) {
-        if (MODE.equals("off")) {
-            return main.getCallTarget();
-        }
         try {
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
                     builder -> new BytecodeEmitter(builder, language, null, main.source()).emitMain(main)).getNode(0);
@@ -110,21 +93,8 @@ public final class BytecodeEmitter {
             COMPILED.incrementAndGet();
             return new EntryRootNode(language, main, root.getCallTarget()).getCallTarget();
         } catch (Unsupported u) {
-            if (ALL) {
-                throw new IllegalStateException("bytecode: " + main.getName() + " (" + main.source().getName()
-                        + "): unsupported " + u.getMessage());
-            }
-            if (REPORT) {
-                UNSUPPORTED.computeIfAbsent("(file) " + u.getMessage(), k -> new AtomicInteger()).incrementAndGet();
-            }
-            return main.getCallTarget();
-        } catch (RuntimeException builderError) {
-            if (MODE.equals("all")) {
-                throw builderError;
-            }
-            UNSUPPORTED.computeIfAbsent("EMITTER BUG " + main.getName() + ": " + builderError.getMessage(),
-                    k -> new AtomicInteger()).incrementAndGet();
-            return main.getCallTarget();
+            throw new IllegalStateException("bytecode: " + main.getName() + " (" + main.source().getName()
+                    + "): unsupported " + u.getMessage());
         }
     }
 
@@ -133,15 +103,11 @@ public final class BytecodeEmitter {
 
     /**
      * The call target for a class constant, property default or static property default
-     * expression: bytecode when it compiles, else the AST expression root's ({@code null} lets
-     * the caller fall back). {@code traitSelfSlot} is the local the using class is passed in,
-     * or -1 outside a trait.
+     * expression. {@code traitSelfSlot} is the local the using class is passed in, or -1
+     * outside a trait.
      */
     public static RootCallTarget exprTarget(PhpLanguage language, Source source,
                                             dev.phpruntime.nodes.PhpNode expr, int traitSelfSlot) {
-        if (MODE.equals("off")) {
-            return null;
-        }
         try {
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
                     builder -> new BytecodeEmitter(builder, language, null, source)
@@ -153,21 +119,7 @@ public final class BytecodeEmitter {
             COMPILED.incrementAndGet();
             return root.getCallTarget();
         } catch (Unsupported u) {
-            if (REPORT) {
-                UNSUPPORTED.computeIfAbsent("(member initializer) " + u.getMessage(), k -> new AtomicInteger())
-                        .incrementAndGet();
-            }
-            if (MODE.equals("all")) {
-                throw new IllegalStateException("bytecode: member initializer: unsupported " + u.getMessage());
-            }
-            return null;
-        } catch (RuntimeException builderError) {
-            if (MODE.equals("all")) {
-                throw builderError;
-            }
-            UNSUPPORTED.computeIfAbsent("EMITTER BUG member initializer: " + builderError.getMessage(),
-                    k -> new AtomicInteger()).incrementAndGet();
-            return null;
+            throw new IllegalStateException("bytecode: member initializer: unsupported " + u.getMessage());
         }
     }
 
@@ -243,16 +195,12 @@ public final class BytecodeEmitter {
         }
     }
 
-    /** The call target to use for {@code fn}: bytecode when it compiles, else the AST root's. */
+    /** The call target of {@code fn}. */
     public static RootCallTarget target(PhpLanguage language, PhpFunctionRootNode fn) {
-        RootCallTarget bc = compile(language, fn);
-        return bc != null ? bc : fn.getCallTarget();
+        return compile(language, fn);
     }
 
     static RootCallTarget compile(PhpLanguage language, PhpFunctionRootNode fn) {
-        if (MODE.equals("off")) {
-            return null;
-        }
         try {
             if (fn.isGenerator() && fn.generatorSource() == null) {
                 throw new Unsupported("generator");
@@ -269,31 +217,12 @@ public final class BytecodeEmitter {
             }
             return root.getCallTarget();
         } catch (Unsupported u) {
-            if (REPORT) {
-                UNSUPPORTED.computeIfAbsent(u.getMessage(), k -> new AtomicInteger()).incrementAndGet();
-            }
-            if (MODE.equals("all")) {
-                throw new IllegalStateException("bytecode: " + fn.getName() + ": unsupported " + u.getMessage());
-            }
-            return null;
-        } catch (RuntimeException builderError) {
-            // An emitter bug (the builder rejects the operation tree): keep the AST, report it.
-            if (MODE.equals("all")) {
-                throw builderError;
-            }
-            UNSUPPORTED.computeIfAbsent("EMITTER BUG " + fn.getName() + ": " + builderError.getMessage(),
-                    k -> new AtomicInteger()).incrementAndGet();
-            return null;
+            throw new IllegalStateException("bytecode: " + fn.getName() + ": unsupported " + u.getMessage());
         }
     }
 
     private static void printReport() {
-        int failed = UNSUPPORTED.values().stream().mapToInt(AtomicInteger::get).sum();
-        System.err.println("[bytecode] compiled " + COMPILED.get() + ", on the AST " + failed);
-        UNSUPPORTED.entrySet().stream()
-                .sorted((x, y) -> y.getValue().get() - x.getValue().get())
-                .limit(40)
-                .forEach(e -> System.err.println("[bytecode]   " + e.getValue().get() + "  " + e.getKey()));
+        System.err.println("[bytecode] compiled " + COMPILED.get());
     }
 
     // ------------------------------------------------------------------ root

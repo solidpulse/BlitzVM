@@ -25,9 +25,6 @@ public final class GeneratorResumeRootNode extends PhpRootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        if (dev.phpruntime.bytecode.BytecodeEmitter.ALL) {
-            throw dev.phpruntime.bytecode.BytecodeEmitter.astExecuted(this);
-        }
         TruffleSafepoint.poll(this);
         PhpGenerator generator = (PhpGenerator) frame.getArguments()[0];
         try {
