@@ -45,3 +45,32 @@ echo implode(',', $list), "\n";
 $n = 4;
 $b = 'bump';
 echo $b($n), ':', $n, "\n";
+
+class MagicVal {
+    public function __call($name, $args) {
+        return 'm:' . $name . ':' . implode(',', $args);
+    }
+    public static function __callStatic($name, $args) {
+        return 's:' . $name . ':' . implode(',', $args);
+    }
+}
+
+$mv = new MagicVal();
+$cm = [$mv, 'foo'];
+echo $cm(1, 2), "\n";
+$cs = 'MagicVal::bar';
+echo $cs(3), "\n";
+
+trait Greets {
+    public function greet($name) {
+        return 'hi:' . $name;
+    }
+}
+
+class UsesGreets {
+    use Greets;
+}
+
+$ug = new UsesGreets();
+$gm = [$ug, 'greet'];
+echo $gm('trait'), "\n";
