@@ -42,3 +42,28 @@ function h($n) {
     return implode(',', $r);
 }
 echo h(3), "\n";
+function into($skip) {
+    $log = [];
+    if ($skip) goto deep;
+    $log[] = 'start';
+    try {
+        $log[] = 'try';
+        if ($skip > 1) {
+            $log[] = 'never';
+            deep:
+            $log[] = 'deep';
+        }
+        try {
+            $log[] = 'inner';
+            last:
+            $log[] = 'last';
+        } finally {
+            $log[] = 'inner-fin';
+        }
+    } finally {
+        $log[] = 'fin';
+    }
+    if (count($log) < 12) goto last;
+    return implode(',', $log);
+}
+echo into(0), "\n", into(1), "\n";

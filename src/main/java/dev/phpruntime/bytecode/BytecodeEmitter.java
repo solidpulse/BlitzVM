@@ -1172,32 +1172,57 @@ public final class BytecodeEmitter {
         final BytecodeLocal pc;
         final BytecodeLabel end;
         final Map<Integer, Integer> labels;
+        /** Labels inside a piece's own structure (a try): the piece's machine starts at them. */
+        final Map<Integer, Integer> childLabels;
         /** The finally blocks open where the machine starts; a goto leaves only the ones above. */
         final int finallyDepth;
 
-        GotoMachine(BytecodeLocal pc, BytecodeLabel end, Map<Integer, Integer> labels, int finallyDepth) {
+        GotoMachine(BytecodeLocal pc, BytecodeLabel end, Map<Integer, Integer> labels,
+                    Map<Integer, Integer> childLabels, int finallyDepth) {
             this.pc = pc;
             this.end = end;
             this.labels = labels;
+            this.childLabels = childLabels;
             this.finallyDepth = finallyDepth;
         }
     }
 
     private final Deque<GotoMachine> gotoMachines = new ArrayDeque<>();
 
+    /**
+     * The label a {@code goto} into a nested structure (a try block) is heading for, or -1. The
+     * outer machine branches to the structure's piece; the machine inside starts at the label.
+     * Created by the outermost machine that has such labels.
+     */
+    private BytecodeLocal gotoEnter;
+
     /** Lowers a goto dispatch (or a goto-if) into a pc machine and emits it. */
     public void emitGotoMachine(PhpNode root) {
         List<GotoPiece> pieces = new java.util.ArrayList<>();
         Map<Integer, Integer> labels = new HashMap<>();
-        compileGoto(root, pieces, labels);
+        Map<Integer, Integer> childLabels = new HashMap<>();
+        compileGoto(root, pieces, labels, childLabels);
         if (pieces.isEmpty()) {
             return;
         }
         b.beginBlock();
+        BytecodeLocal ownedEnter = null;
+        if (gotoEnter == null && !childLabels.isEmpty()) {
+            ownedEnter = gotoEnter = temp();
+            b.beginStoreLocal(gotoEnter);
+            b.emitLoadConstant(-1L);
+            b.endStoreLocal();
+        }
         BytecodeLocal pc = temp();
         b.beginStoreLocal(pc);
         b.emitLoadConstant(0L);
         b.endStoreLocal();
+        if (gotoEnter != null) {
+            // Entered by a goto from an enclosing machine: start at the label, or at the
+            // piece that contains it (which keeps the label for its own machine).
+            enterAt(pc, labels, true);
+            enterAt(pc, childLabels, false);
+        }
         BytecodeLabel exit = b.createLabel();
         b.beginWhile();
         b.emitLoadConstant(true);
@@ -1218,7 +1243,7 @@ public final class BytecodeEmitter {
         }
         b.emitBranch(exit);
         BytecodeLabel end = b.createLabel();
-        gotoMachines.push(new GotoMachine(pc, end, labels, finallyBlocks.size()));
+        gotoMachines.push(new GotoMachine(pc, end, labels, childLabels, finallyBlocks.size()));
         try {
             for (int i = 0; i < count; i++) {
                 b.emitLabel(targets[i]);
@@ -1257,9 +1282,34 @@ public final class BytecodeEmitter {
         b.endWhile();
         b.emitLabel(exit);
         b.endBlock();
+        if (ownedEnter != null) {
+            gotoEnter = null;
+        }
     }
 
-    private void compileGoto(PhpNode node, List<GotoPiece> pieces, Map<Integer, Integer> labels) {
+    private void enterAt(BytecodeLocal pc, Map<Integer, Integer> targets, boolean arrived) {
+        for (Map.Entry<Integer, Integer> t : targets.entrySet()) {
+            b.beginIfThen();
+            b.beginIdentical(false);
+            b.emitLoadLocal(gotoEnter);
+            b.emitLoadConstant((long) t.getKey());
+            b.endIdentical();
+            b.beginBlock();
+            b.beginStoreLocal(pc);
+            b.emitLoadConstant((long) t.getValue());
+            b.endStoreLocal();
+            if (arrived) {
+                b.beginStoreLocal(gotoEnter);
+                b.emitLoadConstant(-1L);
+                b.endStoreLocal();
+            }
+            b.endBlock();
+            b.endIfThen();
+        }
+    }
+
+    private void compileGoto(PhpNode node, List<GotoPiece> pieces, Map<Integer, Integer> labels,
+                             Map<Integer, Integer> childLabels) {
         if (node == null) {
             return;
         }
@@ -1273,26 +1323,31 @@ public final class BytecodeEmitter {
                         labels.put(ids[i], pieces.size());
                     }
                 }
-                compileGoto(segments[segment], pieces, labels);
+                compileGoto(segments[segment], pieces, labels, childLabels);
             }
             return;
         }
         if (node instanceof dev.phpruntime.nodes.stmt.GotoIfNode conditional) {
             GotoPiece cond = new GotoPiece(GotoPiece.COND, conditional.conditionNode(), -1);
             pieces.add(cond);
-            compileGoto(conditional.thenNode(), pieces, labels);
+            compileGoto(conditional.thenNode(), pieces, labels, childLabels);
             GotoPiece jump = new GotoPiece(GotoPiece.JUMP, null, -1);
             pieces.add(jump);
             cond.target = pieces.size();
-            compileGoto(conditional.elseNode(), pieces, labels);
+            compileGoto(conditional.elseNode(), pieces, labels, childLabels);
             jump.target = pieces.size();
             return;
         }
         if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
             for (PhpNode statement : block.statements()) {
-                compileGoto(statement, pieces, labels);
+                compileGoto(statement, pieces, labels, childLabels);
             }
             return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.GotoEnterable enterable) {
+            for (int id : enterable.exportedLabelIds()) {
+                childLabels.put(id, pieces.size());
+            }
         }
         pieces.add(new GotoPiece(GotoPiece.STMT, node, 0));
     }
@@ -1301,6 +1356,13 @@ public final class BytecodeEmitter {
     public void gotoJump(int labelId) {
         for (GotoMachine machine : gotoMachines) {
             Integer target = machine.labels.get(labelId);
+            Integer into = target == null ? machine.childLabels.get(labelId) : null;
+            if (into != null && gotoEnter != null) {
+                target = into;
+                b.beginStoreLocal(gotoEnter);
+                b.emitLoadConstant((long) labelId);
+                b.endStoreLocal();
+            }
             if (target != null) {
                 int leaving = finallyBlocks.size() - machine.finallyDepth;
                 if (leaving > 0) {
