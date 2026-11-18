@@ -113,6 +113,12 @@ public final class CallArgHelper {
                               Map<String, Object[]> namedRefKeys, Map<String, PhpNode> namedNodes) {
     }
 
+    /** An empty mutable argument list for bytecode, which evaluates one argument per operation. */
+    public static RawCallArgs newRawCallArgs() {
+        return new RawCallArgs(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
+                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+    }
+
     public static RawCallArgs evaluateCallSite(VirtualFrame frame, PhpNode[] args, LValueNode[] refTargets,
                                                String[] argNames, boolean[] spreads,
                                                PhpFunctionRootNode fnRoot, Node site) {
@@ -232,7 +238,7 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    private static void checkDuplicateNamed(Map<String, Object> named, String name, Node site) {
+    public static void checkDuplicateNamed(Map<String, Object> named, String name, Node site) {
         if (named.containsKey(name)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Named parameter $" + name + " overwrites previous argument", site);
@@ -240,7 +246,7 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    private static int findParamIndex(PhpFunctionRootNode fnRoot, String name) {
+    public static int findParamIndex(PhpFunctionRootNode fnRoot, String name) {
         String[] names = fnRoot.paramNames();
         int normal = fnRoot.normalParamCount();
         for (int i = 0; i < normal; i++) {
@@ -252,7 +258,7 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    private static void unpackCallArg(Object unpacked, PhpArray writableRefSource,
+    public static void unpackCallArg(Object unpacked, PhpArray writableRefSource,
                                       List<Object> positional, List<LValueNode> posRefs,
                                       List<Object[]> posKeys, List<PhpNode> posNodes,
                                       Map<String, Object> named, boolean alreadySeenNamed, Node site) {
@@ -378,6 +384,11 @@ public final class CallArgHelper {
                                             LValueNode[] refTargets, String[] argNames, boolean[] spreads,
                                             Node site) {
         RawCallArgs raw = evaluateCallSite(frame, args, refTargets, argNames, spreads, null, def.refMask() != 0, site);
+        return callComplexBuiltinRaw(frame, def, raw, site);
+    }
+
+    /** Binds and calls a builtin on already-evaluated raw arguments. */
+    public static Object callComplexBuiltinRaw(VirtualFrame frame, Builtins.Def def, RawCallArgs raw, Node site) {
         if (hasNamed(raw.named())) {
             String first = firstKey(raw.named());
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
@@ -401,8 +412,23 @@ public final class CallArgHelper {
         return result;
     }
 
+    /** The array a {@code __call}/{@code __callStatic} receives from evaluated raw arguments. */
     @TruffleBoundary
-    private static String firstKey(Map<String, Object> map) {
+    public static PhpArray magicArray(RawCallArgs raw) {
+        PhpArray arr = new PhpArray();
+        for (Object p : raw.positional()) {
+            arr.append(PhpOps.copyOnAssign(p));
+        }
+        if (raw.named() != null) {
+            for (Map.Entry<String, Object> e : raw.named().entrySet()) {
+                arr.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            }
+        }
+        return arr;
+    }
+
+    @TruffleBoundary
+    public static String firstKey(Map<String, Object> map) {
         return map.keySet().iterator().next();
     }
 

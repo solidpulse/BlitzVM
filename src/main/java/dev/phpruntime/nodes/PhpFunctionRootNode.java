@@ -194,6 +194,57 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return frame;
     }
 
+    /**
+     * The class the innermost PHP function on the stack runs in, for builtins such as
+     * {@code get_class()} without arguments: the using class inside a trait method, else the
+     * declaring class. Null when the innermost guest frame is not a function (top-level code).
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public static String callingClassName() {
+        String[] found = new String[1];
+        com.oracle.truffle.api.Truffle.getRuntime().iterateFrames(frameInstance -> {
+            if (!(frameInstance.getCallTarget() instanceof com.oracle.truffle.api.RootCallTarget rct)
+                    || !isGuestFrame(rct.getRootNode())) {
+                return null;
+            }
+            com.oracle.truffle.api.nodes.RootNode root = rct.getRootNode();
+            PhpFunctionRootNode fn = ofFrame(root);
+            if (fn != null) {
+                Object self = null;
+                if (fn.traitSelfSlot() >= 0) {
+                    self = traitSelf(root, fn, functionFrame(root,
+                            frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY)));
+                }
+                found[0] = self instanceof dev.phpruntime.runtime.PhpClass c ? c.name() : fn.declaringClass();
+            }
+            return Boolean.TRUE;
+        });
+        return found[0];
+    }
+
+    /**
+     * The trait's using class in a running trait method. The AST keeps it in its frame slot;
+     * bytecode receives it as argument 2, or from the closure object for a closure.
+     */
+    private static Object traitSelf(com.oracle.truffle.api.nodes.RootNode root, PhpFunctionRootNode fn,
+                                    com.oracle.truffle.api.frame.Frame frame) {
+        if (frame == null) {
+            return null;
+        }
+        if (root instanceof PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+            return frame.getObject(fn.traitSelfSlot());
+        }
+        Object[] args = frame.getArguments();
+        if (args.length <= 2) {
+            return null;
+        }
+        if (fn.closureObjSlot() >= 0) {
+            return args[2] instanceof dev.phpruntime.runtime.PhpObject obj && obj.closure() != null
+                    ? obj.closure().traitSelf() : null;
+        }
+        return args[2];
+    }
+
     /** Whether a stack frame of {@code root} is guest PHP code (backtraces skip the others). */
     public static boolean isGuestFrame(com.oracle.truffle.api.nodes.RootNode root) {
         return root instanceof PhpRootNode || root instanceof com.oracle.truffle.api.bytecode.ContinuationRootNode c

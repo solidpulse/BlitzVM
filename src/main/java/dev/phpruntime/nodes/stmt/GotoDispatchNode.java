@@ -20,7 +20,6 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
     private final int pcSlot;
     private final int enterSlot;
     @Child private LoopNode loop;
-    private final DispatchRepeatingNode repeating;
     @CompilationFinal(dimensions = 1) private final int[] exportedLabelIds;
     @CompilationFinal private int generatorActiveSlot = -1;
 
@@ -29,9 +28,8 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
                             int[] childLabelIds, int[] childLabelSegments) {
         this.pcSlot = pcSlot;
         this.enterSlot = enterSlot;
-        this.repeating = new DispatchRepeatingNode(
-                pcSlot, enterSlot, segments, directLabelIds, directLabelSegments, childLabelIds, childLabelSegments);
-        this.loop = Truffle.getRuntime().createLoopNode(this.repeating);
+        this.loop = Truffle.getRuntime().createLoopNode(new DispatchRepeatingNode(
+                pcSlot, enterSlot, segments, directLabelIds, directLabelSegments, childLabelIds, childLabelSegments));
         this.exportedLabelIds = new int[directLabelIds.length + childLabelIds.length];
         System.arraycopy(directLabelIds, 0, exportedLabelIds, 0, directLabelIds.length);
         System.arraycopy(childLabelIds, 0, exportedLabelIds, directLabelIds.length, childLabelIds.length);
@@ -40,6 +38,26 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
     @Override
     public int[] exportedLabelIds() {
         return exportedLabelIds;
+    }
+
+    /**
+     * The loop body, read through the loop node: a plain field would keep pointing at the
+     * original after {@code deepCopy} (the generator source is a copy taken before lowering).
+     */
+    private DispatchRepeatingNode repeating() {
+        return (DispatchRepeatingNode) loop.getRepeatingNode();
+    }
+
+    public PhpNode[] segments() {
+        return repeating().segments;
+    }
+
+    public int[] directLabelIds() {
+        return repeating().directLabelIds;
+    }
+
+    public int[] directLabelSegments() {
+        return repeating().directLabelSegments;
     }
 
     @Override
@@ -66,17 +84,32 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
         return this;
     }
 
+    /**
+     * Bytecode has labels and branches: the segments stay in order and each direct label is a
+     * branch target before its segment. Labels inside {@code if}/try segments are emitted by the
+     * nested dispatch that owns them, sharing the emitter's label map with earlier {@code goto}s.
+     */
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.emitGotoMachine(this);
+    }
+
+    @Override
+    public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        emit(e);
+    }
+
     @Override
     public void executeEnter(VirtualFrame frame, int labelId) {
         if (generatorActiveSlot >= 0) { frame.setInt(generatorActiveSlot, 1); }
-        int seg = repeating.findDirectSegment(labelId);
+        int seg = repeating().findDirectSegment(labelId);
         if (seg >= 0) {
             frame.setInt(pcSlot, seg);
             if (enterSlot >= 0) {
                 frame.setInt(enterSlot, -1);
             }
         } else {
-            int childSeg = repeating.findChildSegment(labelId);
+            int childSeg = repeating().findChildSegment(labelId);
             frame.setInt(pcSlot, childSeg);
             frame.setInt(enterSlot, labelId);
         }

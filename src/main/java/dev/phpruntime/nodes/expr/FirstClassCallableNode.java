@@ -4,6 +4,7 @@ import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.builtins.Builtins;
 import dev.phpruntime.nodes.PhpNode;
@@ -97,6 +98,28 @@ public final class FirstClassCallableNode extends PhpNode {
     }
 
     private PhpObject resolveFunction(PhpContext ctx) {
+        return createFunction(ctx, nsFnName, nsFunctionId, fnName, functionId, builtin, this);
+    }
+
+    private PhpObject resolveMethod(VirtualFrame frame, PhpContext ctx) {
+        Object target = targetExpr.execute(frame);
+        String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
+        return createMethod(ctx, target, name, methodId, this);
+    }
+
+    private PhpObject resolveStaticMethod(VirtualFrame frame, PhpContext ctx) {
+        PhpClass targetClass = classRef.resolve(frame);
+        String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
+        Object calledArg = classRef.isForwarding() && calledClassSlot >= 0
+                ? frame.getObject(calledClassSlot)
+                : targetClass;
+        Object thisValue = thisSlot >= 0 ? frame.getObject(thisSlot) : PhpNull.INSTANCE;
+        return createStaticMethod(ctx, targetClass, name, methodId, classRef.isForwarding(), thisValue, calledArg, this);
+    }
+
+    @TruffleBoundary
+    public static PhpObject createFunction(PhpContext ctx, String nsName, int nsFunctionId, String fnName, int functionId,
+                                           Builtins.Def builtin, Node site) {
         if (nsFunctionId >= 0) {
             PhpFunction nsFn = ctx.functionById(nsFunctionId);
             if (nsFn != null) {
@@ -110,35 +133,19 @@ public final class FirstClassCallableNode extends PhpNode {
         if (fn != null) {
             return ctx.newClosure(PhpClosure.userFunction(fn.callTarget()));
         }
-        Builtins.Def def = resolveBuiltin();
+        Builtins.Def def = Builtins.lookup(fnName);
         if (def != null) {
             return ctx.newClosure(PhpClosure.builtin(def));
         }
         CompilerDirectives.transferToInterpreter();
-        throw new PhpError("Call to undefined function " + (nsFnName != null ? nsFnName : fnName) + "()", this);
+        throw new PhpError("Call to undefined function " + (nsName != null ? nsName : fnName) + "()", site);
     }
 
     @TruffleBoundary
-    private Builtins.Def resolveBuiltin() {
-        CompilerDirectives.transferToInterpreterAndInvalidate();
-        java.util.concurrent.locks.Lock lock = getLock();
-        lock.lock();
-        try {
-            if (builtin == null) {
-                builtin = Builtins.lookup(fnName);
-            }
-            return builtin;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    private PhpObject resolveMethod(VirtualFrame frame, PhpContext ctx) {
-        Object target = targetExpr.execute(frame);
-        String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
+    public static PhpObject createMethod(PhpContext ctx, Object target, String name, int methodId, Node site) {
         if (!(target instanceof PhpObject obj)) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Call to a member function " + name + "() on " + PhpOps.typeName(target), this);
+            throw new PhpError("Call to a member function " + name + "() on " + PhpOps.typeName(target), site);
         }
         PhpClass cls = obj.phpClass();
         PhpClass.MethodEntry entry = methodId >= 0 ? cls.methodById(methodId) : cls.lookupMethod(name);
@@ -148,27 +155,24 @@ public final class FirstClassCallableNode extends PhpNode {
                 return ctx.newClosure(PhpClosure.magicCall(magic.callTarget(), obj, cls, name));
             }
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Call to undefined method " + cls.name() + "::" + name + "()", this);
+            throw new PhpError("Call to undefined method " + cls.name() + "::" + name + "()", site);
         }
         if (entry.callTarget() == null) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
+            throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", site);
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
         return ctx.newClosure(PhpClosure.method(
                 entry.callTarget(), thisArg, cls, entry.fromTrait() ? entry.declaringClass() : null));
     }
 
-    private PhpObject resolveStaticMethod(VirtualFrame frame, PhpContext ctx) {
-        PhpClass targetClass = classRef.resolve(frame);
-        String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
+    @TruffleBoundary
+    public static PhpObject createStaticMethod(PhpContext ctx, PhpClass targetClass, String name, int methodId,
+                                               boolean forwarding, Object thisValue, Object calledClassValue, Node site) {
         PhpClass.MethodEntry entry = methodId >= 0 ? targetClass.methodById(methodId) : targetClass.lookupMethod(name);
-        PhpClass calledArg = classRef.isForwarding() && calledClassSlot >= 0
-                ? (PhpClass) frame.getObject(calledClassSlot)
-                : targetClass;
+        PhpClass calledArg = forwarding && calledClassValue instanceof PhpClass c ? c : targetClass;
         if (entry == null) {
-            if (classRef.isForwarding() && thisSlot >= 0
-                    && frame.getObject(thisSlot) instanceof PhpObject thisObj
+            if (forwarding && thisValue instanceof PhpObject thisObj
                     && targetClass.callMethod() != null && targetClass.callMethod().callTarget() != null) {
                 return ctx.newClosure(PhpClosure.magicCall(targetClass.callMethod().callTarget(), thisObj, calledArg, name));
             }
@@ -177,25 +181,73 @@ public final class FirstClassCallableNode extends PhpNode {
                 return ctx.newClosure(PhpClosure.magicCall(magicStatic.callTarget(), PhpNull.INSTANCE, calledArg, name));
             }
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Call to undefined method " + targetClass.name() + "::" + name + "()", this);
+            throw new PhpError("Call to undefined method " + targetClass.name() + "::" + name + "()", site);
         }
         if (entry.callTarget() == null) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", this);
+            throw new PhpError("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()", site);
         }
         Object thisArg;
         if (entry.isStatic()) {
             thisArg = PhpNull.INSTANCE;
-        } else if (thisSlot >= 0
-                && frame.getObject(thisSlot) instanceof PhpObject thisObj
+        } else if (thisValue instanceof PhpObject thisObj
                 && thisObj.phpClass().isInstanceOf(entry.declaringClass())) {
             thisArg = thisObj;
         } else {
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Non-static method " + entry.declaringClass().name() + "::" + entry.name()
-                    + "() cannot be called statically", this);
+                    + "() cannot be called statically", site);
         }
         return ctx.newClosure(PhpClosure.method(
                 entry.callTarget(), thisArg, calledArg, entry.fromTrait() ? entry.declaringClass() : null));
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        switch (mode) {
+            case FUNCTION -> b.emitFirstClassFunction(
+                    nsFnName == null ? "" : nsFnName, nsFunctionId, fnName, functionId);
+            case METHOD -> {
+                b.beginBlock();
+                com.oracle.truffle.api.bytecode.BytecodeLocal target = e.temp();
+                b.beginStoreLocal(target);
+                e.expr(targetExpr);
+                b.endStoreLocal();
+                b.beginFirstClassMethod(new dev.phpruntime.bytecode.PhpBytecodeRootNode.MethodSite(staticMemberName, methodId));
+                b.emitLoadLocal(target);
+                if (staticMemberName != null) {
+                    b.emitLoadConstant(staticMemberName);
+                } else {
+                    e.expr(dynamicMemberExpr);
+                }
+                b.endFirstClassMethod();
+                b.endBlock();
+            }
+            case STATIC_METHOD -> {
+                b.beginBlock();
+                b.beginFirstClassStaticMethod(
+                        new dev.phpruntime.bytecode.PhpBytecodeRootNode.MethodSite(staticMemberName, methodId),
+                        classRef.isForwarding(), calledClassSlot >= 0);
+                e.classRef(classRef);
+                if (staticMemberName != null) {
+                    b.emitLoadConstant(staticMemberName);
+                } else {
+                    e.expr(dynamicMemberExpr);
+                }
+                e.loadSlotOrNull(thisSlot);
+                e.loadSlotOrNull(calledClassSlot);
+                b.endFirstClassStaticMethod();
+                b.endBlock();
+            }
+            case CALLABLE -> {
+                b.beginBlock();
+                b.beginFirstClassCallable();
+                e.expr(targetExpr);
+                e.loadSlotOrNull(thisSlot);
+                b.endFirstClassCallable();
+                b.endBlock();
+            }
+        }
     }
 }

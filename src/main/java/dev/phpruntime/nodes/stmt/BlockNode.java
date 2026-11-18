@@ -13,6 +13,10 @@ public final class BlockNode extends PhpNode {
         this.statements = statements;
     }
 
+    public PhpNode[] statements() {
+        return statements;
+    }
+
     @Override
     @ExplodeLoop
     public Object execute(VirtualFrame frame) {

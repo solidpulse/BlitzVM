@@ -375,15 +375,70 @@ public final class CallNode extends PhpNode {
         return quantifier + " " + count + " argument" + (count == 1 ? "" : "s");
     }
 
+    /**
+     * A namespaced {@code assert(...)}: a function declared in that namespace wins, so resolve
+     * first; when it is the builtin, return true without evaluating the arguments.
+     */
+    private void emitNamespacedAssert(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
+                new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId, null);
+        com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
+        try {
+            b.beginBlock();
+            b.emitResolveFunction(site, callee);
+            com.oracle.truffle.api.bytecode.BytecodeLocal result = e.temp();
+            b.beginStoreLocal(result);
+            b.emitLoadConstant(Boolean.TRUE);
+            b.endStoreLocal();
+            b.beginIfThen();
+            b.beginNot();
+            b.beginIsBuiltinNamed("assert");
+            b.emitLoadLocal(callee);
+            b.endIsBuiltinNamed();
+            b.endNot();
+            b.beginBlock();
+            b.beginStoreLocal(result);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexFunction();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexFunction();
+            } else {
+                b.beginDoCall(site, callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+                }
+                b.endDoCall();
+            }
+            b.endStoreLocal();
+            b.endBlock();
+            b.endIfThen();
+            b.emitLoadLocal(result);
+            b.endBlock();
+        } finally {
+            e.exitCall();
+        }
+    }
+
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("call with spread or named arguments");
-        }
         var b = e.builder();
         Builtins.Def def = Builtins.lookup(name);
-        if (def != null) {
+        if (def != null && def.name().equals("assert")) {
+            // zend.assertions is -1: assert() compiles to true and evaluates nothing.
             if (nsName == null) {
+                b.emitLoadConstant(Boolean.TRUE);
+                return;
+            }
+            emitNamespacedAssert(e);
+            return;
+        }
+        if (def != null) {
+            if (nsName == null && !hasSpreadOrNamed) {
                 int kind = intrinsicFor(def.name(), args.length);
                 if (kind == STRLEN) {
                     b.beginStrlen(def);
@@ -405,9 +460,6 @@ public final class CallNode extends PhpNode {
                     return;
                 }
             }
-            if (def.name().equals("assert")) {
-                throw e.unsupported("assert");
-            }
         }
         dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
                 new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId,
@@ -416,11 +468,21 @@ public final class CallNode extends PhpNode {
         try {
             b.beginBlock();
             b.emitResolveFunction(site, callee);
-            b.beginDoCall(site, callee);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexFunction();
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexFunction();
+            } else {
+                b.beginDoCall(site, callee);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets != null ? refTargets[i] : null, i, callee);
+                }
+                b.endDoCall();
             }
-            b.endDoCall();
             b.endBlock();
         } finally {
             e.exitCall();

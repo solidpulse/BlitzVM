@@ -163,9 +163,6 @@ public final class NewNode extends PhpNode {
 
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
-        if (hasSpreadOrNamed) {
-            throw e.unsupported("new with spread or named arguments");
-        }
         var b = e.builder();
         com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
         com.oracle.truffle.api.bytecode.BytecodeLocal object = e.temp();
@@ -179,12 +176,23 @@ public final class NewNode extends PhpNode {
             b.beginResolveConstructor(callee);
             b.emitLoadLocal(object);
             b.endResolveConstructor();
-            b.beginDoConstructorCall(callee);
-            b.emitLoadLocal(object);
-            for (int i = 0; i < args.length; i++) {
-                e.sendArgument(args[i], refTargets[i], i, callee);
+            if (hasSpreadOrNamed) {
+                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                e.beginRawArgs(raw);
+                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                b.beginDoComplexConstructor();
+                b.emitLoadLocal(object);
+                b.emitLoadLocal(callee);
+                b.emitLoadLocal(raw);
+                b.endDoComplexConstructor();
+            } else {
+                b.beginDoConstructorCall(callee);
+                b.emitLoadLocal(object);
+                for (int i = 0; i < args.length; i++) {
+                    e.sendArgument(args[i], refTargets[i], i, callee);
+                }
+                b.endDoConstructorCall();
             }
-            b.endDoConstructorCall();
             b.endBlock();
         } finally {
             e.exitCall();

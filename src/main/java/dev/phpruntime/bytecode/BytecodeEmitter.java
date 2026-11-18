@@ -17,6 +17,7 @@ import dev.phpruntime.runtime.PhpNull;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -380,6 +381,10 @@ public final class BytecodeEmitter {
 
     /** Emits a node that produces a value. */
     public void expr(PhpNode node) {
+        if (isGotoStructure(node)) {
+            node.emit(this);
+            return;
+        }
         int line = node.line();
         if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
             SourceSection s = source.createSection(line);
@@ -394,8 +399,17 @@ public final class BytecodeEmitter {
         }
     }
 
+    private static boolean isGotoStructure(PhpNode node) {
+        return node instanceof dev.phpruntime.nodes.stmt.GotoDispatchNode
+                || node instanceof dev.phpruntime.nodes.stmt.GotoIfNode;
+    }
+
     /** Emits a node whose value, if any, is not used. */
     public void stmt(PhpNode node) {
+        if (isGotoStructure(node)) {
+            node.emitStatement(this);
+            return;
+        }
         int line = node.line();
         if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
             SourceSection s = source.createSection(line);
@@ -475,6 +489,11 @@ public final class BytecodeEmitter {
      * Emits a non-local lvalue in {@code mode} (a {@code PhpBytecodeRootNode.P_*} constant): the
      * key operands in evaluation order, then {@code value} if the mode takes one.
      */
+    /** The cached template and operand layout of a place, for operations that evaluate its keys. */
+    public PhpBytecodeRootNode.PlaceSpec placeSpec(dev.phpruntime.nodes.var.LValueNode lv) {
+        return form(lv).spec();
+    }
+
     public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value) {
         Form f = form(lv);
         if (f.local() != null) {
@@ -601,6 +620,25 @@ public final class BytecodeEmitter {
         }
     }
 
+    /**
+     * A destructuring target of an assignment or foreach: the value or cell is the source,
+     * then each element is written or bound as {@code DestructureLValueNode} does.
+     */
+    private void destructureFrom(dev.phpruntime.nodes.var.DestructureLValueNode target, Runnable value) {
+        b.beginBlock();
+        BytecodeLocal state = temp();
+        b.beginStoreLocal(state);
+        b.beginDestructureStartValue(target.hasAnyRef());
+        value.run();
+        b.endDestructureStartValue();
+        b.endStoreLocal();
+        destructureSteps(target, state);
+        b.beginDestructureResult();
+        b.emitLoadLocal(state);
+        b.endDestructureResult();
+        b.endBlock();
+    }
+
     /** Emits the element steps of one destructuring pattern, using {@code state} as its source. */
     public void destructureSteps(dev.phpruntime.nodes.var.DestructureLValueNode target,
                                  BytecodeLocal state) {        PhpNode[] keys = target.keyNodes();
@@ -673,6 +711,10 @@ public final class BytecodeEmitter {
 
     /** Binds {@code target} to the reference cell emitted by {@code cell}. */
     public void bind(dev.phpruntime.nodes.var.LValueNode target, Runnable cell) {
+        if (target instanceof dev.phpruntime.nodes.var.DestructureLValueNode destructure) {
+            destructureFrom(destructure, cell);
+            return;
+        }
         if (target instanceof LocalVarNode local) {
             b.beginBindVarCell(accessor(local), info(local));
             cell.run();
@@ -901,9 +943,6 @@ public final class BytecodeEmitter {
 
     /** Emits a class reference as an operation producing the {@code PhpClass}. */
     public void classRef(dev.phpruntime.nodes.expr.ClassRefNode ref) {
-        if (ref.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.ANONYMOUS) {
-            throw new Unsupported("anonymous class");
-        }
         if (ref.line() <= 0 && currentLine > 0) {
             // The parser only puts the line on the expression around the class reference; the
             // cached copy reports errors (missing class, no parent) and needs it.
@@ -938,6 +977,10 @@ public final class BytecodeEmitter {
 
     /** {@code target = value} where the value is already being emitted by {@code value}. */
     public void assign(dev.phpruntime.nodes.var.LValueNode target, Runnable value) {
+        if (target instanceof dev.phpruntime.nodes.var.DestructureLValueNode destructure) {
+            destructureFrom(destructure, value);
+            return;
+        }
         if (target instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
             b.beginStoreVar(accessor(lv), info(lv));
             value.run();
@@ -947,6 +990,58 @@ public final class BytecodeEmitter {
         } else {
             throw new Unsupported("assign to " + target.getClass().getSimpleName());
         }
+    }
+
+    /** Starts a spread/named call's raw argument list local. */
+    public void beginRawArgs(BytecodeLocal raw) {
+        b.beginStoreLocal(raw);
+        b.emitNewRawArgs();
+        b.endStoreLocal();
+    }
+
+    /** Evaluates each argument of a spread/named call into its raw argument list. */
+    public void complexArgs(PhpNode[] args, dev.phpruntime.nodes.var.LValueNode[] refTargets,
+                            String[] argNames, boolean[] spreads, BytecodeLocal callee, BytecodeLocal raw) {
+        for (int i = 0; i < args.length; i++) {
+            complexArg(args[i], refTargets != null ? refTargets[i] : null,
+                    argNames != null ? argNames[i] : null,
+                    spreads != null && spreads[i], callee, raw);
+        }
+    }
+
+    /**
+     * One argument of a spread/named call. A variable or place keeps its cell/keys so a
+     * by-reference parameter or a by-reference builtin still receives the right cell.
+     */
+    public void complexArg(PhpNode arg, dev.phpruntime.nodes.var.LValueNode refTarget, String name,
+                           boolean spread, BytecodeLocal callee, BytecodeLocal raw) {
+        String n = name == null ? "" : name;
+        if (refTarget instanceof LocalVarNode lv) {
+            b.emitRawVarArg(accessor(lv), info(lv), n, spread, callee, raw);
+            return;
+        }
+        if (refTarget != null && isPlace(refTarget)) {
+            BytecodeLocal prepared = temp();
+            b.beginStoreLocal(prepared);
+            place(refTarget, PhpBytecodeRootNode.P_KEYS, 0, null);
+            b.endStoreLocal();
+            b.beginRawPlaceArg(placeSpec(refTarget), n, spread, callee, raw);
+            b.emitLoadLocal(prepared);
+            b.endRawPlaceArg();
+            return;
+        }
+        if (refTarget == null) {
+            int kind = arg instanceof dev.phpruntime.nodes.expr.NewNode ? 2
+                    : (arg instanceof dev.phpruntime.nodes.call.CallNode
+                    || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
+                    || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                    || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
+            b.beginRawValueArg(n, spread, kind, callee, raw);
+            expr(arg);
+            b.endRawValueArg();
+            return;
+        }
+        throw new Unsupported("complex argument from " + refTarget.getClass().getSimpleName());
     }
 
     /** Emits one call argument: a variable, a place, or a value, sent against the callee in {@code callee}. */
@@ -1048,6 +1143,239 @@ public final class BytecodeEmitter {
         for (int j = count - 1; j >= 0; j--) {
             finallyBlocks.push(popped[j]);
         }
+    }
+
+    /**
+     * One goto structure lowered to a flat piece list. The bytecode builder rejects backward
+     * branches, so the pieces run inside a {@code while (true)}: each piece sets a program
+     * counter and branches forward to the end of the loop body, which dispatches to the next
+     * piece. A {@code goto} is a pc assignment, forward or backward, so loops need no special
+     * casing.
+     */
+    private static final class GotoPiece {
+        static final int STMT = 0;
+        static final int COND = 1;
+        static final int JUMP = 2;
+
+        final int kind;
+        final PhpNode node;
+        int target;
+
+        GotoPiece(int kind, PhpNode node, int target) {
+            this.kind = kind;
+            this.node = node;
+            this.target = target;
+        }
+    }
+
+    private static final class GotoMachine {
+        final BytecodeLocal pc;
+        final BytecodeLabel end;
+        final Map<Integer, Integer> labels;
+        /** Labels inside a piece's own structure (a try): the piece's machine starts at them. */
+        final Map<Integer, Integer> childLabels;
+        /** The finally blocks open where the machine starts; a goto leaves only the ones above. */
+        final int finallyDepth;
+
+        GotoMachine(BytecodeLocal pc, BytecodeLabel end, Map<Integer, Integer> labels,
+                    Map<Integer, Integer> childLabels, int finallyDepth) {
+            this.pc = pc;
+            this.end = end;
+            this.labels = labels;
+            this.childLabels = childLabels;
+            this.finallyDepth = finallyDepth;
+        }
+    }
+
+    private final Deque<GotoMachine> gotoMachines = new ArrayDeque<>();
+
+    /**
+     * The label a {@code goto} into a nested structure (a try block) is heading for, or -1. The
+     * outer machine branches to the structure's piece; the machine inside starts at the label.
+     * Created by the outermost machine that has such labels.
+     */
+    private BytecodeLocal gotoEnter;
+
+    /** Lowers a goto dispatch (or a goto-if) into a pc machine and emits it. */
+    public void emitGotoMachine(PhpNode root) {
+        List<GotoPiece> pieces = new java.util.ArrayList<>();
+        Map<Integer, Integer> labels = new HashMap<>();
+        Map<Integer, Integer> childLabels = new HashMap<>();
+        compileGoto(root, pieces, labels, childLabels);
+        if (pieces.isEmpty()) {
+            return;
+        }
+        b.beginBlock();
+        BytecodeLocal ownedEnter = null;
+        if (gotoEnter == null && !childLabels.isEmpty()) {
+            ownedEnter = gotoEnter = temp();
+            b.beginStoreLocal(gotoEnter);
+            b.emitLoadConstant(-1L);
+            b.endStoreLocal();
+        }
+        BytecodeLocal pc = temp();
+        b.beginStoreLocal(pc);
+        b.emitLoadConstant(0L);
+        b.endStoreLocal();
+        if (gotoEnter != null) {
+            // Entered by a goto from an enclosing machine: start at the label, or at the
+            // piece that contains it (which keeps the label for its own machine).
+            enterAt(pc, labels, true);
+            enterAt(pc, childLabels, false);
+        }
+        BytecodeLabel exit = b.createLabel();
+        b.beginWhile();
+        b.emitLoadConstant(true);
+        b.beginBlock();
+        int count = pieces.size();
+        BytecodeLabel[] targets = new BytecodeLabel[count];
+        for (int i = 0; i < count; i++) {
+            targets[i] = b.createLabel();
+        }
+        for (int i = 0; i < count; i++) {
+            b.beginIfThen();
+            b.beginIdentical(false);
+            b.emitLoadLocal(pc);
+            b.emitLoadConstant((long) i);
+            b.endIdentical();
+            b.emitBranch(targets[i]);
+            b.endIfThen();
+        }
+        b.emitBranch(exit);
+        BytecodeLabel end = b.createLabel();
+        gotoMachines.push(new GotoMachine(pc, end, labels, childLabels, finallyBlocks.size()));
+        try {
+            for (int i = 0; i < count; i++) {
+                b.emitLabel(targets[i]);
+                GotoPiece piece = pieces.get(i);
+                if (piece.kind == GotoPiece.COND) {
+                    b.beginIfThen();
+                    b.beginNot();
+                    expr(piece.node);
+                    b.endNot();
+                    b.beginBlock();
+                    b.beginStoreLocal(pc);
+                    b.emitLoadConstant((long) piece.target);
+                    b.endStoreLocal();
+                    b.emitBranch(end);
+                    b.endBlock();
+                    b.endIfThen();
+                } else if (piece.kind == GotoPiece.JUMP) {
+                    b.beginStoreLocal(pc);
+                    b.emitLoadConstant((long) piece.target);
+                    b.endStoreLocal();
+                    b.emitBranch(end);
+                    continue;
+                } else {
+                    stmt(piece.node);
+                }
+                b.beginStoreLocal(pc);
+                b.emitLoadConstant((long) (i + 1));
+                b.endStoreLocal();
+                b.emitBranch(end);
+            }
+            b.emitLabel(end);
+        } finally {
+            gotoMachines.pop();
+        }
+        b.endBlock();
+        b.endWhile();
+        b.emitLabel(exit);
+        b.endBlock();
+        if (ownedEnter != null) {
+            gotoEnter = null;
+        }
+    }
+
+    private void enterAt(BytecodeLocal pc, Map<Integer, Integer> targets, boolean arrived) {
+        for (Map.Entry<Integer, Integer> t : targets.entrySet()) {
+            b.beginIfThen();
+            b.beginIdentical(false);
+            b.emitLoadLocal(gotoEnter);
+            b.emitLoadConstant((long) t.getKey());
+            b.endIdentical();
+            b.beginBlock();
+            b.beginStoreLocal(pc);
+            b.emitLoadConstant((long) t.getValue());
+            b.endStoreLocal();
+            if (arrived) {
+                b.beginStoreLocal(gotoEnter);
+                b.emitLoadConstant(-1L);
+                b.endStoreLocal();
+            }
+            b.endBlock();
+            b.endIfThen();
+        }
+    }
+
+    private void compileGoto(PhpNode node, List<GotoPiece> pieces, Map<Integer, Integer> labels,
+                             Map<Integer, Integer> childLabels) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.GotoDispatchNode dispatch) {
+            PhpNode[] segments = dispatch.segments();
+            int[] ids = dispatch.directLabelIds();
+            int[] segmentsOf = dispatch.directLabelSegments();
+            for (int segment = 0; segment < segments.length; segment++) {
+                for (int i = 0; i < ids.length; i++) {
+                    if (segmentsOf[i] == segment) {
+                        labels.put(ids[i], pieces.size());
+                    }
+                }
+                compileGoto(segments[segment], pieces, labels, childLabels);
+            }
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.GotoIfNode conditional) {
+            GotoPiece cond = new GotoPiece(GotoPiece.COND, conditional.conditionNode(), -1);
+            pieces.add(cond);
+            compileGoto(conditional.thenNode(), pieces, labels, childLabels);
+            GotoPiece jump = new GotoPiece(GotoPiece.JUMP, null, -1);
+            pieces.add(jump);
+            cond.target = pieces.size();
+            compileGoto(conditional.elseNode(), pieces, labels, childLabels);
+            jump.target = pieces.size();
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.BlockNode block) {
+            for (PhpNode statement : block.statements()) {
+                compileGoto(statement, pieces, labels, childLabels);
+            }
+            return;
+        }
+        if (node instanceof dev.phpruntime.nodes.stmt.GotoEnterable enterable) {
+            for (int id : enterable.exportedLabelIds()) {
+                childLabels.put(id, pieces.size());
+            }
+        }
+        pieces.add(new GotoPiece(GotoPiece.STMT, node, 0));
+    }
+
+    /** A php {@code goto}: set the nearest machine's pc and jump to its dispatch. */
+    public void gotoJump(int labelId) {
+        for (GotoMachine machine : gotoMachines) {
+            Integer target = machine.labels.get(labelId);
+            Integer into = target == null ? machine.childLabels.get(labelId) : null;
+            if (into != null && gotoEnter != null) {
+                target = into;
+                b.beginStoreLocal(gotoEnter);
+                b.emitLoadConstant((long) labelId);
+                b.endStoreLocal();
+            }
+            if (target != null) {
+                int leaving = finallyBlocks.size() - machine.finallyDepth;
+                if (leaving > 0) {
+                    emitPopped(popFinallies(leaving));
+                }
+                b.beginStoreLocal(machine.pc);
+                b.emitLoadConstant((long) target);
+                b.endStoreLocal();
+                b.emitBranch(machine.end);
+                return;
+            }
+        }
+        throw new Unsupported("goto label outside a dispatch");
     }
 
     /** Opens a loop: break and continue inside it branch to these labels. */

@@ -59,8 +59,53 @@ public final class MatchNode extends PhpNode {
             return defaultBody.execute(frame);
         }
         CompilerDirectives.transferToInterpreter();
+        throw unhandled(v, this);
+    }
+
+    /** php's {@code UnhandledMatchError} for a subject; null {@code location} lets the root locate it. */
+    public static PhpError unhandled(Object v, Node location) {
         String type = v instanceof PhpObject obj ? obj.phpClass().name() : PhpOps.typeName(v);
-        CompilerDirectives.transferToInterpreter();
-        throw new PhpError("UnhandledMatchError", "Unhandled match case of type " + type, this);
+        String message = "Unhandled match case of type " + type;
+        return new PhpError("UnhandledMatchError", message, location);
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLocal subjectLocal = e.temp();
+        b.beginStoreLocal(subjectLocal);
+        e.expr(subject);
+        b.endStoreLocal();
+        com.oracle.truffle.api.bytecode.BytecodeLocal result = e.temp();
+        com.oracle.truffle.api.bytecode.BytecodeLabel end = b.createLabel();
+        for (MatchArm arm : arms) {
+            for (PhpNode condition : arm.conditions) {
+                b.beginIfThen();
+                b.beginIdentical(false);
+                b.emitLoadLocal(subjectLocal);
+                e.expr(condition);
+                b.endIdentical();
+                b.beginBlock();
+                b.beginStoreLocal(result);
+                e.expr(arm.body);
+                b.endStoreLocal();
+                b.emitBranch(end);
+                b.endBlock();
+                b.endIfThen();
+            }
+        }
+        b.beginStoreLocal(result);
+        if (defaultBody != null) {
+            e.expr(defaultBody);
+        } else {
+            b.beginUnhandledMatch();
+            b.emitLoadLocal(subjectLocal);
+            b.endUnhandledMatch();
+        }
+        b.endStoreLocal();
+        b.emitLabel(end);
+        b.emitLoadLocal(result);
+        b.endBlock();
     }
 }
