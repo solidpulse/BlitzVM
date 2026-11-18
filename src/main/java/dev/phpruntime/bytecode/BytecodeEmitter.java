@@ -513,8 +513,7 @@ public final class BytecodeEmitter {
 
     /** Emits the element steps of one destructuring pattern, using {@code state} as its source. */
     public void destructureSteps(dev.phpruntime.nodes.var.DestructureLValueNode target,
-                                 BytecodeLocal state) {
-        PhpNode[] keys = target.keyNodes();
+                                 BytecodeLocal state) {        PhpNode[] keys = target.keyNodes();
         dev.phpruntime.nodes.var.LValueNode[] targets = target.targetNodes();
         long[] autos = target.autoIndices();
         boolean[] refs = target.byRef();
@@ -576,6 +575,66 @@ public final class BytecodeEmitter {
         } else {
             b.emitLoadConstant(autoIndex);
         }
+    }
+
+    /** Binds {@code target} to the reference cell emitted by {@code cell}. */
+    public void bind(dev.phpruntime.nodes.var.LValueNode target, Runnable cell) {
+        if (target instanceof LocalVarNode local) {
+            b.beginBindVarCell(accessor(local), info(local));
+            cell.run();
+            b.endBindVarCell();
+        } else if (isPlace(target)) {
+            place(target, PhpBytecodeRootNode.P_BIND, 0, cell);
+        } else {
+            throw new Unsupported("assign by reference to " + target.getClass().getSimpleName());
+        }
+    }
+
+    /** Starts a by-reference foreach over a variable or place subject. */
+    public void refStart(dev.phpruntime.nodes.var.LValueNode subject, String describe) {
+        String caller = callerConstant();
+        if (subject instanceof LocalVarNode local) {
+            b.beginForeachRefStartVar(accessor(local), info(local), describe, caller);
+            traitSelfOperand();
+            b.endForeachRefStartVar();
+            return;
+        }
+        Form f = form(subject);
+        if (f.local() != null) {
+            b.beginForeachRefStartVarPlace(accessor(f.local()), info(f.local()), f.spec(), describe, caller);
+        } else if (f.global()) {
+            b.beginForeachRefStartGlobal(f.spec(), describe, caller);
+        } else if (f.staticProperty()) {
+            b.beginForeachRefStartStatic(f.spec(), describe, caller);
+        } else {
+            b.beginForeachRefStartObj(f.spec(), describe, caller);
+        }
+        traitSelfOperand();
+        operands(f);
+        if (f.local() != null) {
+            b.endForeachRefStartVarPlace();
+        } else if (f.global()) {
+            b.endForeachRefStartGlobal();
+        } else if (f.staticProperty()) {
+            b.endForeachRefStartStatic();
+        } else {
+            b.endForeachRefStartObj();
+        }
+    }
+
+    /** The enclosing function's trait-self class as an operand, or PHP null. */
+    public void traitSelfOperand() {
+        if (fn != null && fn.traitSelfSlot() >= 0) {
+            loadSlotOrNull(fn.traitSelfSlot());
+        } else {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        }
+    }
+
+    /** The enclosing function's declaring class, or an empty string outside a class. */
+    public String callerConstant() {
+        String declaring = fn != null ? fn.declaringClass() : null;
+        return declaring != null ? declaring : "";
     }
 
     /** {@code base} emits the base keys of a property or static place; {@code keys} the indexes. */

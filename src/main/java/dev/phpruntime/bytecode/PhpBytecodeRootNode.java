@@ -367,6 +367,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** {@code $x = &$cell}: binds the local to the reference cell (foreach by reference, =&). */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class BindVarCell {
+        @Specialization
+        static void bind(VirtualFrame frame, LocalAccessor acc, VarInfo info, PhpReference cell,
+                         @Bind BytecodeNode bytecode) {
+            bindCell(frame, acc, info, bytecode, cell);
+        }
+    }
+
     /** {@code $x++;} as a statement. */
     @Operation
     @ConstantOperand(type = LocalAccessor.class)
@@ -1268,6 +1280,35 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (state instanceof Cursor c && c.array != null) {
                 c.array.releaseShare();
             }
+        }
+    }
+
+    /** State of a {@code foreach (... as $k => &$v)}: a live array, or object entries. */
+    public static final class RefCursor {
+        final PhpArray array;
+        final PhpReference cell;
+        final List<Object> keys;
+        final List<Map.Entry<Object, PhpReference>> entries;
+        int pos = -1;
+        Object key;
+        PhpReference element;
+
+        RefCursor(PhpArray array, PhpReference cell, List<Object> keys,
+                  List<Map.Entry<Object, PhpReference>> entries) {
+            this.array = array;
+            this.cell = cell;
+            this.keys = keys;
+            this.entries = entries;
+        }
+
+        @TruffleBoundary
+        Object entryKey() {
+            return entries.get(pos).getKey();
+        }
+
+        @TruffleBoundary
+        PhpReference entryElement() {
+            return entries.get(pos).getValue();
         }
     }
 
@@ -2443,6 +2484,55 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpContext.get(node).warning("Undefined array key " + shown, line);
         }
 
+        // ---- foreach by reference
+
+        static RefCursor refStartPlace(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine,
+                                       Object[] keys, String describe, int line, Node node,
+                                       Object traitSelf, String declaringClass) {
+            Object cur = engine.read(frame, keys);
+            if (cur == null) {
+                PhpContext.get(node).warning("Undefined variable " + describe, line);
+                cur = PhpNull.INSTANCE;
+            }
+            if (!(cur instanceof PhpArray)) {
+                return refFromValue(cur, null, traitSelf, declaringClass, line, node);
+            }
+            return refFromValue(cur, engine.obtainCell(frame, keys), traitSelf, declaringClass, line, node);
+        }
+
+        static RefCursor refStartValue(Object raw, Object traitSelf, String declaringClass, int line, Node node) {
+            PhpReference cell = raw instanceof PhpReference ref ? ref : null;
+            Object value = cell != null
+                    ? (cell.getValue() == null ? PhpNull.INSTANCE : cell.getValue()) : raw;
+            if (value instanceof PhpArray) {
+                return refFromValue(value, cell, traitSelf, declaringClass, line, node);
+            }
+            return refFromValue(value, null, traitSelf, declaringClass, line, node);
+        }
+
+        private static RefCursor refFromValue(Object value, PhpReference cell, Object traitSelf,
+                                              String declaringClass, int line, Node node) {
+            if (value instanceof PhpArray arr) {
+                PhpArray writable = arr.forWrite();
+                if (cell != null) {
+                    cell.setValue(writable);
+                }
+                return new RefCursor(writable, cell, writable.keys(), null);
+            }
+            if (value instanceof PhpObject obj) {
+                if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
+                    CompilerDirectives.transferToInterpreter();
+                    throw new PhpError("An iterator cannot be used with foreach by reference");
+                }
+                String caller = traitSelf instanceof PhpClass ts ? ts.name()
+                        : (declaringClass == null || declaringClass.isEmpty() ? null : declaringClass);
+                return new RefCursor(null, null, null,
+                        PhpClass.visibleRefEntries(PhpContext.get(node), obj, caller));
+            }
+            warnForeach(node, value, line);
+            return new RefCursor(null, null, null, null);
+        }
+
         @TruffleBoundary
         static Object callBuiltin(Builtins.Def def, Object[] args, SiteNode site) {
             if (def.name().equals("assert")) {
@@ -3232,6 +3322,165 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             Places.destructureStep(frame, engine,
                     Places.staticKeys(ops, spec.arrayKeys, spec.baseCount), item);
             return state;
+        }
+    }
+
+    // ---- foreach by reference
+
+    /** A {@code foreach} subject that is a plain local: read it, then take its cell if an array. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartVar {
+        @Specialization
+        static Object start(VirtualFrame frame, LocalAccessor acc, VarInfo info, String describe, String declaringClass,
+                            Object traitSelf, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Bind Node node) {
+            Object cur = current(frame, acc, bytecode);
+            if (cur == null) {
+                PhpContext.get(node).warning("Undefined variable " + describe, lineOf(bytecode, bci));
+                cur = PhpNull.INSTANCE;
+            }
+            if (!(cur instanceof PhpArray)) {
+                return Ops.refStartValue(cur, traitSelf, declaringClass, lineOf(bytecode, bci), node);
+            }
+            PhpReference cell = ObtainVarCell.obtain(frame, acc, info, bytecode);
+            return Ops.refStartValue(cell, traitSelf, declaringClass, lineOf(bytecode, bci), node);
+        }
+    }
+
+    /** A {@code foreach} subject that is an index path on a local. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartVarPlace {
+        @Specialization
+        static Object start(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, String describe,
+                            String declaringClass, Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode,
+                            @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] holder = {HOLDER_EMPTY};
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Object result = Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+            if (holder[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, holder[0]);
+            }
+            return result;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartObj {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.objKeys(ops, spec.arrayKeys);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartGlobal {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.globalKeys(ops, spec.arrayKeys);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartStatic {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartValue {
+        @Specialization
+        static Object start(String declaringClass, Object subject, Object traitSelf,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            return Ops.refStartValue(subject, traitSelf, declaringClass, lineOf(bytecode, bci), node);
+        }
+    }
+
+    @Operation
+    public static final class ForeachRefNext {
+        @Specialization
+        static boolean next(RefCursor c, @Bind Node node) {
+            TruffleSafepoint.poll(node);
+            if (c.array != null) {
+                while (true) {
+                    c.pos++;
+                    if (c.pos >= c.keys.size()) {
+                        return false;
+                    }
+                    Object key = c.keys.get(c.pos);
+                    PhpArray current = c.cell != null && c.cell.getValue() instanceof PhpArray ca ? ca : c.array;
+                    if (!current.containsKey(key)) {
+                        continue;
+                    }
+                    c.key = key;
+                    c.element = current.obtainElementRef(key);
+                    return true;
+                }
+            }
+            if (c.entries != null) {
+                c.pos++;
+                if (c.pos >= c.entries.size()) {
+                    return false;
+                }
+                c.key = c.entryKey();
+                c.element = c.entryElement();
+                return true;
+            }
+            return false;
+        }
+    }
+
+    @Operation
+    public static final class ForeachRefKey {
+        @Specialization
+        static Object key(RefCursor c) {
+            return c.key;
+        }
+    }
+
+    @Operation
+    public static final class ForeachRefCell {
+        @Specialization
+        static PhpReference cell(RefCursor c) {
+            return c.element;
         }
     }
 }
