@@ -67,8 +67,7 @@ final class GeneratorLowering {
             }
             result = new ResumableBlockNode(echoes, scope.resumeSlot());
         } else if (node instanceof GotoDispatchNode dispatch) {
-            Node repeating = get(node, "repeating");
-            PhpNode[] segments = nodes(repeating, "segments");
+            PhpNode[] segments = dispatch.segments();
             for (int i = 0; i < segments.length; i++) { segments[i] = lower(segments[i]); }
             result = dispatch.resumable(scope.resumeSlot());
         } else {
