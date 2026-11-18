@@ -152,48 +152,6 @@ public final class ClassRefNode extends PhpNode {
         return name;
     }
 
-    public PhpClass resolve(com.oracle.truffle.api.frame.VirtualFrame frame) {
-        PhpClass cls = resolveOrNull(frame);
-        if (cls == null) {
-            CompilerDirectives.transferToInterpreter();
-            if (kind == Kind.PARENT) {
-                throw new PhpError("Class \"" + name + "\" has no parent", this);
-            }
-            if (kind == Kind.TRAIT_PARENT) {
-                PhpClass cur = (PhpClass) frame.getObject(calledClassSlot);
-                throw new PhpError("Class \"" + (cur != null ? cur.name() : "") + "\" has no parent", this);
-            }
-            if (kind == Kind.STATIC) {
-                throw new PhpError("Cannot use \"static\" when no class scope is active", this);
-            }
-            throw new PhpError("Class \"" + name + "\" not found", this);
-        }
-        return cls;
-    }
-
-    public PhpClass resolveOrNull(com.oracle.truffle.api.frame.VirtualFrame frame) {
-        return switch (kind) {
-            case STATIC, TRAIT_SELF -> calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
-            case TRAIT_PARENT -> {
-                PhpClass cur = calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
-                yield cur == null ? null : cur.parent();
-            }
-            case DYNAMIC -> {
-                Object v = expr.execute(frame);
-                if (v instanceof PhpObject o) {
-                    yield o.phpClass();
-                }
-                String clsName = PhpOps.toStr(v);
-                PhpClass c = PhpContext.get(this).lookupOrAutoloadClass(clsName);
-                if (c == null && !clsName.isEmpty()) {
-                    yield throwMissing(clsName);
-                }
-                yield c;
-            }
-            default -> resolveValueOrNull(null);
-        };
-    }
-
     private PhpClass throwMissing(String clsName) {
         CompilerDirectives.transferToInterpreter();
         throw new PhpError("Class \"" + clsName + "\" not found", this);

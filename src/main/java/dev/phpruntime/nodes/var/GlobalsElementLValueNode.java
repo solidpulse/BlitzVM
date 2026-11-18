@@ -27,17 +27,6 @@ public final class GlobalsElementLValueNode extends LValueNode {
     }
 
     @Override
-    public Object[] evalKeys(VirtualFrame frame) {
-        if (constName != null) {
-            return NO_KEYS;
-        }
-        if (keyNode == null) {
-            throw PhpError.fatal("Cannot append to $GLOBALS").at(this);
-        }
-        return new Object[]{keyNode.execute(frame)};
-    }
-
-    @Override
     public Object read(VirtualFrame frame, Object[] keys) {
         PhpContext ctx = PhpContext.get(this);
         if (constName != null) {

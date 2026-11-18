@@ -35,16 +35,6 @@ public final class StaticPropertyLValueNode extends LValueNode {
         this.traitSelfSlot = traitSelfSlot;
     }
 
-    @Override
-    public Object[] evalKeys(VirtualFrame frame) {
-        PhpClass cls = classRef.resolve(frame);
-        String name = staticName != null ? staticName : PhpOps.toStr(dynamicNameExpr.execute(frame));
-        if (traitSelfSlot >= 0) {
-            return new Object[]{cls, name, frame.getObject(traitSelfSlot)};
-        }
-        return new Object[]{cls, name};
-    }
-
     /** The rvalue read with the class, name and trait caller already evaluated. */
     public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];

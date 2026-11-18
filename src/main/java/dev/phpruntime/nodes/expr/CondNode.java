@@ -22,11 +22,6 @@ public final class CondNode extends PhpNode {
         return PhpOps.toBool(v);
     }
 
-    /** Reads the operand as a Java boolean (the AST's condition path). */
-    public boolean executeCondition(com.oracle.truffle.api.frame.VirtualFrame frame) {
-        return toBool(operand.execute(frame));
-    }
-
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         e.builder().beginToBool();

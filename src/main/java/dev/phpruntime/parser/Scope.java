@@ -49,8 +49,7 @@ final class Scope {
     private final int closureObjSlot;
     private final int traitSelfSlot;
     private GotoScope gotoScope;
-    private int generatorSlot = -1;
-    private int hiddenId;
+    private boolean generator;
     private boolean usesThis;
     private boolean variadic;
     private int tableSlot = -1;
@@ -248,27 +247,16 @@ final class Scope {
         });
     }
 
-    int intSlot(String name) {
-        return slots.computeIfAbsent(name, n -> frame.addSlot(FrameSlotKind.Int, n, null));
-    }
-
-    int generatorSlot() {
-        if (generatorSlot < 0) {
-            generatorSlot = objectSlot();
-        }
-        return generatorSlot;
+    void markGenerator() {
+        generator = true;
     }
 
     boolean isGenerator() {
-        return generatorSlot >= 0;
+        return generator;
     }
 
     boolean usesThis() {
         return usesThis;
-    }
-
-    int objectSlot() {
-        return frame.addSlot(FrameSlotKind.Object, "@saved" + hiddenId++, null);
     }
 
     GotoScope gotoScope() {
@@ -296,11 +284,6 @@ final class Scope {
         private int nextLabelId;
         private int nextLoopId;
         private int nextFinallyId;
-        private int nextDispatchId;
-
-        int nextDispatchId() {
-            return nextDispatchId++;
-        }
 
         void enterLoop() {
             loopStack.add(nextLoopId++);

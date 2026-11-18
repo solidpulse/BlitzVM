@@ -553,10 +553,7 @@ public final class Parser {
         } else if (segments.isEmpty() || maxDirectSeg >= segments.size()) {
             segments.add(new BlockNode(new PhpNode[0]));
         }
-        int pcSlot = scope.intSlot("@gotoPc_" + scope.gotoScope().nextDispatchId());
-        int enterSlot = childIds.isEmpty() ? -1 : scope.intSlot("@gotoEnter_" + scope.gotoScope().nextDispatchId());
         return new GotoDispatchNode(
-                pcSlot, enterSlot,
                 segments.toArray(new PhpNode[0]),
                 toIntArray(directIds), toIntArray(directSegs),
                 toIntArray(childIds), toIntArray(childSegs));
@@ -575,11 +572,6 @@ public final class Parser {
 
         LabelMarkerNode(int labelId) {
             this.labelId = labelId;
-        }
-
-        @Override
-        public Object execute(com.oracle.truffle.api.frame.VirtualFrame frame) {
-            return null;
         }
     }
 
@@ -1567,7 +1559,7 @@ public final class Parser {
                 if (scope.isGlobal()) {
                     throw error("The \"yield\" expression can only be used inside a function");
                 }
-                scope.generatorSlot();
+                scope.markGenerator();
                 if (acceptKeyword("from")) {
                     if (currentReturnsRef) {
                         throw error("Cannot use \"yield from\" inside a by-reference generator");

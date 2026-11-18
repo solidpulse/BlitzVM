@@ -123,9 +123,7 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
 
     /** Whether an active {@code finally} runs for this pending throwable. */
     public static boolean shouldRunFinallyFor(Throwable t) {
-        if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break
-                || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto
-                || t instanceof ControlFlow.GeneratorClose || t instanceof dev.phpruntime.runtime.GeneratorCloseSignal) {
+        if (t instanceof dev.phpruntime.runtime.GeneratorCloseSignal) {
             return true;
         }
         if (t instanceof PhpException) {

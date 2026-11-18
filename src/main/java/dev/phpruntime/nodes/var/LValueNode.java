@@ -12,10 +12,6 @@ public abstract class LValueNode extends PhpNode {
 
     public static final Object[] NO_KEYS = new Object[0];
 
-    public Object[] evalKeys(VirtualFrame frame) {
-        return NO_KEYS;
-    }
-
     /** Current value, or Java {@code null} if undefined. */
     public abstract Object read(VirtualFrame frame, Object[] keys);
 

@@ -40,8 +40,6 @@ public final class DynamicVarNode extends LValueNode {
     /** A copy for bytecode places: no name expression, keys (table, name). */
     public DynamicVarNode headless() { return new DynamicVarNode(null, tableSlot, literal, true).at(line()); }
 
-    @Override public Object[] evalKeys(VirtualFrame frame) { return new Object[]{PhpOps.toStr(nameExpr.execute(frame))}; }
-
     private PhpSymbolTable table(VirtualFrame frame, Object[] keys) {
         return (PhpSymbolTable) (headless ? keys[0] : frame.getObject(tableSlot));
     }

@@ -40,7 +40,7 @@ public final class IndexLValueNode extends LValueNode {
 
     private record PackedKeys(Object[] baseKeys, Object[] arrayKeys) {}
 
-    /** Keys as {@link #evalKeys} builds them, for callers that evaluated the parts themselves. */
+    /** Keys as {@link #pack} builds them, for callers that evaluated the parts themselves. */
     public static Object[] pack(Object[] baseKeys, Object[] arrayKeys) {
         return new Object[]{new PackedKeys(baseKeys, arrayKeys)};
     }
@@ -84,17 +84,6 @@ public final class IndexLValueNode extends LValueNode {
 
     private static Object[] arrayKeys(Object[] keys) {
         return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.arrayKeys : keys;
-    }
-
-    @Override
-    @ExplodeLoop
-    public Object[] evalKeys(VirtualFrame frame) {
-        Object[] baseKeys = base.evalKeys(frame);
-        Object[] keys = new Object[keyNodes.length];
-        for (int i = 0; i < keyNodes.length; i++) {
-            keys[i] = keyNodes[i] == null ? APPEND : keyNodes[i].execute(frame);
-        }
-        return baseKeys == NO_KEYS ? keys : new Object[]{new PackedKeys(baseKeys, keys)};
     }
 
     @Override

@@ -14,7 +14,7 @@ public final class GotoDispatchNode extends PhpNode implements GotoEnterable {
     @CompilationFinal(dimensions = 1) private final int[] directLabelSegments;
     @CompilationFinal(dimensions = 1) private final int[] exportedLabelIds;
 
-    public GotoDispatchNode(int pcSlot, int enterSlot, PhpNode[] segments,
+    public GotoDispatchNode(PhpNode[] segments,
                             int[] directLabelIds, int[] directLabelSegments,
                             int[] childLabelIds, int[] childLabelSegments) {
         this.segments = segments;
