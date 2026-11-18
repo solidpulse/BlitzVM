@@ -1,0 +1,26 @@
+#0 /350-generators-bytecode.php(7): trace()
+#1 {main}
+bt:trace
+v1
+RuntimeException:boom:5
+got a
+caught L
+after
+2,4,6
+x=D1
+y=D2
+c10
+c11
+c12
+n=13
+ACE
+sum 12
+120
+a:1 0:2 10:3 11:4 k:5 0:6 12:7 
+1
+inner got S
+inner returned R
+99
+cleanup
+Cannot rewind a generator that was already run
+Cannot rewind a generator that was already run

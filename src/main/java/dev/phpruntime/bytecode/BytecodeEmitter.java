@@ -63,6 +63,16 @@ public final class BytecodeEmitter {
     private int currentLine = -1;
 
     private BytecodeLocal hoisted;
+    /** The PhpGenerator of a generator function's body (null elsewhere). */
+    private BytecodeLocal generator;
+
+    /** The local holding the running generator; only a generator body contains yields. */
+    public BytecodeLocal generatorLocal() {
+        if (generator == null) {
+            throw new Unsupported("yield outside a generator function");
+        }
+        return generator;
+    }
 
     private BytecodeEmitter(PhpBytecodeRootNodeGen.Builder b, PhpLanguage language, PhpFunctionRootNode fn) {
         this(b, language, fn, fn.source());
@@ -145,7 +155,7 @@ public final class BytecodeEmitter {
             return null;
         }
         try {
-            if (fn.isGenerator()) {
+            if (fn.isGenerator() && fn.generatorSource() == null) {
                 throw new Unsupported("generator");
             }
             if (fn.returnsRef()) {
@@ -158,6 +168,9 @@ public final class BytecodeEmitter {
                 System.err.println(root.dump());
             }
             COMPILED.incrementAndGet();
+            if (fn.isGenerator()) {
+                return new GeneratorEntryRootNode(language, fn, root.getCallTarget()).getCallTarget();
+            }
             return root.getCallTarget();
         } catch (Unsupported u) {
             if (REPORT) {
@@ -204,7 +217,19 @@ public final class BytecodeEmitter {
         if (fn.usesSymbolTable()) {
             initSymbols();
         }
-        stmt(fn.body());
+        if (fn.isGenerator()) {
+            // Calling a generator function binds the arguments and stops here; the first resume
+            // passes the PhpGenerator in, and the body runs from there.
+            generator = b.createLocal("#generator", null);
+            b.beginStoreLocal(generator);
+            b.beginYield();
+            b.emitLoadConstant(PhpNull.INSTANCE);
+            b.endYield();
+            b.endStoreLocal();
+            stmt(fn.generatorSource());
+        } else {
+            stmt(fn.body());
+        }
         b.beginReturn();
         b.emitLoadConstant(PhpNull.INSTANCE);
         b.endReturn();

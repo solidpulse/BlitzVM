@@ -247,7 +247,7 @@ public final class TryCatchNode extends PhpNode implements GotoEnterable {
     public static boolean shouldRunFinallyFor(Throwable t) {
         if (t instanceof ControlFlow.Return || t instanceof ControlFlow.Break
                 || t instanceof ControlFlow.Continue || t instanceof ControlFlow.Goto
-                || t instanceof ControlFlow.GeneratorClose) {
+                || t instanceof ControlFlow.GeneratorClose || t instanceof dev.phpruntime.runtime.GeneratorCloseSignal) {
             return true;
         }
         if (t instanceof PhpException) {
