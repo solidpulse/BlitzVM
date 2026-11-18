@@ -3583,6 +3583,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ---- 17d: last coverage
 
+    /** {@code match} with no matching arm and no default. */
+    @Operation
+    public static final class UnhandledMatch {
+        @Specialization
+        static Object fail(Object subject) {
+            CompilerDirectives.transferToInterpreter();
+            throw dev.phpruntime.nodes.expr.MatchNode.unhandled(subject, null);
+        }
+    }
+
     /** {@code func_num_args()}/{@code func_get_args()}: the frame's arguments past the prefix. */
     @Operation
     @ConstantOperand(type = FuncArgsNode.Kind.class, name = "kind")
