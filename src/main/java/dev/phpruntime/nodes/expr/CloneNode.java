@@ -2,6 +2,7 @@ package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
@@ -25,12 +26,16 @@ public final class CloneNode extends PhpNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        Object val = targetExpr.execute(frame);
+        return cloneValue(targetExpr.execute(frame), this, dispatch);
+    }
+
+    /** The semantics of {@code clone $value}; the bytecode operation passes this instruction's site. */
+    public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-            throw new PhpError("__clone method called on non-object", this);
+            throw new PhpError("__clone method called on non-object", site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(this), obj);
+        PhpObject copy = shallowCopy(PhpContext.get(site), obj);
         PhpClass.MethodEntry cloneMethod = obj.phpClass().cloneMethod();
         if (cloneMethod != null && cloneMethod.callTarget() != null) {
             copy.setCloning(true);
@@ -40,12 +45,19 @@ public final class CloneNode extends PhpNode {
                         : new Object[]{copy, obj.phpClass()};
                 dispatch.call(cloneMethod.callTarget(), callArgs);
             } catch (PhpError e) {
-                throw e.at(this);
+                throw e.at(site);
             } finally {
                 copy.setCloning(false);
             }
         }
         return copy;
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.builder().beginClone();
+        e.expr(targetExpr);
+        e.builder().endClone();
     }
 
     @TruffleBoundary

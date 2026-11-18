@@ -2637,4 +2637,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return value instanceof PhpObject obj && target != null && obj.phpClass().isInstanceOf(target);
         }
     }
+
+    /** {@code clone $value}: {@code CloneNode.cloneValue} with this instruction as the error site. */
+    @Operation
+    public static final class Clone {
+        @Specialization
+        static Object clone(Object value, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                            @Cached("create()") DispatchCallNode dispatch) {
+            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch);
+        }
+    }
 }
