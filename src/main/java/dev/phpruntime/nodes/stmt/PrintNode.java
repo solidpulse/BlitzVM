@@ -1,10 +1,6 @@
 package dev.phpruntime.nodes.stmt;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
-import dev.phpruntime.PhpContext;
-import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpNode;
-import dev.phpruntime.runtime.PhpOps;
 
 /** {@code print expr} (an expression returning 1) and {@code exit(expr)} / {@code die}. */
 public final class PrintNode extends PhpNode {
@@ -15,22 +11,6 @@ public final class PrintNode extends PhpNode {
     public PrintNode(PhpNode value, boolean exit) {
         this.value = value;
         this.exit = exit;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        Object v = value == null ? null : value.execute(frame);
-        if (v != null && !(exit && v instanceof Long)) {
-            try {
-                PhpContext.get(this).echo(PhpOps.toStr(v));
-            } catch (dev.phpruntime.runtime.PhpError e) {
-                throw e.at(this);
-            }
-        }
-        if (exit) {
-            throw new ControlFlow.Exit();
-        }
-        return 1L;
     }
 
     @Override

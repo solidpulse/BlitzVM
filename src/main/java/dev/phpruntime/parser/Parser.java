@@ -725,7 +725,7 @@ public final class Parser {
         } finally {
             scope.gotoScope().exitLoop();
         }
-        return new ForeachNode(language, subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
+        return new ForeachNode(subject, lvalueOrNull(subject), key, value, byRef, body).at(line);
     }
 
     private LValueNode parseForeachTarget(boolean outerByRef) {

@@ -1,7 +1,5 @@
 package dev.phpruntime.nodes.stmt;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
-import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.var.LValueNode;
 import dev.phpruntime.runtime.PhpNull;
@@ -29,30 +27,9 @@ public final class JumpNode extends PhpNode {
         this.returnByRef = returnByRef;
     }
 
-    @Override
-    public Object execute(VirtualFrame frame) {
-        switch (kind) {
-            case BREAK -> throw new ControlFlow.Break(levels);
-            case CONTINUE -> throw new ControlFlow.Continue(levels);
-            default -> {
-                if (value == null) {
-                    throw new ControlFlow.Return(returnByRef ? new PhpReference(PhpNull.INSTANCE) : PhpNull.INSTANCE);
-                }
-                if (returnByRef) {
-                    if (value instanceof LValueNode lv) {
-                        throw new ControlFlow.Return(lv.obtainCell(frame, lv.evalKeys(frame)));
-                    }
-                    Object v = value.execute(frame);
-                    throw new ControlFlow.Return(v instanceof PhpReference ref ? ref : new PhpReference(PhpOps.copyOnAssign(v)));
-                }
-                throw new ControlFlow.Return(value.execute(frame));
-            }
-        }
-    }
-
     /**
      * {@code return $x;} in a function declared {@code function &f()}: the cell of an lvalue,
-     * else the value in a new cell (a returned reference stays itself), as execute does.
+     * else the value in a new cell (a returned reference stays itself), as the AST did.
      */
     private void emitReturnRef(dev.phpruntime.bytecode.BytecodeEmitter e) {
         var b = e.builder();
@@ -87,7 +64,7 @@ public final class JumpNode extends PhpNode {
                 if (value == null) {
                     e.emitFinallies();
                     b.beginReturn();
-                    b.emitLoadConstant(dev.phpruntime.runtime.PhpNull.INSTANCE);
+                    b.emitLoadConstant(PhpNull.INSTANCE);
                     b.endReturn();
                 } else if (!e.hasFinallies()) {
                     b.beginReturn();
