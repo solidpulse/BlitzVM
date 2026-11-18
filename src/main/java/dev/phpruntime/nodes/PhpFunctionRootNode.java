@@ -371,6 +371,9 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     @Override
     @ExplodeLoop
     public Object execute(VirtualFrame frame) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.ALL) {
+            throw dev.phpruntime.bytecode.BytecodeEmitter.astExecuted(this);
+        }
         TruffleSafepoint.poll(this);
         Object[] args = frame.getArguments();
         int offset = argOffset();

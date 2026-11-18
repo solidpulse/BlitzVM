@@ -62,6 +62,9 @@ public final class PhpMainRootNode extends PhpRootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.ALL) {
+            throw dev.phpruntime.bytecode.BytecodeEmitter.astExecuted(this);
+        }
         boolean isEntry = frame.getArguments().length == 0;
         if (isEntry) {
             return runEntry(PhpContext.get(this), () -> runBody(frame, false));

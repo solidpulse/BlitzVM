@@ -34,6 +34,15 @@ public final class BytecodeEmitter {
 
     private static final String MODE = System.getProperty("blitz.bytecode", "auto");
     private static final boolean REPORT = Boolean.getBoolean("blitz.bytecode.report");
+    /** {@code -Dblitz.bytecode=all}: everything must compile, and AST roots must never run. */
+    public static final boolean ALL = MODE.equals("all");
+
+    /** Thrown by an AST root's execute under {@code all}: something still reached the AST. */
+    public static RuntimeException astExecuted(com.oracle.truffle.api.nodes.RootNode root) {
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+        return new IllegalStateException("AST root executed under blitz.bytecode=all: "
+                + root.getClass().getSimpleName() + " " + root.getName());
+    }
     private static final boolean DUMP = Boolean.getBoolean("blitz.bytecode.dump");
     private static final AtomicInteger COMPILED = new AtomicInteger();
     private static final Map<String, AtomicInteger> UNSUPPORTED = new java.util.concurrent.ConcurrentHashMap<>();
@@ -101,6 +110,10 @@ public final class BytecodeEmitter {
             COMPILED.incrementAndGet();
             return new EntryRootNode(language, main, root.getCallTarget()).getCallTarget();
         } catch (Unsupported u) {
+            if (ALL) {
+                throw new IllegalStateException("bytecode: " + main.getName() + " (" + main.source().getName()
+                        + "): unsupported " + u.getMessage());
+            }
             if (REPORT) {
                 UNSUPPORTED.computeIfAbsent("(file) " + u.getMessage(), k -> new AtomicInteger()).incrementAndGet();
             }
