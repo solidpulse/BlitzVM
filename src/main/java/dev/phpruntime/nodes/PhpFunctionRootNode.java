@@ -40,6 +40,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     private final boolean hasAnyRefParam;
     @Children private final PhpNode[] defaults;
     private final boolean variadic;
+    private final long refMask;
     private final int requiredArgs;
     @Child private PhpNode body;
     /** A generator's body as written, which the bytecode compiles; never executed here. */
@@ -137,6 +138,29 @@ public final class PhpFunctionRootNode extends PhpRootNode {
             }
         }
         this.requiredArgs = required;
+        long mask = 0;
+        for (int i = 0; i < 63; i++) {
+            if (isParamByRef(i)) {
+                mask |= 1L << i;
+            }
+        }
+        if (isParamByRef(Integer.MAX_VALUE)) {
+            mask |= Long.MIN_VALUE;
+        }
+        this.refMask = mask;
+    }
+
+    /**
+     * Which parameters are by reference, for call sites: bit i for parameter i below 63, bit
+     * 63 for every later position (a by-reference variadic). See {@link #refBit}.
+     */
+    public long refMask() {
+        return refMask;
+    }
+
+    /** Whether {@code refMask} makes parameter {@code param} by reference. */
+    public static boolean refBit(long refMask, int param) {
+        return param < 63 ? ((refMask >>> param) & 1L) != 0 : refMask < 0;
     }
 
     public String declaringClass() {

@@ -19,6 +19,12 @@ public final class ArrayAccessNode extends Node {
     @Child private ObjectMethodNode exists;
     @Child private ObjectMethodNode unset;
     private final int getId;
+    /**
+     * Whether this site has seen an ArrayAccess object. Every index operation carries this
+     * node, almost always on arrays; until an object arrives the compiled code holds a
+     * deoptimization here instead of the offsetGet/offsetSet call paths.
+     */
+    private final com.oracle.truffle.api.profiles.BranchProfile used = com.oracle.truffle.api.profiles.BranchProfile.create();
 
     /** For bytecode operations, which cache this node per instruction. */
     public static ArrayAccessNode create(com.oracle.truffle.api.nodes.RootNode root) {
@@ -34,6 +40,7 @@ public final class ArrayAccessNode extends Node {
     }
 
     private void check(PhpObject obj) {
+        used.enter();
         if (!obj.phpClass().hasSplInterface(SplInterfaces.ARRAY_ACCESS)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot use object of type " + obj.phpClass().name() + " as array", this);
