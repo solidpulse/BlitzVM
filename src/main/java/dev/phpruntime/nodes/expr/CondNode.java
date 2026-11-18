@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpOps;
 
@@ -13,15 +12,6 @@ public final class CondNode extends PhpNode {
         this.operand = operand;
     }
 
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return executeCondition(frame);
-    }
-
-    public boolean executeCondition(VirtualFrame frame) {
-        return toBool(operand.execute(frame));
-    }
-
     public static boolean toBool(Object v) {
         if (v instanceof Boolean b) {
             return b;
@@ -30,6 +20,11 @@ public final class CondNode extends PhpNode {
             return l != 0;
         }
         return PhpOps.toBool(v);
+    }
+
+    /** Reads the operand as a Java boolean (the AST's condition path). */
+    public boolean executeCondition(com.oracle.truffle.api.frame.VirtualFrame frame) {
+        return toBool(operand.execute(frame));
     }
 
     @Override

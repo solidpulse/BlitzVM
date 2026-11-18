@@ -1483,30 +1483,30 @@ public final class Parser {
 
     private static PhpNode makeBinary(String op, PhpNode l, PhpNode r) {
         return switch (op) {
-            case "+" -> AddNodeGen.create(l, r);
-            case "-" -> SubNodeGen.create(l, r);
-            case "*" -> MulNodeGen.create(l, r);
-            case "/" -> DivNodeGen.create(l, r);
-            case "%" -> ModNodeGen.create(l, r);
-            case "." -> ConcatNodeGen.create(l, r);
+            case "+" -> new AddNode(l, r);
+            case "-" -> new SubNode(l, r);
+            case "*" -> new MulNode(l, r);
+            case "/" -> new DivNode(l, r);
+            case "%" -> new ModNode(l, r);
+            case "." -> new ConcatNode(l, r);
             case "**" -> new ArithNode(PhpArith.Op.POW, l, r);
             case "&" -> new ArithNode(PhpArith.Op.BIT_AND, l, r);
             case "|" -> new ArithNode(PhpArith.Op.BIT_OR, l, r);
             case "^" -> new ArithNode(PhpArith.Op.BIT_XOR, l, r);
             case "<<" -> new ArithNode(PhpArith.Op.SHL, l, r);
             case ">>" -> new ArithNode(PhpArith.Op.SHR, l, r);
-            case "<" -> CompareNodeGen.create(CompareNode.Kind.LT, l, r);
-            case "<=" -> CompareNodeGen.create(CompareNode.Kind.LE, l, r);
-            case ">" -> CompareNodeGen.create(CompareNode.Kind.GT, l, r);
-            case ">=" -> CompareNodeGen.create(CompareNode.Kind.GE, l, r);
-            case "<=>" -> CompareNodeGen.create(CompareNode.Kind.SPACESHIP, l, r);
-            case "==" -> EqualNodeGen.create(false, l, r);
-            case "!=", "<>" -> EqualNodeGen.create(true, l, r);
-            case "===" -> IdenticalNodeGen.create(false, l, r);
-            case "!==" -> IdenticalNodeGen.create(true, l, r);
+            case "<" -> new CompareNode(CompareNode.Kind.LT, l, r);
+            case "<=" -> new CompareNode(CompareNode.Kind.LE, l, r);
+            case ">" -> new CompareNode(CompareNode.Kind.GT, l, r);
+            case ">=" -> new CompareNode(CompareNode.Kind.GE, l, r);
+            case "<=>" -> new CompareNode(CompareNode.Kind.SPACESHIP, l, r);
+            case "==" -> new EqualNode(false, l, r);
+            case "!=", "<>" -> new EqualNode(true, l, r);
+            case "===" -> new IdenticalNode(false, l, r);
+            case "!==" -> new IdenticalNode(true, l, r);
             case "&&", "and" -> new AndNode(l, r);
             case "||", "or" -> new OrNode(l, r);
-            case "xor" -> IdenticalNodeGen.create(true, new NotNode(new NotNode(l)), new NotNode(new NotNode(r)));
+            case "xor" -> new IdenticalNode(true, new NotNode(new NotNode(l)), new NotNode(new NotNode(r)));
             case "??" -> new CoalesceNode(l, r);
             default -> throw new IllegalStateException(op);
         };
@@ -1530,7 +1530,7 @@ public final class Parser {
                     if (operand instanceof ConstNode c && c.value() instanceof Double d) {
                         return new ConstNode(-d).at(line);
                     }
-                    return NegNodeGen.create(operand).at(line);
+                    return new NegNode(operand).at(line);
                 }
                 case "+" -> {
                     next();
@@ -2404,7 +2404,7 @@ public final class Parser {
             refArr[i] = byRefs.get(i);
             spreadArr[i] = spreads.get(i);
         }
-        return new ArrayLiteralNode(language, keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
+        return new ArrayLiteralNode(keys.toArray(new PhpNode[0]), values.toArray(new PhpNode[0]), refArr, spreadArr);
     }
 
     private boolean isBracketDestructuringAt(int bracketPos) {

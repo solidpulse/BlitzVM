@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpNode;
@@ -171,25 +170,6 @@ public final class FuncArgsNode extends PhpNode {
             return value == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(value);
         }
         return passedValue(args[argOffset + i]);
-    }
-
-    private Object[] currentParams(VirtualFrame frame) {
-        Object[] current = new Object[normalParamCount];
-        for (int i = 0; i < normalParamCount; i++) {
-            current[i] = paramRead(i).read(frame, LValueNode.NO_KEYS);
-        }
-        return current;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        Object[] args = frame.getArguments();
-        return switch (kind) {
-            case NUM_ARGS -> numArgs(argOffset, args, this);
-            case GET_ARGS -> getArgs(argOffset, normalParamCount, currentParams(frame), args, this);
-            case GET_ARG -> getArg(argOffset, normalParamCount, currentParams(frame), args,
-                    indexExpr.execute(frame), this);
-        };
     }
 
     @Override

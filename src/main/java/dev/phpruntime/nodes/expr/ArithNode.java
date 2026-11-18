@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpArith;
 
@@ -15,17 +14,6 @@ public final class ArithNode extends PhpNode {
         this.op = op;
         this.left = left;
         this.right = right;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        Object a = left.execute(frame);
-        Object b = right.execute(frame);
-        try {
-            return PhpArith.apply(op, a, b);
-        } catch (dev.phpruntime.runtime.PhpError e) {
-            throw e.at(this);
-        }
     }
 
     @Override

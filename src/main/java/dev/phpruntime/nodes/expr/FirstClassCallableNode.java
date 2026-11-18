@@ -1,14 +1,11 @@
 package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.builtins.Builtins;
 import dev.phpruntime.nodes.PhpNode;
-import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpError;
@@ -35,7 +32,6 @@ public final class FirstClassCallableNode extends PhpNode {
     private final int nsFunctionId;
     private final String fnName;
     private final int functionId;
-    @CompilationFinal private Builtins.Def builtin;
 
     @Child private PhpNode targetExpr;
     @Child private ClassRefNode classRef;
@@ -82,39 +78,6 @@ public final class FirstClassCallableNode extends PhpNode {
 
     public static FirstClassCallableNode forCallable(PhpNode targetExpr, int thisSlot) {
         return new FirstClassCallableNode(Mode.CALLABLE, null, -1, null, -1, targetExpr, null, null, -1, null, thisSlot, -1);
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        PhpContext ctx = PhpContext.get(this);
-        return switch (mode) {
-            case FUNCTION -> resolveFunction(ctx);
-            case METHOD -> resolveMethod(frame, ctx);
-            case STATIC_METHOD -> resolveStaticMethod(frame, ctx);
-            case CALLABLE -> PhpCallable.toClosure(
-                    ctx, targetExpr.execute(frame),
-                    thisSlot >= 0 ? frame.getObject(thisSlot) : PhpNull.INSTANCE, this);
-        };
-    }
-
-    private PhpObject resolveFunction(PhpContext ctx) {
-        return createFunction(ctx, nsFnName, nsFunctionId, fnName, functionId, builtin, this);
-    }
-
-    private PhpObject resolveMethod(VirtualFrame frame, PhpContext ctx) {
-        Object target = targetExpr.execute(frame);
-        String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
-        return createMethod(ctx, target, name, methodId, this);
-    }
-
-    private PhpObject resolveStaticMethod(VirtualFrame frame, PhpContext ctx) {
-        PhpClass targetClass = classRef.resolve(frame);
-        String name = staticMemberName != null ? staticMemberName : PhpOps.toStr(dynamicMemberExpr.execute(frame));
-        Object calledArg = classRef.isForwarding() && calledClassSlot >= 0
-                ? frame.getObject(calledClassSlot)
-                : targetClass;
-        Object thisValue = thisSlot >= 0 ? frame.getObject(thisSlot) : PhpNull.INSTANCE;
-        return createStaticMethod(ctx, targetClass, name, methodId, classRef.isForwarding(), thisValue, calledArg, this);
     }
 
     @TruffleBoundary

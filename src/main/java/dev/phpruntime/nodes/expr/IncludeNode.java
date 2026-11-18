@@ -5,7 +5,6 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.source.Source;
@@ -81,17 +80,6 @@ public final class IncludeNode extends PhpNode {
         e.builder().beginInclude(spec);
         e.expr(pathExpr);
         e.builder().endInclude();
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        String path = PhpOps.toStr(pathExpr.execute(frame));
-        Object prepared = prepare(path);
-        if (prepared instanceof PreparedInclude inc) {
-            return callNode.call(inc.target(), tableSlot < 0 ? new Object[]{inc.canonicalPath()}
-                    : new Object[]{inc.canonicalPath(), frame.getObject(tableSlot)});
-        }
-        return prepared;
     }
 
     @TruffleBoundary

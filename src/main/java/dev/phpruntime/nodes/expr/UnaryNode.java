@@ -1,6 +1,5 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpOps;
@@ -14,11 +13,6 @@ public final class UnaryNode extends PhpNode {
     public UnaryNode(PhpNode operand, boolean bitNot) {
         this.operand = operand;
         this.bitNot = bitNot;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return apply(operand.execute(frame), bitNot, this);
     }
 
     /** The conversion, shared with the bytecode {@code Unary} operation. */

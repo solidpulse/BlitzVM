@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.expr;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.runtime.PhpClass;
@@ -83,8 +82,9 @@ public final class ClassRefNode extends PhpNode {
     }
 
     /**
-     * {@link #resolve} with what it would read from the frame already read: for STATIC and the
-     * TRAIT kinds the class in {@link #slot()}, for DYNAMIC the expression's value, else unused.
+     * Resolves the class with what it would read from the frame already read: for STATIC and
+     * the TRAIT kinds the class in {@link #slot()}, for DYNAMIC the expression's value, else
+     * unused.
      */
     public PhpClass resolveValue(Object operand) {
         PhpClass cls = resolveValueOrNull(operand);
@@ -105,7 +105,17 @@ public final class ClassRefNode extends PhpNode {
     }
 
     public PhpClass resolveValueOrNull(Object operand) {
+        PhpContext ctx = PhpContext.get(this);
         return switch (kind) {
+            case NAMED -> {
+                PhpClass c = ctx.classById(classId);
+                yield c != null ? c : ctx.lookupOrAutoloadClass(name);
+            }
+            case SELF -> ctx.classById(classId);
+            case PARENT -> {
+                PhpClass cur = ctx.classById(classId);
+                yield cur == null ? null : cur.parent();
+            }
             case STATIC, TRAIT_SELF -> operand instanceof PhpClass c ? c : null;
             case TRAIT_PARENT -> operand instanceof PhpClass c ? c.parent() : null;
             case DYNAMIC -> {
@@ -113,85 +123,13 @@ public final class ClassRefNode extends PhpNode {
                     yield o.phpClass();
                 }
                 String clsName = PhpOps.toStr(operand);
-                PhpClass c = PhpContext.get(this).lookupOrAutoloadClass(clsName);
+                PhpClass c = ctx.lookupOrAutoloadClass(clsName);
                 if (c == null && !clsName.isEmpty()) {
-                    yield throwMissing(clsName);
-                }
-                yield c;
-            }
-            default -> resolveOrNull(null);
-        };
-    }
-
-    public boolean isForwarding() {
-        return kind == Kind.SELF || kind == Kind.PARENT || kind == Kind.STATIC
-                || kind == Kind.TRAIT_SELF || kind == Kind.TRAIT_PARENT;
-    }
-
-    public String staticName() {
-        return name;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return resolve(frame);
-    }
-
-    public PhpClass resolve(VirtualFrame frame) {
-        PhpClass cls = resolveOrNull(frame);
-        if (cls == null) {
-            CompilerDirectives.transferToInterpreter();
-            if (kind == Kind.PARENT) {
-                CompilerDirectives.transferToInterpreter();
-                throw new PhpError("Class \"" + name + "\" has no parent", this);
-            }
-            if (kind == Kind.TRAIT_PARENT) {
-                PhpClass cur = (PhpClass) frame.getObject(calledClassSlot);
-                CompilerDirectives.transferToInterpreter();
-                throw new PhpError("Class \"" + (cur != null ? cur.name() : "") + "\" has no parent", this);
-            }
-            if (kind == Kind.STATIC) {
-                CompilerDirectives.transferToInterpreter();
-                throw new PhpError("Cannot use \"static\" when no class scope is active", this);
-            }
-            CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Class \"" + name + "\" not found", this);
-        }
-        return cls;
-    }
-
-    public PhpClass resolveOrNull(VirtualFrame frame) {
-        return switch (kind) {
-            case NAMED -> {
-                PhpContext ctx = PhpContext.get(this);
-                PhpClass c = ctx.classById(classId);
-                yield c != null ? c : ctx.lookupOrAutoloadClass(name);
-            }
-            case SELF -> PhpContext.get(this).classById(classId);
-            case PARENT -> {
-                PhpClass cur = PhpContext.get(this).classById(classId);
-                yield cur == null ? null : cur.parent();
-            }
-            case STATIC, TRAIT_SELF -> calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
-            case TRAIT_PARENT -> {
-                PhpClass cur = calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
-                yield cur == null ? null : cur.parent();
-            }
-            case DYNAMIC -> {
-                Object v = expr.execute(frame);
-                if (v instanceof PhpObject o) {
-                    yield o.phpClass();
-                }
-                String clsName = PhpOps.toStr(v);
-                PhpClass c = PhpContext.get(this).lookupOrAutoloadClass(clsName);
-                if (c == null && !clsName.isEmpty()) {
-                    // Preserve name in error if resolve() throws.
                     yield throwMissing(clsName);
                 }
                 yield c;
             }
             case ANONYMOUS -> {
-                PhpContext ctx = PhpContext.get(this);
                 PhpClass c = ctx.classById(classId);
                 if (c != null) {
                     yield c;
@@ -205,30 +143,63 @@ public final class ClassRefNode extends PhpNode {
         };
     }
 
+    public boolean isForwarding() {
+        return kind == Kind.SELF || kind == Kind.PARENT || kind == Kind.STATIC
+                || kind == Kind.TRAIT_SELF || kind == Kind.TRAIT_PARENT;
+    }
+
+    public String staticName() {
+        return name;
+    }
+
+    public PhpClass resolve(com.oracle.truffle.api.frame.VirtualFrame frame) {
+        PhpClass cls = resolveOrNull(frame);
+        if (cls == null) {
+            CompilerDirectives.transferToInterpreter();
+            if (kind == Kind.PARENT) {
+                throw new PhpError("Class \"" + name + "\" has no parent", this);
+            }
+            if (kind == Kind.TRAIT_PARENT) {
+                PhpClass cur = (PhpClass) frame.getObject(calledClassSlot);
+                throw new PhpError("Class \"" + (cur != null ? cur.name() : "") + "\" has no parent", this);
+            }
+            if (kind == Kind.STATIC) {
+                throw new PhpError("Cannot use \"static\" when no class scope is active", this);
+            }
+            throw new PhpError("Class \"" + name + "\" not found", this);
+        }
+        return cls;
+    }
+
+    public PhpClass resolveOrNull(com.oracle.truffle.api.frame.VirtualFrame frame) {
+        return switch (kind) {
+            case STATIC, TRAIT_SELF -> calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
+            case TRAIT_PARENT -> {
+                PhpClass cur = calledClassSlot >= 0 ? (PhpClass) frame.getObject(calledClassSlot) : null;
+                yield cur == null ? null : cur.parent();
+            }
+            case DYNAMIC -> {
+                Object v = expr.execute(frame);
+                if (v instanceof PhpObject o) {
+                    yield o.phpClass();
+                }
+                String clsName = PhpOps.toStr(v);
+                PhpClass c = PhpContext.get(this).lookupOrAutoloadClass(clsName);
+                if (c == null && !clsName.isEmpty()) {
+                    yield throwMissing(clsName);
+                }
+                yield c;
+            }
+            default -> resolveValueOrNull(null);
+        };
+    }
+
     private PhpClass throwMissing(String clsName) {
         CompilerDirectives.transferToInterpreter();
         throw new PhpError("Class \"" + clsName + "\" not found", this);
     }
 
-    /** Same as {@link #resolveOrNull} but returns null for missing class names without autoloading (for instanceof). */
-    public PhpClass resolveForInstanceof(VirtualFrame frame) {
-        if (kind == Kind.NAMED) {
-            return PhpContext.get(this).classById(classId);
-        }
-        if (kind == Kind.DYNAMIC) {
-            Object v = expr.execute(frame);
-            if (v instanceof PhpObject o) {
-                return o.phpClass();
-            }
-            if (v instanceof String s) {
-                return PhpContext.get(this).lookupClass(s);
-            }
-            return null;
-        }
-        return resolveOrNull(frame);
-    }
-
-    /** {@link #resolveForInstanceof(VirtualFrame)} with the operand it would read already evaluated. */
+    /** Same as {@link #resolveValueOrNull} but returns null for missing class names without autoloading (for instanceof). */
     public PhpClass resolveForInstanceof(Object operand) {
         if (kind == Kind.NAMED) {
             return PhpContext.get(this).classById(classId);

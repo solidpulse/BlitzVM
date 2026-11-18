@@ -1,14 +1,23 @@
 package dev.phpruntime.nodes.expr;
 
-import com.oracle.truffle.api.dsl.NodeChild;
 import dev.phpruntime.nodes.PhpNode;
 
-/** Base for DSL-specialised binary operators; children are evaluated left to right. */
-@NodeChild("left")
-@NodeChild("right")
+/** Base for binary operators; children are evaluated left to right. */
 public abstract class BinaryNode extends PhpNode {
 
-    public abstract dev.phpruntime.nodes.PhpNode getLeft();
+    @Child private PhpNode left;
+    @Child private PhpNode right;
 
-    public abstract dev.phpruntime.nodes.PhpNode getRight();
+    protected BinaryNode(PhpNode left, PhpNode right) {
+        this.left = left;
+        this.right = right;
+    }
+
+    public final PhpNode getLeft() {
+        return left;
+    }
+
+    public final PhpNode getRight() {
+        return right;
+    }
 }
