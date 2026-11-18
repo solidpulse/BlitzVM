@@ -139,7 +139,7 @@ public final class PhpError extends AbstractTruffleException {
         Object[] pendingArgs = null;
         for (com.oracle.truffle.api.TruffleStackTraceElement el : elements) {
             com.oracle.truffle.api.nodes.RootNode root = el.getTarget().getRootNode();
-            if (!(root instanceof dev.phpruntime.nodes.PhpRootNode)) {
+            if (!dev.phpruntime.nodes.PhpFunctionRootNode.isGuestFrame(root)) {
                 continue;
             }
             if (pendingFn != null || pendingArgs != null) {
@@ -156,14 +156,9 @@ public final class PhpError extends AbstractTruffleException {
                 pendingType = null;
                 pendingArgs = null;
             }
-            if (dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode
-                    || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                dev.phpruntime.nodes.PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn ? fn
-                        : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
-                com.oracle.truffle.api.frame.Frame frame = el.getFrame();
-                if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode && frame != null) {
-                    frame = ((PhpGenerator) frame.getArguments()[0]).frame;
-                }
+            if (dev.phpruntime.nodes.PhpFunctionRootNode.ofFrame(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
+                com.oracle.truffle.api.frame.Frame frame =
+                        dev.phpruntime.nodes.PhpFunctionRootNode.functionFrame(root, el.getFrame());
                 pendingFn = fnRoot.rawFunctionName();
                 if (fnRoot.isClosure()) {
                     pendingCls = fnRoot.declaringClass();

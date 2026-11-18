@@ -26,10 +26,30 @@ public final class PhpGenerator implements PhpNativeState {
     private RuntimeException injected;
     private boolean closing;
 
+    /**
+     * A bytecode generator: the continuation of its latest yield (the first one is the start
+     * yield after the arguments are bound). Null on the AST, and once the body has finished.
+     */
+    private com.oracle.truffle.api.bytecode.ContinuationResult continuation;
+
     public PhpGenerator(MaterializedFrame frame, RootCallTarget resumeTarget, PhpFunctionRootNode signature) {
         this.frame = frame;
         this.resumeTarget = resumeTarget;
         this.signature = signature;
+    }
+
+    /** A bytecode generator, suspended at its start yield. */
+    public PhpGenerator(com.oracle.truffle.api.bytecode.ContinuationResult start, PhpFunctionRootNode signature) {
+        this.frame = null;
+        this.resumeTarget = null;
+        this.signature = signature;
+        this.continuation = start;
+    }
+
+    /** The key and value a bytecode yield suspends with (the AST passes them in ControlFlow.Yield). */
+    public void suspendWith(Object key, Object value) {
+        this.key = key;
+        this.value = value;
     }
 
     public long autoKey() {
@@ -74,7 +94,21 @@ public final class PhpGenerator implements PhpNativeState {
         if (yields > 0) { advanced = true; }
         running = true;
         try {
-            returnValue = dispatch.call(resumeTarget, new Object[]{this});
+            if (resumeTarget == null) {
+                // Bytecode: resume the continuation; the yield (or the start yield) receives
+                // this generator, and a yield sets the key and value before suspending.
+                com.oracle.truffle.api.bytecode.ContinuationResult c = continuation;
+                Object result = dispatch.call(c.getContinuationCallTarget(), new Object[]{c.getFrame(), this});
+                if (result instanceof com.oracle.truffle.api.bytecode.ContinuationResult next) {
+                    continuation = next;
+                    yields++;
+                    return;
+                }
+                continuation = null;
+                returnValue = result;
+            } else {
+                returnValue = dispatch.call(resumeTarget, new Object[]{this});
+            }
             returned = true;
             closed = true;
             value = key = PhpNull.INSTANCE;
@@ -82,10 +116,12 @@ public final class PhpGenerator implements PhpNativeState {
             key = yield.key;
             value = yield.value;
             yields++;
-        } catch (ControlFlow.GeneratorClose close) {
+        } catch (ControlFlow.GeneratorClose | GeneratorCloseSignal close) {
+            continuation = null;
             closed = true;
             value = key = PhpNull.INSTANCE;
         } catch (RuntimeException | Error error) {
+            continuation = null;
             closed = true;
             value = key = PhpNull.INSTANCE;
             throw error;
@@ -143,7 +179,7 @@ public final class PhpGenerator implements PhpNativeState {
         if (!closed && started) {
             closing = true;
             try {
-                injected = new ControlFlow.GeneratorClose();
+                injected = resumeTarget == null ? new GeneratorCloseSignal() : new ControlFlow.GeneratorClose();
                 resume(dispatch, site);
             } finally {
                 closed = true;

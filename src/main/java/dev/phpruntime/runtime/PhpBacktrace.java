@@ -99,7 +99,7 @@ public final class PhpBacktrace {
                 return null;
             }
             RootNode root = rct.getRootNode();
-            if (!(root instanceof PhpRootNode)) {
+            if (!dev.phpruntime.nodes.PhpFunctionRootNode.isGuestFrame(root)) {
                 // Skip Java-implemented built-in method RootNodes (e.g. Exception::__construct).
                 return null;
             }
@@ -111,6 +111,7 @@ public final class PhpBacktrace {
                 PendingCall pc = pending[0];
                 Node callNode = fi.getCallNode();
                 SourceSection bcSite = root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode
+                        || root instanceof com.oracle.truffle.api.bytecode.ContinuationRootNode
                         ? dev.phpruntime.bytecode.PhpBytecodeRootNode.callSiteSection(fi) : null;
                 String file = bcSite != null ? sectionPath(bcSite, callNode) : sourcePath(callNode);
                 int line = bcSite != null ? bcSite.getStartLine() : sourceLine(callNode);
@@ -126,13 +127,9 @@ public final class PhpBacktrace {
                 }
             }
 
-            if (dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                PhpFunctionRootNode fnRoot = dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fn ? fn
-                        : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
-                Frame f = fi.getFrame(FrameInstance.FrameAccess.READ_ONLY);
-                if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                    f = ((PhpGenerator) f.getArguments()[0]).frame;
-                }
+            if (dev.phpruntime.nodes.PhpFunctionRootNode.ofFrame(root) instanceof PhpFunctionRootNode fnRoot) {
+                Frame f = dev.phpruntime.nodes.PhpFunctionRootNode.functionFrame(root,
+                        fi.getFrame(FrameInstance.FrameAccess.READ_ONLY));
                 Object[] rawArgs = f.getArguments();
                 if (fnRoot.isClosure()) {
                     Object thisObj = rawArgs.length > 0 ? rawArgs[0] : PhpNull.INSTANCE;

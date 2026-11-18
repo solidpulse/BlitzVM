@@ -46,6 +46,8 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     private final int requiredArgs;
     @Child private PhpNode body;
     @CompilationFinal private com.oracle.truffle.api.RootCallTarget generatorTarget;
+    /** A generator's body before GeneratorLowering, which the bytecode compiles; never executed here. */
+    @Child private PhpNode generatorSource;
     @CompilationFinal private int generatorSlot = -1;
     @CompilationFinal private boolean usesThis;
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
@@ -153,7 +155,49 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         if (root instanceof PhpFunctionRootNode f) {
             return f;
         }
-        return root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b ? b.function() : null;
+        if (root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b) {
+            return b.function();
+        }
+        if (root instanceof dev.phpruntime.bytecode.GeneratorEntryRootNode g) {
+            return g.function();
+        }
+        if (root instanceof com.oracle.truffle.api.bytecode.ContinuationRootNode c
+                && c.getSourceRootNode() instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b) {
+            return b.function();
+        }
+        return null;
+    }
+
+    /**
+     * The PHP function a stack frame runs, also for a resumed generator (AST resume root or
+     * bytecode continuation), else null. Pair with {@link #functionFrame}.
+     */
+    public static PhpFunctionRootNode ofFrame(com.oracle.truffle.api.nodes.RootNode root) {
+        if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode g) {
+            return g.signature;
+        }
+        return root instanceof dev.phpruntime.bytecode.GeneratorEntryRootNode ? null : of(root);
+    }
+
+    /** The frame holding a function's arguments and locals for a stack frame of {@code root}. */
+    public static com.oracle.truffle.api.frame.Frame functionFrame(com.oracle.truffle.api.nodes.RootNode root,
+                                                                   com.oracle.truffle.api.frame.Frame frame) {
+        if (frame == null) {
+            return null;
+        }
+        if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
+            return ((dev.phpruntime.runtime.PhpGenerator) frame.getArguments()[0]).frame;
+        }
+        if (root instanceof com.oracle.truffle.api.bytecode.ContinuationRootNode) {
+            return (com.oracle.truffle.api.frame.Frame) frame.getArguments()[0];
+        }
+        return frame;
+    }
+
+    /** Whether a stack frame of {@code root} is guest PHP code (backtraces skip the others). */
+    public static boolean isGuestFrame(com.oracle.truffle.api.nodes.RootNode root) {
+        return root instanceof PhpRootNode || root instanceof com.oracle.truffle.api.bytecode.ContinuationRootNode c
+                && c.getSourceRootNode() instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode;
     }
 
     // Read by the bytecode compiler.
@@ -170,6 +214,13 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     public boolean usesSymbolTable() { return scopeLayout != null; }
     public boolean isGenerator() { return generatorTarget != null; }
     public int line() { return getSourceSection() != null ? getSourceSection().getStartLine() : -1; }
+
+    public PhpFunctionRootNode withGeneratorSource(PhpNode source) {
+        this.generatorSource = source;
+        return this;
+    }
+
+    public PhpNode generatorSource() { return generatorSource; }
 
     public PhpFunctionRootNode asGenerator(PhpLanguage language, int slot) {
         generatorSlot = slot;

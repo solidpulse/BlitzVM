@@ -1,6 +1,7 @@
 package dev.phpruntime.parser;
 
 import com.oracle.truffle.api.nodes.Node;
+import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
 import dev.phpruntime.nodes.var.ScopedVarNode;
@@ -10,6 +11,12 @@ import dev.phpruntime.runtime.PhpScopeLayout;
 
 /** Parse-time specialization after the whole body is known, without scanning nested functions. */
 final class DynamicScopeLowering {
+    /** {@link #finish(PhpRootNode)} for a function, lowering its unlowered generator body too. */
+    static dev.phpruntime.nodes.PhpFunctionRootNode finish(PhpNode generatorSource,
+                                                           dev.phpruntime.nodes.PhpFunctionRootNode root) {
+        return finish(root.withGeneratorSource(generatorSource));
+    }
+
     static <T extends PhpRootNode> T finish(T root) {
         if (root.getFrameDescriptor().getInfo() instanceof PhpScopeLayout layout && !layout.included()) {
             root.adoptChildren();
