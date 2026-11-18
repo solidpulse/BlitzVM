@@ -37,7 +37,7 @@ final class CtypeFunctions {
             if (a[0] instanceof String str) {
                 s = str;
             } else if (a[0] instanceof Long l) {
-                int line = ctx.currentBuiltinCallSite() instanceof dev.phpruntime.nodes.PhpNode node ? node.line() : 0;
+                int line = dev.phpruntime.runtime.PhpBacktrace.callSiteLine(ctx.currentBuiltinCallSite());
                 ctx.userError(8192L, name + "(): Argument of type int will be interpreted as string in the future", line);
                 if (l >= -128 && l <= 255) {
                     return test.test((int) (l < 0 ? l + 256 : l));

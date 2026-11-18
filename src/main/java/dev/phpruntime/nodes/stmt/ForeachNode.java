@@ -342,17 +342,27 @@ public final class ForeachNode extends PhpNode {
         b.beginBlock();
         com.oracle.truffle.api.bytecode.BytecodeLabel next = b.createLabel();
         if (keyTarget != null) {
+            // php (and executeIterator) fetches current() before key(), then assigns the key
+            // and the value in that order.
+            com.oracle.truffle.api.bytecode.BytecodeLocal value = e.temp();
+            b.beginStoreLocal(value);
+            b.beginForeachValue();
+            b.emitLoadLocal(cursor);
+            b.endForeachValue();
+            b.endStoreLocal();
             e.assign(keyTarget, () -> {
                 b.beginForeachKey();
                 b.emitLoadLocal(cursor);
                 b.endForeachKey();
             });
+            e.assign(valueTarget, () -> b.emitLoadLocal(value));
+        } else {
+            e.assign(valueTarget, () -> {
+                b.beginForeachValue();
+                b.emitLoadLocal(cursor);
+                b.endForeachValue();
+            });
         }
-        e.assign(valueTarget, () -> {
-            b.beginForeachValue();
-            b.emitLoadLocal(cursor);
-            b.endForeachValue();
-        });
         e.pushLoop(exit, next);
         e.stmt(body);
         e.popLoop();

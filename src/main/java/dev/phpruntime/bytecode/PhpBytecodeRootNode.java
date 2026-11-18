@@ -1833,21 +1833,28 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ------------------------------------------------------------------ top-level code
 
-    /** True when this file is the request's entry script (called with no arguments). */
+    /** Binds a name in a symbol table to a cell ({@code static} in an included file). */
     @Operation
-    public static final class IsEntry {
+    @ConstantOperand(type = String.class)
+    public static final class TableBindName {
         @Specialization
-        static boolean test(VirtualFrame frame) {
-            return frame.getArguments().length == 0;
+        static void bind(String name, Object table, Object cell) {
+            Ops.tableBind((dev.phpruntime.runtime.PhpSymbolTable) table, name, (PhpReference) cell);
         }
     }
 
-    /** The entry script runs on its AST root, which owns request start, finish and uncaught errors. */
+    /** {@code $this}, the called class or the lexical class of the scope an included file runs in. */
     @Operation
-    public static final class RunEntry {
+    @ConstantOperand(type = int.class)
+    public static final class TableScopeValue {
         @Specialization
-        static Object run(@Bind PhpBytecodeRootNode root, @Cached("create(root.mainRoot().getCallTarget())") DirectCallNode call) {
-            return call.call();
+        static Object value(int which, Object table) {
+            dev.phpruntime.runtime.PhpSymbolTable t = (dev.phpruntime.runtime.PhpSymbolTable) table;
+            return switch (which) {
+                case 0 -> t.thisValue;
+                case 1 -> t.calledClass;
+                default -> t.lexicalClass;
+            };
         }
     }
 
@@ -2355,6 +2362,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Slow paths behind boundaries, so operations stay small when compiled. */
     static final class Ops {
+        @TruffleBoundary
+        static void tableBind(dev.phpruntime.runtime.PhpSymbolTable table, String name, PhpReference cell) {
+            table.bind(name, cell);
+        }
+
         @TruffleBoundary
         static String sourcePathOf(BytecodeNode bytecode, int bci) {
             com.oracle.truffle.api.source.SourceSection s = bytecode.getSourceLocation(bci);

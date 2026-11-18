@@ -51,11 +51,29 @@ public final class PhpMainRootNode extends PhpRootNode {
         this.hoistedClassesSlot = hoistedClassesSlot;
     }
 
+    /** The arguments the entry script's compiled body runs with (see EntryRootNode). */
+    public static final Object ENTRY_BODY = new Object();
+    public static final Object[] ENTRY_BODY_ARGS = {ENTRY_BODY};
+
+    /** Whether a file root's arguments are the request's entry script rather than an include. */
+    public static boolean isEntryArgs(Object[] args) {
+        return args.length == 0 || args[0] == ENTRY_BODY;
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.ALL) {
+            throw dev.phpruntime.bytecode.BytecodeEmitter.astExecuted(this);
+        }
         boolean isEntry = frame.getArguments().length == 0;
+        if (isEntry) {
+            return runEntry(PhpContext.get(this), () -> runBody(frame, false));
+        }
+        return runBody(frame, frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE);
+    }
+
+    private Object runBody(VirtualFrame frame, boolean eval) {
         PhpContext ctx = PhpContext.get(this);
-        PhpRequest request = ctx.request();
         if (scopeLayout != null) {
             dev.phpruntime.runtime.PhpSymbolTable table = (dev.phpruntime.runtime.PhpSymbolTable) frame.getArguments()[1];
             frame.setObject(scopeLayout.tableSlot(), table);
@@ -64,13 +82,8 @@ public final class PhpMainRootNode extends PhpRootNode {
             frame.setObject(scopeLayout.lexicalClassSlot(), table.lexicalClass);
             initializeIncludedLocals(frame, table);
         }
-        Object result = !isEntry && frame.getArguments()[0] == dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE
-                ? PhpNull.INSTANCE : 1L;
+        Object result = eval ? PhpNull.INSTANCE : 1L;
         try {
-            if (isEntry) {
-                start(ctx, request);
-                ctx.reserveGlobals(globalNames);
-            }
             declareFunctions(ctx);
             if (hoistedClassesSlot >= 0) {
                 frame.setObject(hoistedClassesSlot, hoistClasses(ctx));
@@ -78,20 +91,30 @@ public final class PhpMainRootNode extends PhpRootNode {
             body.executeVoid(frame);
         } catch (ControlFlow.Return r) {
             result = r.value;
+        }
+        return result;
+    }
+
+    /**
+     * Runs the request's entry script around {@code body}: request start and globals, then
+     * {@code exit} and uncaught exceptions as php reports them, then request finish.
+     */
+    public Object runEntry(PhpContext ctx, java.util.function.Supplier<Object> body) {
+        PhpRequest request = ctx.request();
+        try {
+            start(ctx, request);
+            ctx.reserveGlobals(globalNames);
+            body.get();
         } catch (ControlFlow.Exit e) {
-            if (!isEntry) {
-                throw e;
-            }
+            // exit() ends the entry script normally.
         } catch (dev.phpruntime.runtime.PhpException ex) {
-            if (isEntry) {
-                if (ctx.handleUncaughtException(ex.exceptionObject())) {
-                    return PhpNull.INSTANCE;
-                }
-                ex.formattedUncaught();
+            if (ctx.handleUncaughtException(ex.exceptionObject())) {
+                return PhpNull.INSTANCE;
             }
+            ex.formattedUncaught();
             throw ex;
         } catch (dev.phpruntime.runtime.PhpError err) {
-            if (isEntry && err.isCatchable()) {
+            if (err.isCatchable()) {
                 dev.phpruntime.runtime.PhpObject errObj = err.toPhpObject(ctx, this);
                 if (ctx.handleUncaughtException(errObj)) {
                     return PhpNull.INSTANCE;
@@ -103,11 +126,9 @@ public final class PhpMainRootNode extends PhpRootNode {
             }
             throw err;
         } finally {
-            if (isEntry) {
-                finish(ctx, request);
-            }
+            finish(ctx, request);
         }
-        return isEntry ? PhpNull.INSTANCE : result;
+        return PhpNull.INSTANCE;
     }
 
     /** A root that runs a file's top-level code: this AST root or the bytecode compiled from it. */
@@ -118,6 +139,10 @@ public final class PhpMainRootNode extends PhpRootNode {
 
     public PhpNode body() {
         return body;
+    }
+
+    public dev.phpruntime.runtime.PhpScopeLayout scopeLayout() {
+        return scopeLayout;
     }
 
     /** Whether this file's top-level code can run without a symbol table (not a local include). */

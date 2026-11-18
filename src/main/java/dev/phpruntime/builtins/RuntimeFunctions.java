@@ -52,10 +52,8 @@ final class RuntimeFunctions {
     }
 
     private static void triggerUserError(PhpContext ctx, String message, long level) {
-        int line = 0;
-        if (ctx.currentBuiltinCallSite() instanceof dev.phpruntime.nodes.PhpNode node) {
-            line = node.line();
-        }
+        // The calling line from an AST node or a bytecode call site.
+        int line = dev.phpruntime.runtime.PhpBacktrace.callSiteLine(ctx.currentBuiltinCallSite());
         if (level == 256) {
             ctx.userError(8192L, "Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, "
                     + "throw an exception or call exit with a string message instead", line);

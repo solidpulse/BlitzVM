@@ -34,6 +34,15 @@ public final class BytecodeEmitter {
 
     private static final String MODE = System.getProperty("blitz.bytecode", "auto");
     private static final boolean REPORT = Boolean.getBoolean("blitz.bytecode.report");
+    /** {@code -Dblitz.bytecode=all}: everything must compile, and AST roots must never run. */
+    public static final boolean ALL = MODE.equals("all");
+
+    /** Thrown by an AST root's execute under {@code all}: something still reached the AST. */
+    public static RuntimeException astExecuted(com.oracle.truffle.api.nodes.RootNode root) {
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+        return new IllegalStateException("AST root executed under blitz.bytecode=all: "
+                + root.getClass().getSimpleName() + " " + root.getName());
+    }
     private static final boolean DUMP = Boolean.getBoolean("blitz.bytecode.dump");
     private static final AtomicInteger COMPILED = new AtomicInteger();
     private static final Map<String, AtomicInteger> UNSUPPORTED = new java.util.concurrent.ConcurrentHashMap<>();
@@ -88,7 +97,7 @@ public final class BytecodeEmitter {
 
     /** The call target for a file's top-level code: bytecode when it compiles, else the AST root's. */
     public static RootCallTarget mainTarget(PhpLanguage language, dev.phpruntime.nodes.PhpMainRootNode main) {
-        if (MODE.equals("off") || main.usesSymbolTable()) {
+        if (MODE.equals("off")) {
             return main.getCallTarget();
         }
         try {
@@ -99,8 +108,12 @@ public final class BytecodeEmitter {
                 System.err.println(root.dump());
             }
             COMPILED.incrementAndGet();
-            return root.getCallTarget();
+            return new EntryRootNode(language, main, root.getCallTarget()).getCallTarget();
         } catch (Unsupported u) {
+            if (ALL) {
+                throw new IllegalStateException("bytecode: " + main.getName() + " (" + main.source().getName()
+                        + "): unsupported " + u.getMessage());
+            }
             if (REPORT) {
                 UNSUPPORTED.computeIfAbsent("(file) " + u.getMessage(), k -> new AtomicInteger()).incrementAndGet();
             }
@@ -115,15 +128,22 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** The symbol-table layout of an included file run in a function's scope, else null. */
+    private dev.phpruntime.runtime.PhpScopeLayout mainLayout;
+
     private void emitMain(dev.phpruntime.nodes.PhpMainRootNode main) {
         b.beginSource(source);
         b.beginRoot();
-        b.beginIfThen();
-        b.emitIsEntry();
-        b.beginReturn();
-        b.emitRunEntry();
-        b.endReturn();
-        b.endIfThen();
+        if (main.usesSymbolTable()) {
+            // Arguments: (include path or eval mode, the caller's symbol table).
+            mainLayout = main.scopeLayout();
+            b.beginStoreLocal(tableLocal());
+            b.emitLoadArgument(1);
+            b.endStoreLocal();
+            scopeSlot(mainLayout.thisSlot(), "#this", 0);
+            scopeSlot(mainLayout.calledClassSlot(), "#calledclass", 1);
+            scopeSlot(mainLayout.lexicalClassSlot(), "#lexicalclass", 2);
+        }
         hoisted = b.createLocal("#hoisted", null);
         b.beginStoreLocal(hoisted);
         b.emitMainPrologue();
@@ -134,6 +154,17 @@ public final class BytecodeEmitter {
         b.endReturn();
         b.endRoot();
         b.endSource();
+    }
+
+    private void scopeSlot(int slot, String name, int which) {
+        if (slot < 0) {
+            return;
+        }
+        b.beginStoreLocal(local(slot, name));
+        b.beginTableScopeValue(which);
+        b.emitLoadLocal(tableLocal());
+        b.endTableScopeValue();
+        b.endStoreLocal();
     }
 
     /** The hoisted-class flags of the file being compiled (PHP null inside a function). */
@@ -301,6 +332,9 @@ public final class BytecodeEmitter {
 
     /** The local holding the symbol table of a dynamic-scope function. */
     public BytecodeLocal tableLocal() {
+        if (mainLayout != null) {
+            return local(mainLayout.tableSlot(), "#symbols");
+        }
         if (fn == null || !fn.usesSymbolTable()) {
             throw new Unsupported("symbol table outside a dynamic-scope function");
         }
@@ -460,7 +494,10 @@ public final class BytecodeEmitter {
         } else if (node instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
             il.emitRead(this, 1);
         } else if (node instanceof dev.phpruntime.nodes.var.PropertyLValueNode
-                || node instanceof dev.phpruntime.nodes.var.GlobalVarNode || isTableVar(node)) {
+                || node instanceof dev.phpruntime.nodes.var.GlobalVarNode || isTableVar(node)
+                || node instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode
+                || node instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode) {
+            // readIfSet, as CoalesceNode does on the AST (an undeclared static property is null).
             place((dev.phpruntime.nodes.var.LValueNode) node, PhpBytecodeRootNode.P_READ_IF_SET, 0, null);
         } else {
             expr(node);
@@ -811,15 +848,28 @@ public final class BytecodeEmitter {
 
     /** A variable of a dynamic-scope function, or a computed variable name. */
     public static boolean isTableVar(PhpNode n) {
-        return n instanceof dev.phpruntime.nodes.var.ScopedVarNode || n instanceof dev.phpruntime.nodes.var.DynamicVarNode;
+        return n instanceof dev.phpruntime.nodes.var.ScopedVarNode || n instanceof dev.phpruntime.nodes.var.DynamicVarNode
+                || n instanceof dev.phpruntime.nodes.var.IncludedVarNode;
     }
 
     private dev.phpruntime.nodes.var.LValueNode tableHeadless(dev.phpruntime.nodes.var.LValueNode v) {
+        if (v instanceof dev.phpruntime.nodes.var.IncludedVarNode iv) {
+            // An included file's variable is the caller's symbol-table entry of that name.
+            // Looked up by name: the file's own slot numbers are not the caller's table layout.
+            return new dev.phpruntime.nodes.var.DynamicVarNode(
+                    new dev.phpruntime.nodes.expr.ConstNode(iv.varName()), mainLayout.tableSlot()).headless();
+        }
         return v instanceof dev.phpruntime.nodes.var.ScopedVarNode sv ? sv.headless()
                 : ((dev.phpruntime.nodes.var.DynamicVarNode) v).headless();
     }
 
     private Runnable tableBase(dev.phpruntime.nodes.var.LValueNode v) {
+        if (v instanceof dev.phpruntime.nodes.var.IncludedVarNode iv) {
+            return () -> {
+                b.emitLoadLocal(tableLocal());
+                b.emitLoadConstant(iv.varName());
+            };
+        }
         if (v instanceof dev.phpruntime.nodes.var.ScopedVarNode sv) {
             return () -> {
                 b.emitLoadLocal(tableLocal());

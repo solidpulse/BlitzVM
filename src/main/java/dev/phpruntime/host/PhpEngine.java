@@ -100,6 +100,10 @@ public final class PhpEngine implements AutoCloseable {
 
     /** Prints the failure the way php-cli does and turns it into an HTTP 500. */
     private int fail(PhpRequest request, OutputStream out, Scheduler.Task task, PolyglotException e, boolean js) {
+        if (e.isInternalError() && Boolean.getBoolean("blitz.internal.trace")) {
+            // -Dblitz.internal.trace=true: the Java stack of a runtime bug.
+            e.printStackTrace();
+        }
         SourceSection where = e.getSourceLocation();
         String file = where != null && where.getSource().getPath() != null ? where.getSource().getPath() : request.scriptFilename;
         if (!js) {

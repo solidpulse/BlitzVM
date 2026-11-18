@@ -319,7 +319,8 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
 
     /** A second engine-wide variant; its arguments supply the invocation's symbols/class scope. */
     public CallTarget parseLocalBytes(Source source) {
-        return localIncludes.computeIfAbsent(source, s -> new Parser(this, s, true).parseMain().getCallTarget());
+        return localIncludes.computeIfAbsent(source, s -> dev.phpruntime.bytecode.BytecodeEmitter.mainTarget(this,
+                new Parser(this, s, true).parseMain()));
     }
 
     public CallTarget parseEvalBytes(Source source) {

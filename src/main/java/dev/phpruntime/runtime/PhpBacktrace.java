@@ -171,7 +171,7 @@ public final class PhpBacktrace {
             } else if (PhpMainRootNode.isMain(root)) {
                 Frame f = fi.getFrame(FrameInstance.FrameAccess.READ_ONLY);
                 Object[] rawArgs = f.getArguments();
-                if (rawArgs.length > 0) {
+                if (!PhpMainRootNode.isEntryArgs(rawArgs)) {
                     Object incPath = rawArgs[0];
                     pending[0] = new PendingCall(null, null, null, null,
                             includeArgs ? new Object[]{incPath instanceof String s ? PhpStrings.fromJava(s) : incPath} : null);
@@ -393,6 +393,14 @@ public final class PhpBacktrace {
             return PhpStrings.fromJava(ss.getSource().getPath());
         }
         return sourcePath(fallback);
+    }
+
+    /** The line of a builtin's call site: an AST node's own line, or a bytecode site's section. */
+    public static int callSiteLine(Node site) {
+        if (site instanceof dev.phpruntime.nodes.PhpNode node) {
+            return Math.max(0, node.line());
+        }
+        return Math.max(0, sourceLine(site));
     }
 
     public static int sourceLine(Node location) {
