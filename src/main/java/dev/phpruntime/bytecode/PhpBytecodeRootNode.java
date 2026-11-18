@@ -2619,6 +2619,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (name != null) {
                 CallArgHelper.checkDuplicateNamed(raw.named(), name, site);
                 raw.named().put(name, value);
+                if (ref != null) {
+                    raw.namedRefTargets().put(name, ref);
+                    raw.namedRefKeys().put(name, keys);
+                }
+                raw.namedNodes().put(name, null);
                 return;
             }
             raw.positional().add(value);
