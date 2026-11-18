@@ -226,9 +226,6 @@ public final class BytecodeEmitter {
             if (fn.isGenerator() && fn.generatorSource() == null) {
                 throw new Unsupported("generator");
             }
-            if (fn.returnsRef() && fn.isGenerator()) {
-                throw new Unsupported("by-reference generator");
-            }
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
                     builder -> new BytecodeEmitter(builder, language, fn).emitRoot()).getNode(0);
             root.init(fn);

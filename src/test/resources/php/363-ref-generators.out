@@ -1,0 +1,15 @@
+[10,20]
+int(0)
+int(10)
+[10,20]
+p=7 q=8 {"p":8,"q":9}
+int(0)
+string(1) "a"
+string(1) "k"
+string(1) "b"
+0=int(2)
+n=NULL
+a=1 b=2 
+[6,8]
+Exception: You can only iterate a generator by-reference if it declared that it yields by-reference:104
+8

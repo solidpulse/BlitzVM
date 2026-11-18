@@ -232,6 +232,40 @@ public final class ForeachNode extends PhpNode {
             return null;
         }
         if (s instanceof PhpObject obj) {
+            if (obj.nativeState() instanceof dev.phpruntime.runtime.PhpGenerator generator) {
+                if (!generator.signature.returnsRef()) {
+                    com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                    throw dev.phpruntime.runtime.PhpGenerator.referenceIterationError(this);
+                }
+                int count = 0;
+                try {
+                    iterator.rewind(obj);
+                    while (iterator.valid(obj)) {
+                        TruffleSafepoint.poll(this);
+                        count++;
+                        if (keyTarget != null) {
+                            keyTarget.write(frame, keyTarget.evalKeys(frame), iterator.key(obj));
+                        }
+                        valueTarget.bindCell(frame, valueTarget.evalKeys(frame), generator.currentCell());
+                        try {
+                            body.executeVoid(frame);
+                        } catch (ControlFlow.Break b) {
+                            if (b.levels > 1) {
+                                throw new ControlFlow.Break(b.levels - 1);
+                            }
+                            break;
+                        } catch (ControlFlow.Continue c) {
+                            if (c.levels > 1) {
+                                throw new ControlFlow.Continue(c.levels - 1);
+                            }
+                        }
+                        iterator.next(obj);
+                    }
+                } finally {
+                    LoopNode.reportLoopCount(this, count);
+                }
+                return null;
+            }
             if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("An iterator cannot be used with foreach by reference", this);

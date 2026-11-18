@@ -1593,6 +1593,9 @@ public final class Parser {
                 }
                 int generatorSlot = scope.generatorSlot();
                 if (acceptKeyword("from")) {
+                    if (currentReturnsRef) {
+                        throw error("Cannot use \"yield from\" inside a by-reference generator");
+                    }
                     return new dev.phpruntime.nodes.generator.YieldFromNode(language, generatorSlot,
                             scope.objectSlot(), binary(4)).at(line);
                 }
@@ -1606,7 +1609,8 @@ public final class Parser {
                         value = binary(4);
                     }
                 }
-                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value).at(line);
+                return new dev.phpruntime.nodes.generator.YieldNode(generatorSlot, scope.resumeSlot(), key, value,
+                        currentReturnsRef).at(line);
             }
             if (kw.equals("print")) {
                 next();
