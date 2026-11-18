@@ -1,0 +1,38 @@
+x---
+----x
+    x
+cdef
+bc
+1,2,3
+array(2) {
+  [0]=>
+  int(2)
+  [1]=>
+  int(3)
+}
+Error: Named parameter $string overwrites previous argument
+Error: Unknown named parameter $junk
+ArgumentCountError: str_pad(): Argument #2 ($length) not passed
+ArgumentCountError: str_pad(): Argument #1 ($string) not passed
+ArgumentCountError: str_pad() expects at least 2 arguments, 1 given
+ArgumentCountError: array_keys(): Argument #2 ($filter_value) must be passed explicitly, because the default value is not known
+ArgumentCountError: array_push() does not accept unknown named parameters
+ArgumentCountError: sprintf() does not accept unknown named parameters
+int(2)
+array(1) {
+  [0]=>
+  string(1) "a"
+}
+array(1) {
+  [0]=>
+  string(1) "b"
+}
+Error: preg_match(): Argument #3 ($matches) could not be passed by reference
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
