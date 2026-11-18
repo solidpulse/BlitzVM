@@ -20,4 +20,27 @@ public final class DestructureAssignNode extends PhpNode {
     public Object execute(VirtualFrame frame) {
         return target.assignFrom(frame, value, valueLValue);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLocal state = e.temp();
+        b.beginStoreLocal(state);
+        if (target.hasAnyRef() && valueLValue != null) {
+            b.beginDestructureStartCell(valueLValue.describe());
+            e.cell(valueLValue);
+            b.endDestructureStartCell();
+        } else {
+            b.beginDestructureStartValue(target.hasAnyRef());
+            e.expr(value);
+            b.endDestructureStartValue();
+        }
+        b.endStoreLocal();
+        e.destructureSteps(target, state);
+        b.beginDestructureResult();
+        b.emitLoadLocal(state);
+        b.endDestructureResult();
+        b.endBlock();
+    }
 }

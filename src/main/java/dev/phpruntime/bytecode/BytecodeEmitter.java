@@ -500,6 +500,84 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** The reference cell of a local or a place, for {@code =&} / destructuring / foreach by reference. */
+    public void cell(dev.phpruntime.nodes.var.LValueNode lv) {
+        if (lv instanceof LocalVarNode local) {
+            b.emitObtainVarCell(accessor(local), info(local));
+        } else if (isPlace(lv)) {
+            place(lv, PhpBytecodeRootNode.P_CELL, 0, null);
+        } else {
+            throw new Unsupported("reference to " + lv.getClass().getSimpleName());
+        }
+    }
+
+    /** Emits the element steps of one destructuring pattern, using {@code state} as its source. */
+    public void destructureSteps(dev.phpruntime.nodes.var.DestructureLValueNode target,
+                                 BytecodeLocal state) {
+        PhpNode[] keys = target.keyNodes();
+        dev.phpruntime.nodes.var.LValueNode[] targets = target.targetNodes();
+        long[] autos = target.autoIndices();
+        boolean[] refs = target.byRef();
+        for (int i = 0; i < targets.length; i++) {
+            dev.phpruntime.nodes.var.LValueNode t = targets[i];
+            if (t == null) {
+                b.beginDestructureSkipStep();
+                b.emitLoadLocal(state);
+                sourceKey(keys[i], autos[i]);
+                b.endDestructureSkipStep();
+                continue;
+            }
+            if (t instanceof dev.phpruntime.nodes.var.DestructureLValueNode nested) {
+                BytecodeLocal child = temp();
+                b.beginStoreLocal(child);
+                b.beginDestructureNestedStep(nested.hasAnyRef(), refs[i]);
+                b.emitLoadLocal(state);
+                sourceKey(keys[i], autos[i]);
+                b.endDestructureNestedStep();
+                b.endStoreLocal();
+                destructureSteps(nested, child);
+                continue;
+            }
+            if (t instanceof LocalVarNode local) {
+                b.beginDestructureLocalStep(accessor(local), info(local), refs[i]);
+                b.emitLoadLocal(state);
+                sourceKey(keys[i], autos[i]);
+                b.endDestructureLocalStep();
+                continue;
+            }
+            Form f = form(t);
+            if (f.local() != null) {
+                b.beginDestructureVarStep(accessor(f.local()), info(f.local()), f.spec(), refs[i]);
+            } else if (f.global()) {
+                b.beginDestructureGlobalStep(f.spec(), refs[i]);
+            } else if (f.staticProperty()) {
+                b.beginDestructureStaticStep(f.spec(), refs[i]);
+            } else {
+                b.beginDestructureObjStep(f.spec(), refs[i]);
+            }
+            b.emitLoadLocal(state);
+            sourceKey(keys[i], autos[i]);
+            operands(f);
+            if (f.local() != null) {
+                b.endDestructureVarStep();
+            } else if (f.global()) {
+                b.endDestructureGlobalStep();
+            } else if (f.staticProperty()) {
+                b.endDestructureStaticStep();
+            } else {
+                b.endDestructureObjStep();
+            }
+        }
+    }
+
+    private void sourceKey(PhpNode key, long autoIndex) {
+        if (key != null) {
+            expr(key);
+        } else {
+            b.emitLoadConstant(autoIndex);
+        }
+    }
+
     /** {@code base} emits the base keys of a property or static place; {@code keys} the indexes. */
     private record Form(PhpBytecodeRootNode.PlaceSpec spec, LocalVarNode local,
                         Runnable base, PhpNode[] keys, boolean global, boolean staticProperty) {
