@@ -1,6 +1,7 @@
 package dev.phpruntime.nodes;
 
 import com.oracle.truffle.api.frame.FrameDescriptor;
+import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.source.SourceSection;
@@ -30,6 +31,11 @@ public abstract class PhpRootNode extends RootNode {
 
     public final Source source() {
         return source;
+    }
+
+    @Override
+    public Object execute(VirtualFrame frame) {
+        throw new IllegalStateException("AST root execution removed: " + getClass().getSimpleName());
     }
 
     @Override

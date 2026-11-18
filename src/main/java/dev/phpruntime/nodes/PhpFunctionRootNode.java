@@ -1,10 +1,7 @@
 package dev.phpruntime.nodes;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-import com.oracle.truffle.api.TruffleSafepoint;
 import com.oracle.truffle.api.frame.FrameDescriptor;
-import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.var.VarKind;
@@ -357,91 +354,6 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return declaringClass == null ? name : declaringClass + "::" + name;
     }
 
-    @Override
-    @ExplodeLoop
-    public Object execute(VirtualFrame frame) {
-        TruffleSafepoint.poll(this);
-        Object[] args = frame.getArguments();
-        int offset = argOffset();
-        int passed = args.length - offset;
-        if (passed < requiredArgs) {
-            throw tooFewArguments(passed);
-        }
-        if (thisSlot >= 0) {
-            frame.setObject(thisSlot, args[0]);
-        }
-        if (calledClassSlot >= 0) {
-            frame.setObject(calledClassSlot, args[1]);
-        }
-        if (closureObjSlot >= 0) {
-            PhpObject closureObj = (PhpObject) args[2];
-            frame.setObject(closureObjSlot, closureObj);
-            if (traitSelfSlot >= 0) {
-                frame.setObject(traitSelfSlot, closureObj.closure().traitSelf());
-            }
-            Object[] caps = closureObj.closure().captures();
-            for (int i = 0; i < captureSlots.length; i++) {
-                if (captureByRef[i]) {
-                    frame.setObject(captureSlots[i], caps[i]);
-                } else {
-                    writeSlot(frame, captureSlots[i], captureKinds[i], PhpOps.copyOnAssign(caps[i]));
-                }
-            }
-        } else if (traitSelfSlot >= 0) {
-            frame.setObject(traitSelfSlot, args[2]);
-        }
-        int normalParams = variadic ? paramSlots.length - 1 : paramSlots.length;
-        for (int i = 0; i < normalParams; i++) {
-            Object raw = i < passed ? args[offset + i] : UNPASSED;
-            if (raw == UNPASSED) {
-                if (defaults[i] == null) {
-                    throw missingArgument(i);
-                }
-                Object defVal = PhpOps.copyOnAssign(defaults[i].execute(frame));
-                writeSlot(frame, paramSlots[i], paramKinds[i], defVal);
-            } else if (paramByRef[i]) {
-                PhpReference cell = raw instanceof PhpReference ref ? ref : new PhpReference(PhpOps.copyOnAssign(raw));
-                frame.setObject(paramSlots[i], cell);
-            } else {
-                Object val = raw instanceof PhpReference ref ? PhpOps.copyOnAssign(ref.getValue()) : raw;
-                writeSlot(frame, paramSlots[i], paramKinds[i], val);
-            }
-        }
-        if (variadic) {
-            PhpArray rest;
-            boolean varByRef = paramByRef[normalParams];
-            if (passed == normalParams + 1 && args[offset + normalParams] instanceof NamedVariadic nv) {
-                rest = nv.entries();
-            } else {
-                rest = packVariadic(args, offset + normalParams, varByRef);
-            }
-            writeSlot(frame, paramSlots[normalParams], paramKinds[normalParams], rest);
-        }
-        if (scopeLayout != null) { initializeSymbols(frame); }
-        try {
-            body.executeVoid(frame);
-            return PhpNull.INSTANCE;
-        } catch (ControlFlow.Return r) {
-            return r.value;
-        }
-    }
-
-    @ExplodeLoop
-    private void initializeSymbols(VirtualFrame frame) {
-        Object[] values = new Object[captureSlots.length + paramSlots.length];
-        for (int i = 0; i < captureSlots.length; i++) {
-            values[i] = frame.getValue(captureSlots[i]);
-        }
-        for (int i = 0; i < paramSlots.length; i++) {
-            values[captureSlots.length + i] = frame.getValue(paramSlots[i]);
-        }
-        dev.phpruntime.runtime.PhpSymbolTable table = newSymbolTable(dev.phpruntime.PhpContext.get(this),
-                thisSlot >= 0 ? frame.getObject(thisSlot) : PhpNull.INSTANCE,
-                calledClassSlot >= 0 ? frame.getObject(calledClassSlot) : null,
-                traitSelfSlot >= 0 ? frame.getObject(traitSelfSlot) : null, values);
-        frame.setObject(scopeLayout.tableSlot(), table);
-    }
-
     /**
      * The invocation's symbol table: {@code values} holds the captured variables' then the
      * parameters' frame values (cells for by-reference ones), in slot order. Shared with the
@@ -472,8 +384,8 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     /**
      * Collects the arguments from {@code from} on into the variadic parameter's array. Behind a
-     * boundary: its bound is the call's argument count, which execute()'s @ExplodeLoop cannot
-     * unroll (apply_filters and do_action failed to compile on it).
+     * boundary: its bound is the call's argument count, which the caller cannot unroll
+     * (apply_filters and do_action failed to compile on it).
      */
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public static PhpArray packVariadic(Object[] args, int from, boolean varByRef) {
@@ -497,18 +409,6 @@ public final class PhpFunctionRootNode extends PhpRootNode {
             }
         }
         return rest;
-    }
-
-    private static void writeSlot(VirtualFrame frame, int slot, VarKind kind, Object v) {
-        if (kind.isCell()) {
-            frame.setObject(slot, new PhpReference(v));
-        } else if (v instanceof Long l && !kind.longBoxed()) {
-            frame.setLong(slot, l);
-        } else if (v instanceof Double d && !kind.doubleBoxed()) {
-            frame.setDouble(slot, d);
-        } else {
-            frame.setObject(slot, v);
-        }
     }
 
     public record NamedVariadic(PhpArray entries) {

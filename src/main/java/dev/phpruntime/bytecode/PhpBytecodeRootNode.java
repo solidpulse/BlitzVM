@@ -124,7 +124,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         initSource(source, line);
     }
 
-    /** Whether this expression root takes the using class as argument 0, as {@code PhpExprRootNode} does. */
+    /** Whether this expression root takes the using class as argument 0. */
     public boolean hasTraitSelf() {
         return exprTraitSelfSlot >= 0;
     }

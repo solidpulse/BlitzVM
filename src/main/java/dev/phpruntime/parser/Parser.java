@@ -3,7 +3,6 @@ package dev.phpruntime.parser;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.PhpLanguage;
-import dev.phpruntime.nodes.PhpExprRootNode;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.nodes.PhpNode;
