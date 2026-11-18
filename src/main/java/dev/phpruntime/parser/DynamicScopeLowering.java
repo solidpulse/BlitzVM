@@ -30,6 +30,7 @@ final class DynamicScopeLowering {
             local.replace(new ScopedVarNode(tableSlot, local.slot(), local.varName()).at(local.line()));
             return;
         }
+        if (node instanceof dev.phpruntime.nodes.expr.FuncArgsNode args) { args.dynamicScope(tableSlot); }
         if (node instanceof GlobalImportNode global) { global.dynamicScope(tableSlot); }
         if (node instanceof StaticDeclNode statics) { statics.dynamicScope(tableSlot); }
         // Nested function/closure targets are not children: only this body's locals are lowered.

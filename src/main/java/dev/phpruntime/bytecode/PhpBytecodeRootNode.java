@@ -4119,27 +4119,41 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
-    /** {@code func_num_args()}/{@code func_get_args()}: the frame's arguments past the prefix. */
+    /** {@code func_num_args()}: the frame's positional arguments past the prefix. */
     @Operation
     @ConstantOperand(type = FuncArgsNode.Kind.class, name = "kind")
     @ConstantOperand(type = int.class, name = "argOffset")
     public static final class FuncArgs {
         @Specialization
         static Object run(VirtualFrame frame, FuncArgsNode.Kind kind, int argOffset) {
-            Object[] args = frame.getArguments();
-            return kind == FuncArgsNode.Kind.NUM_ARGS
-                    ? FuncArgsNode.numArgs(argOffset, args, null)
-                    : FuncArgsNode.getArgs(argOffset, args, null);
+            return FuncArgsNode.numArgs(argOffset, frame.getArguments(), null);
         }
     }
 
-    /** {@code func_get_arg($i)}: the index is an operand. */
+    /**
+     * {@code func_get_args()}/{@code func_get_arg($i)}: {@code current} holds the current
+     * values of the declared parameters; {@code index} is the argument index for
+     * {@code func_get_arg} and unused for {@code func_get_args}. Arguments past the declared
+     * parameters come from the frame.
+     */
     @Operation
+    @ConstantOperand(type = FuncArgsNode.Kind.class, name = "kind")
     @ConstantOperand(type = int.class, name = "argOffset")
-    public static final class FuncGetArg {
+    @ConstantOperand(type = int.class, name = "normalCount")
+    public static final class FuncArgsCurrent {
         @Specialization
-        static Object run(VirtualFrame frame, int argOffset, Object index) {
-            return FuncArgsNode.getArg(argOffset, frame.getArguments(), index, null);
+        static Object run(VirtualFrame frame, FuncArgsNode.Kind kind, int argOffset, int normalCount,
+                          PhpArray current, Object index) {
+            Object[] values = new Object[normalCount];
+            for (int i = 0; i < normalCount; i++) {
+                Object value = current.get((long) i);
+                values[i] = value == UNDEFINED ? null : value;
+            }
+            Object[] args = frame.getArguments();
+            if (kind == FuncArgsNode.Kind.GET_ARGS) {
+                return FuncArgsNode.getArgs(argOffset, normalCount, values, args, null);
+            }
+            return FuncArgsNode.getArg(argOffset, normalCount, values, args, index, null);
         }
     }
 
