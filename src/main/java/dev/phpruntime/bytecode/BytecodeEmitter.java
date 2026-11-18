@@ -268,6 +268,11 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** The local at {@code slot} (a special slot the root may not have), or PHP null. */
+    public void loadSlotOrNull(int slot) {
+        loadSlotOr(slot, PhpNull.INSTANCE);
+    }
+
     /** The local holding the symbol table of a dynamic-scope function. */
     public BytecodeLocal tableLocal() {
         if (fn == null || !fn.usesSymbolTable()) {
@@ -589,6 +594,11 @@ public final class BytecodeEmitter {
     public void classRef(dev.phpruntime.nodes.expr.ClassRefNode ref) {
         if (ref.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.ANONYMOUS) {
             throw new Unsupported("anonymous class");
+        }
+        if (ref.line() <= 0 && currentLine > 0) {
+            // The parser only puts the line on the expression around the class reference; the
+            // cached copy reports errors (missing class, no parent) and needs it.
+            ref.at(currentLine);
         }
         b.beginResolveClass(new PhpBytecodeRootNode.ClassRefSpec(ref));
         classRefOperand(ref);

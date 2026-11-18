@@ -33,18 +33,23 @@ public final class SplBuiltinNode extends Node {
     }
 
     public Object execute(Object[] args) {
-        if (!dev.phpruntime.runtime.PhpStrings.CHECK) { return executeBuiltin(args); }
-        dev.phpruntime.runtime.PhpStrings.checkArguments(args, name);
-        return dev.phpruntime.runtime.PhpStrings.checkReturn(executeBuiltin(args), name);
+        return execute(args, this);
     }
 
-    private Object executeBuiltin(Object[] args) {
+    /** Bytecode call sites: the cached node has no line of its own, so they pass the instruction's. */
+    public Object execute(Object[] args, Node location) {
+        if (!dev.phpruntime.runtime.PhpStrings.CHECK) { return executeBuiltin(args, location); }
+        dev.phpruntime.runtime.PhpStrings.checkArguments(args, name);
+        return dev.phpruntime.runtime.PhpStrings.checkReturn(executeBuiltin(args, location), name);
+    }
+
+    private Object executeBuiltin(Object[] args, Node location) {
         Object subject = args[0];
         if (name.equals("count") || name.equals("sizeof")) {
             long mode = args.length > 1 ? args[1] instanceof Long n ? n : PhpOps.toLong(args[1]) : 0;
             if (mode != 0 && mode != 1) {
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-                throw new PhpError(PhpError.VALUE_ERROR, name + "(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE", this);
+                throw new PhpError(PhpError.VALUE_ERROR, name + "(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE", location);
             }
             if (subject instanceof PhpArray array) {
                 return mode == 1 ? countRecursive(array) : (long) array.size();
@@ -55,7 +60,7 @@ public final class SplBuiltinNode extends Node {
             }
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, name + "(): Argument #1 ($value) must be of type Countable|array, "
-                    + PhpOps.typeDescription(subject) + " given", this);
+                    + PhpOps.typeDescription(subject) + " given", location);
         }
         boolean preserve = args.length < 2 || PhpOps.toBool(args[1]);
         if (subject instanceof PhpArray array) {
@@ -70,7 +75,7 @@ public final class SplBuiltinNode extends Node {
         if (!(subject instanceof PhpObject obj) || !obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, name + "(): Argument #1 ($iterator) must be of type Traversable|array, "
-                    + PhpOps.typeDescription(subject) + " given", this);
+                    + PhpOps.typeDescription(subject) + " given", location);
         }
         PhpObject it = iterator.resolve(obj);
         iterator.rewind(it);

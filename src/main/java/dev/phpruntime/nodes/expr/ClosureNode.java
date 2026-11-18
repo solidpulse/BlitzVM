@@ -77,4 +77,44 @@ public final class ClosureNode extends PhpNode {
         }
         return ctx.newClosure(PhpClosure.closure(callTarget, boundThis, calledClass, traitSelf, caps));
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginNewClosure(new dev.phpruntime.bytecode.PhpBytecodeRootNode.ClosureSpec(callTarget, byRef),
+                bindThis, outerTraitSelfSlot >= 0, lexicalClassId);
+        if (bindThis && outerThisSlot >= 0) {
+            e.loadSlotOrNull(outerThisSlot);
+        } else {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        }
+        e.loadSlotOrNull(outerCalledClassSlot);
+        e.loadSlotOrNull(outerTraitSelfSlot);
+        for (int i = 0; i < captureReads.length; i++) {
+            emitCapture(e, captureReads[i], warnIfUndefined[i], byRef[i]);
+        }
+        b.endNewClosure();
+    }
+
+    private static void emitCapture(dev.phpruntime.bytecode.BytecodeEmitter e, LValueNode capture,
+                                    boolean warn, boolean byRef) {
+        var b = e.builder();
+        if (capture instanceof LocalVarNode local) {
+            if (byRef) {
+                b.emitObtainVarCell(e.accessor(local), e.info(local));
+            } else if (warn) {
+                b.emitReadVar(e.accessor(local), e.info(local));
+            } else {
+                b.emitReadVarIfSet(e.accessor(local), e.info(local));
+            }
+            return;
+        }
+        if (!dev.phpruntime.bytecode.BytecodeEmitter.isPlace(capture)) {
+            throw e.unsupported("closure capture of " + capture.getClass().getSimpleName());
+        }
+        int mode = byRef ? dev.phpruntime.bytecode.PhpBytecodeRootNode.P_CELL
+                : (warn ? dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ
+                : dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ_IF_SET);
+        e.place(capture, mode, 0, null);
+    }
 }

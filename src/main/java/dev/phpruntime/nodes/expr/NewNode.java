@@ -160,4 +160,34 @@ public final class NewNode extends PhpNode {
             arg.execute(frame);
         }
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (hasSpreadOrNamed) {
+            throw e.unsupported("new with spread or named arguments");
+        }
+        var b = e.builder();
+        com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
+        com.oracle.truffle.api.bytecode.BytecodeLocal object = e.temp();
+        try {
+            b.beginBlock();
+            b.beginStoreLocal(object);
+            b.beginNewObject();
+            e.classRef(classRef);
+            b.endNewObject();
+            b.endStoreLocal();
+            b.beginResolveConstructor(callee);
+            b.emitLoadLocal(object);
+            b.endResolveConstructor();
+            b.beginDoConstructorCall(callee);
+            b.emitLoadLocal(object);
+            for (int i = 0; i < args.length; i++) {
+                e.sendArgument(args[i], refTargets[i], i, callee);
+            }
+            b.endDoConstructorCall();
+            b.endBlock();
+        } finally {
+            e.exitCall();
+        }
+    }
 }

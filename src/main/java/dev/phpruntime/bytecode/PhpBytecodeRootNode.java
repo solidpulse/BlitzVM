@@ -52,6 +52,7 @@ import dev.phpruntime.runtime.PhpArith;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpBacktrace;
 import dev.phpruntime.runtime.PhpClass;
+import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpException;
 import dev.phpruntime.runtime.PhpExceptions;
@@ -1297,17 +1298,25 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, int param, LocalAccessor acc, VarInfo info, LocalAccessor calleeLocal,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
             Object callee = calleeLocal.getObject(bytecode, frame);
-            if (!(callee instanceof Builtins.Def)) {
-                PhpFunctionRootNode root = signature(callee);
-                if (root != null && root.isParamByRef(param)) {
+            Builtins.Def builtin = builtinCallee(callee);
+            if (builtin != null) {
+                if (builtin.isRef(param)) {
                     if ("this".equals(info.name())) {
                         return new PhpReference(ReadVar.read(frame, acc, info, bytecode, bci, node));
                     }
                     return ObtainVarCell.obtain(frame, acc, info, bytecode);
                 }
-                return PhpOps.copyOnAssign(ReadVar.read(frame, acc, info, bytecode, bci, node));
+                return callee instanceof Builtins.Def ? ReadVar.read(frame, acc, info, bytecode, bci, node)
+                        : PhpOps.copyOnAssign(ReadVar.read(frame, acc, info, bytecode, bci, node));
             }
-            return ReadVar.read(frame, acc, info, bytecode, bci, node);
+            PhpFunctionRootNode root = signature(callee);
+            if (root != null && root.isParamByRef(param)) {
+                if ("this".equals(info.name())) {
+                    return new PhpReference(ReadVar.read(frame, acc, info, bytecode, bci, node));
+                }
+                return ObtainVarCell.obtain(frame, acc, info, bytecode);
+            }
+            return PhpOps.copyOnAssign(ReadVar.read(frame, acc, info, bytecode, bci, node));
         }
     }
 
@@ -1324,14 +1333,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, int param, int kind, LocalAccessor calleeLocal, Object value,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
             Object callee = calleeLocal.getObject(bytecode, frame);
-            if (!(callee instanceof Builtins.Def)) {
-                PhpFunctionRootNode root = signature(callee);
-                if (root != null && root.isParamByRef(param)) {
-                    return Ops.valueToRefParam(root, param, kind, value, node, lineOf(bytecode, bci));
+            Builtins.Def builtin = builtinCallee(callee);
+            if (builtin != null) {
+                if (builtin.isRef(param)) {
+                    return Ops.builtinValueToRefParam(builtin, param, kind, value, node, lineOf(bytecode, bci));
                 }
-                return PhpOps.copyOnAssign(value);
+                return callee instanceof Builtins.Def ? value : PhpOps.copyOnAssign(value);
             }
-            return value;
+            PhpFunctionRootNode root = signature(callee);
+            if (root != null && root.isParamByRef(param)) {
+                return Ops.valueToRefParam(root, param, kind, value, node, lineOf(bytecode, bci));
+            }
+            return PhpOps.copyOnAssign(value);
         }
     }
 
@@ -1343,12 +1356,34 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         if (callee instanceof MethodCallee m && m.entry() != null) {
             return PhpFunctionRootNode.of(m.sigTarget().getRootNode());
         }
+        if (callee instanceof ValueCallee v) {
+            return v.sig();
+        }
         return null;
     }
 
     /** A method call resolved on its receiver; {@code entry} is null for a {@code __call} fallback. */
     public record MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
-                               PhpObject obj, String name, RootCallTarget magic) {
+                               Object obj, String name, RootCallTarget magic) {
+    }
+
+    /**
+     * A callable value resolved for {@code $f(...)}: the runtime callable and the call target's
+     * metadata (for by-reference parameters). The call target is null for a builtin.
+     */
+    public record ValueCallee(dev.phpruntime.runtime.PhpCallable callable, PhpFunctionRootNode sig) {
+    }
+
+    /** The builtin a callee denotes, also through a callable value, else null. */
+    static Builtins.Def builtinCallee(Object callee) {
+        if (callee instanceof Builtins.Def def) {
+            return def;
+        }
+        if (callee instanceof ValueCallee v
+                && v.callable().kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
+            return v.callable().builtin();
+        }
+        return null;
     }
 
     /** A method call site: the static name (null for {@code $obj->$name()}) and its method id. */
@@ -1681,11 +1716,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         static int sendMode(Object callee, int param) {
-            if (!(callee instanceof Builtins.Def)) {
-                PhpFunctionRootNode root = signature(callee);
-                if (root != null && root.isParamByRef(param)) {
-                    return P_CELL;
-                }
+            Builtins.Def builtin = builtinCallee(callee);
+            if (builtin != null) {
+                return builtin.isRef(param) ? P_CELL : P_READ;
+            }
+            PhpFunctionRootNode root = signature(callee);
+            if (root != null && root.isParamByRef(param)) {
+                return P_CELL;
             }
             return P_READ;
         }
@@ -1893,7 +1930,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                               @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl) {
             if (spl != null) {
                 CallNode.checkArity(def, args.length, location);
-                return spl.execute(args);
+                return spl.execute(args, location);
             }
             return Ops.callBuiltin(def, args, location);
         }
@@ -2152,6 +2189,59 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 PhpContext.get(node).notice("Only variables should be passed by reference", line);
             }
             return new PhpReference(PhpOps.copyOnAssign(value));
+        }
+
+        @TruffleBoundary
+        static Object builtinValueToRefParam(Builtins.Def def, int param, int kind, Object value, Node node, int line) {
+            if (kind == 0) {
+                throw new PhpError(def.name() + "(): Argument #" + (param + 1) + " could not be passed by reference");
+            }
+            if (kind == 1) {
+                PhpContext.get(node).notice("Only variables should be passed by reference", line);
+            }
+            return new PhpReference(PhpOps.copyOnAssign(value));
+        }
+
+        @TruffleBoundary
+        static dev.phpruntime.runtime.PhpCallable resolveCallable(PhpContext ctx, Object value, Object callerThis) {
+            // Null location: the root locates a "Value not of type callable" error from the bci.
+            return dev.phpruntime.runtime.PhpCallable.resolve(ctx, value, callerThis, null);
+        }
+
+        @TruffleBoundary
+        static PhpArray magicArgs(Object[] args) {
+            PhpArray arr = new PhpArray();
+            for (Object a : args) {
+                Object v = a instanceof PhpReference ref ? ref.getValue() : a;
+                arr.append(PhpOps.copyOnAssign(v == null ? PhpNull.INSTANCE : v));
+            }
+            return arr;
+        }
+
+        /** A builtin reached through {@code $f(...)}: unwrap cells and write the results back. */
+        @TruffleBoundary
+        static Object callBuiltinValue(Builtins.Def def, Object[] args, SiteNode site) {
+            boolean refs = def.refMask() != 0;
+            Object[] values = new Object[args.length];
+            for (int i = 0; i < args.length; i++) {
+                Object a = args[i];
+                if (a instanceof PhpReference ref) {
+                    Object v = ref.getValue();
+                    values[i] = v == null ? PhpNull.INSTANCE
+                            : (refs && def.isRef(i) ? v : PhpOps.copyOnAssign(v));
+                } else {
+                    values[i] = a;
+                }
+            }
+            Object result = callBuiltin(def, values, site);
+            if (refs) {
+                for (int i = 0; i < args.length; i++) {
+                    if (def.isRef(i) && args[i] instanceof PhpReference ref) {
+                        ref.setValue(values[i]);
+                    }
+                }
+            }
+            return result;
         }
 
         @TruffleBoundary
@@ -2493,6 +2583,257 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object include(IncludeSpec spec, Object table, Object path,
                               @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.IncludeNode engine) {
             return engine.executePath(path instanceof String s ? s : Ops.toStr(path), table);
+        }
+    }
+
+    // ---- 17a: objects and calls
+
+    /**
+     * A {@code Cls::m()} call: the forwarding rule of {@code StaticMethodCallNode.executeRaw}.
+     * Operands are the class, the method name, {@code $this} and the called class. The result is
+     * a {@link MethodCallee}, which {@link DoMethodCall} then calls unchanged.
+     */
+    @Operation
+    @ConstantOperand(type = MethodSite.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    @ConstantOperand(type = boolean.class, name = "forwarding")
+    @ConstantOperand(type = boolean.class, name = "hasCalledClass")
+    public static final class ResolveStaticMethod {
+        @Specialization
+        static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor calleeLocal, boolean forwarding,
+                            boolean hasCalledClass, PhpClass targetClass, Object nameValue, Object thisValue,
+                            Object calledClassValue, @Bind BytecodeNode bytecode) {
+            String name = nameValue instanceof String s ? s : Ops.toStr(nameValue);
+            PhpClass.MethodEntry entry = site.methodId() >= 0 ? targetClass.methodById(site.methodId())
+                    : targetClass.lookupMethod(name);
+            PhpClass calledArg = forwarding && hasCalledClass
+                    ? (calledClassValue instanceof PhpClass c ? c : null) : targetClass;
+            if (entry == null) {
+                PhpClass.MethodEntry magic = targetClass.callMethod();
+                if (forwarding && thisValue instanceof PhpObject thisObj
+                        && magic != null && magic.callTarget() != null) {
+                    calleeLocal.setObject(bytecode, frame,
+                            new MethodCallee(null, thisObj, calledArg, null, thisObj, name, magic.callTarget()));
+                    return;
+                }
+                PhpClass.MethodEntry magicStatic = targetClass.callStaticMethod();
+                if (magicStatic != null && magicStatic.callTarget() != null) {
+                    calleeLocal.setObject(bytecode, frame,
+                            new MethodCallee(null, PhpNull.INSTANCE, calledArg, null, PhpNull.INSTANCE, name,
+                                    magicStatic.callTarget()));
+                    return;
+                }
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Call to undefined method " + targetClass.name() + "::" + name + "()");
+            }
+            if (entry.callTarget() == null) {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Cannot call abstract method " + entry.declaringClass().name() + "::"
+                        + entry.name() + "()");
+            }
+            Object thisArg;
+            if (entry.isStatic()) {
+                thisArg = PhpNull.INSTANCE;
+            } else if (thisValue instanceof PhpObject thisObj
+                    && thisObj.phpClass().isInstanceOf(entry.declaringClass())) {
+                thisArg = thisObj;
+            } else {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Non-static method " + entry.declaringClass().name() + "::" + entry.name()
+                        + "() cannot be called statically");
+            }
+            RootCallTarget sig = entry.callTarget();
+            PhpObject obj = thisValue instanceof PhpObject o ? o : null;
+            calleeLocal.setObject(bytecode, frame,
+                    new MethodCallee(entry, thisArg, calledArg, sig, obj, name, null));
+        }
+    }
+
+    /** {@code new Cls(...)}: validates the class, creates the object and populates its defaults. */
+    @Operation
+    public static final class NewObject {
+        @Specialization
+        static PhpObject create(PhpClass cls, @Bind Node node, @Bind BytecodeNode bytecode,
+                                @Bind("$bytecodeIndex") int bci,
+                                @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            PhpContext ctx = PhpContext.get(node);
+            if (cls == ctx.closureClass()) {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Instantiation of Closure is not allowed");
+            }
+            if (cls.isInterface() || cls.isTrait() || cls.isAbstract()) {
+                String kind = cls.isInterface() ? "interface " : (cls.isTrait() ? "trait " : "abstract class ");
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Cannot instantiate " + kind + cls.name());
+            }
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            cls.populateDefaults(obj);
+            if (cls.isThrowable()) {
+                dev.phpruntime.runtime.PhpExceptions.initNewThrowable(obj, location);
+            }
+            return obj;
+        }
+    }
+
+    /**
+     * The constructor call of a {@code new}, resolved into the call local as {@link ResolveMethod}
+     * does so its by-reference parameters work. No constructor stores PHP null.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class ResolveConstructor {
+        @Specialization
+        static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj,
+                            @Bind BytecodeNode bytecode) {
+            PhpClass cls = obj.phpClass();
+            PhpClass.MethodEntry ctor = cls.constructMethod();
+            if (ctor == null) {
+                calleeLocal.setObject(bytecode, frame, PhpNull.INSTANCE);
+                return;
+            }
+            calleeLocal.setObject(bytecode, frame,
+                    new MethodCallee(ctor, obj, cls, ctor.callTarget(), obj, ctor.name(), null));
+        }
+    }
+
+    /** Runs the constructor resolved by {@link ResolveConstructor}; the object is the result. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class DoConstructorCall {
+        @Specialization
+        static Object call(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj, @Variadic Object[] args,
+                           @Bind BytecodeNode bytecode, @Cached("create()") DispatchCallNode dispatch) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
+            if (callee instanceof MethodCallee m) {
+                Object[] callArgs = new Object[2 + args.length];
+                callArgs[0] = m.thisArg();
+                callArgs[1] = m.cls();
+                System.arraycopy(args, 0, callArgs, 2, args.length);
+                dispatch.callMethod(m.entry(), callArgs);
+            }
+            return obj;
+        }
+    }
+
+    /**
+     * {@code $value instanceof Cls}: the resolved value and the class reference's operand. As in
+     * {@code InstanceofNode}, a missing class or a non-object value is just false.
+     */
+    @Operation
+    @ConstantOperand(type = ClassRefSpec.class)
+    public static final class Instanceof {
+        @Specialization
+        static boolean test(ClassRefSpec spec, Object value, Object operand,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
+            PhpClass target = engine.resolveForInstanceof(operand);
+            return value instanceof PhpObject obj && target != null && obj.phpClass().isInstanceOf(target);
+        }
+    }
+
+    /** {@code clone $value}: {@code CloneNode.cloneValue} with this instruction as the error site. */
+    @Operation
+    public static final class Clone {
+        @Specialization
+        static Object clone(Object value, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                            @Cached("create()") DispatchCallNode dispatch) {
+            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch);
+        }
+    }
+
+    /** Resolves a {@code $f} operand into a {@link ValueCallee}, as {@code CallValueNode} does. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class ResolveCallable {
+        @Specialization
+        static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, Object targetValue, Object callerThis,
+                            @Bind BytecodeNode bytecode, @Bind Node node) {
+            dev.phpruntime.runtime.PhpCallable callable =
+                    Ops.resolveCallable(PhpContext.get(node), targetValue, callerThis);
+            // A magic call collects its arguments into an array, so its target's parameters do
+            // not describe the call site (the AST evaluates those arguments as plain values).
+            PhpFunctionRootNode sig = callable.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL
+                    || callable.callTarget() == null ? null
+                    : PhpFunctionRootNode.of(callable.callTarget().getRootNode());
+            calleeLocal.setObject(bytecode, frame, new ValueCallee(callable, sig));
+        }
+    }
+
+    /** Calls the {@link ValueCallee} written by {@link ResolveCallable}, laying out its frame. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class DoValueCall {
+        @Specialization
+        static Object call(VirtualFrame frame, LocalAccessor calleeLocal, @Variadic Object[] args,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
+            ValueCallee v = (ValueCallee) calleeLocal.getObject(bytecode, frame);
+            dev.phpruntime.runtime.PhpCallable cb = v.callable();
+            Object result = switch (cb.kind()) {
+                case CLOSURE -> {
+                    Object[] frameArgs = new Object[3 + args.length];
+                    frameArgs[0] = cb.boundThis();
+                    frameArgs[1] = cb.calledClass();
+                    frameArgs[2] = cb.closureObj();
+                    System.arraycopy(args, 0, frameArgs, 3, args.length);
+                    yield dispatch.call(cb.callTarget(), frameArgs);
+                }
+                case USER_FUNCTION -> dispatch.call(cb.callTarget(), args);
+                case METHOD -> {
+                    boolean trait = cb.traitSelf() != null;
+                    int prefix = trait ? 3 : 2;
+                    Object[] frameArgs = new Object[prefix + args.length];
+                    frameArgs[0] = cb.boundThis();
+                    frameArgs[1] = cb.calledClass();
+                    if (trait) {
+                        frameArgs[2] = cb.traitSelf();
+                    }
+                    System.arraycopy(args, 0, frameArgs, prefix, args.length);
+                    yield dispatch.call(cb.callTarget(), frameArgs);
+                }
+                case MAGIC_CALL -> dispatch.call(cb.callTarget(), new Object[]{
+                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)});
+                case BUILTIN -> Ops.callBuiltinValue(cb.builtin(), args, location);
+            };
+            return CallArgHelper.unwrapReturn(result);
+        }
+    }
+
+    /** A closure creation site: its target and which captures are by reference. */
+    public record ClosureSpec(RootCallTarget callTarget, boolean[] byRef) {
+        @Override
+        public String toString() {
+            return "closure";
+        }
+    }
+
+    /**
+     * Creates a closure: operands are {@code $this}, the called class, the trait self and one
+     * value or reference cell per capture, as {@code ClosureNode.execute} reads them.
+     */
+    @Operation
+    @ConstantOperand(type = ClosureSpec.class)
+    @ConstantOperand(type = boolean.class, name = "bindThis")
+    @ConstantOperand(type = boolean.class, name = "hasTraitSlot")
+    @ConstantOperand(type = int.class, name = "lexicalClassId")
+    public static final class NewClosure {
+        @Specialization
+        static PhpObject create(ClosureSpec spec, boolean bindThis, boolean hasTraitSlot, int lexicalClassId,
+                                Object thisValue, Object calledClassValue, Object traitSelfValue,
+                                @Variadic Object[] captureValues, @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            Object boundThis = bindThis ? thisValue : PhpNull.INSTANCE;
+            PhpClass calledClass = calledClassValue instanceof PhpClass c ? c : null;
+            PhpClass traitSelf = hasTraitSlot ? (traitSelfValue instanceof PhpClass c ? c : null)
+                    : lexicalClassId >= 0 ? ctx.classById(lexicalClassId) : null;
+            boolean[] byRef = spec.byRef();
+            Object[] caps = new Object[byRef.length];
+            for (int i = 0; i < byRef.length; i++) {
+                caps[i] = byRef[i] ? captureValues[i]
+                        : (captureValues[i] == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(captureValues[i]));
+            }
+            return ctx.newClosure(PhpClosure.closure(spec.callTarget(), boundThis, calledClass, traitSelf, caps));
         }
     }
 }
