@@ -388,6 +388,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** {@code &<non-lvalue>} in an array literal: a new cell holding a copy of the value. */
+    @Operation
+    public static final class BoxRefCopy {
+        @Specialization
+        static PhpReference box(Object value) {
+            return new PhpReference(PhpOps.copyOnAssign(value));
+        }
+    }
+
     /** The cell of a non-lvalue RHS: a returned cell, else a notice and a copy in a new cell. */
     @Operation
     public static final class RefFromValue {
@@ -1052,6 +1061,43 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static PhpArray append(PhpArray array, Object value) {
             Ops.arrayAppend(array, PhpOps.copyOnAssign(value));
             return array;
+        }
+    }
+
+    /** Adds one reference element to an array under construction. */
+    @Operation
+    public static final class ArrayPutRef {
+        @Specialization
+        static PhpArray putRef(PhpArray array, Object key, PhpReference cell,
+                               @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            try {
+                array.putRef(key, cell);
+            } catch (PhpError e) {
+                throw e.at(location);
+            }
+            return array;
+        }
+    }
+
+    @Operation
+    public static final class ArrayAppendRef {
+        @Specialization
+        static PhpArray appendRef(PhpArray array, PhpReference cell) {
+            array.appendRef(cell);
+            return array;
+        }
+    }
+
+    /** An array literal's {@code ...$value}: unpacks an array or Traversable into the new array. */
+    @Operation
+    public static final class ArraySpread {
+        @Specialization
+        static PhpArray spread(PhpArray array, Object unpacked, @Bind PhpBytecodeRootNode root,
+                               @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                               @Cached("create(root)") IteratorNode iterator) {
+            return Ops.arraySpread(array, unpacked, iterator, location);
         }
     }
 
@@ -2280,6 +2326,48 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static void arrayAppend(PhpArray a, Object value) {
             a.append(value);
+        }
+
+        /** The {@code ...$value} of an array literal: see {@code ArrayLiteralNode.unpackInto}. */
+        static PhpArray arraySpread(PhpArray dest, Object unpacked, IteratorNode iterator, Node node) {
+            if (unpacked instanceof PhpObject obj && SplInterfaces.has(obj, SplInterfaces.TRAVERSABLE)) {
+                PhpObject it = iterator.resolve(obj);
+                iterator.rewind(it);
+                while (iterator.valid(it)) {
+                    TruffleSafepoint.poll(node);
+                    Object value = PhpOps.copyOnAssign(iterator.current(it));
+                    Object key = iterator.key(it);
+                    if (key instanceof String) {
+                        dest.put(key, value);
+                    } else if (key instanceof Long) {
+                        dest.append(value);
+                    } else {
+                        CompilerDirectives.transferToInterpreter();
+                        throw new PhpError("Keys must be of type int|string during array unpacking");
+                    }
+                    iterator.next(it);
+                }
+                return dest;
+            }
+            if (!(unpacked instanceof PhpArray src)) {
+                String given = unpacked == null || unpacked == PhpNull.INSTANCE ? "null" : PhpOps.typeName(unpacked);
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Only arrays and Traversables can be unpacked, " + given + " given");
+            }
+            arraySpreadArray(dest, src);
+            return dest;
+        }
+
+        @TruffleBoundary
+        private static void arraySpreadArray(PhpArray dest, PhpArray src) {
+            for (Map.Entry<Object, Object> e : src.entries()) {
+                Object v = PhpOps.copyOnAssign(e.getValue());
+                if (e.getKey() instanceof Long) {
+                    dest.append(v);
+                } else {
+                    dest.put(e.getKey(), v);
+                }
+            }
         }
 
         @TruffleBoundary

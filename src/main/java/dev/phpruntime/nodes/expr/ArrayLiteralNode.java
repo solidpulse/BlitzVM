@@ -195,14 +195,17 @@ public final class ArrayLiteralNode extends PhpNode {
             b.emitLoadConstant(constant);
             return;
         }
-        for (int i = 0; i < values.length; i++) {
-            if (byRef[i] || spread[i]) {
-                throw e.unsupported("array literal with reference or spread");
-            }
-        }
         // Each element wraps the array built so far: the last element's operation is outermost.
         for (int i = values.length - 1; i >= 0; i--) {
-            if (keys[i] == null) {
+            if (spread[i]) {
+                b.beginArraySpread();
+            } else if (byRef[i] && !refIsThis(values[i])) {
+                if (keys[i] == null) {
+                    b.beginArrayAppendRef();
+                } else {
+                    b.beginArrayPutRef();
+                }
+            } else if (keys[i] == null) {
                 b.beginArrayAppend();
             } else {
                 b.beginArrayPut();
@@ -210,14 +213,53 @@ public final class ArrayLiteralNode extends PhpNode {
         }
         b.emitNewArray();
         for (int i = 0; i < values.length; i++) {
-            if (keys[i] == null) {
+            if (spread[i]) {
                 e.expr(values[i]);
-                b.endArrayAppend();
-            } else {
-                e.expr(keys[i]);
-                e.expr(values[i]);
-                b.endArrayPut();
+                b.endArraySpread();
+                continue;
             }
+            if (keys[i] != null) {
+                e.expr(keys[i]);
+            }
+            if (byRef[i]) {
+                emitRefValue(e, values[i]);
+                if (keys[i] == null) {
+                    if (refIsThis(values[i])) {
+                        b.endArrayAppend();
+                    } else {
+                        b.endArrayAppendRef();
+                    }
+                } else {
+                    if (refIsThis(values[i])) {
+                        b.endArrayPut();
+                    } else {
+                        b.endArrayPutRef();
+                    }
+                }
+            } else {
+                e.expr(values[i]);
+                if (keys[i] == null) {
+                    b.endArrayAppend();
+                } else {
+                    b.endArrayPut();
+                }
+            }
+        }
+    }
+
+    private static boolean refIsThis(PhpNode value) {
+        return value instanceof LocalVarNode lv && "this".equals(lv.varName());
+    }
+
+    private static void emitRefValue(dev.phpruntime.bytecode.BytecodeEmitter e, PhpNode value) {
+        if (refIsThis(value)) {
+            e.expr(value);
+        } else if (value instanceof LValueNode lv) {
+            e.cell(lv);
+        } else {
+            e.builder().beginBoxRefCopy();
+            e.expr(value);
+            e.builder().endBoxRefCopy();
         }
     }
 }
