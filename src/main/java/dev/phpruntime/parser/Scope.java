@@ -52,6 +52,7 @@ final class Scope {
     private int generatorSlot = -1;
     private int hiddenId;
     private boolean usesThis;
+    private boolean variadic;
     private int tableSlot = -1;
     private boolean included;
     private final Map<String, Integer> literalSlots = new HashMap<>();
@@ -149,9 +150,40 @@ final class Scope {
         return thisSlot >= 0 ? 2 : 0;
     }
 
-    void declareParam(String name) {
+    void declareParam(String name, boolean isVariadic) {
         ownParams.add(name);
         paramOrder.add(name);
+        if (isVariadic) {
+            variadic = true;
+        }
+    }
+
+    boolean isVariadic() {
+        return variadic;
+    }
+
+    int normalParamCount() {
+        return variadic ? paramOrder.size() - 1 : paramOrder.size();
+    }
+
+    String[] paramNames() {
+        return paramOrder.toArray(new String[0]);
+    }
+
+    int[] paramSlots() {
+        int[] slotsOut = new int[paramOrder.size()];
+        for (int i = 0; i < slotsOut.length; i++) {
+            slotsOut[i] = slots.get(paramOrder.get(i));
+        }
+        return slotsOut;
+    }
+
+    VarKind[] paramKinds() {
+        VarKind[] kindsOut = new VarKind[paramOrder.size()];
+        for (int i = 0; i < kindsOut.length; i++) {
+            kindsOut[i] = kind(slots.get(paramOrder.get(i)));
+        }
+        return kindsOut;
     }
 
     void markCell(String name) {

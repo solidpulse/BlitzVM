@@ -6,6 +6,7 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.builtins.BuiltinParams;
 import dev.phpruntime.builtins.Builtins;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpNode;
@@ -389,13 +390,10 @@ public final class CallArgHelper {
 
     /** Binds and calls a builtin on already-evaluated raw arguments. */
     public static Object callComplexBuiltinRaw(VirtualFrame frame, Builtins.Def def, RawCallArgs raw, Node site) {
-        if (hasNamed(raw.named())) {
-            String first = firstKey(raw.named());
-            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Unknown named parameter $" + first, site);
-        }
-        List<Object> pos = raw.positional();
-        Object[] values = toObjectArray(pos);
+        BuiltinBound bound = hasNamed(raw.named())
+                ? bindNamedBuiltin(def, raw, site)
+                : positionalBuiltinBound(raw);
+        Object[] values = bound.values();
         for (int i = 0; i < values.length; i++) {
             if (values[i] instanceof PhpReference ref && !def.isRef(i)) {
                 values[i] = ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
@@ -407,9 +405,111 @@ public final class CallArgHelper {
         Object result = invokeBuiltin(def, values, site);
         if (def.refMask() != 0) {
             // Folds away for builtins without by-ref parameters when def is a PE constant.
-            writeBackBuiltinRefs(frame, def, raw, values);
+            writeBackBuiltinRefs(frame, def, bound);
         }
         return result;
+    }
+
+    /** Argument values in parameter order, plus where each by-reference argument came from. */
+    private record BuiltinBound(Object[] values, Object[] originals, LValueNode[] lvs, Object[][] keys) {
+    }
+
+    @TruffleBoundary
+    private static BuiltinBound positionalBuiltinBound(RawCallArgs raw) {
+        Object[] values = toObjectArray(raw.positional());
+        return new BuiltinBound(values, values.clone(), toLValueArray(raw.posRefTargets()),
+                toKeysArray(raw.posRefKeys()));
+    }
+
+    /**
+     * Places named arguments in their parameter positions, as php does: unknown names first,
+     * then a positional argument's position may not be overwritten, then gaps before a named
+     * argument get their defaults. A named argument for a by-reference parameter must have a
+     * place to write back to.
+     */
+    @TruffleBoundary
+    private static BuiltinBound bindNamedBuiltin(Builtins.Def def, RawCallArgs raw, Node site) {
+        List<Object> pos = raw.positional();
+        Map<String, Object> named = raw.named();
+        int passed = pos.size();
+        BuiltinParams.Param[] params = BuiltinParams.forName(def.name());
+        if (params == null) {
+            throw new PhpError("Unknown named parameter $" + firstKey(named), site);
+        }
+        int normal = params.length;
+        while (normal > 0 && params[normal - 1].variadic()) {
+            normal--;
+        }
+        boolean variadic = normal < params.length;
+        Map<Integer, String> namedAt = new LinkedHashMap<>();
+        int highest = passed - 1;
+        for (Map.Entry<String, Object> e : named.entrySet()) {
+            String name = e.getKey();
+            int idx = namedParamIndex(params, normal, name);
+            if (idx < 0) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                if (variadic) {
+                    throw new PhpError(PhpError.ARGUMENT_COUNT,
+                            def.name() + "() does not accept unknown named parameters", site);
+                }
+                throw new PhpError("Unknown named parameter $" + name, site);
+            }
+            if (idx < passed) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Named parameter $" + name + " overwrites previous argument", site);
+            }
+            Object lv = raw.namedRefTargets() == null ? null : raw.namedRefTargets().get(name);
+            if (def.isRef(idx) && lv == null && !(e.getValue() instanceof PhpReference)) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                throw new PhpError(def.name() + "(): Argument #" + (idx + 1) + " ($" + params[idx].name()
+                        + ") could not be passed by reference", site);
+            }
+            namedAt.put(idx, name);
+            highest = Math.max(highest, idx);
+        }
+        int length = Math.max(passed, highest + 1);
+        Object[] values = new Object[length];
+        Object[] originals = new Object[length];
+        LValueNode[] lvs = new LValueNode[length];
+        Object[][] keys = new Object[length][];
+        for (int i = 0; i < passed; i++) {
+            values[i] = pos.get(i);
+            originals[i] = values[i];
+            lvs[i] = raw.posRefTargets().get(i);
+            keys[i] = raw.posRefKeys().get(i);
+        }
+        for (int i = passed; i < length; i++) {
+            String name = namedAt.get(i);
+            if (name != null) {
+                values[i] = named.get(name);
+                originals[i] = values[i];
+                lvs[i] = raw.namedRefTargets() != null ? raw.namedRefTargets().get(name) : null;
+                keys[i] = raw.namedRefKeys() != null ? raw.namedRefKeys().get(name) : null;
+                continue;
+            }
+            BuiltinParams.Param param = params[i];
+            if (!param.hasDefault()) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                if (param.optional()) {
+                    throw new PhpError(PhpError.ARGUMENT_COUNT, def.name() + "(): Argument #" + (i + 1) + " ($"
+                            + param.name() + ") must be passed explicitly, because the default value is not known", site);
+                }
+                throw new PhpError(PhpError.ARGUMENT_COUNT,
+                        def.name() + "(): Argument #" + (i + 1) + " ($" + param.name() + ") not passed", site);
+            }
+            Object defaultValue = param.defaultValue();
+            values[i] = defaultValue == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(defaultValue);
+        }
+        return new BuiltinBound(values, originals, lvs, keys);
+    }
+
+    private static int namedParamIndex(BuiltinParams.Param[] params, int normal, String name) {
+        for (int i = 0; i < normal; i++) {
+            if (params[i].name().equals(name)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** The array a {@code __call}/{@code __callStatic} receives from evaluated raw arguments. */
@@ -452,18 +552,17 @@ public final class CallArgHelper {
         return list.toArray(new Object[0][]);
     }
 
-    private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, RawCallArgs raw, Object[] values) {
-        Object[] orig = toObjectArray(raw.positional());
-        LValueNode[] lvs = toLValueArray(raw.posRefTargets());
-        Object[][] keys = toKeysArray(raw.posRefKeys());
+    private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, BuiltinBound bound) {
+        Object[] values = bound.values();
         for (int i = 0; i < values.length; i++) {
             if (!def.isRef(i)) {
                 continue;
             }
-            if (orig[i] instanceof PhpReference ref) {
+            Object orig = bound.originals()[i];
+            if (orig instanceof PhpReference ref) {
                 ref.setValue(values[i]);
-            } else if (lvs[i] != null) {
-                lvs[i].write(frame, keys[i], values[i]);
+            } else if (bound.lvs()[i] != null) {
+                bound.lvs()[i].write(frame, bound.keys()[i], values[i]);
             }
         }
     }

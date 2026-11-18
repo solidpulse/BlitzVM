@@ -943,7 +943,7 @@ public final class Parser {
                 throw new PhpParseError("syntax error, expected parameter variable", v.line());
             }
             String pName = v.text();
-            scope.declareParam(pName);
+            scope.declareParam(pName, isVarArg);
             if (isRef && !isVarArg) {
                 scope.markCell(pName);
             }
@@ -2221,13 +2221,19 @@ public final class Parser {
                     next();
                     PhpNode[] args = parseCallArgs();
                     return switch (lower) {
-                        case "func_num_args" -> new FuncArgsNode(FuncArgsNode.Kind.NUM_ARGS, scope.argOffset(), null).at(line);
-                        case "func_get_args" -> new FuncArgsNode(FuncArgsNode.Kind.GET_ARGS, scope.argOffset(), null).at(line);
+                        case "func_num_args" -> new FuncArgsNode(FuncArgsNode.Kind.NUM_ARGS, scope.argOffset(),
+                                scope.paramNames(), scope.paramSlots(), scope.paramKinds(),
+                                scope.normalParamCount(), null).at(line);
+                        case "func_get_args" -> new FuncArgsNode(FuncArgsNode.Kind.GET_ARGS, scope.argOffset(),
+                                scope.paramNames(), scope.paramSlots(), scope.paramKinds(),
+                                scope.normalParamCount(), null).at(line);
                         default -> {
                             if (args.length != 1) {
                                 throw error(name + "() expects exactly 1 argument, " + args.length + " given");
                             }
-                            yield new FuncArgsNode(FuncArgsNode.Kind.GET_ARG, scope.argOffset(), args[0]).at(line);
+                            yield new FuncArgsNode(FuncArgsNode.Kind.GET_ARG, scope.argOffset(),
+                                    scope.paramNames(), scope.paramSlots(), scope.paramKinds(),
+                                    scope.normalParamCount(), args[0]).at(line);
                         }
                     };
                 }
