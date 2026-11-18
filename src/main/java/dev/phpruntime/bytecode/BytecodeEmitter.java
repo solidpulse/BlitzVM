@@ -1147,11 +1147,14 @@ public final class BytecodeEmitter {
         final BytecodeLocal pc;
         final BytecodeLabel end;
         final Map<Integer, Integer> labels;
+        /** The finally blocks open where the machine starts; a goto leaves only the ones above. */
+        final int finallyDepth;
 
-        GotoMachine(BytecodeLocal pc, BytecodeLabel end, Map<Integer, Integer> labels) {
+        GotoMachine(BytecodeLocal pc, BytecodeLabel end, Map<Integer, Integer> labels, int finallyDepth) {
             this.pc = pc;
             this.end = end;
             this.labels = labels;
+            this.finallyDepth = finallyDepth;
         }
     }
 
@@ -1190,7 +1193,7 @@ public final class BytecodeEmitter {
         }
         b.emitBranch(exit);
         BytecodeLabel end = b.createLabel();
-        gotoMachines.push(new GotoMachine(pc, end, labels));
+        gotoMachines.push(new GotoMachine(pc, end, labels, finallyBlocks.size()));
         try {
             for (int i = 0; i < count; i++) {
                 b.emitLabel(targets[i]);
@@ -1274,8 +1277,9 @@ public final class BytecodeEmitter {
         for (GotoMachine machine : gotoMachines) {
             Integer target = machine.labels.get(labelId);
             if (target != null) {
-                if (hasFinallies()) {
-                    emitFinallies();
+                int leaving = finallyBlocks.size() - machine.finallyDepth;
+                if (leaving > 0) {
+                    emitPopped(popFinallies(leaving));
                 }
                 b.beginStoreLocal(machine.pc);
                 b.emitLoadConstant((long) target);
