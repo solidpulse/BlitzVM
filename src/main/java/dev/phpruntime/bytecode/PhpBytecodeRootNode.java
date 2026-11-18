@@ -1932,6 +1932,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 CallNode.checkArity(def, args.length, location);
                 return spl.execute(args, location);
             }
+            if (def.refMask() != 0) {
+                return Ops.callBuiltinValue(def, args, location);
+            }
             return Ops.callBuiltin(def, args, location);
         }
 
@@ -2193,12 +2196,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         static Object builtinValueToRefParam(Builtins.Def def, int param, int kind, Object value, Node node, int line) {
-            if (kind == 0) {
+            // CallNode.callBuiltin: a call result may be passed with a notice; anything else
+            // (a plain expression or a new object) is an error for a builtin.
+            if (kind != 1) {
                 throw new PhpError(def.name() + "(): Argument #" + (param + 1) + " could not be passed by reference");
             }
-            if (kind == 1) {
-                PhpContext.get(node).notice("Only variables should be passed by reference", line);
-            }
+            PhpContext.get(node).notice("Only variables should be passed by reference", line);
             return new PhpReference(PhpOps.copyOnAssign(value));
         }
 

@@ -408,11 +408,6 @@ public final class CallNode extends PhpNode {
             if (def.name().equals("assert")) {
                 throw e.unsupported("assert");
             }
-            for (int i = 0; i < args.length; i++) {
-                if (def.isRef(i)) {
-                    throw e.unsupported("builtin by-reference argument");
-                }
-            }
         }
         dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite site =
                 new dev.phpruntime.bytecode.PhpBytecodeRootNode.CallSite(name, functionId, nsName, nsFunctionId,
