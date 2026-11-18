@@ -428,4 +428,28 @@ public final class CallValueNode extends PhpNode {
         }
         return values;
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (hasSpreadOrNamed) {
+            throw e.unsupported("call with spread or named arguments");
+        }
+        var b = e.builder();
+        com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
+        try {
+            b.beginBlock();
+            b.beginResolveCallable(callee);
+            e.expr(targetExpr);
+            e.loadSlotOrNull(outerThisSlot);
+            b.endResolveCallable();
+            b.beginDoValueCall(callee);
+            for (int i = 0; i < args.length; i++) {
+                e.sendArgument(args[i], refTargets[i], i, callee);
+            }
+            b.endDoValueCall();
+            b.endBlock();
+        } finally {
+            e.exitCall();
+        }
+    }
 }
