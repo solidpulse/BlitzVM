@@ -40,6 +40,7 @@ import dev.phpruntime.nodes.call.SplBuiltinNode;
 import dev.phpruntime.nodes.expr.CastNode;
 import dev.phpruntime.nodes.expr.CompareNode;
 import dev.phpruntime.nodes.expr.CondNode;
+import dev.phpruntime.nodes.expr.FuncArgsNode;
 import dev.phpruntime.nodes.expr.ReadConstantNode;
 import dev.phpruntime.nodes.expr.ThrowNode;
 import dev.phpruntime.nodes.expr.UnaryNode;
@@ -3577,6 +3578,43 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             Places.destructureStep(frame, engine,
                     Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys), item);
             return state;
+        }
+    }
+
+    // ---- 17d: last coverage
+
+    /** {@code func_num_args()}/{@code func_get_args()}: the frame's arguments past the prefix. */
+    @Operation
+    @ConstantOperand(type = FuncArgsNode.Kind.class, name = "kind")
+    @ConstantOperand(type = int.class, name = "argOffset")
+    public static final class FuncArgs {
+        @Specialization
+        static Object run(VirtualFrame frame, FuncArgsNode.Kind kind, int argOffset) {
+            Object[] args = frame.getArguments();
+            return kind == FuncArgsNode.Kind.NUM_ARGS
+                    ? FuncArgsNode.numArgs(argOffset, args, null)
+                    : FuncArgsNode.getArgs(argOffset, args, null);
+        }
+    }
+
+    /** {@code func_get_arg($i)}: the index is an operand. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "argOffset")
+    public static final class FuncGetArg {
+        @Specialization
+        static Object run(VirtualFrame frame, int argOffset, Object index) {
+            return FuncArgsNode.getArg(argOffset, frame.getArguments(), index, null);
+        }
+    }
+
+    /** {@code func_get_arg}/{@code func_get_args} in the global scope: php's error, no index run. */
+    @Operation
+    @ConstantOperand(type = FuncArgsNode.Kind.class, name = "kind")
+    public static final class FuncArgsGlobal {
+        @Specialization
+        static Object fail(FuncArgsNode.Kind kind) {
+            CompilerDirectives.transferToInterpreter();
+            throw new PhpError(kind.phpName + "(): Cannot be called from the global scope");
         }
     }
 
