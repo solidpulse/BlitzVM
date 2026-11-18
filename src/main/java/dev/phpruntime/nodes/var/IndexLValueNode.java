@@ -71,6 +71,13 @@ public final class IndexLValueNode extends LValueNode {
         return v;
     }
 
+    @TruffleBoundary
+    private void warnMissing(Object[] keys) {
+        Object k = PhpArray.normalizeKey(keys[keys.length - 1]);
+        String shown = k instanceof String ? "\"" + k + "\"" : PhpOps.toStr(k);
+        PhpContext.get(this).warning("Undefined array key " + shown, line());
+    }
+
     private static Object[] baseKeys(Object[] keys) {
         return keys.length == 1 && keys[0] instanceof PackedKeys p ? p.baseKeys : NO_KEYS;
     }
@@ -483,24 +490,6 @@ public final class IndexLValueNode extends LValueNode {
         }
         arr.remove(keys[keys.length - 1]);
         return top;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-        Object[] keys = evalKeys(frame);
-        Object v = read(frame, keys);
-        if (v == null) {
-            warnMissing(arrayKeys(keys));
-            return PhpNull.INSTANCE;
-        }
-        return v;
-    }
-
-    @TruffleBoundary
-    private void warnMissing(Object[] keys) {
-        Object k = PhpArray.normalizeKey(keys[keys.length - 1]);
-        String shown = k instanceof String ? "\"" + k + "\"" : PhpOps.toStr(k);
-        PhpContext.get(this).warning("Undefined array key " + shown, line());
     }
 
     @Override

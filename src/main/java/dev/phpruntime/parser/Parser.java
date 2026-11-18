@@ -1773,7 +1773,7 @@ public final class Parser {
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
-                    e = new IndexReadNode(language, e, key).at(line);
+                    e = new IndexReadNode(e, key).at(line);
                 }
             } else if (acceptOp("?->")) {
                 nullsafeChain = true;
@@ -2543,7 +2543,7 @@ public final class Parser {
             idxArr[i] = autoIndices.get(i);
             refArr[i] = byRefs.get(i);
         }
-        return new DestructureLValueNode(language,
+        return new DestructureLValueNode(
                 keyNodes.toArray(new PhpNode[0]),
                 targets.toArray(new LValueNode[0]),
                 idxArr,

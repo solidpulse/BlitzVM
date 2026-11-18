@@ -98,12 +98,7 @@ public final class GlobalsElementLValueNode extends LValueNode {
         ctx.unsetGlobal(toGlobalKey(keys[0]));
     }
 
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return executeWithKeys(frame, evalKeys(frame));
-    }
-
-    /** {@link #execute} with the key already evaluated. */
+    /** The rvalue read with the key already evaluated. */
     public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
         Object v = read(frame, keys);
         if (v == null) {

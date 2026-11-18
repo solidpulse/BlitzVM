@@ -1,7 +1,6 @@
 package dev.phpruntime.nodes.var;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.nodes.UnexpectedResultException;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpStringBuffer;
@@ -41,22 +40,6 @@ public final class LocalVarNode extends LValueNode {
     /** A second node for the same variable, e.g. the read in {@code $x = $x + 1}. */
     public LocalVarNode copyForRead() {
         return new LocalVarNode(slot, name, kind).at(line());
-    }
-
-    public boolean holdsLong(VirtualFrame frame) {
-        return !kind.isCell() && frame.isLong(slot);
-    }
-
-    public boolean holdsDouble(VirtualFrame frame) {
-        return !kind.isCell() && frame.isDouble(slot);
-    }
-
-    public long getLong(VirtualFrame frame) {
-        return frame.getLong(slot);
-    }
-
-    public double getDouble(VirtualFrame frame) {
-        return frame.getDouble(slot);
     }
 
     private PhpReference getOrMigrateCell(VirtualFrame frame) {
@@ -152,48 +135,6 @@ public final class LocalVarNode extends LValueNode {
     }
 
     @Override
-    public Object execute(VirtualFrame frame) {
-        Object v = read(frame, NO_KEYS);
-        return v == null ? undefined() : v;
-    }
-
-    @Override
-    public long executeLong(VirtualFrame frame) throws UnexpectedResultException {
-        if (kind.isCell()) {
-            PhpReference ref = getOrMigrateCell(frame);
-            if (ref != null && ref.getValue() instanceof Long l) {
-                return l;
-            }
-            throw new UnexpectedResultException(execute(frame));
-        }
-        if (frame.isLong(slot)) {
-            return frame.getLong(slot);
-        }
-        if (kind.mixed() && frame.isObject(slot) && frame.getObject(slot) instanceof Long l) {
-            return l; // a variable that has held both ints and floats stores them boxed
-        }
-        throw new UnexpectedResultException(execute(frame));
-    }
-
-    @Override
-    public double executeDouble(VirtualFrame frame) throws UnexpectedResultException {
-        if (kind.isCell()) {
-            PhpReference ref = getOrMigrateCell(frame);
-            if (ref != null && ref.getValue() instanceof Double d) {
-                return d;
-            }
-            throw new UnexpectedResultException(execute(frame));
-        }
-        if (frame.isDouble(slot)) {
-            return frame.getDouble(slot);
-        }
-        if (kind.mixed() && frame.isObject(slot) && frame.getObject(slot) instanceof Double d) {
-            return d;
-        }
-        throw new UnexpectedResultException(execute(frame));
-    }
-
-    @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         if (kind.isCell()) {
             writeCell(frame, value);
@@ -208,8 +149,7 @@ public final class LocalVarNode extends LValueNode {
         }
     }
 
-    @Override
-    public void writeLong(VirtualFrame frame, Object[] keys, long value) {
+    private void writeLong(VirtualFrame frame, Object[] keys, long value) {
         if (kind.isCell()) {
             writeCell(frame, value);
             return;
@@ -221,8 +161,7 @@ public final class LocalVarNode extends LValueNode {
         }
     }
 
-    @Override
-    public void writeDouble(VirtualFrame frame, Object[] keys, double value) {
+    private void writeDouble(VirtualFrame frame, Object[] keys, double value) {
         if (kind.isCell()) {
             writeCell(frame, value);
             return;

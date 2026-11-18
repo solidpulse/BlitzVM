@@ -45,12 +45,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         return new Object[]{cls, name};
     }
 
-    @Override
-    public Object execute(VirtualFrame frame) {
-        return executeWithKeys(frame, evalKeys(frame));
-    }
-
-    /** {@link #execute} with the class, name and trait caller already evaluated. */
+    /** The rvalue read with the class, name and trait caller already evaluated. */
     public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];

@@ -179,10 +179,6 @@ public final class DynamicVarNode extends LValueNode {
         else { table(frame, keys).unset(name); }
     }
 
-    @Override public Object execute(VirtualFrame frame) {
-        return readValue(frame, evalKeys(frame));
-    }
-
     @Override public Object readValue(VirtualFrame frame, Object[] keys) {
         Object value = read(frame, keys);
         if (value == null) {
