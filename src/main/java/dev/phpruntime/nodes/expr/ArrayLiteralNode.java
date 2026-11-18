@@ -258,7 +258,7 @@ public final class ArrayLiteralNode extends PhpNode {
             e.cell(lv);
         } else {
             e.builder().beginBoxRefCopy();
-            e.expr(value);
+            e.exprForRef(value);
             e.builder().endBoxRefCopy();
         }
     }

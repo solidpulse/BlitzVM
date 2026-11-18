@@ -187,6 +187,7 @@ public final class StaticMethodCallNode extends PhpNode {
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         var b = e.builder();
+        boolean keepRef = e.takeRef(this);
         com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
         try {
             b.beginBlock();
@@ -205,12 +206,12 @@ public final class StaticMethodCallNode extends PhpNode {
                 com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
                 e.beginRawArgs(raw);
                 e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexMethod();
+                b.beginDoComplexMethod(keepRef);
                 b.emitLoadLocal(callee);
                 b.emitLoadLocal(raw);
                 b.endDoComplexMethod();
             } else {
-                b.beginDoMethodCall(callee);
+                b.beginDoMethodCall(keepRef, callee);
                 for (int i = 0; i < args.length; i++) {
                     e.sendArgument(args[i], refTargets[i], i, callee);
                 }

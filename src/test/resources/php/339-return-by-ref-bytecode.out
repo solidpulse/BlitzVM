@@ -1,0 +1,11 @@
+3
+[1,2,3,"one","pushed"]
+[10,20,30,"ONE","PUSHED"]
+{"a":"set"}
+{"k":1}
+finally ran
+via finally
+[10,"second",30,"ONE","PUSHED"]
+42 ["replaced"]
+spread
+6 5

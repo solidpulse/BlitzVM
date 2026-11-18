@@ -33,7 +33,7 @@ public final class DestructureAssignNode extends PhpNode {
             b.endDestructureStartCell();
         } else {
             b.beginDestructureStartValue(target.hasAnyRef());
-            e.expr(value);
+            e.exprForRef(value);
             b.endDestructureStartValue();
         }
         b.endStoreLocal();

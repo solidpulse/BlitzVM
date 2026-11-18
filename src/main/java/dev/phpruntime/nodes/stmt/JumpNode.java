@@ -50,16 +50,40 @@ public final class JumpNode extends PhpNode {
         }
     }
 
+    /**
+     * {@code return $x;} in a function declared {@code function &f()}: the cell of an lvalue,
+     * else the value in a new cell (a returned reference stays itself), as execute does.
+     */
+    private void emitReturnRef(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        var result = e.temp();
+        b.beginStoreLocal(result);
+        if (value instanceof LValueNode lv
+                && !(lv instanceof dev.phpruntime.nodes.var.LocalVarNode local && "this".equals(local.varName()))) {
+            e.cell(lv);
+        } else {
+            b.beginBoxRefCopy();
+            e.exprForRef(value);
+            b.endBoxRefCopy();
+        }
+        b.endStoreLocal();
+        e.emitFinallies();
+        b.beginReturn();
+        b.emitLoadLocal(result);
+        b.endReturn();
+    }
+
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         switch (kind) {
             case BREAK -> e.emitBreak(levels, false);
             case CONTINUE -> e.emitBreak(levels, true);
             default -> {
-                if (returnByRef) {
-                    throw e.unsupported("return by reference");
-                }
                 var b = e.builder();
+                if (returnByRef && value != null) {
+                    emitReturnRef(e);
+                    return;
+                }
                 if (value == null) {
                     e.emitFinallies();
                     b.beginReturn();

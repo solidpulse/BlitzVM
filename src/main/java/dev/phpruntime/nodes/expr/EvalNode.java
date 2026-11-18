@@ -33,12 +33,36 @@ public final class EvalNode extends PhpNode {
 
     @TruffleBoundary
     private com.oracle.truffle.api.CallTarget prepare(String code) {
-        PhpContext ctx = PhpContext.get(this);
+        com.oracle.truffle.api.source.SourceSection here = getEncapsulatingSourceSection();
+        return prepare(PhpContext.get(this), code, tableSlot >= 0,
+                here != null ? here.getSource().getPath() : null, line(), this);
+    }
+
+    /**
+     * Parses eval'd code: into the global scope, or ({@code local}) into the caller's symbol
+     * table, which the target receives as its second argument. A parse error is located in
+     * the eval'd code, as php reports it: {@code caller.php(12) : eval()'d code}, line within.
+     */
+    @TruffleBoundary
+    public static com.oracle.truffle.api.CallTarget prepare(PhpContext ctx, String code, boolean local,
+                                                           String callerPath, int callerLine,
+                                                           com.oracle.truffle.api.nodes.Node site) {
         Source source = Source.newBuilder(PhpLanguage.ID, "<?php " + code, "eval()'d code").cached(true).build();
         try {
-            return tableSlot < 0 ? ctx.language().parseEvalBytes(source) : ctx.language().parseLocalBytes(source);
+            return local ? ctx.language().parseLocalBytes(source) : ctx.language().parseEvalBytes(source);
         } catch (dev.phpruntime.parser.PhpParseError e) {
-            throw new dev.phpruntime.runtime.PhpError(dev.phpruntime.runtime.PhpError.PARSE_ERROR, e.getMessage(), this);
+            String file = (callerPath != null ? callerPath : "") + "(" + callerLine + ") : eval()'d code";
+            throw new dev.phpruntime.runtime.PhpError(dev.phpruntime.runtime.PhpError.PARSE_ERROR, e.getMessage(),
+                    file, e.line(), site);
         }
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginEval();
+        e.expr(code);
+        e.loadTable(tableSlot);
+        b.endEval();
     }
 }

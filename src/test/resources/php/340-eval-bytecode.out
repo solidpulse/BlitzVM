@@ -1,0 +1,5 @@
+outer+eval 10 11
+fromEval:5
+ParseError: syntax error, unexpected token ";" line 1 340-eval-bytecode.php(11) : eval()'d code
+3
+GLOBAL
