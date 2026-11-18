@@ -1,10 +1,7 @@
 package dev.phpruntime.builtins;
 
-import com.oracle.truffle.api.RootCallTarget;
-import com.oracle.truffle.api.Truffle;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
-import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClassTemplate;
@@ -376,30 +373,7 @@ final class MiscFunctions {
 
     /** The class whose method called the builtin, or null at top level. */
     private static String callingClass() {
-        String[] found = new String[1];
-        Truffle.getRuntime().iterateFrames(frameInstance -> {
-            if (frameInstance.getCallTarget() instanceof RootCallTarget rct
-                    && rct.getRootNode() instanceof PhpRootNode root) {
-                if (dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode || root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                    PhpFunctionRootNode fn = dev.phpruntime.nodes.PhpFunctionRootNode.of(root) instanceof dev.phpruntime.nodes.PhpFunctionRootNode f ? f
-                            : ((dev.phpruntime.nodes.generator.GeneratorResumeRootNode) root).signature;
-                    com.oracle.truffle.api.frame.Frame runtimeFrame =
-                            frameInstance.getFrame(com.oracle.truffle.api.frame.FrameInstance.FrameAccess.READ_ONLY);
-                    if (root instanceof dev.phpruntime.nodes.generator.GeneratorResumeRootNode) {
-                        runtimeFrame = ((dev.phpruntime.runtime.PhpGenerator) runtimeFrame.getArguments()[0]).frame;
-                    }
-                    if (fn.traitSelfSlot() >= 0) {
-                        Object ts = runtimeFrame != null ? runtimeFrame.getObject(fn.traitSelfSlot()) : null;
-                        found[0] = ts instanceof dev.phpruntime.runtime.PhpClass c ? c.name() : fn.declaringClass();
-                    } else {
-                        found[0] = fn.declaringClass();
-                    }
-                }
-                return Boolean.TRUE;
-            }
-            return null;
-        });
-        return found[0];
+        return PhpFunctionRootNode.callingClassName();
     }
 
     // ------------------------------------------------------------------ misc helpers
