@@ -576,6 +576,25 @@ public final class BytecodeEmitter {
         }
     }
 
+    /**
+     * A destructuring target of an assignment or foreach: the value or cell is the source,
+     * then each element is written or bound as {@code DestructureLValueNode} does.
+     */
+    private void destructureFrom(dev.phpruntime.nodes.var.DestructureLValueNode target, Runnable value) {
+        b.beginBlock();
+        BytecodeLocal state = temp();
+        b.beginStoreLocal(state);
+        b.beginDestructureStartValue(target.hasAnyRef());
+        value.run();
+        b.endDestructureStartValue();
+        b.endStoreLocal();
+        destructureSteps(target, state);
+        b.beginDestructureResult();
+        b.emitLoadLocal(state);
+        b.endDestructureResult();
+        b.endBlock();
+    }
+
     /** Emits the element steps of one destructuring pattern, using {@code state} as its source. */
     public void destructureSteps(dev.phpruntime.nodes.var.DestructureLValueNode target,
                                  BytecodeLocal state) {        PhpNode[] keys = target.keyNodes();
@@ -648,6 +667,10 @@ public final class BytecodeEmitter {
 
     /** Binds {@code target} to the reference cell emitted by {@code cell}. */
     public void bind(dev.phpruntime.nodes.var.LValueNode target, Runnable cell) {
+        if (target instanceof dev.phpruntime.nodes.var.DestructureLValueNode destructure) {
+            destructureFrom(destructure, cell);
+            return;
+        }
         if (target instanceof LocalVarNode local) {
             b.beginBindVarCell(accessor(local), info(local));
             cell.run();
@@ -910,6 +933,10 @@ public final class BytecodeEmitter {
 
     /** {@code target = value} where the value is already being emitted by {@code value}. */
     public void assign(dev.phpruntime.nodes.var.LValueNode target, Runnable value) {
+        if (target instanceof dev.phpruntime.nodes.var.DestructureLValueNode destructure) {
+            destructureFrom(destructure, value);
+            return;
+        }
         if (target instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
             b.beginStoreVar(accessor(lv), info(lv));
             value.run();
