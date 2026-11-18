@@ -317,7 +317,8 @@ public final class ForeachNode extends PhpNode {
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         if (byRef) {
-            throw e.unsupported("foreach by reference");
+            emitByRef(e);
+            return;
         }
         var b = e.builder();
         b.beginBlock();
@@ -361,6 +362,51 @@ public final class ForeachNode extends PhpNode {
         b.emitLabel(exit);
         b.endBlock();
         b.endTryFinally();
+        b.endBlock();
+    }
+
+    private void emitByRef(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLocal cursor = e.temp();
+        b.beginStoreLocal(cursor);
+        if (subjectLValue != null) {
+            e.refStart(subjectLValue, subjectLValue.describe());
+        } else {
+            b.beginForeachRefStartValue(e.callerConstant());
+            e.expr(subject);
+            e.traitSelfOperand();
+            b.endForeachRefStartValue();
+        }
+        b.endStoreLocal();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLabel exit = b.createLabel();
+        b.beginWhile();
+        b.beginForeachRefNext();
+        b.emitLoadLocal(cursor);
+        b.endForeachRefNext();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLabel next = b.createLabel();
+        if (keyTarget != null) {
+            e.assign(keyTarget, () -> {
+                b.beginForeachRefKey();
+                b.emitLoadLocal(cursor);
+                b.endForeachRefKey();
+            });
+        }
+        e.bind(valueTarget, () -> {
+            b.beginForeachRefCell();
+            b.emitLoadLocal(cursor);
+            b.endForeachRefCell();
+        });
+        e.pushLoop(exit, next);
+        e.stmt(body);
+        e.popLoop();
+        b.emitLabel(next);
+        b.endBlock();
+        b.endWhile();
+        b.emitLabel(exit);
+        b.endBlock();
         b.endBlock();
     }
 }

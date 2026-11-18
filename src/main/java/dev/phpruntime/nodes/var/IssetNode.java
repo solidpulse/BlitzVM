@@ -45,6 +45,8 @@ public final class IssetNode extends PhpNode {
             } else if (t instanceof IndexLValueNode il) {
                 il.emitRead(e, 2);
             } else if (t instanceof PropertyLValueNode || t instanceof GlobalVarNode
+                    || t instanceof GlobalsElementLValueNode
+                    || t instanceof StaticPropertyLValueNode
                     || dev.phpruntime.bytecode.BytecodeEmitter.isTableVar(t)) {
                 e.place((LValueNode) t, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_ISSET, 0, null);
             } else if (t instanceof LValueNode) {

@@ -52,6 +52,22 @@ public final class DestructureLValueNode extends LValueNode {
         return hasAnyRef;
     }
 
+    public PhpNode[] keyNodes() {
+        return keyNodes;
+    }
+
+    public LValueNode[] targetNodes() {
+        return targetNodes;
+    }
+
+    public long[] autoIndices() {
+        return autoIndices;
+    }
+
+    public boolean[] byRef() {
+        return byRef;
+    }
+
     public Object assignFrom(VirtualFrame frame, PhpNode rhsExpr, LValueNode rhsLValue) {
         if (hasAnyRef) {
             if (rhsLValue != null) {

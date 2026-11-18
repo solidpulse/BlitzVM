@@ -246,6 +246,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** The local bound directly to a reference cell, as {@code LocalVarNode.bindCell} does. */
+    static void bindCell(VirtualFrame frame, LocalAccessor acc, VarInfo info, BytecodeNode bytecode,
+                         PhpReference cell) {
+        if ("this".equals(info.name())) {
+            CompilerDirectives.transferToInterpreter();
+            throw new PhpError("Cannot re-assign $this");
+        }
+        if (!info.kind().isCell()) {
+            info.kind().markCell();
+        }
+        acc.setObject(bytecode, frame, cell);
+    }
+
     @Operation
     @ConstantOperand(type = LocalAccessor.class)
     @ConstantOperand(type = VarInfo.class)
@@ -351,6 +364,61 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static void store(VirtualFrame frame, LocalAccessor acc, VarInfo info, Object value,
                           @Bind BytecodeNode bytecode) {
             PhpBytecodeRootNode.store(frame, acc, info, bytecode, PhpOps.copyOnAssign(value));
+        }
+    }
+
+    /** {@code $x = &$cell}: binds the local to the reference cell (foreach by reference, =&). */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class BindVarCell {
+        @Specialization
+        static void bind(VirtualFrame frame, LocalAccessor acc, VarInfo info, PhpReference cell,
+                         @Bind BytecodeNode bytecode) {
+            bindCell(frame, acc, info, bytecode, cell);
+        }
+    }
+
+    /** {@code &$this}: a temporary cell holding the object. */
+    @Operation
+    public static final class BoxRef {
+        @Specialization
+        static PhpReference box(Object value) {
+            return new PhpReference(value);
+        }
+    }
+
+    /** {@code &<non-lvalue>} in an array literal: a new cell holding a copy of the value. */
+    @Operation
+    public static final class BoxRefCopy {
+        @Specialization
+        static PhpReference box(Object value) {
+            return new PhpReference(PhpOps.copyOnAssign(value));
+        }
+    }
+
+    /** The cell of a non-lvalue RHS: a returned cell, else a notice and a copy in a new cell. */
+    @Operation
+    public static final class RefFromValue {
+        @Specialization
+        static PhpReference box(Object raw, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                @Bind Node node) {
+            if (raw instanceof PhpReference ref) {
+                ref.ensureDefined();
+                return ref;
+            }
+            PhpContext.get(node).notice("Only variables should be assigned by reference", lineOf(bytecode, bci));
+            return new PhpReference(PhpOps.copyOnAssign(raw));
+        }
+    }
+
+    /** The value of a reference cell, as {@code AssignRefNode.execute} returns it. */
+    @Operation
+    public static final class RefValue {
+        @Specialization
+        static Object value(PhpReference cell) {
+            Object v = cell.getValue();
+            return v == null ? PhpNull.INSTANCE : v;
         }
     }
 
@@ -996,6 +1064,43 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** Adds one reference element to an array under construction. */
+    @Operation
+    public static final class ArrayPutRef {
+        @Specialization
+        static PhpArray putRef(PhpArray array, Object key, PhpReference cell,
+                               @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            try {
+                array.putRef(key, cell);
+            } catch (PhpError e) {
+                throw e.at(location);
+            }
+            return array;
+        }
+    }
+
+    @Operation
+    public static final class ArrayAppendRef {
+        @Specialization
+        static PhpArray appendRef(PhpArray array, PhpReference cell) {
+            array.appendRef(cell);
+            return array;
+        }
+    }
+
+    /** An array literal's {@code ...$value}: unpacks an array or Traversable into the new array. */
+    @Operation
+    public static final class ArraySpread {
+        @Specialization
+        static PhpArray spread(PhpArray array, Object unpacked, @Bind PhpBytecodeRootNode root,
+                               @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                               @Cached("create(root)") IteratorNode iterator) {
+            return Ops.arraySpread(array, unpacked, iterator, location);
+        }
+    }
+
     @Operation
     public static final class Index {
         @Specialization
@@ -1258,6 +1363,35 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** State of a {@code foreach (... as $k => &$v)}: a live array, or object entries. */
+    public static final class RefCursor {
+        final PhpArray array;
+        final PhpReference cell;
+        final List<Object> keys;
+        final List<Map.Entry<Object, PhpReference>> entries;
+        int pos = -1;
+        Object key;
+        PhpReference element;
+
+        RefCursor(PhpArray array, PhpReference cell, List<Object> keys,
+                  List<Map.Entry<Object, PhpReference>> entries) {
+            this.array = array;
+            this.cell = cell;
+            this.keys = keys;
+            this.entries = entries;
+        }
+
+        @TruffleBoundary
+        Object entryKey() {
+            return entries.get(pos).getKey();
+        }
+
+        @TruffleBoundary
+        PhpReference entryElement() {
+            return entries.get(pos).getValue();
+        }
+    }
+
     // ------------------------------------------------------------------ calls
 
     /** The function a call site names in this request: a {@link PhpFunction} or a builtin. */
@@ -1459,6 +1593,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final int P_UNSET = 8;
     /** The value without the undefined warning, or {@link #UNDEFINED} (compact, extract). */
     public static final int P_RAW = 9;
+    /** Binds the place to the reference cell given as the value (destructuring, foreach by ref). */
+    public static final int P_BIND = 10;
+    /** Prepares the evaluated keys of a place without reading or writing it ({@code ??=}). */
+    public static final int P_KEYS = 11;
 
     /**
      * A non-local lvalue (an index path or a property). {@code template} is a copy of its AST
@@ -1468,14 +1606,25 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class PlaceSpec {
         private final dev.phpruntime.nodes.var.LValueNode template;
         final int arrayKeys;
+        /** Base operands before the array keys: 2 object/name, 3 static class/name/caller. */
+        final int baseCount;
 
         public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys) {
+            this(template, arrayKeys, 2);
+        }
+
+        public PlaceSpec(dev.phpruntime.nodes.var.LValueNode template, int arrayKeys, int baseCount) {
             this.template = template;
             this.arrayKeys = arrayKeys;
+            this.baseCount = baseCount;
         }
 
         public dev.phpruntime.nodes.var.LValueNode newEngine() {
             return (dev.phpruntime.nodes.var.LValueNode) template.deepCopy();
+        }
+
+        dev.phpruntime.nodes.var.LValueNode template() {
+            return template;
         }
 
         @Override
@@ -1498,6 +1647,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] holder = {HOLDER_EMPTY};
             Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, holder);
+            }
             Object result = Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.arrayKeys));
             if (holder[0] != HOLDER_EMPTY) {
                 store(frame, acc, info, bytecode, holder[0]);
@@ -1515,8 +1667,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
-            Object[] keys = Places.objKeys(ops, spec.arrayKeys);
-            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, 2 + spec.arrayKeys));
+            Object[] keys = Places.objKeys(ops, spec.arrayKeys, spec.baseCount);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
         }
     }
 
@@ -1529,8 +1684,77 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
-            return Places.run(frame, engine, Places.globalKeys(ops, spec.arrayKeys), mode, arg,
-                    Places.value(ops, spec.arrayKeys));
+            Object[] keys = Places.globalKeys(ops, spec.arrayKeys);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.arrayKeys));
+        }
+    }
+
+    /** A static property, or an index path on one: operands are class, name, caller, keys, value. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class StaticPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendStaticPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
+                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            Object result = Places.run(frame, engine, keys, mode, 0, null);
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
+        }
+    }
+
+    /** A {@code $GLOBALS[...]} element, or an index path on one. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class GlobalsPlace {
+        @Specialization
+        static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class SendGlobalsPlace {
+        @Specialization
+        static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
+                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
+            Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
+            Object result = Places.run(frame, engine, keys, mode, 0, null);
+            return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
         }
     }
 
@@ -1676,7 +1900,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             int mode = Places.sendMode(calleeLocal.getObject(bytecode, frame), param);
-            Object result = Places.run(frame, engine, Places.objKeys(ops, spec.arrayKeys), mode, 0, null);
+            Object result = Places.run(frame, engine, Places.objKeys(ops, spec.arrayKeys, spec.baseCount), mode, 0, null);
             return Places.sendValue(calleeLocal.getObject(bytecode, frame), mode, result);
         }
     }
@@ -1701,13 +1925,40 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return arrayKeys;
         }
 
-        static Object[] objKeys(Object[] ops, int n) {
-            Object[] base = {ops[0], ops[1]};
+        /** Base keys (class, name, caller?) then array keys, packed for an index path. */
+        static Object[] staticKeys(Object[] ops, int n, int baseCount) {
+            Object[] base = new Object[baseCount];
+            System.arraycopy(ops, 0, base, 0, baseCount);
             if (n == 0) {
                 return base;
             }
             Object[] arrayKeys = new Object[n];
-            System.arraycopy(ops, 2, arrayKeys, 0, n);
+            System.arraycopy(ops, baseCount, arrayKeys, 0, n);
+            return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
+        }
+
+        /** {@code $GLOBALS} element base keys (0 for a constant name, 1 for an expression), then array keys. */
+        static Object[] globalsElementKeys(Object[] ops, int baseCount, int n) {
+            Object[] base = baseCount == 0 ? dev.phpruntime.nodes.var.LValueNode.NO_KEYS : new Object[baseCount];
+            if (baseCount != 0) {
+                System.arraycopy(ops, 0, base, 0, baseCount);
+            }
+            if (n == 0) {
+                return base;
+            }
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, baseCount, arrayKeys, 0, n);
+            return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
+        }
+
+        static Object[] objKeys(Object[] ops, int n, int baseCount) {
+            Object[] base = new Object[baseCount];
+            System.arraycopy(ops, 0, base, 0, baseCount);
+            if (n == 0) {
+                return base;
+            }
+            Object[] arrayKeys = new Object[n];
+            System.arraycopy(ops, baseCount, arrayKeys, 0, n);
             return dev.phpruntime.nodes.var.IndexLValueNode.pack(base, arrayKeys);
         }
 
@@ -1739,7 +1990,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         return il.readOrWarn(frame, keys);
                     }
                     if (engine instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
-                        return p.executeOn(frame, keys[0], (String) keys[1]);
+                        return p.executeOn(frame, keys[0], (String) keys[1], keys);
+                    }
+                    if (engine instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
+                        return sp.executeWithKeys(frame, keys);
+                    }
+                    if (engine instanceof dev.phpruntime.nodes.var.GlobalsElementLValueNode ge) {
+                        return ge.executeWithKeys(frame, keys);
                     }
                     return engine.readValue(frame, keys);
                 case P_READ_IF_SET: {
@@ -1762,12 +2019,25 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 case P_UNSET:
                     engine.unset(frame, keys);
                     return PhpNull.INSTANCE;
+                case P_BIND:
+                    engine.bindCell(frame, keys, (PhpReference) value);
+                    return value;
                 case P_RAW: {
                     Object v = engine.read(frame, keys);
                     return v == null ? UNDEFINED : v;
                 }
                 default:
                     throw CompilerDirectives.shouldNotReachHere();
+            }
+        }
+
+        /** Writes or binds one destructured element on a place engine. */
+        static void destructureStep(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine,
+                                    Object[] keys, DestructureItem item) {
+            if (item.cell() != null) {
+                run(frame, engine, keys, P_BIND, 0, item.cell());
+            } else {
+                run(frame, engine, keys, P_WRITE, 0, item.value());
             }
         }
 
@@ -1931,6 +2201,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (spl != null) {
                 CallNode.checkArity(def, args.length, location);
                 return spl.execute(args, location);
+            }
+            if (def.refMask() != 0) {
+                return Ops.callBuiltinValue(def, args, location);
             }
             return Ops.callBuiltin(def, args, location);
         }
@@ -2124,6 +2397,48 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             a.append(value);
         }
 
+        /** The {@code ...$value} of an array literal: see {@code ArrayLiteralNode.unpackInto}. */
+        static PhpArray arraySpread(PhpArray dest, Object unpacked, IteratorNode iterator, Node node) {
+            if (unpacked instanceof PhpObject obj && SplInterfaces.has(obj, SplInterfaces.TRAVERSABLE)) {
+                PhpObject it = iterator.resolve(obj);
+                iterator.rewind(it);
+                while (iterator.valid(it)) {
+                    TruffleSafepoint.poll(node);
+                    Object value = PhpOps.copyOnAssign(iterator.current(it));
+                    Object key = iterator.key(it);
+                    if (key instanceof String) {
+                        dest.put(key, value);
+                    } else if (key instanceof Long) {
+                        dest.append(value);
+                    } else {
+                        CompilerDirectives.transferToInterpreter();
+                        throw new PhpError("Keys must be of type int|string during array unpacking");
+                    }
+                    iterator.next(it);
+                }
+                return dest;
+            }
+            if (!(unpacked instanceof PhpArray src)) {
+                String given = unpacked == null || unpacked == PhpNull.INSTANCE ? "null" : PhpOps.typeName(unpacked);
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Only arrays and Traversables can be unpacked, " + given + " given");
+            }
+            arraySpreadArray(dest, src);
+            return dest;
+        }
+
+        @TruffleBoundary
+        private static void arraySpreadArray(PhpArray dest, PhpArray src) {
+            for (Map.Entry<Object, Object> e : src.entries()) {
+                Object v = PhpOps.copyOnAssign(e.getValue());
+                if (e.getKey() instanceof Long) {
+                    dest.append(v);
+                } else {
+                    dest.put(e.getKey(), v);
+                }
+            }
+        }
+
         @TruffleBoundary
         static Object arrayGet(PhpArray a, Object key) {
             return a.get(key);
@@ -2193,12 +2508,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         static Object builtinValueToRefParam(Builtins.Def def, int param, int kind, Object value, Node node, int line) {
-            if (kind == 0) {
+            // CallNode.callBuiltin: a call result may be passed with a notice; anything else
+            // (a plain expression or a new object) is an error for a builtin.
+            if (kind != 1) {
                 throw new PhpError(def.name() + "(): Argument #" + (param + 1) + " could not be passed by reference");
             }
-            if (kind == 1) {
-                PhpContext.get(node).notice("Only variables should be passed by reference", line);
-            }
+            PhpContext.get(node).notice("Only variables should be passed by reference", line);
             return new PhpReference(PhpOps.copyOnAssign(value));
         }
 
@@ -2242,6 +2557,171 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 }
             }
             return result;
+        }
+
+        // ---- destructuring
+
+        static DestructureState destructureStartCell(PhpReference cell, String describe, int line, Node node) {
+            Object cur = cell.getValue();
+            if (cur == null) {
+                PhpContext.get(node).warning("Undefined variable " + describe, line);
+                cur = PhpNull.INSTANCE;
+            }
+            if (cur instanceof PhpArray arr) {
+                PhpArray writable = arr.forWrite();
+                cell.setValue(writable);
+                return DestructureState.ref(cell);
+            }
+            return DestructureState.value(cur);
+        }
+
+        static DestructureState destructureStartValue(Object raw, boolean hasAnyRef, int line, Node node) {
+            if (raw instanceof PhpReference ref) {
+                if (ref.getValue() instanceof PhpArray arr) {
+                    PhpArray writable = arr.forWrite();
+                    ref.setValue(writable);
+                    return DestructureState.ref(ref);
+                }
+                Object v = ref.getValue() == null ? PhpNull.INSTANCE : ref.getValue();
+                return DestructureState.value(v);
+            }
+            if (hasAnyRef) {
+                PhpContext.get(node).notice("Attempting to set reference to non referenceable value", line);
+                return DestructureState.valueCopied(raw);
+            }
+            return DestructureState.value(raw);
+        }
+
+        static Object destructureResult(DestructureState state) {
+            Object v;
+            if (state.ref()) {
+                Object cellValue = state.container().getValue();
+                v = cellValue == null ? PhpNull.INSTANCE : cellValue;
+            } else {
+                v = state.result();
+            }
+            return state.copyResult() ? PhpOps.copyOnAssign(v) : v;
+        }
+
+        static DestructureItem destructureItem(VirtualFrame frame, DestructureState state, Object key, boolean byRef,
+                                               ArrayAccessNode access, Node node, int line) {
+            if (state.ref()) {
+                PhpArray array = state.container().getValue() instanceof PhpArray a ? a : null;
+                if (array == null) {
+                    return byRef ? new DestructureItem(new PhpReference(PhpNull.INSTANCE), null)
+                            : new DestructureItem(null, PhpNull.INSTANCE);
+                }
+                if (byRef) {
+                    return new DestructureItem(destructureCell(array, key, node), null);
+                }
+                Object fetched = destructureGet(array, key, node);
+                if (fetched == null) {
+                    warnDestructureMissing(key, line, node);
+                    return new DestructureItem(null, PhpNull.INSTANCE);
+                }
+                return new DestructureItem(null, PhpOps.copyOnAssign(fetched));
+            }
+            if (state.source() instanceof PhpArray array) {
+                Object fetched = destructureGet(array, key, node);
+                if (fetched == null) {
+                    warnDestructureMissing(key, line, node);
+                    return destructureValueItem(byRef, PhpNull.INSTANCE);
+                }
+                return destructureValueItem(byRef, PhpOps.copyOnAssign(fetched));
+            }
+            if (state.source() instanceof PhpObject obj) {
+                Object fetched = byRef ? access.cell(obj, key) : access.get(obj, key);
+                if (fetched instanceof PhpReference ref) {
+                    return new DestructureItem(ref, null);
+                }
+                return destructureValueItem(byRef, PhpOps.copyOnAssign(fetched));
+            }
+            return destructureValueItem(byRef, PhpNull.INSTANCE);
+        }
+
+        private static DestructureItem destructureValueItem(boolean byRef, Object value) {
+            return byRef ? new DestructureItem(new PhpReference(value), null)
+                    : new DestructureItem(null, value);
+        }
+
+        private static Object destructureGet(PhpArray array, Object key, Node node) {
+            try {
+                return array.get(key);
+            } catch (PhpError e) {
+                throw e.at(node);
+            }
+        }
+
+        private static PhpReference destructureCell(PhpArray array, Object key, Node node) {
+            try {
+                return array.obtainElementRef(key);
+            } catch (PhpError e) {
+                throw e.at(node);
+            }
+        }
+
+        static boolean destructureHas(PhpArray array, Object key, Node node) {
+            try {
+                return array.containsKey(key);
+            } catch (PhpError e) {
+                throw e.at(node);
+            }
+        }
+
+        @TruffleBoundary
+        static void warnDestructureMissing(Object rawKey, int line, Node node) {
+            Object norm = PhpArray.normalizeKey(rawKey);
+            String shown = norm instanceof String s ? '"' + s + '"' : PhpOps.toStr(norm);
+            PhpContext.get(node).warning("Undefined array key " + shown, line);
+        }
+
+        // ---- foreach by reference
+
+        static RefCursor refStartPlace(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine,
+                                       Object[] keys, String describe, int line, Node node,
+                                       Object traitSelf, String declaringClass) {
+            Object cur = engine.read(frame, keys);
+            if (cur == null) {
+                PhpContext.get(node).warning("Undefined variable " + describe, line);
+                cur = PhpNull.INSTANCE;
+            }
+            if (!(cur instanceof PhpArray)) {
+                return refFromValue(cur, null, traitSelf, declaringClass, line, node);
+            }
+            return refFromValue(cur, engine.obtainCell(frame, keys), traitSelf, declaringClass, line, node);
+        }
+
+        static RefCursor refStartValue(Object raw, Object traitSelf, String declaringClass, int line, Node node) {
+            PhpReference cell = raw instanceof PhpReference ref ? ref : null;
+            Object value = cell != null
+                    ? (cell.getValue() == null ? PhpNull.INSTANCE : cell.getValue()) : raw;
+            if (value instanceof PhpArray) {
+                return refFromValue(value, cell, traitSelf, declaringClass, line, node);
+            }
+            return refFromValue(value, null, traitSelf, declaringClass, line, node);
+        }
+
+        private static RefCursor refFromValue(Object value, PhpReference cell, Object traitSelf,
+                                              String declaringClass, int line, Node node) {
+            if (value instanceof PhpArray arr) {
+                PhpArray writable = arr.forWrite();
+                if (cell != null) {
+                    cell.setValue(writable);
+                }
+                return new RefCursor(writable, cell, writable.keys(), null);
+            }
+            if (value instanceof PhpObject obj) {
+                if (obj.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
+                    CompilerDirectives.transferToInterpreter();
+                    throw new PhpError("An iterator cannot be used with foreach by reference");
+                }
+                String caller = traitSelf instanceof PhpClass ts ? ts.name()
+                        : (declaringClass == null || declaringClass.isEmpty() ? null : declaringClass);
+                return new RefCursor(null, null, null,
+                        PhpClass.visibleRefEntries(PhpContext.get(node), obj, caller));
+            }
+            warnForeach(node, value, line);
+            return new RefCursor(null, null, null, null);
         }
 
         @TruffleBoundary
@@ -2834,6 +3314,444 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         : (captureValues[i] == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(captureValues[i]));
             }
             return ctx.newClosure(PhpClosure.closure(spec.callTarget(), boundThis, calledClass, traitSelf, caps));
+        }
+    }
+
+    // ---- 17c: remaining lvalues
+
+    /** The source of a destructuring assignment: a value, or a live array reached through a cell. */
+    public record DestructureState(Object source, PhpReference container, boolean ref, Object result,
+                                   boolean copyResult) {
+        static DestructureState value(Object v) {
+            return new DestructureState(v, null, false, v, false);
+        }
+
+        static DestructureState valueCopied(Object v) {
+            return new DestructureState(v, null, false, v, true);
+        }
+
+        static DestructureState ref(PhpReference cell) {
+            return new DestructureState(null, cell, true, null, true);
+        }
+    }
+
+    /** One element of a destructuring assignment: a cell to bind, or a value to write. */
+    public record DestructureItem(PhpReference cell, Object value) {
+    }
+
+    /** Evaluated place keys, with the holder of an index path rooted in a bytecode local. */
+    public record PreparedPlace(Object[] keys, Object[] holder) {
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class PreparedReadIfSet {
+        @Specialization
+        static Object read(VirtualFrame frame, PlaceSpec spec, Object prepared,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            PreparedPlace p = (PreparedPlace) prepared;
+            return Places.run(frame, engine, p.keys(), P_READ_IF_SET, 0, null);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class PreparedWrite {
+        @Specialization
+        static Object write(VirtualFrame frame, PlaceSpec spec, Object prepared, Object value,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            PreparedPlace p = (PreparedPlace) prepared;
+            return Places.run(frame, engine, p.keys(), P_WRITE, 0, value);
+        }
+    }
+
+    /** As {@link PreparedWrite}, also storing an index path's updated array back into its local. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class PreparedVarWrite {
+        @Specialization
+        static Object write(VirtualFrame frame, PlaceSpec spec, LocalAccessor acc, VarInfo info, Object prepared,
+                            Object value, @Bind BytecodeNode bytecode,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            PreparedPlace p = (PreparedPlace) prepared;
+            Object result = Places.run(frame, engine, p.keys(), P_WRITE, 0, value);
+            if (p.holder() != null && p.holder()[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, p.holder()[0]);
+            }
+            return result;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = String.class, name = "describe")
+    public static final class DestructureStartCell {
+        @Specialization
+        static Object start(String describe, PhpReference cell, @Bind BytecodeNode bytecode,
+                            @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            return Ops.destructureStartCell(cell, describe, lineOf(bytecode, bci), node);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "hasAnyRef")
+    public static final class DestructureStartValue {
+        @Specialization
+        static Object start(boolean hasAnyRef, Object raw, @Bind BytecodeNode bytecode,
+                            @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            return Ops.destructureStartValue(raw, hasAnyRef, lineOf(bytecode, bci), node);
+        }
+    }
+
+    @Operation
+    public static final class DestructureResult {
+        @Specialization
+        static Object result(DestructureState state) {
+            return Ops.destructureResult(state);
+        }
+    }
+
+    @Operation
+    public static final class DestructureSkipStep {
+        @Specialization
+        static Object step(DestructureState state, Object sourceKey) {
+            return state;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "nestedAnyRef")
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureNestedStep {
+        @Specialization
+        static Object step(boolean nestedAnyRef, boolean byRef, DestructureState state, Object sourceKey,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access) {
+            int line = lineOf(bytecode, bci);
+            DestructureItem item;
+            if (state.ref() && nestedAnyRef && !byRef) {
+                PhpArray array = state.container().getValue() instanceof PhpArray a ? a : null;
+                if (array == null) {
+                    return DestructureState.value(PhpNull.INSTANCE);
+                }
+                if (!Ops.destructureHas(array, sourceKey, location)) {
+                    Ops.warnDestructureMissing(sourceKey, line, location);
+                    return DestructureState.value(PhpNull.INSTANCE);
+                }
+                item = new DestructureItem(Ops.destructureCell(array, sourceKey, location), null);
+            } else {
+                item = Ops.destructureItem(null, state, sourceKey, byRef, access, location, line);
+            }
+            if (item.cell() != null) {
+                PhpReference cell = item.cell();
+                if (cell.getValue() instanceof PhpArray arr) {
+                    PhpArray writable = arr.forWrite();
+                    cell.setValue(writable);
+                    return DestructureState.ref(cell);
+                }
+                return DestructureState.value(cell.getValue() == null ? PhpNull.INSTANCE : cell.getValue());
+            }
+            return DestructureState.value(item.value());
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureLocalStep {
+        @Specialization
+        static Object step(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean byRef,
+                           DestructureState state, Object sourceKey, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            if (item.cell() != null) {
+                bindCell(frame, acc, info, bytecode, item.cell());
+            } else {
+                store(frame, acc, info, bytecode, item.value());
+            }
+            return state;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureVarStep {
+        @Specialization
+        static Object step(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, boolean byRef,
+                           DestructureState state, Object sourceKey, @Variadic Object[] ops,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            Object[] holder = {HOLDER_EMPTY};
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Places.destructureStep(frame, engine, keys, item);
+            if (holder[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, holder[0]);
+            }
+            return state;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureObjStep {
+        @Specialization
+        static Object step(VirtualFrame frame, PlaceSpec spec, boolean byRef, DestructureState state,
+                           Object sourceKey, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            Places.destructureStep(frame, engine, Places.objKeys(ops, spec.arrayKeys, spec.baseCount), item);
+            return state;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureGlobalStep {
+        @Specialization
+        static Object step(VirtualFrame frame, PlaceSpec spec, boolean byRef, DestructureState state,
+                           Object sourceKey, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            Places.destructureStep(frame, engine, Places.globalKeys(ops, spec.arrayKeys), item);
+            return state;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureStaticStep {
+        @Specialization
+        static Object step(VirtualFrame frame, PlaceSpec spec, boolean byRef, DestructureState state,
+                           Object sourceKey, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            Places.destructureStep(frame, engine,
+                    Places.staticKeys(ops, spec.arrayKeys, spec.baseCount), item);
+            return state;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = boolean.class, name = "byRef")
+    public static final class DestructureGlobalsStep {
+        @Specialization
+        static Object step(VirtualFrame frame, PlaceSpec spec, boolean byRef, DestructureState state,
+                           Object sourceKey, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
+                           @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create(root)") ArrayAccessNode access,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
+                    lineOf(bytecode, bci));
+            Places.destructureStep(frame, engine,
+                    Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys), item);
+            return state;
+        }
+    }
+
+    // ---- foreach by reference
+
+    /** A {@code foreach} subject that is a plain local: read it, then take its cell if an array. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartVar {
+        @Specialization
+        static Object start(VirtualFrame frame, LocalAccessor acc, VarInfo info, String describe, String declaringClass,
+                            Object traitSelf, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Bind Node node) {
+            Object cur = current(frame, acc, bytecode);
+            if (cur == null) {
+                PhpContext.get(node).warning("Undefined variable " + describe, lineOf(bytecode, bci));
+                cur = PhpNull.INSTANCE;
+            }
+            if (!(cur instanceof PhpArray)) {
+                return Ops.refStartValue(cur, traitSelf, declaringClass, lineOf(bytecode, bci), node);
+            }
+            PhpReference cell = ObtainVarCell.obtain(frame, acc, info, bytecode);
+            return Ops.refStartValue(cell, traitSelf, declaringClass, lineOf(bytecode, bci), node);
+        }
+    }
+
+    /** A {@code foreach} subject that is an index path on a local. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartVarPlace {
+        @Specialization
+        static Object start(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, String describe,
+                            String declaringClass, Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode,
+                            @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] holder = {HOLDER_EMPTY};
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Object result = Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+            if (holder[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, holder[0]);
+            }
+            return result;
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartObj {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.objKeys(ops, spec.arrayKeys, spec.baseCount);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartGlobal {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.globalKeys(ops, spec.arrayKeys);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartStatic {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = String.class, name = "describe")
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartGlobals {
+        @Specialization
+        static Object start(VirtualFrame frame, PlaceSpec spec, String describe, String declaringClass,
+                            Object traitSelf, @Variadic Object[] ops,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
+            return Ops.refStartPlace(frame, engine, keys, describe, lineOf(bytecode, bci), node,
+                    traitSelf, declaringClass);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = String.class, name = "declaringClass")
+    public static final class ForeachRefStartValue {
+        @Specialization
+        static Object start(String declaringClass, Object subject, Object traitSelf,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            return Ops.refStartValue(subject, traitSelf, declaringClass, lineOf(bytecode, bci), node);
+        }
+    }
+
+    @Operation
+    public static final class ForeachRefNext {
+        @Specialization
+        static boolean next(RefCursor c, @Bind Node node) {
+            TruffleSafepoint.poll(node);
+            if (c.array != null) {
+                while (true) {
+                    c.pos++;
+                    if (c.pos >= c.keys.size()) {
+                        return false;
+                    }
+                    Object key = c.keys.get(c.pos);
+                    PhpArray current = c.cell != null && c.cell.getValue() instanceof PhpArray ca ? ca : c.array;
+                    if (!current.containsKey(key)) {
+                        continue;
+                    }
+                    c.key = key;
+                    c.element = current.obtainElementRef(key);
+                    return true;
+                }
+            }
+            if (c.entries != null) {
+                c.pos++;
+                if (c.pos >= c.entries.size()) {
+                    return false;
+                }
+                c.key = c.entryKey();
+                c.element = c.entryElement();
+                return true;
+            }
+            return false;
+        }
+    }
+
+    @Operation
+    public static final class ForeachRefKey {
+        @Specialization
+        static Object key(RefCursor c) {
+            return c.key;
+        }
+    }
+
+    @Operation
+    public static final class ForeachRefCell {
+        @Specialization
+        static PhpReference cell(RefCursor c) {
+            return c.element;
         }
     }
 }

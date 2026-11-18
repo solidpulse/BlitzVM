@@ -47,13 +47,42 @@ public final class StaticPropertyLValueNode extends LValueNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        Object[] keys = evalKeys(frame);
+        return executeWithKeys(frame, evalKeys(frame));
+    }
+
+    /** {@link #execute} with the class, name and trait caller already evaluated. */
+    public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
         PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
         Object val = slot.get();
         return val == null ? PhpNull.INSTANCE : val;
+    }
+
+    /** A copy without its expressions, for bytecode, which evaluates the class and the name. */
+    public StaticPropertyLValueNode headless() {
+        return new StaticPropertyLValueNode(null, staticName, null, callingClassLower).at(line());
+    }
+
+    public ClassRefNode classRef() {
+        return classRef;
+    }
+
+    public String staticName() {
+        return staticName;
+    }
+
+    public PhpNode dynamicNameExpr() {
+        return dynamicNameExpr;
+    }
+
+    public int traitSelfSlot() {
+        return traitSelfSlot;
+    }
+
+    public boolean usesTraitSelf() {
+        return traitSelfSlot >= 0;
     }
 
     @Override
@@ -138,5 +167,10 @@ public final class StaticPropertyLValueNode extends LValueNode {
     @Override
     public String describe() {
         return staticName != null ? "Class::$" + staticName : "Class::$prop";
+    }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
     }
 }

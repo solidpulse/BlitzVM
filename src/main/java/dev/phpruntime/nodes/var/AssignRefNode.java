@@ -52,4 +52,37 @@ public final class AssignRefNode extends PhpNode {
         PhpContext.get(this).notice("Only variables should be assigned by reference", line());
         return new PhpReference(PhpOps.copyOnAssign(raw));
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        if (value instanceof dev.phpruntime.nodes.call.CallNode
+                || value instanceof dev.phpruntime.nodes.call.MethodCallNode
+                || value instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                || value instanceof dev.phpruntime.nodes.call.CallValueNode) {
+            // The bytecode call operations unwrap a by-reference return, so the AST's
+            // executeForRef is the only path that binds the returned reference.
+            throw e.unsupported("reference assignment from a call");
+        }
+        var b = e.builder();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLocal cell = e.temp();
+        b.beginStoreLocal(cell);
+        if (value instanceof LocalVarNode lv && "this".equals(lv.varName())) {
+            b.beginBoxRef();
+            e.expr(lv);
+            b.endBoxRef();
+        } else if (value instanceof LValueNode rhs) {
+            e.cell(rhs);
+        } else {
+            b.beginRefFromValue();
+            e.expr(value);
+            b.endRefFromValue();
+        }
+        b.endStoreLocal();
+        e.bind(target, () -> b.emitLoadLocal(cell));
+        b.beginRefValue();
+        b.emitLoadLocal(cell);
+        b.endRefValue();
+        b.endBlock();
+    }
 }
