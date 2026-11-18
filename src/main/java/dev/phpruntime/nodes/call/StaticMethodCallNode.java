@@ -194,7 +194,7 @@ public final class StaticMethodCallNode extends PhpNode {
         try {
             b.beginBlock();
             b.beginResolveStaticMethod(new dev.phpruntime.bytecode.PhpBytecodeRootNode.MethodSite(staticName, methodId),
-                    callee, classRef.isForwarding());
+                    callee, classRef.isForwarding(), calledClassSlot >= 0);
             e.classRef(classRef);
             if (staticName != null) {
                 b.emitLoadConstant(staticName);

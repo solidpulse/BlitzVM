@@ -2597,15 +2597,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = MethodSite.class)
     @ConstantOperand(type = LocalAccessor.class, name = "callee")
     @ConstantOperand(type = boolean.class, name = "forwarding")
+    @ConstantOperand(type = boolean.class, name = "hasCalledClass")
     public static final class ResolveStaticMethod {
         @Specialization
         static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor calleeLocal, boolean forwarding,
-                            PhpClass targetClass, Object nameValue, Object thisValue, Object calledClassValue,
-                            @Bind BytecodeNode bytecode) {
+                            boolean hasCalledClass, PhpClass targetClass, Object nameValue, Object thisValue,
+                            Object calledClassValue, @Bind BytecodeNode bytecode) {
             String name = nameValue instanceof String s ? s : Ops.toStr(nameValue);
             PhpClass.MethodEntry entry = site.methodId() >= 0 ? targetClass.methodById(site.methodId())
                     : targetClass.lookupMethod(name);
-            PhpClass calledArg = forwarding && calledClassValue instanceof PhpClass c ? c : targetClass;
+            PhpClass calledArg = forwarding && hasCalledClass
+                    ? (calledClassValue instanceof PhpClass c ? c : null) : targetClass;
             if (entry == null) {
                 PhpClass.MethodEntry magic = targetClass.callMethod();
                 if (forwarding && thisValue instanceof PhpObject thisObj
