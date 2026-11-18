@@ -480,6 +480,56 @@ public final class BytecodeEmitter {
         }
     }
 
+    /** {@code target ??= value} on a place: keys are evaluated once, then read and written. */
+    public void coalescePlace(dev.phpruntime.nodes.var.LValueNode target, Runnable value) {
+        Form f = form(target);
+        b.beginBlock();
+        BytecodeLocal prepared = temp();
+        b.beginStoreLocal(prepared);
+        if (f.local() != null) {
+            b.beginVarPlace(accessor(f.local()), info(f.local()), f.spec(), PhpBytecodeRootNode.P_KEYS, 0);
+        } else if (f.global()) {
+            b.beginGlobalPlace(f.spec(), PhpBytecodeRootNode.P_KEYS, 0);
+        } else if (f.staticProperty()) {
+            b.beginStaticPlace(f.spec(), PhpBytecodeRootNode.P_KEYS, 0);
+        } else if (isGlobalsElement(f.spec())) {
+            b.beginGlobalsPlace(f.spec(), PhpBytecodeRootNode.P_KEYS, 0);
+        } else {
+            b.beginObjPlace(f.spec(), PhpBytecodeRootNode.P_KEYS, 0);
+        }
+        operands(f);
+        if (f.local() != null) {
+            b.endVarPlace();
+        } else if (f.global()) {
+            b.endGlobalPlace();
+        } else if (f.staticProperty()) {
+            b.endStaticPlace();
+        } else if (isGlobalsElement(f.spec())) {
+            b.endGlobalsPlace();
+        } else {
+            b.endObjPlace();
+        }
+        b.endStoreLocal();
+        b.beginCoalesce();
+        b.beginPreparedReadIfSet(f.spec());
+        b.emitLoadLocal(prepared);
+        b.endPreparedReadIfSet();
+        if (f.local() != null) {
+            b.beginPreparedVarWrite(f.spec(), accessor(f.local()), info(f.local()));
+        } else {
+            b.beginPreparedWrite(f.spec());
+        }
+        b.emitLoadLocal(prepared);
+        value.run();
+        if (f.local() != null) {
+            b.endPreparedVarWrite();
+        } else {
+            b.endPreparedWrite();
+        }
+        b.endCoalesce();
+        b.endBlock();
+    }
+
     /** An argument that is a non-local lvalue: by reference or by value, as the callee decides. */
     public void sendPlace(dev.phpruntime.nodes.var.LValueNode lv, int param, BytecodeLocal callee) {
         Form f = form(lv);

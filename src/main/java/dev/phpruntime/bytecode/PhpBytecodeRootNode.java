@@ -1595,6 +1595,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final int P_RAW = 9;
     /** Binds the place to the reference cell given as the value (destructuring, foreach by ref). */
     public static final int P_BIND = 10;
+    /** Prepares the evaluated keys of a place without reading or writing it ({@code ??=}). */
+    public static final int P_KEYS = 11;
 
     /**
      * A non-local lvalue (an index path or a property). {@code template} is a copy of its AST
@@ -1645,6 +1647,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] holder = {HOLDER_EMPTY};
             Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, holder);
+            }
             Object result = Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.arrayKeys));
             if (holder[0] != HOLDER_EMPTY) {
                 store(frame, acc, info, bytecode, holder[0]);
@@ -1663,6 +1668,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] keys = Places.objKeys(ops, spec.arrayKeys, spec.baseCount);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
             return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
         }
     }
@@ -1676,8 +1684,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
-            return Places.run(frame, engine, Places.globalKeys(ops, spec.arrayKeys), mode, arg,
-                    Places.value(ops, spec.arrayKeys));
+            Object[] keys = Places.globalKeys(ops, spec.arrayKeys);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
+            return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.arrayKeys));
         }
     }
 
@@ -1691,6 +1702,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
             return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
         }
     }
@@ -1721,6 +1735,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object run(VirtualFrame frame, PlaceSpec spec, int mode, int arg, @Variadic Object[] ops,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
+            if (mode == P_KEYS) {
+                return new PreparedPlace(keys, null);
+            }
             return Places.run(frame, engine, keys, mode, arg, Places.value(ops, spec.baseCount + spec.arrayKeys));
         }
     }
@@ -3320,6 +3337,51 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** One element of a destructuring assignment: a cell to bind, or a value to write. */
     public record DestructureItem(PhpReference cell, Object value) {
+    }
+
+    /** Evaluated place keys, with the holder of an index path rooted in a bytecode local. */
+    public record PreparedPlace(Object[] keys, Object[] holder) {
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class PreparedReadIfSet {
+        @Specialization
+        static Object read(VirtualFrame frame, PlaceSpec spec, Object prepared,
+                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            PreparedPlace p = (PreparedPlace) prepared;
+            return Places.run(frame, engine, p.keys(), P_READ_IF_SET, 0, null);
+        }
+    }
+
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class PreparedWrite {
+        @Specialization
+        static Object write(VirtualFrame frame, PlaceSpec spec, Object prepared, Object value,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            PreparedPlace p = (PreparedPlace) prepared;
+            return Places.run(frame, engine, p.keys(), P_WRITE, 0, value);
+        }
+    }
+
+    /** As {@link PreparedWrite}, also storing an index path's updated array back into its local. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class PreparedVarWrite {
+        @Specialization
+        static Object write(VirtualFrame frame, PlaceSpec spec, LocalAccessor acc, VarInfo info, Object prepared,
+                            Object value, @Bind BytecodeNode bytecode,
+                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            PreparedPlace p = (PreparedPlace) prepared;
+            Object result = Places.run(frame, engine, p.keys(), P_WRITE, 0, value);
+            if (p.holder() != null && p.holder()[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, p.holder()[0]);
+            }
+            return result;
+        }
     }
 
     @Operation
