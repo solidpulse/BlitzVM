@@ -3593,6 +3593,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ---- 17d: last coverage
 
+    /** Whether a resolved callee is the named builtin (namespaced {@code assert}). */
+    @Operation
+    @ConstantOperand(type = String.class, name = "builtinName")
+    public static final class IsBuiltinNamed {
+        @Specialization
+        static boolean test(String builtinName, Object callee) {
+            return callee instanceof Builtins.Def def && def.name().equals(builtinName);
+        }
+    }
+
     /** A prepared place's current value as {@code LValueNode.read}: no warning for a miss. */
     @Operation
     @ConstantOperand(type = PlaceSpec.class)
