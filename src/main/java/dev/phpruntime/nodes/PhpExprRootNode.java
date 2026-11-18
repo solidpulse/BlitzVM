@@ -27,6 +27,9 @@ public final class PhpExprRootNode extends PhpRootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
+        if (dev.phpruntime.bytecode.BytecodeEmitter.ALL) {
+            throw dev.phpruntime.bytecode.BytecodeEmitter.astExecuted(this);
+        }
         if (traitSelfSlot >= 0) {
             Object[] args = frame.getArguments();
             frame.setObject(traitSelfSlot, args.length > 0 ? args[0] : null);
