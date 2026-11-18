@@ -172,12 +172,17 @@ public final class MethodCallNode extends PhpNode {
         if (hasSpreadOrNamed) {
             throw e.unsupported("method call with spread or named arguments");
         }
+        emitOnTarget(e, () -> e.expr(targetExpr));
+    }
+
+    /** Emits this call with an already-evaluated receiver (nullsafe {@code ?->}). */
+    public void emitOnTarget(dev.phpruntime.bytecode.BytecodeEmitter e, Runnable target) {
         var b = e.builder();
         com.oracle.truffle.api.bytecode.BytecodeLocal callee = e.enterCall();
         try {
             b.beginBlock();
             b.beginResolveMethod(new dev.phpruntime.bytecode.PhpBytecodeRootNode.MethodSite(staticName, methodId), callee);
-            e.expr(targetExpr);
+            target.run();
             if (staticName != null) {
                 b.emitLoadConstant(staticName);
             } else {

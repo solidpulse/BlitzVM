@@ -48,4 +48,51 @@ public final class NullsafeMemberNode extends PhpNode {
         }
         return methodNode.executeOnTargetRaw(frame, target);
     }
+
+    @Override
+    public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
+        var b = e.builder();
+        b.beginBlock();
+        com.oracle.truffle.api.bytecode.BytecodeLocal target = e.temp();
+        b.beginStoreLocal(target);
+        e.expr(targetExpr);
+        b.endStoreLocal();
+        com.oracle.truffle.api.bytecode.BytecodeLocal result = e.temp();
+        b.beginStoreLocal(result);
+        b.emitLoadConstant(PhpNull.INSTANCE);
+        b.endStoreLocal();
+        b.beginIfThen();
+        b.beginNot();
+        b.beginIdentical(false);
+        b.emitLoadLocal(target);
+        b.emitLoadConstant(PhpNull.INSTANCE);
+        b.endIdentical();
+        b.endNot();
+        b.beginBlock();
+        b.beginStoreLocal(result);
+        if (propertyNode != null) {
+            var spec = new dev.phpruntime.bytecode.PhpBytecodeRootNode.PlaceSpec(
+                    propertyNode.headless(), 0, propertyNode.usesTraitSelf() ? 3 : 2);
+            b.beginObjPlace(spec, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0);
+            b.emitLoadLocal(target);
+            if (propertyNode.staticName() != null) {
+                b.emitLoadConstant(propertyNode.staticName());
+            } else {
+                b.beginToStr();
+                e.expr(propertyNode.dynamicNameExpr());
+                b.endToStr();
+            }
+            if (propertyNode.usesTraitSelf()) {
+                e.loadSlotOrNull(propertyNode.traitSelfSlot());
+            }
+            b.endObjPlace();
+        } else {
+            methodNode.emitOnTarget(e, () -> b.emitLoadLocal(target));
+        }
+        b.endStoreLocal();
+        b.endBlock();
+        b.endIfThen();
+        b.emitLoadLocal(result);
+        b.endBlock();
+    }
 }
