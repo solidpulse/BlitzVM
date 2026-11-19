@@ -290,7 +290,7 @@ public final class IndexLValueNode extends LValueNode {
             }
             return obj;
         }
-        PhpArray arr = writable(root);
+        PhpArray arr = writable(root, key);
         if (at == keyNodes.length - 1) {
             if (key == APPEND) {
                 arr.append(value);
@@ -419,6 +419,29 @@ public final class IndexLValueNode extends LValueNode {
                 seenCreate = true;
             }
             return new PhpArray();
+        }
+        if (v instanceof String s && s.isEmpty()) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+            throw new PhpError("Cannot auto-initialize an array from an empty string", this);
+        }
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+        throw new PhpError("Cannot use a scalar value as an array", this);
+    }
+
+    /** Like {@link #writable(Object)}, with the key the new array is first written under. */
+    private PhpArray writable(Object v, Object key) {
+        if (v instanceof PhpArray a) {
+            return a.forWrite();
+        }
+        if (v == null || v == PhpNull.INSTANCE) {
+            if (!seenCreate) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                seenCreate = true;
+            }
+            if (key == APPEND || (key instanceof Long l && l == 0L)) {
+                return new PhpArray();
+            }
+            return PhpArray.withCapacity(8, true);
         }
         if (v instanceof String s && s.isEmpty()) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
