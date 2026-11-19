@@ -868,13 +868,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return Math.addExact(a, b);
         }
 
+        /**
+         * After a site has overflowed once. Overflow is tested arithmetically: a caught
+         * ArithmeticException compiles to a deoptimization, so a site that overflows on every
+         * request (WordPress's ZB_IN_BYTES) would deoptimize and recompile forever.
+         */
         @Specialization
         static Object addLongChecked(long a, long b) {
-            try {
-                return Math.addExact(a, b);
-            } catch (ArithmeticException e) {
+            long r = a + b;
+            if (((a ^ r) & (b ^ r)) < 0) {
                 return (double) a + (double) b;
             }
+            return r;
         }
 
         @Specialization
@@ -905,13 +910,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return Math.subtractExact(a, b);
         }
 
+        /** After a site has overflowed once; see {@link Add#addLongChecked}. */
         @Specialization
         static Object subLongChecked(long a, long b) {
-            try {
-                return Math.subtractExact(a, b);
-            } catch (ArithmeticException e) {
+            long r = a - b;
+            if (((a ^ b) & (a ^ r)) < 0) {
                 return (double) a - (double) b;
             }
+            return r;
         }
 
         @Specialization
@@ -942,13 +948,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return Math.multiplyExact(a, b);
         }
 
+        /** After a site has overflowed once; see {@link Add#addLongChecked}. */
         @Specialization
         static Object mulLongChecked(long a, long b) {
-            try {
-                return Math.multiplyExact(a, b);
-            } catch (ArithmeticException e) {
+            long r = a * b;
+            if (Math.multiplyHigh(a, b) != (r >> 63)) {
                 return (double) a * (double) b;
             }
+            return r;
         }
 
         @Specialization
