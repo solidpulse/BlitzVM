@@ -16,8 +16,9 @@ import java.util.Map;
 
 /**
  * Array functions. Functions taking the array by reference (sort, array_push...) are
- * registered with a ref mask: they receive the current value, must not mutate it in
- * place (it may be shared copy-on-write) and store the new array back into args[0].
+ * registered with a ref mask: they receive the current value and store the new array
+ * back into args[0]. Unless they use {@link #writableInPlace}, they must not mutate the
+ * value in place (it may be shared copy-on-write).
  */
 final class ArrayFunctions {
 
@@ -33,10 +34,21 @@ final class ArrayFunctions {
         throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeDescription(a[i]) + " given", null);
     }
 
-    /** Writable copy of a by-reference array argument; undefined becomes an empty array. */
+    /** Forced copy for the sort family and any builtin that runs a user callback, which must never see a half-modified array. */
     private static PhpArray writable(Object[] a) {
         if (a[0] instanceof PhpArray x) {
             return x.share().forWrite();
+        }
+        if (a[0] == PhpNull.INSTANCE) {
+            return new PhpArray();
+        }
+        throw new PhpError(PhpError.TYPE_ERROR, "Argument #1 ($array) must be of type array, " + PhpOps.typeName(a[0]) + " given", null);
+    }
+
+    /** In-place write for mutation-only builtins (push/pop/shift/unshift/splice) that run no PHP code; undefined becomes empty. */
+    private static PhpArray writableInPlace(Object[] a) {
+        if (a[0] instanceof PhpArray x) {
+            return x.forWrite();
         }
         if (a[0] == PhpNull.INSTANCE) {
             return new PhpArray();
@@ -253,7 +265,7 @@ final class ArrayFunctions {
 
     private static void mutation() {
         Builtins.defRef("array_push", 1, -1, REF_FIRST, (ctx, a) -> {
-            PhpArray x = writable(a);
+            PhpArray x = writableInPlace(a);
             for (int i = 1; i < a.length; i++) {
                 x.append(PhpOps.copyOnAssign(a[i]));
             }
@@ -261,19 +273,19 @@ final class ArrayFunctions {
             return (long) x.size();
         });
         Builtins.defRef("array_pop", 1, 1, REF_FIRST, (ctx, a) -> {
-            PhpArray x = writable(a);
+            PhpArray x = writableInPlace(a);
             Object v = x.removeLast();
             a[0] = x;
             return v;
         });
         Builtins.defRef("array_shift", 1, 1, REF_FIRST, (ctx, a) -> {
-            PhpArray x = writable(a);
+            PhpArray x = writableInPlace(a);
             Object v = x.removeFirst();
             a[0] = x;
             return v;
         });
         Builtins.defRef("array_unshift", 1, -1, REF_FIRST, (ctx, a) -> {
-            PhpArray x = writable(a);
+            PhpArray x = writableInPlace(a);
             PhpArray out = new PhpArray();
             for (int i = 1; i < a.length; i++) {
                 out.append(PhpOps.copyOnAssign(a[i]));
@@ -601,7 +613,7 @@ final class ArrayFunctions {
     }
 
     private static Object splice(Object[] a) {
-        PhpArray x = writable(a);
+        PhpArray x = writableInPlace(a);
         List<Map.Entry<Object, Object>> entries = x.entries();
         int n = entries.size();
         long offset = PhpOps.toLong(a[1]);
