@@ -88,6 +88,7 @@ public final class LocalVarNode extends LValueNode {
             if (cell == null) { frame.setObject(slot, cell = new PhpReference(null)); }
             return cell.appendString(suffix, resultNeeded);
         }
+        kind.markObject();
         Object current = frame.isObject(slot) ? frame.getObject(slot)
                 : frame.isLong(slot) ? frame.getLong(slot) : frame.isDouble(slot) ? frame.getDouble(slot) : null;
         PhpStringBuffer buffer;
@@ -145,6 +146,7 @@ public final class LocalVarNode extends LValueNode {
         } else if (value instanceof Double d) {
             writeDouble(frame, keys, d);
         } else {
+            kind.markObject();
             frame.setObject(slot, value);
         }
     }
