@@ -43,7 +43,10 @@ public final class PhpEngine implements AutoCloseable {
 
     public PhpEngine(Scheduler scheduler) {
         this.scheduler = scheduler;
+        // Experimental engine options (compilation thresholds and the like) can then be set
+        // with -Dpolyglot.engine.<Option>=... for tuning runs.
         this.engine = Engine.newBuilder("php", JsLanguage.ID)
+                .allowExperimentalOptions(true)
                 .option("engine.WarnInterpreterOnly", "false")
                 .build();
     }
