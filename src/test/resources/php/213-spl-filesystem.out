@@ -2,7 +2,7 @@ z.txt:txt:z:3:file
 bool(true)
 bool(false)
 bool(true)
-z.txt|sub|a.json|
-z.txt:z.txt|sub:sub|a.json:a.json|
-0:z.txt:3|1:inner.txt:6|0:a.json:2|
+a.json|sub|z.txt|
+a.json:a.json|sub:sub|z.txt:z.txt|
+0:a.json:2|0:z.txt:3|1:inner.txt:6|
 sub/inner.txt:inner.txt|
