@@ -1,0 +1,89 @@
+array(4) {
+  ["b"]=>
+  int(1)
+  ["a"]=>
+  int(2)
+  [5]=>
+  string(4) "five"
+  [2]=>
+  string(3) "two"
+}
+array(5) {
+  ["x"]=>
+  int(1)
+  [5]=>
+  int(2)
+  [6]=>
+  int(3)
+  ["y"]=>
+  int(4)
+  [7]=>
+  int(5)
+}
+array(4) {
+  [10]=>
+  string(3) "ten"
+  ["01"]=>
+  string(8) "zero one"
+  [-3]=>
+  string(11) "minus three"
+  ["1.5"]=>
+  string(14) "one point five"
+}
+array(2) {
+  ["k"]=>
+  int(3)
+  ["j"]=>
+  int(2)
+}
+array(4) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "c"
+  [3]=>
+  string(1) "d"
+}
+array(2) {
+  ["x"]=>
+  int(1)
+  [0]=>
+  int(2)
+}
+array(2) {
+  [5]=>
+  string(4) "five"
+  [6]=>
+  string(3) "six"
+}
+array(6) {
+  ["a"]=>
+  int(1)
+  [0]=>
+  string(1) "x"
+  ["b"]=>
+  int(2)
+  [1]=>
+  string(1) "y"
+  [2]=>
+  int(10)
+  [3]=>
+  int(20)
+}
+array(4) {
+  ["z"]=>
+  int(1)
+  ["a"]=>
+  array(2) {
+    ["y"]=>
+    int(2)
+    ["x"]=>
+    int(3)
+  }
+  [5]=>
+  string(4) "five"
+  [0]=>
+  string(4) "zero"
+}
