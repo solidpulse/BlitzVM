@@ -19,12 +19,19 @@ import dev.phpruntime.runtime.PhpObject;
  */
 public final class GeneratorEntryRootNode extends RootNode {
     private final PhpFunctionRootNode function;
+    private final long refMask;
     @Child private DirectCallNode body;
 
     GeneratorEntryRootNode(PhpLanguage language, PhpFunctionRootNode function, RootCallTarget bytecode) {
         super(language);
         this.function = function;
         this.body = DirectCallNode.create(bytecode);
+        this.refMask = function.refMask();
+    }
+
+    /** {@link PhpFunctionRootNode#refMask} of the generator function. */
+    public long refMask() {
+        return refMask;
     }
 
     public PhpFunctionRootNode function() {
