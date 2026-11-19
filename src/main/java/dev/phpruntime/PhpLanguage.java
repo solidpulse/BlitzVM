@@ -108,15 +108,21 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
         return stdClassTemplate;
     }
 
+    /** The mysqli template already built for this language, or null before its first use. */
+    public PhpClassTemplate mysqliTemplateOrNull() {
+        return mysqliTemplate;
+    }
+
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
-    public PhpClassTemplate mysqliTemplate(List<PhpClassTemplate.PropertyDecl> props) {
+    public PhpClassTemplate mysqliTemplate(List<PhpClassTemplate.PropertyDecl> props,
+                                           Map<String, PhpClassTemplate.MethodDecl> methods) {
         PhpClassTemplate tpl = mysqliTemplate;
         if (tpl == null) {
             synchronized (this) {
                 tpl = mysqliTemplate;
                 if (tpl == null) {
                     tpl = new PhpClassTemplate(nextTemplateId(), "mysqli", false, false, false, false,
-                            null, List.of(), props, List.of(), Map.of());
+                            null, List.of(), props, List.of(), methods);
                     mysqliTemplate = tpl;
                 }
             }
