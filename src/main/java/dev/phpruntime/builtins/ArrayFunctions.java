@@ -117,7 +117,16 @@ final class ArrayFunctions {
         Builtins.def("array_keys", 1, 1, (ctx, a) -> PhpArray.ofList(arr(a, 0, "array_keys").keys()));
         Builtins.def("array_values", 1, 1, (ctx, a) -> PhpArray.ofList(shared(arr(a, 0, "array_values").values())));
         Builtins.def("array_merge", 0, -1, (ctx, a) -> {
-            PhpArray out = new PhpArray();
+            int total = 0;
+            boolean stringKeys = false;
+            for (int i = 0; i < a.length; i++) {
+                PhpArray src = arr(a, i, "array_merge");
+                total += src.size();
+                if (!src.isList()) {
+                    stringKeys = true;
+                }
+            }
+            PhpArray out = PhpArray.withCapacity(total, stringKeys);
             for (int i = 0; i < a.length; i++) {
                 arr(a, i, "array_merge").forEachEntry((key, value) -> putEntry(out, key, value, false));
             }
