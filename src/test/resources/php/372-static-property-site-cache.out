@@ -1,0 +1,9 @@
+3
+10
+hidden
+guarded
+changed
+Error: Cannot access private property ParentClass::$hidden
+Error: Cannot access protected property ParentClass::$guarded
+Error: Access to undeclared static property ParentClass::$missing
+1213

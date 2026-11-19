@@ -2437,14 +2437,37 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     @ConstantOperand(type = String.class, name = "constName")
     public static final class ClassConst {
-        @Specialization
-        static Object read(String constName, PhpClass cls, @Bind Node node) {
+        /** Marks a constant that a request has to resolve: an initializer, or an unknown name. */
+        private static final Object DYNAMIC = new Object();
+
+        /**
+         * A constant that is a literal or {@code ::class} never changes for a class, so the site
+         * keeps the value for the classes it has seen. Four classes are enough for a method of a
+         * base class run on a few subclasses; beyond that the slow path takes over.
+         */
+        @Specialization(guards = "cls == cachedCls", limit = "4")
+        static Object readStatic(String constName, PhpClass cls, @Bind Node node,
+                                 @Cached("cls") PhpClass cachedCls,
+                                 @Cached("staticConstant(cls, constName)") Object value) {
+            if (value != DYNAMIC) {
+                return value;
+            }
+            return readSlow(constName, cls, node);
+        }
+
+        @Specialization(replaces = "readStatic")
+        static Object readSlow(String constName, PhpClass cls, @Bind Node node) {
             Object val = Ops.classConstant(PhpContext.get(node), cls, constName);
             if (val == null) {
                 CompilerDirectives.transferToInterpreter();
                 throw Ops.error("Undefined constant " + cls.name() + "::" + constName);
             }
             return val;
+        }
+
+        static Object staticConstant(PhpClass cls, String name) {
+            Object value = cls.lookupStaticConstant(name);
+            return value == null ? DYNAMIC : value;
         }
     }
 

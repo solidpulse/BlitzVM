@@ -1,0 +1,61 @@
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+bool(true)
+array(1) {
+  [0]=>
+  string(3) "one"
+}
+array(0) {
+}
+array(1) {
+  ["x"]=>
+  array(1) {
+    ["y"]=>
+    int(2)
+  }
+}
+array(1) {
+  ["x"]=>
+  array(1) {
+    ["y"]=>
+    int(1)
+  }
+}
+array(1) {
+  ["k"]=>
+  string(1) "v"
+}
+array(1) {
+  ["k"]=>
+  string(1) "v"
+}
+array(4) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+  [3]=>
+  int(4)
+}
+int(4)
+int(3)
+array(1) {
+  [0]=>
+  string(3) "ref"
+}
+array(0) {
+}

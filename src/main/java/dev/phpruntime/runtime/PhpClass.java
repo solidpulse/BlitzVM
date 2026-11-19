@@ -102,6 +102,18 @@ public final class PhpClass {
     /** A declared static property; its value lives in each request's {@link RequestState}. */
     public record StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
                              Object constDefault, RootCallTarget defaultTarget) {
+
+        /** This request's slot for the property, created on first use. */
+        @TruffleBoundary
+        public StaticSlot slot(PhpContext ctx) {
+            RequestState state = ctx.classState(declaringClass);
+            StaticSlot slot = state.statics.get(name);
+            if (slot == null) {
+                slot = new StaticSlot(name, visibility, declaringClass, constDefault, defaultTarget);
+                state.statics.put(name, slot);
+            }
+            return slot;
+        }
     }
 
     /** One request's state of one class: static property values, evaluated constants and defaults. */
@@ -530,17 +542,13 @@ public final class PhpClass {
     @TruffleBoundary
     public StaticSlot lookupStaticProperty(PhpContext ctx, String name) {
         StaticDecl decl = staticDecls.get(name);
-        if (decl == null) {
-            return null;
-        }
-        // Inherited statics share the declaring class's slot, so parent and child see one value.
-        RequestState state = ctx.classState(decl.declaringClass());
-        StaticSlot slot = state.statics.get(name);
-        if (slot == null) {
-            slot = new StaticSlot(decl.name(), decl.visibility(), decl.declaringClass(), decl.constDefault(), decl.defaultTarget());
-            state.statics.put(name, slot);
-        }
-        return slot;
+        return decl == null ? null : decl.slot(ctx);
+    }
+
+    /** The declaration behind {@code Cls::$name}, or null if there is none. Fixed per class. */
+    @TruffleBoundary
+    public StaticDecl lookupStaticDecl(String name) {
+        return staticDecls.get(name);
     }
 
     @TruffleBoundary
@@ -551,6 +559,44 @@ public final class PhpClass {
     @TruffleBoundary
     public InstanceProp findVisibleProp(String name) {
         return visibleProps.get(name);
+    }
+
+    /**
+     * The value of {@code Cls::NAME} when it is the same in every request, or null when the
+     * constant needs the full lookup: an initializer to evaluate or an unresolved name. The walk
+     * is the own declaration, the parent chain, then the interfaces, as {@link #lookupConstant}
+     * does, so the two stay in step.
+     */
+    @TruffleBoundary
+    public Object lookupStaticConstant(String name) {
+        Object v = findStaticConstant(name);
+        return v == NEEDS_REQUEST ? null : v;
+    }
+
+    /** Marks a constant found with an initializer: the walk stops there, as in lookupConstant. */
+    private static final Object NEEDS_REQUEST = new Object();
+
+    private Object findStaticConstant(String name) {
+        if (name.equalsIgnoreCase("class")) {
+            return template.name();
+        }
+        PhpClassTemplate.ConstantDecl own = constantDecls.get(name);
+        if (own != null) {
+            return own.valueTarget() == null ? own.constValue() : NEEDS_REQUEST;
+        }
+        if (parent != null) {
+            Object p = parent.findStaticConstant(name);
+            if (p != null) {
+                return p;
+            }
+        }
+        for (PhpClass iface : interfaces) {
+            Object iv = iface.findStaticConstant(name);
+            if (iv != null) {
+                return iv;
+            }
+        }
+        return null;
     }
 
     @TruffleBoundary

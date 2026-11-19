@@ -1201,7 +1201,7 @@ public final class Parser {
                         expectOp("=");
                         Scope[] exprScope = new Scope[1];
                         PhpNode expr = parseMemberInitializer(isTrait, exprScope);
-                        Object constVal = expr instanceof ConstNode c ? c.value() : null;
+                        Object constVal = literalValue(expr);
                         RootCallTarget valTarget = memberInitTarget(expr, exprScope[0]);
                         constants.add(new PhpClassTemplate.ConstantDecl(constName, vis, mFinal, constVal, valTarget));
                     } while (acceptOp(","));
@@ -1226,7 +1226,7 @@ public final class Parser {
                             throw new PhpParseError("Readonly property " + name + "::$" + propTok.text() + " cannot have default value", propTok.line());
                         }
                         Object constVal = expr == null ? PhpNull.INSTANCE
-                                : (expr instanceof ConstNode c ? c.value() : null);
+                                : literalValue(expr);
                         RootCallTarget valTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
                         properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, pReadonly, constVal, valTarget));
                     } while (acceptOp(","));
@@ -1257,8 +1257,22 @@ public final class Parser {
         }
     }
 
+    /**
+     * The value of a member initializer that needs no evaluation: a scalar literal, or an array
+     * literal of literals (built once, immutable, shareable between requests). Null otherwise.
+     */
+    private static Object literalValue(PhpNode expr) {
+        if (expr instanceof ConstNode c) {
+            return c.value();
+        }
+        if (expr instanceof dev.phpruntime.nodes.expr.ArrayLiteralNode a) {
+            return a.constant();
+        }
+        return null;
+    }
+
     private RootCallTarget memberInitTarget(PhpNode expr, Scope exprScope) {
-        if (expr instanceof ConstNode) {
+        if (literalValue(expr) != null) {
             return null;
         }
         int traitSelfSlot = exprScope != null ? exprScope.traitSelfSlot() : -1;

@@ -33,6 +33,11 @@ public final class ArrayLiteralNode extends PhpNode {
         this.constant = buildConstant(keys, values, byRef, spread);
     }
 
+    /** The immutable value of this literal when every element is a literal, else null. */
+    public PhpArray constant() {
+        return constant;
+    }
+
     /** The immutable value of an all-literal array, or null if anything must be emitted. */
     private static PhpArray buildConstant(PhpNode[] keys, PhpNode[] values, boolean[] byRef, boolean[] spread) {
         PhpArray a = new PhpArray();
