@@ -161,6 +161,17 @@ final class MysqliFunctions {
         return obj;
     }
 
+    /** A mysqli_result object with its five properties set in declaration order. */
+    private static PhpObject newResultObject(PhpContext ctx, Result r) {
+        PhpObject obj = new PhpObject(phpClass(ctx, resultTemplate(ctx)), ctx.nextObjectId());
+        set(obj, "current_field", (long) r.fieldPosition);
+        set(obj, "field_count", (long) r.fields.size());
+        set(obj, "lengths", PhpNull.INSTANCE);
+        set(obj, "num_rows", (long) r.rows.size());
+        set(obj, "type", 0L);
+        return obj;
+    }
+
     private static void set(DynamicObject obj, String key, Object value) {
         DynamicObject.PutNode.getUncached().execute(obj, key, value);
     }
@@ -194,6 +205,29 @@ final class MysqliFunctions {
         set(obj, "protocol_version", 10L);
         set(obj, "thread_id", PhpNull.INSTANCE);
         set(obj, "warning_count", 0L);
+    }
+
+    /**
+     * Refreshes the properties a query can change. The connection-level properties (client and
+     * server identity, protocol, host, thread, warning count) are set once by {@link #sync} at
+     * connect and stay the same for the life of the link.
+     */
+    private static void syncQuery(PhpObject obj, Link link) {
+        set(obj, "affected_rows", link.affectedRows);
+        set(obj, "errno", (long) link.errno);
+        set(obj, "error", link.error);
+        PhpArray errors = new PhpArray();
+        if (link.errno != 0) {
+            PhpArray e = new PhpArray();
+            e.put("errno", (long) link.errno);
+            e.put("sqlstate", link.sqlstate);
+            e.put("error", link.error);
+            errors.append(e);
+        }
+        set(obj, "error_list", errors);
+        set(obj, "field_count", (long) link.fieldCount);
+        set(obj, "insert_id", link.insertId);
+        set(obj, "sqlstate", link.sqlstate);
     }
 
     private static void syncResult(PhpObject obj, Result r) {
@@ -727,59 +761,78 @@ final class MysqliFunctions {
                 l.affectedRows = r.rows.size();
                 l.insertId = 0;
                 l.fieldCount = r.fields.size();
-                PhpObject ro = newObject(ctx, resultTemplate(ctx));
+                PhpObject ro = newResultObject(ctx, r);
                 state(ctx).results.put(ro.id(), r);
-                syncResult(ro, r);
-                sync(ctx, obj, l);
+                syncQuery(obj, l);
                 return ro;
             }
             l.affectedRows = out.updateCount();
             l.insertId = out.insertId();
             l.fieldCount = 0;
-            sync(ctx, obj, l);
+            syncQuery(obj, l);
             return true;
         } catch (SQLException e) {
             fail(ctx, l, e, "mysqli_query");
-            sync(ctx, obj, l);
+            syncQuery(obj, l);
             return false;
         }
     }
 
-    private static Field metadataField;
-    private static Field charsetField;
-    private static boolean reflectionTried;
+    private static final Field DRIVER_METADATA =
+            driverField("org.mariadb.jdbc.client.result.Result", "metadataList");
+    private static final Field DRIVER_CHARSET =
+            driverField("org.mariadb.jdbc.message.server.ColumnDefinitionPacket", "charset");
 
-    /** The driver's own column descriptions, which carry MySQL's type codes and flags; null if unavailable. */
-    private static synchronized Object[] driverColumns(ResultSet rs) {
+    private static Field driverField(String className, String fieldName) {
         try {
-            if (!reflectionTried) {
-                reflectionTried = true;
-                metadataField = Class.forName("org.mariadb.jdbc.client.result.Result").getDeclaredField("metadataList");
-                metadataField.setAccessible(true);
-                charsetField = Class.forName("org.mariadb.jdbc.message.server.ColumnDefinitionPacket").getDeclaredField("charset");
-                charsetField.setAccessible(true);
-            }
-            if (metadataField == null) {
-                return null;
-            }
-            ResultSet target = rs.isWrapperFor(ResultSet.class) ? rs.unwrap(ResultSet.class) : rs;
-            return (Object[]) metadataField.get(target);
-        } catch (ReflectiveOperationException | SQLException | RuntimeException e) {
-            metadataField = null;
+            Field f = Class.forName(className).getDeclaredField(fieldName);
+            f.setAccessible(true);
+            return f;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The driver's own column descriptions, which carry MySQL's type codes and flags. Reading
+     * them from the result avoids a fresh JDBC metadata object for every query; null when the
+     * driver is not MariaDB Connector/J or its internals moved.
+     */
+    private static Object[] driverColumns(ResultSet rs) {
+        Field f = DRIVER_METADATA;
+        if (f == null || !(rs instanceof org.mariadb.jdbc.client.result.Result result)) {
+            return null;
+        }
+        try {
+            return (Object[]) f.get(result);
+        } catch (IllegalAccessException | RuntimeException e) {
             return null;
         }
     }
 
     private static Result read(ResultSet rs) throws SQLException {
-        ResultSetMetaData md = rs.getMetaData();
-        int n = md.getColumnCount();
         Object[] cols = driverColumns(rs);
+        ResultSetMetaData md = null;
+        int n;
+        if (cols != null) {
+            n = cols.length;
+        } else {
+            md = rs.getMetaData();
+            n = md.getColumnCount();
+        }
         List<FieldInfo> fields = new ArrayList<>(n);
         boolean[] bit = new boolean[n];
         boolean[] bytes = new boolean[n];
         for (int i = 0; i < n; i++) {
-            FieldInfo f = cols != null && cols.length == n && cols[i] instanceof org.mariadb.jdbc.client.Column c
-                    ? field(c) : field(md, i + 1);
+            FieldInfo f;
+            if (cols != null && cols[i] instanceof org.mariadb.jdbc.client.Column c) {
+                f = field(c);
+            } else {
+                if (md == null) {
+                    md = rs.getMetaData();
+                }
+                f = field(md, i + 1);
+            }
             fields.add(f);
             long t = f.type();
             bit[i] = t == 16;
@@ -818,8 +871,9 @@ final class MysqliFunctions {
     private static FieldInfo field(org.mariadb.jdbc.client.Column c) {
         long charset = 0;
         try {
-            if (charsetField != null) {
-                charset = ((Number) charsetField.get(c)).longValue();
+            Field f = DRIVER_CHARSET;
+            if (f != null) {
+                charset = ((Number) f.get(c)).longValue();
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // leave 0
