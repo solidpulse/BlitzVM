@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -47,6 +48,13 @@ import java.util.regex.Pattern;
  * <p>Closing a link does not normally close the JDBC connection: it is reset with
  * MariaDB's {@code COM_RESET_CONNECTION} and returned to a small engine-wide pool, so the next
  * request with the same URL, credentials and driver properties can skip the connect handshake.
+ * A reset session keeps the database it last had, so a link tracks both the database PHP asked
+ * for (the logical catalog) and the one its JDBC connection actually has (the physical catalog).
+ * PHP only sees the difference when it talks to the server: before a statement that can use the
+ * database runs, a link whose catalogs differ gets a fresh connection, and the pooled one is
+ * discarded. Session setup that cannot name a table or ask for the current database is the one
+ * exception, so a request that selects its database after setting the charset and sql_mode can
+ * still reuse the pooled connection.
  */
 final class MysqliFunctions {
 
@@ -100,9 +108,17 @@ final class MysqliFunctions {
         /** Non-null when this link may go back to the pool. */
         PoolKey key;
         SessionState freshSession;
-        String connectedCatalog;
         String poolServerInfo;
         boolean poolable;
+
+        /** Everything needed to open another connection exactly like the original connect. */
+        String url;
+        Properties driverProps;
+
+        /** The database PHP asked for, or null when it asked for none. */
+        String logicalCatalog;
+        /** The database the current JDBC session actually has, or null when it has none. */
+        String physicalCatalog;
 
         @Override
         public void close() throws SQLException {
@@ -114,8 +130,7 @@ final class MysqliFunctions {
             }
             if (poolable) {
                 try {
-                    Pool.release(PhpRequest.current().scheduler, key, c, poolServerInfo, freshSession,
-                            connectedCatalog);
+                    Pool.release(PhpRequest.current().scheduler, key, c, poolServerInfo, freshSession);
                     return;
                 } catch (SQLException | RuntimeException ignored) {
                     // the connection is in an unknown state; discard it below
@@ -231,28 +246,23 @@ final class MysqliFunctions {
         }
 
         static void release(GuestScheduler scheduler, PoolKey key, Connection c, String serverInfo,
-                            SessionState fresh, String connectedCatalog) throws SQLException {
+                            SessionState fresh) throws SQLException {
             if (key == null || fresh == null) {
                 c.close();
                 return;
             }
             boolean pooled = blocking(scheduler, () -> {
-                if (!Objects.equals(c.getCatalog(), connectedCatalog)) {
-                    // mysqli_select_db moved the session to another database; a fresh
-                    // connection would have the original one.
-                    return false;
-                }
                 ((org.mariadb.jdbc.Connection) c).reset();
-                if (!Objects.equals(c.getCatalog(), connectedCatalog)) {
-                    // The reset is supposed to restore the connect-time database; do not
-                    // pool the connection if this driver or server did not.
-                    return false;
-                }
+                // The reset session keeps the database the connection last had; a request that
+                // connected with wp in the URL and never switched still has wp here, while a
+                // no-database request that selected wp also has wp. Record whatever it is, so
+                // the next link knows which database its JDBC session starts with.
+                String catalog = c.getCatalog();
                 SessionState current = readSession(c);
                 if (!current.equals(fresh)) {
                     restoreSession(c, fresh, current);
                 }
-                return offer(key, c, serverInfo, fresh, connectedCatalog);
+                return offer(key, c, serverInfo, fresh, catalog);
             });
             if (!pooled) {
                 c.close();
@@ -355,12 +365,10 @@ final class MysqliFunctions {
         return tpl != null ? tpl : ctx.language().mysqliTemplate(linkProps(), linkMethods(ctx));
     }
 
-    /** The mysqli object's methods; {@code $mysqli->close()} shares the builtin's close path. */
+    /** The mysqli object's methods; they share the builtins' close and select_db paths. */
     private static Map<String, PhpClassTemplate.MethodDecl> linkMethods(PhpContext ctx) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new HashMap<>();
-        String name = "close";
-        String lower = name.toLowerCase();
-        var root = new PhpExceptions.BuiltinMethodRootNode(ctx.language(), name, (c, self, args) -> {
+        methods.put("close", method(ctx, "close", (c, self, args) -> {
             Link l = link(c, self, "mysqli::close");
             try {
                 l.close();
@@ -369,10 +377,24 @@ final class MysqliFunctions {
             }
             c.request().resources.remove(l);
             return true;
-        });
-        methods.put(lower, new PhpClassTemplate.MethodDecl(name, lower, ctx.language().methodId(name),
-                Visibility.PUBLIC, false, false, false, root.getCallTarget()));
+        }));
+        methods.put("select_db", method(ctx, "select_db", (c, self, args) -> {
+            if (args.length < 1) {
+                throw new PhpError(PhpError.ARGUMENT_COUNT,
+                        "mysqli::select_db() expects exactly 1 argument, 0 given", null);
+            }
+            Link l = connected(c, self, "mysqli::select_db");
+            return selectDatabase(c, self, l, PhpStrings.toJava(PhpOps.toStr(args[0])), "mysqli::select_db");
+        }));
         return methods;
+    }
+
+    private static PhpClassTemplate.MethodDecl method(PhpContext ctx, String name,
+                                                      PhpExceptions.BuiltinMethod impl) {
+        String lower = name.toLowerCase();
+        var root = new PhpExceptions.BuiltinMethodRootNode(ctx.language(), name, impl);
+        return new PhpClassTemplate.MethodDecl(name, lower, ctx.language().methodId(name),
+                Visibility.PUBLIC, false, false, false, root.getCallTarget());
     }
 
     private static PhpClassTemplate resultTemplate(PhpContext ctx) {
@@ -622,19 +644,7 @@ final class MysqliFunctions {
         Builtins.def("mysqli_select_db", 2, 2, (ctx, a) -> {
             Link l = connected(ctx, a[0], "mysqli_select_db");
             String db = PhpStrings.toJava(PhpOps.toStr(a[1]));
-            try {
-                blocking(ctx, () -> {
-                    l.conn.setCatalog(db);
-                    return null;
-                });
-                clearError(l);
-                sync(ctx, (PhpObject) a[0], l);
-                return true;
-            } catch (SQLException e) {
-                fail(ctx, l, e, "mysqli_select_db");
-                sync(ctx, (PhpObject) a[0], l);
-                return false;
-            }
+            return selectDatabase(ctx, (PhpObject) a[0], l, db, "mysqli_select_db");
         });
         Builtins.def("mysqli_set_charset", 2, 2, (ctx, a) -> {
             Link l = connected(ctx, a[0], "mysqli_set_charset");
@@ -861,14 +871,17 @@ final class MysqliFunctions {
                 password == null ? null : PhpStrings.toJava(password),
                 propertyMap(driverProps)) : null;
         try {
-            Opened opened = blocking(ctx, () -> open(key, url, driverProps, pooling));
+            Opened opened = blocking(ctx, () -> open(key, url, driverProps, pooling, pooling));
             l.conn = opened.connection();
             l.closed = false;
             l.host = host;
             l.serverInfo = PhpStrings.fromJava(opened.serverInfo());
             l.poolServerInfo = opened.serverInfo();
             l.freshSession = opened.session();
-            l.connectedCatalog = opened.catalog();
+            l.url = url;
+            l.driverProps = driverProps;
+            l.logicalCatalog = databaseOrNull(db);
+            l.physicalCatalog = opened.catalog();
             l.key = key;
             l.poolable = l.freshSession != null;
             l.charset = l.freshSession == null ? "utf8mb4" : l.freshSession.charsetClient();
@@ -906,8 +919,9 @@ final class MysqliFunctions {
                           String catalog, boolean pooled) {
     }
 
-    private static Opened open(PoolKey key, String url, Properties props, boolean allowPool) throws SQLException {
-        if (allowPool) {
+    private static Opened open(PoolKey key, String url, Properties props, boolean allowPool,
+                              boolean takeIdle) throws SQLException {
+        if (allowPool && takeIdle) {
             Idle idle = Pool.take(key);
             if (idle != null) {
                 return new Opened(idle.connection(), idle.serverInfo(), idle.session(), idle.catalog(), true);
@@ -929,6 +943,11 @@ final class MysqliFunctions {
             }
             throw e;
         }
+    }
+
+    /** A connect-time database name; an empty name means no database, as in the handshake. */
+    private static String databaseOrNull(String db) {
+        return db == null || db.isEmpty() ? null : PhpStrings.toJava(db);
     }
 
     private static Map<String, String> propertyMap(Properties props) {
@@ -956,7 +975,74 @@ final class MysqliFunctions {
 
     // ------------------------------------------------------------------ queries
 
+    /**
+     * Every operation that talks to the server goes through here first. A pooled connection
+     * can carry a database PHP never selected (reset keeps the database the session had), so
+     * when the logical and physical catalogs differ, the link gets a connection made exactly
+     * like a fresh connect with the URL it was opened with, and the pooled one is discarded.
+     * The link's error state, insert id, field count and charset are reset as a fresh connect
+     * would set them; the caller then performs its operation on the new session.
+     *
+     * <p>Statements that cannot name a table or ask for the current database (character-set
+     * and session-variable setup) are the one exception: they run on the pooled session,
+     * whose other session state was already reset to a fresh one, so PHP cannot tell that the
+     * database differs. WordPress runs exactly such setup statements before it selects its
+     * database, and replacing the connection for them would discard every WordPress link
+     * before it could be reused. {@link #databaseIndependent} recognises the narrow forms.
+     */
+    private static void beforeServerOperation(PhpContext ctx, Link l, String sql) throws SQLException {
+        if (Objects.equals(l.logicalCatalog, l.physicalCatalog) || databaseIndependent(sql)) {
+            return;
+        }
+        blocking(ctx, () -> {
+            Opened opened = open(l.key, l.url, l.driverProps, l.key != null, false);
+            Connection old = l.conn;
+            l.conn = opened.connection();
+            l.physicalCatalog = opened.catalog();
+            l.serverInfo = PhpStrings.fromJava(opened.serverInfo());
+            l.poolServerInfo = opened.serverInfo();
+            l.freshSession = opened.session();
+            l.poolable = l.freshSession != null;
+            l.charset = l.freshSession == null ? "utf8mb4" : l.freshSession.charsetClient();
+            clearError(l);
+            l.affectedRows = 0;
+            l.insertId = 0;
+            l.fieldCount = 0;
+            if (old != null) {
+                try {
+                    old.close();
+                } catch (SQLException ignored) {
+                    // the request cannot use it any more; it is discarded either way
+                }
+            }
+            return null;
+        });
+    }
+
+    /**
+     * True for the session-setup statements whose effect does not depend on the default
+     * database: SET NAMES, setting a session system variable to a literal, and reading
+     * session system variables. Deliberately narrow: a FROM clause, a subquery or a
+     * DATABASE()/SCHEMA() call takes the statement out of this set.
+     */
+    private static boolean databaseIndependent(String sql) {
+        String s = sql.stripLeading().toUpperCase(Locale.ROOT);
+        if (s.startsWith("SET NAMES ")) {
+            return true;
+        }
+        if ((s.startsWith("SET SESSION ") || s.startsWith("SET @@SESSION.") || s.startsWith("SET @@"))
+                && s.indexOf('=') > 0 && s.indexOf("SELECT") < 0) {
+            return true;
+        }
+        if (s.startsWith("SELECT @@")) {
+            return s.indexOf("FROM") < 0 && s.indexOf("DATABASE") < 0 && s.indexOf("SCHEMA") < 0
+                    && s.indexOf("SELECT", 6) < 0;
+        }
+        return false;
+    }
+
     private static void execute(PhpContext ctx, Link l, String sql) throws SQLException {
+        beforeServerOperation(ctx, l, sql);
         String javaSql = MysqliSql.toJava(sql);
         blocking(ctx, () -> {
             try (Statement st = l.conn.createStatement()) {
@@ -964,6 +1050,35 @@ final class MysqliFunctions {
             }
             return null;
         });
+    }
+
+    /**
+     * PHP's select-database operation. Asking for the database the JDBC session already has
+     * changes only PHP's view; anything else runs the driver's change-database command and
+     * moves both catalogs.
+     */
+    private static boolean selectDatabase(PhpContext ctx, PhpObject obj, Link l, String db, String fn) {
+        try {
+            if (Objects.equals(db, l.physicalCatalog)) {
+                l.logicalCatalog = db;
+                clearError(l);
+                sync(ctx, obj, l);
+                return true;
+            }
+            blocking(ctx, () -> {
+                l.conn.setCatalog(db);
+                return null;
+            });
+            l.logicalCatalog = db;
+            l.physicalCatalog = l.conn.getCatalog();
+            clearError(l);
+            sync(ctx, obj, l);
+            return true;
+        } catch (SQLException e) {
+            fail(ctx, l, e, fn);
+            sync(ctx, obj, l);
+            return false;
+        }
     }
 
     /** Result of running one statement, built on the blocking side. */
@@ -978,6 +1093,7 @@ final class MysqliFunctions {
             throw new PhpError("ValueError", "mysqli_query(): Argument #2 ($query) cannot be empty", null);
         }
         try {
+            beforeServerOperation(ctx, l, sql);
             String javaSql = MysqliSql.toJava(sql);
             Outcome out = blocking(ctx, () -> {
                 try (Statement st = l.conn.createStatement()) {
