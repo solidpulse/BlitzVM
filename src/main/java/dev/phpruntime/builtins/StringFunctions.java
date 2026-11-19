@@ -393,6 +393,16 @@ final class StringFunctions {
         }
         StringBuilder sb = new StringBuilder();
         boolean first = true;
+        if (!arr.hasObjectValue()) {
+            for (int pos = arr.firstPos(); pos >= 0; pos = arr.nextPos(pos)) {
+                if (!first) {
+                    sb.append(glue);
+                }
+                sb.append(PhpOps.toStr(arr.valueAt(pos)));
+                first = false;
+            }
+            return sb.toString();
+        }
         for (Object v : arr.values()) {
             if (!first) {
                 sb.append(glue);
@@ -769,18 +779,16 @@ final class StringFunctions {
     /** strtr with an array: longest key first at each position; replaced text is not rescanned. */
     private static String strtrPairs(dev.phpruntime.PhpContext ctx, String str, PhpArray map) {
         java.util.HashMap<String, String> pairs = new java.util.HashMap<>();
-        int maxLen = 0;
-        int minLen = Integer.MAX_VALUE;
-        for (Map.Entry<Object, Object> e : map.entries()) {
-            String k = PhpOps.toStr(e.getKey());
-            if (k.isEmpty()) {
-                ctx.warning("strtr(): Ignoring replacement of empty string", 0);
-                continue;
+        int[] lengths = {Integer.MAX_VALUE, 0};
+        if (!map.hasObjectValue()) {
+            map.forEachEntry((key, value) -> addStrtrPair(ctx, pairs, lengths, key, value));
+        } else {
+            for (Map.Entry<Object, Object> e : map.entries()) {
+                addStrtrPair(ctx, pairs, lengths, e.getKey(), e.getValue());
             }
-            pairs.put(k, PhpOps.toStr(e.getValue()));
-            maxLen = Math.max(maxLen, k.length());
-            minLen = Math.min(minLen, k.length());
         }
+        int maxLen = lengths[1];
+        int minLen = lengths[0];
         if (pairs.isEmpty()) {
             return str;
         }
@@ -799,6 +807,18 @@ final class StringFunctions {
             sb.append(str.charAt(i++));
         }
         return sb.toString();
+    }
+
+    private static void addStrtrPair(dev.phpruntime.PhpContext ctx, java.util.HashMap<String, String> pairs,
+                                     int[] lengths, Object key, Object value) {
+        String k = PhpOps.toStr(key);
+        if (k.isEmpty()) {
+            ctx.warning("strtr(): Ignoring replacement of empty string", 0);
+            return;
+        }
+        pairs.put(k, PhpOps.toStr(value));
+        lengths[0] = Math.min(lengths[0], k.length());
+        lengths[1] = Math.max(lengths[1], k.length());
     }
 
     // version_compare, ported from ext/standard/versioning.c

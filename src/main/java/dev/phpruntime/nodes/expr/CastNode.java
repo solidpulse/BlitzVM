@@ -105,9 +105,7 @@ public final class CastNode extends PhpNode {
         PhpObject obj = new PhpObject(ctx.stdClass(), ctx.nextObjectId());
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         if (v instanceof PhpArray arr) {
-            for (Map.Entry<Object, Object> e : arr.entries()) {
-                put.execute(obj, PhpOps.toStr(e.getKey()), PhpOps.copyOnAssign(e.getValue()));
-            }
+            arr.forEachEntry((key, value) -> put.execute(obj, PhpOps.toStr(key), PhpOps.copyOnAssign(value)));
         } else if (v != PhpNull.INSTANCE) {
             put.execute(obj, "scalar", v);
         }

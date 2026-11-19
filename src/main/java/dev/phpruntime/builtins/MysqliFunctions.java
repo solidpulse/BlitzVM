@@ -492,9 +492,7 @@ final class MysqliFunctions {
                 return PhpNull.INSTANCE;
             }
             PhpObject obj = new PhpObject(ctx.stdClass(), ctx.nextObjectId());
-            for (Map.Entry<Object, Object> e : arr.entries()) {
-                set(obj, PhpOps.toStr(e.getKey()), e.getValue());
-            }
+            arr.forEachEntry((key, value) -> set(obj, PhpOps.toStr(key), value));
             return obj;
         });
         Builtins.def("mysqli_fetch_field", 1, 1, (ctx, a) -> {

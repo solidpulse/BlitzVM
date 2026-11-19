@@ -7,8 +7,6 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
 
-import java.util.Map;
-
 /**
  * serialize and unserialize for scalars and arrays. Each string char is one byte, so
  * serialized lengths are ordinary String.length(), including binary and invalid UTF-8.
@@ -40,10 +38,10 @@ final class SerializeFunctions {
             sb.append("s:").append(s.length()).append(":\"").append(s).append("\";");
         } else if (v instanceof PhpArray arr) {
             sb.append("a:").append(arr.size()).append(":{");
-            for (Map.Entry<Object, Object> e : arr.entries()) {
-                serialize(sb, e.getKey());
-                serialize(sb, e.getValue());
-            }
+            arr.forEachEntry((key, value) -> {
+                serialize(sb, key);
+                serialize(sb, value);
+            });
             sb.append('}');
         } else {
             // TODO(classes): O:<len>:"Class":<n>:{...}, __serialize/__sleep and Serializable.

@@ -303,6 +303,33 @@ public final class PhpArray implements TruffleObject {
         return list;
     }
 
+    /**
+     * Iterates entries in array order without building a snapshot. Only for loops that cannot
+     * modify this array and cannot run PHP, because a modification would move the cursor.
+     */
+    @TruffleBoundary
+    public void forEachEntry(java.util.function.BiConsumer<Object, Object> action) {
+        for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
+            Object v = values[pos];
+            action.accept(keyAt(pos), v instanceof PhpReference ref ? ref.getValue() : v);
+        }
+    }
+
+    /** True when an element is an object, so converting it to a string can run PHP. */
+    @TruffleBoundary
+    public boolean hasObjectValue() {
+        for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
+            Object v = values[pos];
+            if (v instanceof PhpReference ref) {
+                v = ref.getValue();
+            }
+            if (v instanceof PhpObject) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @TruffleBoundary
     public Object removeLast() {
         if (size == 0) {
@@ -625,13 +652,30 @@ public final class PhpArray implements TruffleObject {
     }
 
     @TruffleBoundary
-    private int lastPos() {
+    public int lastPos() {
         return used - 1;
+    }
+
+    @TruffleBoundary
+    public int prevPos(int pos) {
+        for (int prev = pos - 1; prev >= 0; prev--) {
+            if (keys == null || keys[prev] != null) {
+                return prev;
+            }
+        }
+        return -1;
     }
 
     @TruffleBoundary
     public Object keyAt(int pos) {
         return keys == null ? (long) pos : keys[pos];
+    }
+
+    /** Value at a cursor position, unwrapping a reference cell like {@link #entries()}. */
+    @TruffleBoundary
+    public Object valueAt(int pos) {
+        Object v = values[pos];
+        return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
     @TruffleBoundary

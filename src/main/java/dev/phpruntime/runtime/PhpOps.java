@@ -304,14 +304,16 @@ public final class PhpOps {
             if (x.size() != y.size()) {
                 return false;
             }
-            List<Map.Entry<Object, Object>> ex = x.entries();
-            List<Map.Entry<Object, Object>> ey = y.entries();
-            for (int i = 0; i < ex.size(); i++) {
-                if (!ex.get(i).getKey().equals(ey.get(i).getKey()) || !strictEquals(ex.get(i).getValue(), ey.get(i).getValue())) {
+            int px = x.firstPos();
+            int py = y.firstPos();
+            while (px >= 0 && py >= 0) {
+                if (!x.keyAt(px).equals(y.keyAt(py)) || !strictEquals(x.valueAt(px), y.valueAt(py))) {
                     return false;
                 }
+                px = x.nextPos(px);
+                py = y.nextPos(py);
             }
-            return true;
+            return px < 0 && py < 0;
         }
         if (a instanceof Double x && b instanceof Double y) {
             return x.doubleValue() == y.doubleValue();

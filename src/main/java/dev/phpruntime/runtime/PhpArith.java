@@ -2,8 +2,6 @@ package dev.phpruntime.runtime;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 
-import java.util.Map;
-
 /** Generic (slow-path) arithmetic used by DSL fallbacks and compound assignment. */
 public final class PhpArith {
 
@@ -53,11 +51,11 @@ public final class PhpArith {
         if (a instanceof PhpArray x && b instanceof PhpArray y) {
             // Array union: keys from the left win.
             PhpArray r = x.share().forWrite(); // always a fresh copy of x
-            for (Map.Entry<Object, Object> e : y.entries()) {
-                if (!r.containsKey(e.getKey())) {
-                    r.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+            y.forEachEntry((key, value) -> {
+                if (!r.containsKey(key)) {
+                    r.put(key, PhpOps.copyOnAssign(value));
                 }
-            }
+            });
             return r;
         }
         Object x = PhpOps.toNumber(a);

@@ -107,14 +107,7 @@ final class ArrayFunctions {
         Builtins.def("array_merge", 0, -1, (ctx, a) -> {
             PhpArray out = new PhpArray();
             for (int i = 0; i < a.length; i++) {
-                for (Map.Entry<Object, Object> e : arr(a, i, "array_merge").entries()) {
-                    Object v = PhpOps.copyOnAssign(e.getValue());
-                    if (e.getKey() instanceof Long) {
-                        out.append(v);
-                    } else {
-                        out.put(e.getKey(), v);
-                    }
-                }
+                arr(a, i, "array_merge").forEachEntry((key, value) -> putEntry(out, key, value, false));
             }
             return out;
         });
@@ -132,20 +125,21 @@ final class ArrayFunctions {
         });
         Builtins.def("array_flip", 1, 1, (ctx, a) -> {
             PhpArray out = new PhpArray();
-            for (Map.Entry<Object, Object> e : arr(a, 0, "array_flip").entries()) {
-                out.put(e.getValue(), e.getKey());
-            }
+            arr(a, 0, "array_flip").forEachEntry((key, value) -> out.put(value, key));
             return out;
         });
         Builtins.def("array_reverse", 1, 2, (ctx, a) -> {
             boolean preserve = a.length > 1 && PhpOps.toBool(a[1]);
-            List<Map.Entry<Object, Object>> entries = arr(a, 0, "array_reverse").entries();
-            Collections.reverse(entries);
-            return fromEntries(entries, preserve);
+            PhpArray src = arr(a, 0, "array_reverse");
+            PhpArray out = new PhpArray();
+            for (int pos = src.lastPos(); pos >= 0; pos = src.prevPos(pos)) {
+                putEntry(out, src.keyAt(pos), src.valueAt(pos), preserve);
+            }
+            return out;
         });
         Builtins.def("array_slice", 2, 4, (ctx, a) -> {
-            List<Map.Entry<Object, Object>> entries = arr(a, 0, "array_slice").entries();
-            int n = entries.size();
+            PhpArray src = arr(a, 0, "array_slice");
+            int n = src.size();
             long off = PhpOps.toLong(a[1]);
             int start = (int) (off < 0 ? Math.max(0, n + off) : Math.min(off, n));
             int end = n;
@@ -153,7 +147,15 @@ final class ArrayFunctions {
                 long len = PhpOps.toLong(a[2]);
                 end = (int) (len < 0 ? Math.max(start, n + len) : Math.min(n, start + len));
             }
-            return fromEntries(entries.subList(start, Math.max(start, end)), a.length > 3 && PhpOps.toBool(a[3]));
+            boolean preserve = a.length > 3 && PhpOps.toBool(a[3]);
+            PhpArray out = new PhpArray();
+            int i = 0;
+            for (int pos = src.firstPos(); pos >= 0 && i < end; pos = src.nextPos(pos), i++) {
+                if (i >= start) {
+                    putEntry(out, src.keyAt(pos), src.valueAt(pos), preserve);
+                }
+            }
+            return out;
         });
         Builtins.def("array_unique", 1, 2, (ctx, a) -> {
             PhpArray out = new PhpArray();
@@ -203,15 +205,28 @@ final class ArrayFunctions {
             return PhpArray.ofList(values);
         });
         Builtins.def("array_chunk", 2, 3, (ctx, a) -> {
-            int size = (int) PhpOps.toLong(a[1]);
-            if (size < 1) {
+            int length = (int) PhpOps.toLong(a[1]);
+            if (length < 1) {
                 throw new PhpError(PhpError.VALUE_ERROR, "array_chunk(): Argument #2 ($length) must be greater than 0", null);
             }
             boolean preserve = a.length > 2 && PhpOps.toBool(a[2]);
+            PhpArray src = arr(a, 0, "array_chunk");
             PhpArray out = new PhpArray();
-            List<Map.Entry<Object, Object>> entries = arr(a, 0, "array_chunk").entries();
-            for (int i = 0; i < entries.size(); i += size) {
-                out.append(fromEntries(entries.subList(i, Math.min(entries.size(), i + size)), preserve));
+            PhpArray chunk = null;
+            int count = 0;
+            for (int pos = src.firstPos(); pos >= 0; pos = src.nextPos(pos)) {
+                if (count == 0) {
+                    chunk = new PhpArray();
+                }
+                putEntry(chunk, src.keyAt(pos), src.valueAt(pos), preserve);
+                if (++count == length) {
+                    out.append(chunk);
+                    count = 0;
+                    chunk = null;
+                }
+            }
+            if (count > 0) {
+                out.append(chunk);
             }
             return out;
         });
@@ -263,13 +278,13 @@ final class ArrayFunctions {
             for (int i = 1; i < a.length; i++) {
                 out.append(PhpOps.copyOnAssign(a[i]));
             }
-            for (Map.Entry<Object, Object> e : x.entries()) {
-                if (e.getKey() instanceof Long) {
-                    out.append(e.getValue());
+            x.forEachEntry((key, value) -> {
+                if (key instanceof Long) {
+                    out.append(value);
                 } else {
-                    out.put(e.getKey(), e.getValue());
+                    out.put(key, value);
                 }
-            }
+            });
             a[0] = out;
             return (long) out.size();
         });
@@ -362,14 +377,18 @@ final class ArrayFunctions {
     private static PhpArray fromEntries(List<Map.Entry<Object, Object>> entries, boolean preserveKeys) {
         PhpArray out = new PhpArray();
         for (Map.Entry<Object, Object> e : entries) {
-            Object v = PhpOps.copyOnAssign(e.getValue());
-            if (!preserveKeys && e.getKey() instanceof Long) {
-                out.append(v);
-            } else {
-                out.put(e.getKey(), v);
-            }
+            putEntry(out, e.getKey(), e.getValue(), preserveKeys);
         }
         return out;
+    }
+
+    private static void putEntry(PhpArray out, Object key, Object value, boolean preserveKeys) {
+        Object v = PhpOps.copyOnAssign(value);
+        if (!preserveKeys && key instanceof Long) {
+            out.append(v);
+        } else {
+            out.put(key, v);
+        }
     }
 
     private static PhpArray range(Object[] a) {
@@ -439,9 +458,7 @@ final class ArrayFunctions {
         Builtins.def("array_replace", 1, -1, (ctx, a) -> {
             PhpArray out = arr(a, 0, "array_replace").share().forWrite();
             for (int i = 1; i < a.length; i++) {
-                for (Map.Entry<Object, Object> e : arr(a, i, "array_replace").entries()) {
-                    out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
-                }
+                arr(a, i, "array_replace").forEachEntry((key, value) -> out.put(key, PhpOps.copyOnAssign(value)));
             }
             return out;
         });
@@ -462,11 +479,11 @@ final class ArrayFunctions {
         Builtins.def("array_change_key_case", 1, 2, (ctx, a) -> {
             boolean upper = a.length > 1 && PhpOps.toLong(a[1]) == 1;
             PhpArray out = new PhpArray();
-            for (Map.Entry<Object, Object> e : arr(a, 0, "array_change_key_case").entries()) {
-                Object k = e.getKey() instanceof String s ? (upper ? dev.phpruntime.runtime.PhpStrings.upper(s)
-                        : dev.phpruntime.runtime.PhpStrings.lower(s)) : e.getKey();
-                out.put(k, PhpOps.copyOnAssign(e.getValue()));
-            }
+            arr(a, 0, "array_change_key_case").forEachEntry((key, value) -> {
+                Object k = key instanceof String s ? (upper ? dev.phpruntime.runtime.PhpStrings.upper(s)
+                        : dev.phpruntime.runtime.PhpStrings.lower(s)) : key;
+                out.put(k, PhpOps.copyOnAssign(value));
+            });
             return out;
         });
         Builtins.def("array_first", 1, 1, (ctx, a) -> {
@@ -503,48 +520,65 @@ final class ArrayFunctions {
             }
         }
         PhpArray out = new PhpArray();
-        for (Map.Entry<Object, Object> e : first.entries()) {
-            boolean keep = true;
-            for (int i = 0; i < others.size(); i++) {
-                boolean found;
-                if (byKey) {
-                    Object v = others.get(i).get(e.getKey());
-                    found = v != null && (!byValue || PhpOps.toStr(v).equals(PhpOps.toStr(e.getValue())));
-                } else {
-                    found = valueSets.get(i).contains(PhpOps.toStr(e.getValue()));
-                }
-                if (found != intersect) {
-                    keep = false;
-                    break;
-                }
+        boolean direct = !first.hasObjectValue();
+        for (PhpArray other : others) {
+            if (other.hasObjectValue()) {
+                direct = false;
+                break;
             }
-            if (keep) {
-                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+        }
+        if (direct) {
+            first.forEachEntry((key, value) -> {
+                if (keepAgainst(key, value, others, valueSets, byKey, byValue, intersect)) {
+                    out.put(key, PhpOps.copyOnAssign(value));
+                }
+            });
+        } else {
+            for (Map.Entry<Object, Object> e : first.entries()) {
+                if (keepAgainst(e.getKey(), e.getValue(), others, valueSets, byKey, byValue, intersect)) {
+                    out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+                }
             }
         }
         return out;
     }
 
-    private static PhpArray replaceRecursive(PhpArray base, PhpArray with) {
-        PhpArray out = base.share().forWrite();
-        for (Map.Entry<Object, Object> e : with.entries()) {
-            Object existing = out.get(e.getKey());
-            if (existing instanceof PhpArray x && e.getValue() instanceof PhpArray y) {
-                out.put(e.getKey(), replaceRecursive(x, y));
+    private static boolean keepAgainst(Object key, Object value, List<PhpArray> others,
+                                       List<java.util.Set<String>> valueSets,
+                                       boolean byKey, boolean byValue, boolean intersect) {
+        for (int i = 0; i < others.size(); i++) {
+            boolean found;
+            if (byKey) {
+                Object v = others.get(i).get(key);
+                found = v != null && (!byValue || PhpOps.toStr(v).equals(PhpOps.toStr(value)));
             } else {
-                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+                found = valueSets.get(i).contains(PhpOps.toStr(value));
+            }
+            if (found != intersect) {
+                return false;
             }
         }
+        return true;
+    }
+
+    private static PhpArray replaceRecursive(PhpArray base, PhpArray with) {
+        PhpArray out = base.share().forWrite();
+        with.forEachEntry((key, value) -> {
+            Object existing = out.get(key);
+            if (existing instanceof PhpArray x && value instanceof PhpArray y) {
+                out.put(key, replaceRecursive(x, y));
+            } else {
+                out.put(key, PhpOps.copyOnAssign(value));
+            }
+        });
         return out;
     }
 
     /** php_array_merge_recursive: string keys present in both are merged into a list, int keys append. */
     private static void mergeRecursive(PhpArray dest, PhpArray src) {
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            Object k = e.getKey();
-            Object v = e.getValue();
-            if (k instanceof String && dest.containsKey(k)) {
-                Object existing = dest.get(k);
+        src.forEachEntry((key, value) -> {
+            if (key instanceof String && dest.containsKey(key)) {
+                Object existing = dest.get(key);
                 PhpArray merged;
                 if (existing instanceof PhpArray x) {
                     merged = x.share().forWrite();
@@ -552,18 +586,18 @@ final class ArrayFunctions {
                     merged = new PhpArray();
                     merged.append(existing);
                 }
-                if (v instanceof PhpArray y) {
+                if (value instanceof PhpArray y) {
                     mergeRecursive(merged, y);
                 } else {
-                    merged.append(PhpOps.copyOnAssign(v));
+                    merged.append(PhpOps.copyOnAssign(value));
                 }
-                dest.put(k, merged);
-            } else if (k instanceof String) {
-                dest.put(k, PhpOps.copyOnAssign(v));
+                dest.put(key, merged);
+            } else if (key instanceof String) {
+                dest.put(key, PhpOps.copyOnAssign(value));
             } else {
-                dest.append(PhpOps.copyOnAssign(v));
+                dest.append(PhpOps.copyOnAssign(value));
             }
-        }
+        });
     }
 
     private static Object splice(Object[] a) {
@@ -641,9 +675,12 @@ final class ArrayFunctions {
         if (a.length == 2) {
             PhpArray src = arr(a, 1, "array_map");
             PhpArray out = new PhpArray();
-            for (Map.Entry<Object, Object> e : src.entries()) {
-                Object val = cb == null ? PhpOps.copyOnAssign(e.getValue()) : cb.call(ctx, null, null, e.getValue());
-                out.put(e.getKey(), val);
+            if (cb == null) {
+                src.forEachEntry((key, value) -> out.put(key, PhpOps.copyOnAssign(value)));
+            } else {
+                for (Map.Entry<Object, Object> e : src.entries()) {
+                    out.put(e.getKey(), cb.call(ctx, null, null, e.getValue()));
+                }
             }
             return out;
         }
@@ -682,11 +719,17 @@ final class ArrayFunctions {
         PhpCallable cb = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpCallable.resolve(ctx, a[1], null) : null;
         long mode = a.length > 2 ? PhpOps.toLong(a[2]) : 0L;
         PhpArray out = new PhpArray();
+        if (cb == null) {
+            src.forEachEntry((key, value) -> {
+                if (PhpOps.toBool(value)) {
+                    out.put(key, PhpOps.copyOnAssign(value));
+                }
+            });
+            return out;
+        }
         for (Map.Entry<Object, Object> e : src.entries()) {
             boolean keep;
-            if (cb == null) {
-                keep = PhpOps.toBool(e.getValue());
-            } else if (mode == 2L) { // ARRAY_FILTER_USE_KEY
+            if (mode == 2L) { // ARRAY_FILTER_USE_KEY
                 keep = PhpOps.toBool(cb.call(ctx, null, null, e.getKey()));
             } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
                 keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
