@@ -22,6 +22,9 @@ public final class PhpReference {
 
     /** Ordinary reads never expose location-owned append storage. */
     public Object getValue() { return PhpStringBuffer.flatten(value); }
+
+    /** The stored value, possibly an append buffer the caller must flatten. */
+    public Object rawValue() { return value; }
     public void setValue(Object value) { this.value = PhpStringBuffer.flatten(value); }
 
     /** Taking an existing reference is not a value read and must not copy its append prefix. */

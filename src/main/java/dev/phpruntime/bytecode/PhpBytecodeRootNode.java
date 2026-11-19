@@ -284,15 +284,25 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** The current value: unwraps a reference cell or string buffer; null if undefined. */
     static Object current(VirtualFrame frame, LocalAccessor acc, BytecodeNode bytecode) {
+        return current(frame, acc, bytecode, com.oracle.truffle.api.profiles.BranchProfile.getUncached());
+    }
+
+    /**
+     * The value of a variable, through its cell. A {@code .=} target holds an append buffer; few
+     * read sites ever see one, so with a cached profile that path is a deoptimization in
+     * compiled code instead of a check, a field read and a call inlined into every read.
+     */
+    static Object current(VirtualFrame frame, LocalAccessor acc, BytecodeNode bytecode, com.oracle.truffle.api.profiles.BranchProfile buffer) {
         if (acc.isCleared(bytecode, frame)) {
             return null;
         }
         Object v = acc.getObject(bytecode, frame);
         if (v instanceof PhpReference ref) {
-            return ref.getValue();
+            v = ref.rawValue();
         }
-        if (v instanceof PhpStringBuffer) {
-            return PhpStringBuffer.flatten(v);
+        if (v instanceof PhpStringBuffer b) {
+            buffer.enter();
+            return b.asString();
         }
         return v;
     }
@@ -371,8 +381,20 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         @Specialization(replaces = {"readLong", "readDouble"})
-        static Object read(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode,
-                           @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+        static Object readGeneric(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode,
+                                  @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                                  @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer,
+                                  @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile undefinedSeen) {
+            Object v = current(frame, acc, bytecode, buffer);
+            if (v == null) {
+                undefinedSeen.enter();
+                return undefined(info, bytecode, bci, node);
+            }
+            return v;
+        }
+
+        static Object read(VirtualFrame frame, LocalAccessor acc, VarInfo info, BytecodeNode bytecode, int bci,
+                           Node node) {
             Object v = current(frame, acc, bytecode);
             return v == null ? undefined(info, bytecode, bci, node) : v;
         }
@@ -384,8 +406,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = VarInfo.class)
     public static final class ReadVarIfSet {
         @Specialization
-        static Object read(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode) {
-            Object v = current(frame, acc, bytecode);
+        static Object read(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode,
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
+            Object v = current(frame, acc, bytecode, buffer);
             return v == null ? PhpNull.INSTANCE : v;
         }
     }
@@ -395,8 +418,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = VarInfo.class)
     public static final class IssetVar {
         @Specialization
-        static boolean isset(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode) {
-            Object v = current(frame, acc, bytecode);
+        static boolean isset(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode,
+                             @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
+            Object v = current(frame, acc, bytecode, buffer);
             return v != null && v != PhpNull.INSTANCE;
         }
     }
@@ -1570,7 +1594,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object send(VirtualFrame frame, int param, LocalAccessor acc, VarInfo info, LocalAccessor calleeLocal,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer,
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile undefinedSeen) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
             if (takesRef(callee, param)) {
                 if ("this".equals(info.name())) {
@@ -1578,7 +1604,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 }
                 return ObtainVarCell.obtain(frame, acc, info, bytecode);
             }
-            Object v = ReadVar.read(frame, acc, info, bytecode, bci, node);
+            Object v = current(frame, acc, bytecode, buffer);
+            if (v == null) {
+                undefinedSeen.enter();
+                v = undefined(info, bytecode, bci, node);
+            }
             return callee instanceof Builtins.Def ? v : PhpOps.copyOnAssign(v);
         }
     }
@@ -1809,9 +1839,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object run(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, int mode, int arg,
                           @Variadic Object[] ops, @Bind BytecodeNode bytecode,
-                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+                          @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
+                          @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
             Object[] holder = {HOLDER_EMPTY};
-            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode, buffer), holder, ops, spec.arrayKeys);
             if (mode == P_KEYS) {
                 return new PreparedPlace(keys, holder);
             }
@@ -2086,11 +2117,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, int param,
                            LocalAccessor calleeLocal, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
             int mode = Places.sendMode(callee, param);
             Object[] holder = {HOLDER_EMPTY};
-            Object[] keys = Places.varKeys(current(frame, acc, bytecode), holder, ops, spec.arrayKeys);
+            Object[] keys = Places.varKeys(current(frame, acc, bytecode, buffer), holder, ops, spec.arrayKeys);
             Object result = Places.runSend(frame, engine, keys, mode);
             if (holder[0] != HOLDER_EMPTY) {
                 store(frame, acc, info, bytecode, holder[0]);
