@@ -90,15 +90,75 @@ final class FileFunctions {
         }
     }
 
+    /**
+     * php's realpath cache: resolutions of absolute paths, shared by all requests and reused for
+     * a short time. Only paths that resolve are kept, and unlink, rmdir, rename and
+     * clearstatcache(true) empty it, as in php. WordPress resolves every core block's directory
+     * on each request, so without it realpath() was a few percent of all CPU time.
+     */
+    private record RealpathEntry(String resolved, long checkedAt) {
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, RealpathEntry> REALPATH_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long REALPATH_TTL_NANOS = Long.getLong("blitz.realpath.ttlMs", 2000L) * 1_000_000L;
+    private static final int REALPATH_CACHE_LIMIT = 16384;
+
+    static void clearRealpathCache() {
+        REALPATH_CACHE.clear();
+    }
+
+    /**
+     * php resolves a path one component at a time, so "a/missing/../b" fails even when "a/b"
+     * exists; Java normalizes the ".." away first. Checks the directory before each "..".
+     */
+    private static boolean dotDotParentsExist(PhpContext ctx, String path) {
+        if (!path.contains("..")) {
+            return true;
+        }
+        String[] parts = path.split("/", -1);
+        StringBuilder prefix = new StringBuilder(path.startsWith("/") ? "/" : "");
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (part.equals("..") && prefix.length() > 0 && !prefix.toString().equals("/")) {
+                TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(prefix.toString()));
+                if (!dir.isDirectory()) {
+                    return false;
+                }
+            }
+            if (prefix.length() > 0 && prefix.charAt(prefix.length() - 1) != '/') {
+                prefix.append('/');
+            }
+            prefix.append(part);
+        }
+        return true;
+    }
+
     private static Object realpath(PhpContext ctx, String path) {
+        boolean cacheable = REALPATH_TTL_NANOS > 0 && !path.isEmpty() && path.charAt(0) == '/';
+        if (cacheable) {
+            RealpathEntry e = REALPATH_CACHE.get(path);
+            if (e != null && System.nanoTime() - e.checkedAt() < REALPATH_TTL_NANOS) {
+                return e.resolved();
+            }
+        }
         try {
             TruffleFile f = path.isEmpty()
                     ? ctx.env().getCurrentWorkingDirectory()
                     : ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!f.exists()) {
+            if (!f.exists() || !dotDotParentsExist(ctx, path)) {
                 return false;
             }
-            return PhpStrings.fromJava(f.getCanonicalFile().getPath());
+            String resolved = PhpStrings.fromJava(f.getCanonicalFile().getPath());
+            if (cacheable) {
+                if (REALPATH_CACHE.size() >= REALPATH_CACHE_LIMIT) {
+                    REALPATH_CACHE.clear();
+                }
+                REALPATH_CACHE.put(path, new RealpathEntry(resolved, System.nanoTime()));
+            }
+            return resolved;
         } catch (IOException | SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -339,6 +399,7 @@ final class FileFunctions {
     }
 
     private static Object delete(PhpContext ctx, String fn, String path, boolean directory) {
+        clearRealpathCache();
         TruffleFile f = file(ctx, path);
         try {
             if (f == null || !f.exists()) {

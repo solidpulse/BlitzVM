@@ -619,6 +619,7 @@ final class StreamFunctions {
             }
         });
         Builtins.def("rename", 2, 3, (ctx, a) -> {
+            FileFunctions.clearRealpathCache();
             String from = PhpOps.toStr(a[0]);
             String to = PhpOps.toStr(a[1]);
             try {
@@ -670,7 +671,12 @@ final class StreamFunctions {
                 return false;
             }
         });
-        Builtins.def("clearstatcache", 0, 2, (ctx, a) -> PhpNull.INSTANCE);
+        Builtins.def("clearstatcache", 0, 2, (ctx, a) -> {
+            if (a.length > 0 && PhpOps.toBool(a[0])) {
+                FileFunctions.clearRealpathCache();
+            }
+            return PhpNull.INSTANCE;
+        });
         Builtins.def("disk_free_space", 1, 1, (ctx, a) -> space(PhpOps.toStr(a[0]), true));
         Builtins.def("diskfreespace", 1, 1, (ctx, a) -> space(PhpOps.toStr(a[0]), true));
         Builtins.def("disk_total_space", 1, 1, (ctx, a) -> space(PhpOps.toStr(a[0]), false));
