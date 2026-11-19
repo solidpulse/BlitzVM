@@ -1529,19 +1529,30 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ResolveFunction {
         @Specialization
         static void resolve(VirtualFrame frame, CallSite site, LocalAccessor callee, @Bind BytecodeNode bytecode,
-                            @Bind Node node) {
-            callee.setObject(bytecode, frame, lookup(site, node));
+                            @Bind Node node,
+                            @Cached(value = "builtinNamed(site)", neverDefault = false) Builtins.Def builtin,
+                            @Cached("createIdentityProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeIdentity) {
+            // Functions are shared by every request that declares them, so a site usually sees
+            // one callee. Profiling it makes the callee a constant for the argument operations.
+            callee.setObject(bytecode, frame, calleeIdentity.profile(lookup(site, node, builtin)));
         }
 
-        static Object lookup(CallSite site, Node node) {
-            PhpContext ctx = PhpContext.get(node);
+        /** The builtin the site's global name denotes; fixed at startup, and no user function can take it. */
+        static Builtins.Def builtinNamed(CallSite site) {
+            return Builtins.lookup(site.name());
+        }
+
+        static Object lookup(CallSite site, Node node, Builtins.Def builtin) {
             if (site.nsFunctionId() >= 0) {
-                PhpFunction nsFn = ctx.functionById(site.nsFunctionId());
+                PhpFunction nsFn = PhpContext.get(node).functionById(site.nsFunctionId());
                 if (nsFn != null) {
                     return nsFn;
                 }
             }
-            PhpFunction fn = ctx.functionById(site.functionId());
+            if (builtin != null) {
+                return builtin;
+            }
+            PhpFunction fn = PhpContext.get(node).functionById(site.functionId());
             if (fn != null) {
                 return fn;
             }
@@ -1680,7 +1691,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ResolveMethod {
         @Specialization
         static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor callee, Object target, Object nameValue,
-                            @Bind BytecodeNode bytecode) {
+                            @Bind BytecodeNode bytecode,
+                            @Cached("createIdentityProfile()") com.oracle.truffle.api.profiles.ValueProfile sigIdentity) {
             String name = nameValue instanceof String s ? s : Ops.toStr(nameValue);
             if (!(target instanceof PhpObject obj)) {
                 CompilerDirectives.transferToInterpreter();
@@ -1702,7 +1714,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 throw Ops.error("Cannot call abstract method " + entry.declaringClass().name() + "::" + entry.name() + "()");
             }
             Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
-            RootCallTarget sig = entry.callTarget();
+            // The class differs per request but the method body does not: profiling the target
+            // lets the by-reference checks of the arguments fold.
+            RootCallTarget sig = (RootCallTarget) sigIdentity.profile(entry.callTarget());
             if (obj.closure() != null && obj.closure().callTarget() != null
                     && sig.getRootNode() instanceof dev.phpruntime.nodes.call.ClosureInvokeRootNode) {
                 sig = obj.closure().callTarget();
@@ -3593,7 +3607,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor calleeLocal, boolean forwarding,
                             boolean hasCalledClass, PhpClass targetClass, Object nameValue, Object thisValue,
-                            Object calledClassValue, @Bind BytecodeNode bytecode) {
+                            Object calledClassValue, @Bind BytecodeNode bytecode,
+                            @Cached("createIdentityProfile()") com.oracle.truffle.api.profiles.ValueProfile sigIdentity) {
             String name = nameValue instanceof String s ? s : Ops.toStr(nameValue);
             PhpClass.MethodEntry entry = site.methodId() >= 0 ? targetClass.methodById(site.methodId())
                     : targetClass.lookupMethod(name);
@@ -3633,7 +3648,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 throw Ops.error("Non-static method " + entry.declaringClass().name() + "::" + entry.name()
                         + "() cannot be called statically");
             }
-            RootCallTarget sig = entry.callTarget();
+            RootCallTarget sig = (RootCallTarget) sigIdentity.profile(entry.callTarget());
             PhpObject obj = thisValue instanceof PhpObject o ? o : null;
             calleeLocal.setObject(bytecode, frame,
                     new MethodCallee(entry, thisArg, calledArg, sig, obj, name, null));
@@ -3675,7 +3690,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ResolveConstructor {
         @Specialization
         static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj,
-                            @Bind BytecodeNode bytecode) {
+                            @Bind BytecodeNode bytecode,
+                            @Cached("createIdentityProfile()") com.oracle.truffle.api.profiles.ValueProfile sigIdentity) {
             PhpClass cls = obj.phpClass();
             PhpClass.MethodEntry ctor = cls.constructMethod();
             if (ctor == null) {
@@ -3683,7 +3699,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return;
             }
             calleeLocal.setObject(bytecode, frame,
-                    new MethodCallee(ctor, obj, cls, ctor.callTarget(), obj, ctor.name(), null));
+                    new MethodCallee(ctor, obj, cls, (RootCallTarget) sigIdentity.profile(ctor.callTarget()), obj,
+                            ctor.name(), null));
         }
     }
 

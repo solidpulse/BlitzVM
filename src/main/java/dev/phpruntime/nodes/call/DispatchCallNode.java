@@ -64,6 +64,11 @@ public final class DispatchCallNode extends Node {
         if (direct != null && direct.getCallTarget() == target) {
             return direct.call(isTraitMethod(direct.getCallTarget()) ? withTraitSelf(args, entry.declaringClass()) : args);
         }
+        if (indirectCall == null) {
+            // First call or a second target: keep the trait check and argument copy below out
+            // of compiled code until the site is polymorphic.
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+        }
         return call(target, isTraitMethod(target) ? withTraitSelf(args, entry.declaringClass()) : args);
     }
 
