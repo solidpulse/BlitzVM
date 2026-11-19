@@ -411,7 +411,7 @@ public final class PhpOps {
             return isNumericString(s) ? compare(a, toNumber(s)) : Integer.signum(toStr(a).compareTo(s));
         }
         if (a instanceof PhpArray x && b instanceof PhpArray y) {
-            return Integer.compare(x.size(), y.size());
+            return compareArrays(x, y);
         }
         if (a instanceof PhpArray) {
             return 1;
@@ -436,6 +436,29 @@ public final class PhpOps {
                 return compare(s, toStr(o));
             }
             return -1;
+        }
+        return 0;
+    }
+
+    /**
+     * php's array comparison: the smaller array is smaller; otherwise each element of {@code a},
+     * in {@code a}'s order, is compared with the element under the same key in {@code b}, and the
+     * first difference decides. A key of {@code a} missing from {@code b} makes the arrays
+     * uncomparable, which php reports as 1.
+     */
+    private static int compareArrays(PhpArray a, PhpArray b) {
+        if (a.size() != b.size()) {
+            return a.size() < b.size() ? -1 : 1;
+        }
+        for (int pos = a.firstPos(); pos >= 0; pos = a.nextPos(pos)) {
+            Object key = a.keyAt(pos);
+            if (!b.containsKey(key)) {
+                return 1;
+            }
+            int c = compare(a.valueAt(pos), b.get(key));
+            if (c != 0) {
+                return c;
+            }
         }
         return 0;
     }
