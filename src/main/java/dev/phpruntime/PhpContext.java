@@ -792,6 +792,112 @@ public final class PhpContext {
         return nextAnonymousId++;
     }
 
+    // ------------------------------------------------------------ callable cache
+
+    /**
+     * Per-request memo of callable resolution. PHP function names cannot be redeclared and a
+     * class's method table is fixed once the class is declared, so a resolved callback stays
+     * valid for the whole request. The caches are small set-associative arrays keyed by String
+     * identity: WordPress keeps its callbacks in arrays and the same String objects come back
+     * on every call. Four-way sets cost a few more identity checks than direct mapping, but a
+     * single unlucky identity-hash collision between two hot names would otherwise evict one
+     * of them on every call.
+     */
+    private record CachedCallable(String name, PhpCallable callable) {
+    }
+
+    private record CachedMethod(PhpClass cls, String name, PhpClass.MethodEntry entry) {
+    }
+
+    /** The class and method entry behind a {@code ['Cls', 'm']} callable, plus the key that produced it. */
+    public record StaticMethodLookup(String className, String methodName, PhpClass cls,
+                                     PhpClass.MethodEntry entry) {
+    }
+
+    private static final int CACHE_WAYS = 4;
+    private static final int FUNCTION_CACHE_SETS = 256;
+    private static final int METHOD_CACHE_SETS = 32;
+    private static final int STATIC_METHOD_CACHE_SETS = 32;
+
+    private final CachedCallable[] functionCache = new CachedCallable[FUNCTION_CACHE_SETS * CACHE_WAYS];
+    private final CachedMethod[] methodCache = new CachedMethod[METHOD_CACHE_SETS * CACHE_WAYS];
+    private final StaticMethodLookup[] staticMethodCache =
+            new StaticMethodLookup[STATIC_METHOD_CACHE_SETS * CACHE_WAYS];
+
+    /** The immutable callable previously resolved for this exact String object, or null. */
+    public PhpCallable cachedFunctionCallable(String name) {
+        int base = (System.identityHashCode(name) & (FUNCTION_CACHE_SETS - 1)) * CACHE_WAYS;
+        for (int i = 0; i < CACHE_WAYS; i++) {
+            CachedCallable e = functionCache[base + i];
+            if (e != null && e.name == name) {
+                return e.callable;
+            }
+        }
+        return null;
+    }
+
+    public void cacheFunctionCallable(String name, PhpCallable callable) {
+        int base = (System.identityHashCode(name) & (FUNCTION_CACHE_SETS - 1)) * CACHE_WAYS;
+        for (int i = 0; i < CACHE_WAYS; i++) {
+            if (functionCache[base + i] == null) {
+                functionCache[base + i] = new CachedCallable(name, callable);
+                return;
+            }
+        }
+        functionCache[base + CACHE_WAYS - 1] = new CachedCallable(name, callable);
+    }
+
+    /** The method entry for this class and method-name String object; the lookup itself is cached. */
+    public PhpClass.MethodEntry cachedMethod(PhpClass cls, String name) {
+        int hash = System.identityHashCode(cls) * 31 + System.identityHashCode(name);
+        int base = (hash & (METHOD_CACHE_SETS - 1)) * CACHE_WAYS;
+        for (int i = 0; i < CACHE_WAYS; i++) {
+            CachedMethod e = methodCache[base + i];
+            if (e != null && e.cls == cls && e.name == name) {
+                return e.entry;
+            }
+        }
+        PhpClass.MethodEntry entry = cls.lookupMethod(name);
+        CachedMethod resolved = new CachedMethod(cls, name, entry);
+        for (int i = 0; i < CACHE_WAYS; i++) {
+            if (methodCache[base + i] == null) {
+                methodCache[base + i] = resolved;
+                return entry;
+            }
+        }
+        methodCache[base + CACHE_WAYS - 1] = resolved;
+        return entry;
+    }
+
+    /**
+     * Resolves the class and method of a {@code ['Cls', 'm']} callable, caching both by the
+     * identity of the two String objects. A class that is not declared yet is not cached: an
+     * autoloader may declare it later in the request.
+     */
+    public StaticMethodLookup lookupStaticMethod(String className, String methodName) {
+        int hash = System.identityHashCode(className) * 31 + System.identityHashCode(methodName);
+        int base = (hash & (STATIC_METHOD_CACHE_SETS - 1)) * CACHE_WAYS;
+        for (int i = 0; i < CACHE_WAYS; i++) {
+            StaticMethodLookup e = staticMethodCache[base + i];
+            if (e != null && e.className == className && e.methodName == methodName) {
+                return e;
+            }
+        }
+        PhpClass cls = lookupOrAutoloadClass(className);
+        if (cls == null) {
+            return null;
+        }
+        StaticMethodLookup resolved = new StaticMethodLookup(className, methodName, cls, cls.lookupMethod(methodName));
+        for (int i = 0; i < CACHE_WAYS; i++) {
+            if (staticMethodCache[base + i] == null) {
+                staticMethodCache[base + i] = resolved;
+                return resolved;
+            }
+        }
+        staticMethodCache[base + CACHE_WAYS - 1] = resolved;
+        return resolved;
+    }
+
     // ------------------------------------------------------------ constants
 
     @TruffleBoundary
@@ -813,7 +919,11 @@ public final class PhpContext {
             PhpClass cls = lookupClass(n.substring(0, sep));
             return cls != null && cls.lookupConstant(this, n.substring(sep + 2)) != null;
         }
-        return PhpConstants.lookupBuiltin(n) != null || constants.containsKey(n);
+        // User code cannot define a constant whose name equals a built-in one: define() refuses
+        // it (php 8.5 warns, this runtime returns false) and true/false/null are reserved in any
+        // case. Checking the user table first therefore cannot change the answer, and it skips
+        // the lowercase-then-map lookup of lookupBuiltin for WordPress's own constants.
+        return constants.containsKey(n) || PhpConstants.lookupBuiltin(n) != null;
     }
 
     /** A user-defined global constant (no namespace separator handling, no built-ins), or null. */

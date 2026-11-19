@@ -124,13 +124,22 @@ public final class PhpCallable {
             if (sep > 0) {
                 return resolveStaticMethod(ctx, n.substring(0, sep), n.substring(sep + 2), callerThis);
             }
+            // Function names cannot be redeclared or removed in a request, so a hit stays valid.
+            PhpCallable cached = ctx.cachedFunctionCallable(s);
+            if (cached != null) {
+                return cached;
+            }
             PhpFunction fn = ctx.lookupFunction(n);
             if (fn != null) {
-                return new PhpCallable(Kind.USER_FUNCTION, null, fn.callTarget(), null, PhpNull.INSTANCE, null, null, null);
+                PhpCallable cb = new PhpCallable(Kind.USER_FUNCTION, null, fn.callTarget(), null, PhpNull.INSTANCE, null, null, null);
+                ctx.cacheFunctionCallable(s, cb);
+                return cb;
             }
             Builtins.Def def = Builtins.lookup(n);
             if (def != null) {
-                return new PhpCallable(Kind.BUILTIN, null, null, def, PhpNull.INSTANCE, null, null, null);
+                PhpCallable cb = new PhpCallable(Kind.BUILTIN, null, null, def, PhpNull.INSTANCE, null, null, null);
+                ctx.cacheFunctionCallable(s, cb);
+                return cb;
             }
             return null;
         }
@@ -142,7 +151,7 @@ public final class PhpCallable {
             }
             if (el0 instanceof PhpObject obj) {
                 PhpClass cls = obj.phpClass();
-                PhpClass.MethodEntry entry = cls.lookupMethod(methName);
+                PhpClass.MethodEntry entry = ctx.cachedMethod(cls, methName);
                 if (entry != null) {
                     if (entry.callTarget() == null) {
                         return null;
@@ -158,7 +167,7 @@ public final class PhpCallable {
                 return null;
             }
             if (el0 instanceof String clsName) {
-                return resolveStaticMethod(ctx, clsName, methName, callerThis);
+                return resolveStaticMethodCached(ctx, clsName, methName, callerThis);
             }
         }
         return null;
@@ -169,7 +178,20 @@ public final class PhpCallable {
         if (cls == null) {
             return null;
         }
-        PhpClass.MethodEntry entry = cls.lookupMethod(methName);
+        return staticMethodCallable(cls, cls.lookupMethod(methName), methName, callerThis);
+    }
+
+    /** The {@code ['Cls', 'm']} path: the class and method lookup are cached per request by String identity. */
+    private static PhpCallable resolveStaticMethodCached(PhpContext ctx, String clsName, String methName, Object callerThis) {
+        PhpContext.StaticMethodLookup lookup = ctx.lookupStaticMethod(clsName, methName);
+        if (lookup == null) {
+            return null;
+        }
+        return staticMethodCallable(lookup.cls(), lookup.entry(), methName, callerThis);
+    }
+
+    private static PhpCallable staticMethodCallable(PhpClass cls, PhpClass.MethodEntry entry,
+                                                    String methName, Object callerThis) {
         if (entry != null) {
             if (entry.callTarget() == null) {
                 return null;
