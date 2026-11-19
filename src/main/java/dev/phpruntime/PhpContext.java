@@ -85,6 +85,7 @@ public final class PhpContext {
     private Object builtinState;
     private Node currentBuiltinCallSite;
     private String byteStringOrigin;
+    private Boolean hostFileSystem;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
@@ -113,6 +114,20 @@ public final class PhpContext {
 
     public TruffleLanguage.Env env() {
         return env;
+    }
+
+    /**
+     * Whether file checks (file_exists, is_file, is_dir, is_readable, realpath, includes) can be
+     * answered with {@link java.io.File}. True only for the host's default file system, decided
+     * once so a sandboxed or virtual file system keeps the TruffleFile path.
+     */
+    public boolean usesHostFileSystem() {
+        Boolean cached = hostFileSystem;
+        if (cached == null) {
+            cached = dev.phpruntime.runtime.HostFiles.isDefaultHostFileSystem(env);
+            hostFileSystem = cached;
+        }
+        return cached;
     }
 
     public PhpLanguage language() {

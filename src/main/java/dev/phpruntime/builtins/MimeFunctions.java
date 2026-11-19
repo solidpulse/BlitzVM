@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import com.oracle.truffle.api.TruffleFile;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.HostFiles;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
 
@@ -16,8 +17,13 @@ final class MimeFunctions {
     static Object detect(PhpContext ctx, Object[] a) {
         String path = PhpOps.toStr(a[0]);
         try {
-            TruffleFile file = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!file.exists() || file.isDirectory()) {
+            String javaPath = PhpStrings.toJava(path);
+            TruffleFile file = ctx.env().getPublicTruffleFile(javaPath);
+            Boolean hostExists = HostFiles.exists(ctx, javaPath);
+            Boolean hostDirectory = HostFiles.isDirectory(ctx, javaPath);
+            boolean exists = hostExists != null ? hostExists : file.exists();
+            boolean directory = hostDirectory != null ? hostDirectory : file.isDirectory();
+            if (!exists || directory) {
                 throw new IOException();
             }
             return detectBytes(file.readAllBytes());
