@@ -1,0 +1,94 @@
+array(10) {
+  [0]=>
+  string(3) "int"
+  [1]=>
+  string(5) "lead0"
+  [2]=>
+  string(4) "neg0"
+  [3]=>
+  string(5) "space"
+  [4]=>
+  string(5) "float"
+  [5]=>
+  string(4) "over"
+  [6]=>
+  string(3) "min"
+  [7]=>
+  string(1) "n"
+  [8]=>
+  string(5) "empty"
+  [9]=>
+  string(3) "neg"
+}
+array(7) {
+  [0]=>
+  bool(true)
+  [1]=>
+  bool(false)
+  [2]=>
+  bool(false)
+  [3]=>
+  string(4) "dflt"
+  [4]=>
+  string(4) "dflt"
+  [5]=>
+  bool(true)
+  [6]=>
+  string(5) "lead0"
+}
+array(3) {
+  [0]=>
+  int(123)
+  [1]=>
+  string(4) "name"
+  [2]=>
+  int(-5)
+}
+array(4) {
+  [0]=>
+  string(1) "B"
+  [1]=>
+  string(2) "bn"
+  [2]=>
+  string(2) "b5"
+  [3]=>
+  string(1) "-"
+}
+bool(true)
+array(4) {
+  [0]=>
+  string(1) "B"
+  [1]=>
+  string(2) "bn"
+  [2]=>
+  string(2) "b5"
+  [3]=>
+  string(1) "-"
+}
+bool(true)
+array(4) {
+  [0]=>
+  string(1) "B"
+  [1]=>
+  string(2) "bn"
+  [2]=>
+  string(2) "b5"
+  [3]=>
+  string(1) "-"
+}
+bool(true)
+string(1) "n"
+string(3) "int"
+string(3) "int"
+string(5) "lead0"
+string(1) "n"
+string(4) "none"
+string(5) "empty"
+string(4) "none"
+NULL
+NULL
+string(1) "e"
+bool(false)
+string(3) "obj"
+bool(true)
+string(4) "none"

@@ -176,6 +176,27 @@ public final class PhpArray implements TruffleObject {
         return find(normalizeKey(key)) >= 0;
     }
 
+    /**
+     * A key already normalized, with its hash: what a site whose key is a constant computes once
+     * instead of on every access.
+     */
+    public record KnownKey(Object key, int hash) {
+    }
+
+    @TruffleBoundary
+    public static KnownKey knownKey(Object key) {
+        Object k = normalizeKey(key);
+        return new KnownKey(k, hash(k));
+    }
+
+    /** {@link #get} for a key from {@link #knownKey}. */
+    @TruffleBoundary
+    public Object get(KnownKey key) {
+        int pos = find(key.key(), key.hash());
+        Object v = pos < 0 ? null : values[pos];
+        return v instanceof PhpReference ref ? ref.getValue() : v;
+    }
+
     @TruffleBoundary
     public void put(Object key, Object value) {
         Object k = normalizeKey(key);
@@ -377,12 +398,24 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     private int find(Object key) {
         if (keys == null) {
-            if (key instanceof Long l && l >= 0 && l < size) {
-                return (int) l.longValue();
-            }
-            return -1;
+            return findPacked(key);
         }
-        int hash = hash(key);
+        return find(key, hash(key));
+    }
+
+    private int findPacked(Object key) {
+        if (key instanceof Long l && l >= 0 && l < size) {
+            return (int) l.longValue();
+        }
+        return -1;
+    }
+
+    /** {@link #find(Object)} with the key's {@link #hash} already computed. */
+    @TruffleBoundary
+    private int find(Object key, int hash) {
+        if (keys == null) {
+            return findPacked(key);
+        }
         int bucket = hash & (index.length - 1);
         while (index[bucket] != 0) {
             int pos = index[bucket] - 1;

@@ -1249,6 +1249,23 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Operation
     public static final class Index {
+        static PhpArray.KnownKey knownKey(String key) {
+            return PhpArray.knownKey(key);
+        }
+
+        /**
+         * A constant string key (the same instance on every execution): normalized and hashed
+         * once for the site instead of on every access.
+         */
+        @Specialization(guards = "key == cachedKey", limit = "1")
+        static Object fromArrayConstKey(PhpArray array, String key, @Bind BytecodeNode bytecode,
+                                        @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                                        @Cached("key") String cachedKey,
+                                        @Cached("knownKey(key)") PhpArray.KnownKey known) {
+            Object v = array.get(known);
+            return v == null ? undefinedKey(key, bytecode, bci, node) : v;
+        }
+
         @Specialization
         static Object fromArray(PhpArray array, Object key, @Bind BytecodeNode bytecode,
                                 @Bind("$bytecodeIndex") int bci, @Bind Node node) {
@@ -1274,6 +1291,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** The element if it exists and is not null, else PHP null, with no warning. */
     @Operation
     public static final class IndexIfSet {
+        static PhpArray.KnownKey knownKey(String key) {
+            return PhpArray.knownKey(key);
+        }
+
+        /** A constant string key: see {@link Index#fromArrayConstKey}. */
+        @Specialization(guards = "key == cachedKey", limit = "1")
+        static Object fromArrayConstKey(PhpArray array, String key, @Cached("key") String cachedKey,
+                                        @Cached("knownKey(key)") PhpArray.KnownKey known) {
+            Object v = array.get(known);
+            return v == null ? PhpNull.INSTANCE : v;
+        }
+
         @Specialization
         static Object fromArray(PhpArray array, Object key) {
             Object v = Ops.arrayGet(array, key);
@@ -1299,6 +1328,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Operation
     public static final class IssetIndex {
+        static PhpArray.KnownKey knownKey(String key) {
+            return PhpArray.knownKey(key);
+        }
+
+        /** A constant string key: see {@link Index#fromArrayConstKey}. */
+        @Specialization(guards = "key == cachedKey", limit = "1")
+        static boolean fromArrayConstKey(PhpArray array, String key, @Cached("key") String cachedKey,
+                                         @Cached("knownKey(key)") PhpArray.KnownKey known) {
+            Object v = array.get(known);
+            return v != null && v != PhpNull.INSTANCE;
+        }
+
         @Specialization
         static boolean fromArray(PhpArray array, Object key) {
             Object v = Ops.arrayGet(array, key);
