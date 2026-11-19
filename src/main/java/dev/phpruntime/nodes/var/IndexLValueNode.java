@@ -1,5 +1,7 @@
 package dev.phpruntime.nodes.var;
 
+import com.oracle.truffle.api.CompilerDirectives;
+import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
@@ -27,6 +29,15 @@ public final class IndexLValueNode extends LValueNode {
     @Child private LValueNode base;
     @Children private final PhpNode[] keyNodes;
     @Child private ArrayAccessNode access;
+    /**
+     * Which uncommon write paths this site has taken. Until one is seen, compiled code
+     * deoptimizes there instead of carrying string offsets, ArrayAccess objects, references
+     * inside the path and array creation into every array write.
+     */
+    @CompilationFinal private boolean seenString;
+    @CompilationFinal private boolean seenObject;
+    @CompilationFinal private boolean seenRef;
+    @CompilationFinal private boolean seenCreate;
 
     public IndexLValueNode(LValueNode base, PhpNode[] keyNodes) {
         this.base = base;
@@ -253,9 +264,17 @@ public final class IndexLValueNode extends LValueNode {
     private Object writeMixed(Object root, Object[] keys, int at, Object value) {
         Object key = keys[at];
         if (root instanceof String s && at == keyNodes.length - 1) {
+            if (!seenString) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                seenString = true;
+            }
             return writeStringOffset(s, key, value);
         }
         if (root instanceof PhpObject obj) {
+            if (!seenObject) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                seenObject = true;
+            }
             if (at == keyNodes.length - 1) {
                 access.set(obj, key == APPEND ? PhpNull.INSTANCE : key, value);
             } else {
@@ -281,6 +300,10 @@ public final class IndexLValueNode extends LValueNode {
         } else {
             Object raw = key == APPEND ? null : arr.getRaw(key);
             if (raw instanceof PhpReference ref) {
+                if (!seenRef) {
+                    CompilerDirectives.transferToInterpreterAndInvalidate();
+                    seenRef = true;
+                }
                 ref.setValue(writeMixed(ref.getValue(), keys, at + 1, value));
             } else {
                 Object child = writeMixed(raw, keys, at + 1, value);
@@ -391,6 +414,10 @@ public final class IndexLValueNode extends LValueNode {
             return a.forWrite();
         }
         if (v == null || v == PhpNull.INSTANCE) {
+            if (!seenCreate) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                seenCreate = true;
+            }
             return new PhpArray();
         }
         if (v instanceof String s && s.isEmpty()) {
