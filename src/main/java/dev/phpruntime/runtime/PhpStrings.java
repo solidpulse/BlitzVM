@@ -218,6 +218,10 @@ public final class PhpStrings {
 
     /** Strict decode and validation together, for /u subjects that need Java text. */
     public static String toJavaUtf8OrNull(String s) {
+        if (isAscii(s)) {
+            // ASCII bytes are valid UTF-8 and decode to the same chars; skip the decoder and copies.
+            return s;
+        }
         try {
             return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes(s))).toString();
