@@ -436,7 +436,9 @@ final class JsonFunctions {
                 throw new Fail(ERROR_DEPTH);
             }
             pos++; // '{'
-            PhpArray arr = new PhpArray();
+            // JSON object members always have string keys; start in the hash layout so the first
+            // member does not convert the array.
+            PhpArray arr = PhpArray.withCapacity(8, true);
             skipSpace();
             if (peek() == '}') {
                 pos++;
