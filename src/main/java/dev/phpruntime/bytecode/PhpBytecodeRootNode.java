@@ -2431,6 +2431,38 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Slow paths behind boundaries, so operations stay small when compiled. */
     static final class Ops {
+        // Spread and named calls build their argument lists on the heap, and builtin
+        // by-reference writeback goes through lvalue nodes that take the frame. Behind these
+        // boundaries the frame is materialized instead of escaping from compiled code, and no
+        // node is created in compiled code. Only functions with such calls pay for it.
+        @TruffleBoundary
+        static void addRawVarArgBoundary(com.oracle.truffle.api.frame.MaterializedFrame frame,
+                                         CallArgHelper.RawCallArgs raw, Object callee, LocalAccessor acc, VarInfo info,
+                                         String name, boolean spread, BytecodeNode bytecode, int bci, Node node,
+                                         SiteNode site) {
+            addRawVarArg(frame, raw, callee, acc, info, name, spread, bytecode, bci, node, site);
+        }
+
+        @TruffleBoundary
+        static void addRawPlaceArgBoundary(com.oracle.truffle.api.frame.MaterializedFrame frame,
+                                           CallArgHelper.RawCallArgs raw, Object callee,
+                                           dev.phpruntime.nodes.var.LValueNode engine, PlaceSpec spec,
+                                           Object prepared, String name, boolean spread, Node site) {
+            addRawPlaceArg(frame, raw, callee, engine, spec, prepared, name, spread, site);
+        }
+
+        @TruffleBoundary
+        static void addRawValueArgBoundary(CallArgHelper.RawCallArgs raw, Object callee, Object value, int kind,
+                                           String name, boolean spread, Node site) {
+            addRawValueArg(raw, callee, value, kind, name, spread, site);
+        }
+
+        @TruffleBoundary
+        static Object callComplexBuiltinBoundary(com.oracle.truffle.api.frame.MaterializedFrame frame,
+                                                 Builtins.Def def, CallArgHelper.RawCallArgs raw, Node site) {
+            return CallArgHelper.callComplexBuiltinRaw(frame, def, raw, site);
+        }
+
         @TruffleBoundary
         static long refMaskSlow(com.oracle.truffle.api.nodes.RootNode root) {
             PhpFunctionRootNode fn = PhpFunctionRootNode.of(root);
@@ -4049,8 +4081,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             Object callee = calleeLocal.getObject(bytecode, frame);
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawLocal.getObject(bytecode, frame);
-            Ops.addRawVarArg(frame, raw, callee, acc, info, name.isEmpty() ? null : name, spread,
-                    bytecode, bci, node, location);
+            Ops.addRawVarArgBoundary(frame.materialize(), raw, callee, acc, info, name.isEmpty() ? null : name,
+                    spread, bytecode, bci, node, location);
         }
     }
 
@@ -4070,8 +4102,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             Object callee = calleeLocal.getObject(bytecode, frame);
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawLocal.getObject(bytecode, frame);
-            Ops.addRawPlaceArg(frame, raw, callee, engine, spec, prepared, name.isEmpty() ? null : name,
-                    spread, location);
+            Ops.addRawPlaceArgBoundary(frame.materialize(), raw, callee, engine, spec, prepared,
+                    name.isEmpty() ? null : name, spread, location);
         }
     }
 
@@ -4089,7 +4121,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         @Cached(value = "create(bytecode, $bytecodeIndex)", neverDefault = true) SiteNode location) {
             Object callee = calleeLocal.getObject(bytecode, frame);
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawLocal.getObject(bytecode, frame);
-            Ops.addRawValueArg(raw, callee, value, kind, name.isEmpty() ? null : name, spread, location);
+            Ops.addRawValueArgBoundary(raw, callee, value, kind, name.isEmpty() ? null : name, spread, location);
         }
     }
 
@@ -4105,7 +4137,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
             Builtins.Def builtin = builtinCallee(callee);
             if (builtin != null) {
-                return CallArgHelper.callComplexBuiltinRaw(frame, builtin, raw, location);
+                return Ops.callComplexBuiltinBoundary(frame.materialize(), builtin, raw, location);
             }
             PhpFunction fn = (PhpFunction) callee;
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
@@ -4183,7 +4215,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 }
                 case MAGIC_CALL -> dispatch.call(cb.callTarget(), new Object[]{
                         cb.boundThis(), cb.calledClass(), cb.magicMethodName(), CallArgHelper.magicArray(raw)});
-                case BUILTIN -> CallArgHelper.callComplexBuiltinRaw(frame, cb.builtin(), raw, location);
+                case BUILTIN -> Ops.callComplexBuiltinBoundary(frame.materialize(), cb.builtin(), raw, location);
             };
             return Ops.ret(keepRef, result);
         }
