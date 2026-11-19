@@ -569,21 +569,29 @@ public final class PhpClass {
      */
     @TruffleBoundary
     public Object lookupStaticConstant(String name) {
+        Object v = findStaticConstant(name);
+        return v == NEEDS_REQUEST ? null : v;
+    }
+
+    /** Marks a constant found with an initializer: the walk stops there, as in lookupConstant. */
+    private static final Object NEEDS_REQUEST = new Object();
+
+    private Object findStaticConstant(String name) {
         if (name.equalsIgnoreCase("class")) {
             return template.name();
         }
         PhpClassTemplate.ConstantDecl own = constantDecls.get(name);
         if (own != null) {
-            return own.valueTarget() == null ? own.constValue() : null;
+            return own.valueTarget() == null ? own.constValue() : NEEDS_REQUEST;
         }
         if (parent != null) {
-            Object p = parent.lookupStaticConstant(name);
+            Object p = parent.findStaticConstant(name);
             if (p != null) {
                 return p;
             }
         }
         for (PhpClass iface : interfaces) {
-            Object iv = iface.lookupStaticConstant(name);
+            Object iv = iface.findStaticConstant(name);
             if (iv != null) {
                 return iv;
             }
