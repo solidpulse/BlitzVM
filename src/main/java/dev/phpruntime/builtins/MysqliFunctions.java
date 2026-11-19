@@ -626,7 +626,14 @@ final class MysqliFunctions {
             l.closed = false;
             l.host = host;
             l.charset = "utf8mb4";
-            l.serverInfo = PhpStrings.fromJava(blocking(ctx, () -> conn.getMetaData().getDatabaseProductVersion()));
+            // The handshake already carries the server version; querying it again costs a round trip.
+            String info;
+            if (conn instanceof org.mariadb.jdbc.Connection mariadb) {
+                info = mariadb.getContext().getVersion().getVersion();
+            } else {
+                info = blocking(ctx, () -> conn.getMetaData().getDatabaseProductVersion());
+            }
+            l.serverInfo = PhpStrings.fromJava(info);
             st.connectErrno = 0;
             st.connectError = null;
             clearError(l);
