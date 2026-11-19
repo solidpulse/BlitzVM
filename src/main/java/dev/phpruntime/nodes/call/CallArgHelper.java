@@ -34,9 +34,19 @@ public final class CallArgHelper {
 
     public static Object unwrapReturn(Object res) {
         if (res instanceof PhpReference ref) {
-            return ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
+            return unwrapReturnedRef(ref);
         }
         return res;
+    }
+
+    /**
+     * Only functions returning by reference return a cell. Out of line, so the unwrap and the
+     * append-buffer conversion are not compiled into every call's return.
+     */
+    @TruffleBoundary
+    private static Object unwrapReturnedRef(PhpReference ref) {
+        Object v = ref.getValue();
+        return v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
     }
 
     /** Evaluates one positional argument for a user function parameter that may be by-reference. */

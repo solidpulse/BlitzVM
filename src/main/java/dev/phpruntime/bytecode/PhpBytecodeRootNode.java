@@ -1476,7 +1476,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ForeachValue {
         @Specialization
         static Object value(Cursor c, @Bind PhpBytecodeRootNode root,
-                            @Cached("create(root)") IteratorNode iterator) {
+                            @Cached("create(root)") IteratorNode iterator,
+                            @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile refSeen) {
             Object raw;
             if (c.array != null) {
                 raw = c.array.rawValueAt(c.pos);
@@ -1485,7 +1486,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             } else {
                 raw = c.entryValue();
             }
-            Object v = raw instanceof PhpReference ref ? ref.getValue() : raw;
+            Object v = raw;
+            if (raw instanceof PhpReference ref) {
+                // Elements bound by reference are rare; until a loop sees one this is a deopt.
+                refSeen.enter();
+                v = ref.getValue();
+            }
             return v == null ? PhpNull.INSTANCE : v;
         }
     }
