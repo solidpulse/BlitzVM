@@ -309,10 +309,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         if (info.kind().isCell()) {
             cell(frame, acc, info, bytecode).setValue(v);
         } else if (v instanceof Long l) {
-            acc.setLong(bytecode, frame, l);
+            if (info.kind().longBoxed()) {
+                acc.setObject(bytecode, frame, l);
+            } else {
+                acc.setLong(bytecode, frame, l);
+            }
         } else if (v instanceof Double d) {
-            acc.setDouble(bytecode, frame, d);
+            if (info.kind().doubleBoxed()) {
+                acc.setObject(bytecode, frame, d);
+            } else {
+                acc.setDouble(bytecode, frame, d);
+            }
         } else {
+            info.kind().markObject();
             acc.setObject(bytecode, frame, v);
         }
     }
@@ -336,7 +345,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ReadVar {
         // On a mismatch the DSL returns the exception's value as the result, so it must carry
         // the generic read's value (unwrapped, flattened, or the undefined warning's null).
-        @Specialization(rewriteOn = UnexpectedResultException.class)
+        @Specialization(guards = {"!info.kind().isCell()", "info.kind().longSlot()"},
+                rewriteOn = UnexpectedResultException.class)
         static long readLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode,
                              @Bind("$bytecodeIndex") int bci, @Bind Node node) throws UnexpectedResultException {
             try {
@@ -346,7 +356,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
         }
 
-        @Specialization(rewriteOn = UnexpectedResultException.class)
+        @Specialization(guards = {"!info.kind().isCell()", "info.kind().doubleSlot()"},
+                rewriteOn = UnexpectedResultException.class)
         static double readDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, @Bind BytecodeNode bytecode,
                                  @Bind("$bytecodeIndex") int bci, @Bind Node node) throws UnexpectedResultException {
             try {
@@ -395,14 +406,22 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = "!info.kind().isCell()")
         static long writeLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, long value,
                               @Bind BytecodeNode bytecode) {
-            acc.setLong(bytecode, frame, value);
+            if (info.kind().longBoxed()) {
+                acc.setObject(bytecode, frame, value);
+            } else {
+                acc.setLong(bytecode, frame, value);
+            }
             return value;
         }
 
         @Specialization(guards = "!info.kind().isCell()")
         static double writeDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, double value,
                                   @Bind BytecodeNode bytecode) {
-            acc.setDouble(bytecode, frame, value);
+            if (info.kind().doubleBoxed()) {
+                acc.setObject(bytecode, frame, value);
+            } else {
+                acc.setDouble(bytecode, frame, value);
+            }
             return value;
         }
 
@@ -422,13 +441,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = "!info.kind().isCell()")
         static void storeLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, long value,
                               @Bind BytecodeNode bytecode) {
-            acc.setLong(bytecode, frame, value);
+            if (info.kind().longBoxed()) {
+                acc.setObject(bytecode, frame, value);
+            } else {
+                acc.setLong(bytecode, frame, value);
+            }
         }
 
         @Specialization(guards = "!info.kind().isCell()")
         static void storeDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, double value,
                                 @Bind BytecodeNode bytecode) {
-            acc.setDouble(bytecode, frame, value);
+            if (info.kind().doubleBoxed()) {
+                acc.setObject(bytecode, frame, value);
+            } else {
+                acc.setDouble(bytecode, frame, value);
+            }
         }
 
         @Specialization(replaces = {"storeLong", "storeDouble"})
@@ -503,11 +530,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static void step(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean increment,
                          @Bind BytecodeNode bytecode) {
-            if (!info.kind().isCell()) {
+            if (!info.kind().isCell() && info.kind().longSlot()) {
                 try {
                     long l = acc.getLong(bytecode, frame);
                     if (l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
-                        acc.setLong(bytecode, frame, increment ? l + 1 : l - 1);
+                        long updated = increment ? l + 1 : l - 1;
+                        if (info.kind().longBoxed()) {
+                            acc.setObject(bytecode, frame, updated);
+                        } else {
+                            acc.setLong(bytecode, frame, updated);
+                        }
                         return;
                     }
                 } catch (UnexpectedResultException e) {
@@ -539,7 +571,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = boolean.class, name = "increment")
     @ConstantOperand(type = boolean.class, name = "prefix")
     public static final class IncDecVar {
-        @Specialization(guards = "!info.kind().isCell()", rewriteOn = UnexpectedResultException.class)
+        @Specialization(guards = {"!info.kind().isCell()", "info.kind().longSlot()"},
+                rewriteOn = UnexpectedResultException.class)
         static long incLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean increment, boolean prefix,
                             @Bind BytecodeNode bytecode) throws UnexpectedResultException {
             long l;
@@ -552,7 +585,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 throw new UnexpectedResultException(generic(frame, acc, info, increment, prefix, bytecode));
             }
             long u = increment ? l + 1 : l - 1;
-            acc.setLong(bytecode, frame, u);
+            if (info.kind().longBoxed()) {
+                acc.setObject(bytecode, frame, u);
+            } else {
+                acc.setLong(bytecode, frame, u);
+            }
             return prefix ? u : l;
         }
 
@@ -607,6 +644,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return result;
             }
             String suffix = value instanceof String s ? s : Ops.toStr(value);
+            info.kind().markObject();
             if (info.kind().isCell()) {
                 String r = cell(frame, acc, info, bytecode).appendString(suffix, resultNeeded);
                 return resultNeeded ? r : PhpNull.INSTANCE;

@@ -11,13 +11,18 @@ import com.oracle.truffle.api.Truffle;
  * {@code $a * $t / 8} is either) is stored as a boxed object instead: reading a typed
  * slot in code that cannot tell int from float makes a new box on every read, and two
  * different box types meeting in one value cannot be optimized away, while a stored
- * box is shared by all the reads. Both facts are Assumptions, so all compiled code that
- * relied on them is thrown away together when they change.
+ * box is shared by all the reads. A variable that has held any non-number ({@code null},
+ * {@code false}, a string, an array, an object) also stores its numbers boxed: mixing
+ * unboxed and object slots would otherwise change the bytecode local's slot tag back
+ * and forth on every call, and each tag change invalidates all compiled code of the
+ * function. Both facts are Assumptions, so all compiled code that relied on them is
+ * thrown away together when they change.
  */
 public final class VarKind {
 
     private final Assumption noInts = Truffle.getRuntime().createAssumption("variable never held an int");
     private final Assumption noFloats = Truffle.getRuntime().createAssumption("variable never held a float");
+    private final Assumption noObjects = Truffle.getRuntime().createAssumption("variable never held a non-number");
     private final Assumption notCell = Truffle.getRuntime().createAssumption("variable is not a reference cell");
     private final Assumption notAppendTarget = Truffle.getRuntime().createAssumption("variable is not an append target");
 
@@ -44,13 +49,31 @@ public final class VarKind {
         return !noInts.isValid() && !noFloats.isValid();
     }
 
+    /** True when the variable has only ever held ints, so it is stored in a long slot. */
+    public boolean longSlot() {
+        return noObjects.isValid() && noFloats.isValid() && !noInts.isValid();
+    }
+
+    /** True when the variable has only ever held floats, so it is stored in a double slot. */
+    public boolean doubleSlot() {
+        return noObjects.isValid() && noInts.isValid() && !noFloats.isValid();
+    }
+
+    /** Records a write of a non-number; the variable's numbers are then stored boxed. */
+    public void markObject() {
+        if (noObjects.isValid()) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            noObjects.invalidate();
+        }
+    }
+
     /** Records an int write; true when the int should be stored boxed. */
     public boolean longBoxed() {
         if (noInts.isValid()) {
             CompilerDirectives.transferToInterpreterAndInvalidate();
             noInts.invalidate();
         }
-        return !noFloats.isValid();
+        return !noFloats.isValid() || !noObjects.isValid();
     }
 
     /** Records a float write; true when the float should be stored boxed. */
@@ -59,6 +82,6 @@ public final class VarKind {
             CompilerDirectives.transferToInterpreterAndInvalidate();
             noFloats.invalidate();
         }
-        return !noInts.isValid();
+        return !noInts.isValid() || !noObjects.isValid();
     }
 }
