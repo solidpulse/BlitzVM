@@ -1,0 +1,92 @@
+existing file
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+string(11) "<base>/file"
+existing directory
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+string(10) "<base>/dir"
+missing
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+symlink to file
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+string(11) "<base>/file"
+symlink to directory
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+string(10) "<base>/dir"
+symlink to missing target
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(true)
+file with trailing slash
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+directory with trailing slash
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+string(10) "<base>/dir"
+empty path
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(true)
+relative existing file
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+string(11) "<base>/file"
+relative existing directory
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+string(10) "<base>/dir"
+relative missing
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+relative through dot dot
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+string(11) "<base>/file"
+relative with missing parent before dot dot
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+ValueError: realpath(): Argument #1 ($path) must not contain any null bytes
