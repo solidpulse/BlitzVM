@@ -1036,6 +1036,10 @@ final class MysqliFunctions {
      */
     private static boolean databaseIndependent(String sql) {
         String s = sql.stripLeading();
+        if (s.toLowerCase(java.util.Locale.ROOT).contains("_database")) {
+            // @@character_set_database and @@collation_database follow the selected database.
+            return false;
+        }
         return SET_NAMES.matcher(s).matches() || SET_SESSION.matcher(s).matches()
                 || SELECT_SESSION_VARS.matcher(s).matches();
     }
