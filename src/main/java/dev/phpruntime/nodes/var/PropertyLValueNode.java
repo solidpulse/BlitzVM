@@ -4,6 +4,7 @@ import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
@@ -44,9 +45,15 @@ public final class PropertyLValueNode extends LValueNode {
                               boolean canInitReadonly, String declaringClass) {
     }
 
-    private static final Resolution MEGAMORPHIC = new Resolution(-2, -2, null, false, false, false, false, null);
+    /** Most class hierarchies (or hierarchy and caller pairs) one site caches before going megamorphic. */
+    private static final int CACHE_LIMIT = 8;
+    private static final Resolution[] MEGAMORPHIC = new Resolution[0];
 
-    @CompilationFinal private Resolution cache;
+    /**
+     * Resolutions seen at this site, replaced as a whole when one is added. A method of a base class
+     * run on several subclasses (WP_Dependencies on WP_Styles and WP_Scripts) needs several.
+     */
+    @CompilationFinal(dimensions = 1) private Resolution[] cache;
     /** Language-wide class id of {@link #callingClassLower}, resolved on first use; -1 until then. */
     @CompilationFinal private int callerClassId = -1;
 
@@ -502,19 +509,30 @@ public final class PropertyLValueNode extends LValueNode {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
-            Resolution c = cache;
-            if (c != null && h == c.hierarchyId()
-                    && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
-                return c;
+            Resolution[] entries = cache;
+            if (entries == MEGAMORPHIC) {
+                return null;
             }
-            if (c != MEGAMORPHIC) {
-                CompilerDirectives.transferToInterpreterAndInvalidate();
-                cacheResolution(cls, h, effectiveCallerLower(frame, keys), callerHierarchyId(frame, keys));
-                c = cache;
-                if (c != null && c != MEGAMORPHIC && h == c.hierarchyId()
-                        && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
-                    return c;
-                }
+            Resolution hit = lookup(entries, h, frame, keys);
+            if (hit != null) {
+                return hit;
+            }
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            cacheResolution(cls, h, effectiveCallerLower(frame, keys), callerHierarchyId(frame, keys));
+            return lookup(cache, h, frame, keys);
+        }
+        return null;
+    }
+
+    @ExplodeLoop
+    private Resolution lookup(Resolution[] entries, long h, VirtualFrame frame, Object[] keys) {
+        if (entries == null) {
+            return null;
+        }
+        for (int i = 0; i < entries.length; i++) {
+            Resolution c = entries[i];
+            if (h == c.hierarchyId() && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
+                return c;
             }
         }
         return null;
@@ -543,13 +561,30 @@ public final class PropertyLValueNode extends LValueNode {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
-            if (cache == null) {
-                cache = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED,
+            Resolution[] entries = cache;
+            if (entries != MEGAMORPHIC) {
+                Resolution entry = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED,
                         res.accessible(), res.isReadonly(), res.canInitReadonly(), res.declaringClass());
-            } else if (cache.hierarchyId() != h || ((traitSelfSlot >= 0 || traitCallerInKeys
-                    || res.visibility() == Visibility.PROTECTED || res.isReadonly())
-                    && cache.callerHierarchyId() != callerH)) {
-                cache = MEGAMORPHIC;
+                boolean present = false;
+                if (entries != null) {
+                    for (Resolution c : entries) {
+                        present |= c.hierarchyId() == h && (!callerSensitive(c) || c.callerHierarchyId() == callerH);
+                    }
+                }
+                if (!present) {
+                    Resolution[] next;
+                    if (entries == null) {
+                        next = new Resolution[]{entry};
+                    } else if (entries.length >= CACHE_LIMIT) {
+                        next = MEGAMORPHIC;
+                    } else {
+                        next = java.util.Arrays.copyOf(entries, entries.length + 1);
+                        next[entries.length] = entry;
+                    }
+                    // Readers take the array without the lock: its elements must be visible first.
+                    java.lang.invoke.VarHandle.storeStoreFence();
+                    cache = next;
+                }
             }
         } finally {
             lock.unlock();
