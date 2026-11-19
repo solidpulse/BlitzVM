@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import com.oracle.truffle.api.TruffleFile;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.HostFiles;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
@@ -207,7 +208,7 @@ final class StreamFunctions {
         }
         try {
             TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (f.isDirectory() && m != 'r') {
+            if (isDir(ctx, path) && m != 'r') {
                 ctx.warning(fn + "(" + path + "): Failed to open stream: Is a directory", 0);
                 return null;
             }
@@ -480,7 +481,7 @@ final class StreamFunctions {
     static PhpResource openDir(PhpContext ctx, String path, String fn) {
         try {
             TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!dir.isDirectory()) {
+            if (!isDir(ctx, path)) {
                 throw new IOException();
             }
             List<String> names = new ArrayList<>();
@@ -587,7 +588,7 @@ final class StreamFunctions {
             String path = PhpOps.toStr(a[0]);
             try {
                 TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-                if (!f.exists()) {
+                if (!exists(ctx, path)) {
                     f.newByteChannel(Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE)).close();
                 }
                 long now = System.currentTimeMillis() / 1000;
@@ -606,7 +607,7 @@ final class StreamFunctions {
             String to = PhpOps.toStr(a[1]);
             try {
                 TruffleFile src = ctx.env().getPublicTruffleFile(PhpStrings.toJava(from));
-                if (!src.isRegularFile()) {
+                if (!isFile(ctx, from)) {
                     throw new IOException();
                 }
                 consumeStreamId(ctx);
@@ -642,7 +643,7 @@ final class StreamFunctions {
             }
             try {
                 TruffleFile dir = dirName.isEmpty() ? null : ctx.env().getPublicTruffleFile(PhpStrings.toJava(dirName));
-                if (dir == null || !dir.isDirectory() || !dir.isWritable()) {
+                if (dir == null || !isDir(ctx, dirName) || !isWritable(ctx, dirName)) {
                     ctx.warning("tempnam(): file created in the system's temporary directory", 0);
                     dir = ctx.env().getPublicTruffleFile(EnvFunctions.tempDir());
                 }
@@ -687,7 +688,7 @@ final class StreamFunctions {
     static byte[] readFile(PhpContext ctx, String path, String fn) {
         try {
             TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!f.isRegularFile()) {
+            if (!isFile(ctx, path)) {
                 throw new IOException();
             }
             byte[] data = f.readAllBytes();
@@ -717,7 +718,15 @@ final class StreamFunctions {
     /** stat()/lstat(): PHP's 26-entry array, or false with a warning when fn is not null. */
     static Object stat(PhpContext ctx, String path, boolean noFollow, String fn) {
         try {
-            TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
+            String javaPath = PhpStrings.toJava(path);
+            TruffleFile f = ctx.env().getPublicTruffleFile(javaPath);
+            Boolean hostExists = noFollow ? null : HostFiles.exists(ctx, javaPath);
+            if (hostExists != null && !hostExists) {
+                if (fn != null) {
+                    ctx.warning(fn + "(): " + (fn.equals("lstat") ? "Lstat" : "stat") + " failed for " + path, 0);
+                }
+                return false;
+            }
             LinkOption[] opts = noFollow ? new LinkOption[]{LinkOption.NOFOLLOW_LINKS} : new LinkOption[0];
             TruffleFile.Attributes at = f.getAttributes(STAT_ATTRS, opts);
             long size = num(at.get(TruffleFile.SIZE));
@@ -953,16 +962,53 @@ final class StreamFunctions {
     }
 
     private static boolean exists(PhpContext ctx, String path) {
+        String javaPath = PhpStrings.toJava(path);
+        Boolean host = HostFiles.exists(ctx, javaPath);
+        if (host != null) {
+            return host;
+        }
         try {
-            return ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)).exists();
+            return ctx.env().getPublicTruffleFile(javaPath).exists();
+        } catch (SecurityException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static boolean isFile(PhpContext ctx, String path) {
+        String javaPath = PhpStrings.toJava(path);
+        Boolean host = HostFiles.isFile(ctx, javaPath);
+        if (host != null) {
+            return host;
+        }
+        try {
+            return ctx.env().getPublicTruffleFile(javaPath).isRegularFile();
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }
     }
 
     private static boolean isDir(PhpContext ctx, String path) {
+        String javaPath = PhpStrings.toJava(path);
+        Boolean host = HostFiles.isDirectory(ctx, javaPath);
+        if (host != null) {
+            return host;
+        }
         try {
-            return ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)).isDirectory();
+            return ctx.env().getPublicTruffleFile(javaPath).isDirectory();
+        } catch (SecurityException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static boolean isWritable(PhpContext ctx, String path) {
+        String javaPath = PhpStrings.toJava(path);
+        Boolean host = HostFiles.isWritable(ctx, javaPath);
+        if (host != null) {
+            return host;
+        }
+        try {
+            TruffleFile f = ctx.env().getPublicTruffleFile(javaPath);
+            return f.exists() && f.isWritable();
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }

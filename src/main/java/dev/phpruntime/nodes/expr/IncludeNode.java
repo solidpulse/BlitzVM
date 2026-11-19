@@ -12,6 +12,7 @@ import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.PhpRootNode;
+import dev.phpruntime.runtime.HostFiles;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
@@ -103,7 +104,7 @@ public final class IncludeNode extends PhpNode {
             return new PreparedInclude(hit.target(), hit.canonicalPath());
         }
         TruffleLanguage.Env env = ctx.env();
-        TruffleFile resolved = resolveFile(env, path);
+        TruffleFile resolved = resolveFile(ctx, env, path);
         if (resolved == null) {
             return missing(ctx, path);
         }
@@ -168,7 +169,7 @@ public final class IncludeNode extends PhpNode {
         return Boolean.FALSE;
     }
 
-    private TruffleFile resolveFile(TruffleLanguage.Env env, String path) {
+    private TruffleFile resolveFile(PhpContext ctx, TruffleLanguage.Env env, String path) {
         if (path.isEmpty()) {
             return null;
         }
@@ -176,7 +177,7 @@ public final class IncludeNode extends PhpNode {
             path = PhpStrings.toJava(path);
             TruffleFile direct = env.getPublicTruffleFile(path);
             if (direct.isAbsolute()) {
-                return isRegularFile(direct) ? direct : null;
+                return isRegularFile(ctx, direct) ? direct : null;
             }
             RootNode root = getRootNode();
             String srcPath = root instanceof PhpRootNode r && r.source() != null ? r.source().getPath() : null;
@@ -184,13 +185,13 @@ public final class IncludeNode extends PhpNode {
                 TruffleFile parent = env.getPublicTruffleFile(srcPath).getParent();
                 if (parent != null) {
                     TruffleFile inDir = parent.resolve(path);
-                    if (isRegularFile(inDir)) {
+                    if (isRegularFile(ctx, inDir)) {
                         return inDir;
                     }
                 }
             }
             TruffleFile inCwd = env.getCurrentWorkingDirectory().resolve(path);
-            if (isRegularFile(inCwd)) {
+            if (isRegularFile(ctx, inCwd)) {
                 return inCwd;
             }
         } catch (SecurityException | IllegalArgumentException e) {
@@ -199,7 +200,11 @@ public final class IncludeNode extends PhpNode {
         return null;
     }
 
-    private static boolean isRegularFile(TruffleFile file) {
+    private static boolean isRegularFile(PhpContext ctx, TruffleFile file) {
+        Boolean host = HostFiles.isFile(ctx, file.getPath());
+        if (host != null) {
+            return host;
+        }
         try {
             return file.isRegularFile();
         } catch (SecurityException | IllegalArgumentException e) {
@@ -211,7 +216,7 @@ public final class IncludeNode extends PhpNode {
     @TruffleBoundary
     public static boolean tryIncludeOnce(PhpContext ctx, String path) {
         TruffleLanguage.Env env = ctx.env();
-        TruffleFile resolved = resolveStatic(env, ctx.request().scriptFilename, path);
+        TruffleFile resolved = resolveStatic(ctx, env, ctx.request().scriptFilename, path);
         if (resolved == null) {
             return false;
         }
@@ -236,7 +241,7 @@ public final class IncludeNode extends PhpNode {
         }
     }
 
-    private static TruffleFile resolveStatic(TruffleLanguage.Env env, String scriptFilename, String path) {
+    private static TruffleFile resolveStatic(PhpContext ctx, TruffleLanguage.Env env, String scriptFilename, String path) {
         if (path == null || path.isEmpty()) {
             return null;
         }
@@ -246,13 +251,13 @@ public final class IncludeNode extends PhpNode {
                 TruffleFile parent = env.getPublicTruffleFile(scriptFilename).getParent();
                 if (parent != null) {
                     TruffleFile inDir = parent.resolve(path);
-                    if (isRegularFile(inDir)) {
+                    if (isRegularFile(ctx, inDir)) {
                         return inDir;
                     }
                 }
             }
             TruffleFile inCwd = env.getCurrentWorkingDirectory().resolve(path);
-            if (isRegularFile(inCwd)) {
+            if (isRegularFile(ctx, inCwd)) {
                 return inCwd;
             }
         } catch (SecurityException | IllegalArgumentException ignored) {

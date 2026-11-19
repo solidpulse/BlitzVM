@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import com.oracle.truffle.api.TruffleFile;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.HostFiles;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpResource;
@@ -162,22 +163,27 @@ final class GzipFunctions {
                 level = 6;
             }
             try {
-                TruffleFile file = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
+                String javaPath = PhpStrings.toJava(path);
+                TruffleFile file = ctx.env().getPublicTruffleFile(javaPath);
                 byte[] content = new byte[0];
                 byte[] prefix = new byte[0];
                 boolean readOnly = first == 'r';
+                Boolean hostExists = HostFiles.exists(ctx, javaPath);
+                Boolean hostDirectory = HostFiles.isDirectory(ctx, javaPath);
+                boolean exists = hostExists != null ? hostExists : file.exists();
+                boolean directory = hostDirectory != null ? hostDirectory : file.isDirectory();
                 if (first == 'r') {
-                    if (!file.exists() || file.isDirectory()) {
+                    if (!exists || directory) {
                         return null;
                     }
                     content = decompress(file.readAllBytes());
                 } else if (first == 'a') {
-                    if (file.exists()) {
+                    if (exists) {
                         prefix = file.readAllBytes();
                         content = decompress(prefix);
                     }
                 } else if (first == 'x') {
-                    if (file.exists()) {
+                    if (exists) {
                         return null;
                     }
                 }
