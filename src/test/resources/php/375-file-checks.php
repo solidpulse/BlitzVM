@@ -43,6 +43,12 @@ check5('relative missing', 'missing', $base);
 check5('relative through dot dot', 'dir/../file', $base);
 check5('relative with missing parent before dot dot', 'missing/../file', $base);
 
+chdir('dir');
+check5('relative after relative chdir', '../file', $base);
+var_dump(is_dir('.'), is_file('../file'));
+chdir('..');
+var_dump(is_dir('file'), is_file('file'));
+
 foreach (['file_exists', 'is_file', 'is_dir', 'is_readable', 'is_writable', 'is_executable'] as $fn) {
     var_dump($fn("a\0b"));
 }
