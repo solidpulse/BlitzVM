@@ -56,7 +56,6 @@ public final class PhpArray implements TruffleObject {
     }
 
     /** Called on assignment; returns the same instance with an extra owner. */
-    @TruffleBoundary
     public PhpArray share() {
         if (!immutable) {
             shared++;
@@ -65,19 +64,25 @@ public final class PhpArray implements TruffleObject {
     }
 
     /** Releases a temporary foreach owner; forWrite may already have consumed the last share. */
-    @TruffleBoundary
     public void releaseShare() {
         if (shared > 0) {
             shared--;
         }
     }
 
-    /** Returns an instance safe to mutate: this one if unshared, otherwise a deep-enough copy. */
-    @TruffleBoundary
+    /**
+     * Returns an instance safe to mutate: this one if unshared, otherwise a deep-enough copy.
+     * The unshared check stays inline in compiled code; only the copy is behind a boundary.
+     */
     public PhpArray forWrite() {
         if (shared == 0 && !immutable) {
             return this;
         }
+        return copyForWrite();
+    }
+
+    @TruffleBoundary
+    private PhpArray copyForWrite() {
         if (!immutable) {
             shared--;
         }
