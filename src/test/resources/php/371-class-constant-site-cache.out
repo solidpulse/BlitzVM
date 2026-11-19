@@ -1,0 +1,45 @@
+array(6) {
+  [0]=>
+  string(4) "base"
+  [1]=>
+  int(7)
+  [2]=>
+  string(5) "iface"
+  [3]=>
+  string(4) "Base"
+  [4]=>
+  string(3) "one"
+  [5]=>
+  string(5) "iface"
+}
+array(5) {
+  [0]=>
+  int(7)
+  [1]=>
+  int(7)
+  [2]=>
+  string(5) "three"
+  [3]=>
+  string(4) "four"
+  [4]=>
+  string(4) "Five"
+}
+array(3) {
+  [0]=>
+  string(12) "base-dynamic"
+  [1]=>
+  string(12) "base-dynamic"
+  [2]=>
+  string(12) "base-dynamic"
+}
+string(4) "base"
+string(3) "one"
+string(3) "two"
+string(5) "three"
+string(4) "four"
+string(4) "five"
+string(12) "base-dynamic"
+string(12) "base-dynamic"
+string(6) "inside"
+Error: Undefined constant Base::MISSING
+Error: Undefined constant One::MISSING
