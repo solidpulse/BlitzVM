@@ -607,6 +607,12 @@ final class MysqliFunctions {
         props.setProperty("transformedBitIsBoolean", "false");
         props.setProperty("connectTimeout", "10000");
         props.setProperty("permitMysqlScheme", "true");
+        // php's connection leaves the session at the server's default mode. The driver would
+        // otherwise append STRICT_TRANS_TABLES, track session variables, and add IGNORE_SPACE
+        // through its CLIENT_IGNORE_SPACE capability; the explicit DEFAULT undoes the last one.
+        props.setProperty("jdbcCompliantTruncation", "false");
+        props.setProperty("disableSessionTracking", "true");
+        props.setProperty("sessionVariables", "sql_mode=DEFAULT");
         final Link l = link;
         try {
             Connection conn = blocking(ctx, () -> {
