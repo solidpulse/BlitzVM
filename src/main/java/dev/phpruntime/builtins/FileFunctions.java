@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import com.oracle.truffle.api.TruffleFile;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.HostFiles;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
@@ -19,10 +20,10 @@ final class FileFunctions {
                 dirname(PhpOps.toStr(a[0]), a.length > 1 ? PhpOps.toLong(a[1]) : 1L));
         Builtins.def("basename", 1, 2, (ctx, a) ->
                 basename(PhpOps.toStr(a[0]), a.length > 1 ? PhpOps.toStr(a[1]) : ""));
-        Builtins.def("file_exists", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), TruffleFile::exists));
-        Builtins.def("is_file", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), TruffleFile::isRegularFile));
-        Builtins.def("is_dir", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), TruffleFile::isDirectory));
-        Builtins.def("is_readable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isReadable()));
+        Builtins.def("file_exists", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.EXISTS));
+        Builtins.def("is_file", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.FILE));
+        Builtins.def("is_dir", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.DIRECTORY));
+        Builtins.def("is_readable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.READABLE));
         Builtins.def("realpath", 1, 1, (ctx, a) -> realpath(ctx, PhpOps.toStr(a[0])));
         Builtins.def("pathinfo", 1, 2, (ctx, a) -> pathinfo(PhpOps.toStr(a[0]), a.length > 1 ? PhpOps.toLong(a[1]) : 15));
         io();
@@ -74,17 +75,39 @@ final class FileFunctions {
         return base;
     }
 
-    @FunctionalInterface
-    private interface FilePredicate {
-        boolean test(TruffleFile file);
+    private enum Check {
+        EXISTS, FILE, DIRECTORY, READABLE, WRITABLE, EXECUTABLE;
+
+        boolean test(TruffleFile file) {
+            return switch (this) {
+                case EXISTS -> file.exists();
+                case FILE -> file.isRegularFile();
+                case DIRECTORY -> file.isDirectory();
+                case READABLE -> file.exists() && file.isReadable();
+                case WRITABLE -> file.exists() && file.isWritable();
+                case EXECUTABLE -> file.exists() && file.isExecutable();
+            };
+        }
     }
 
-    private static boolean check(PhpContext ctx, String path, FilePredicate pred) {
+    private static boolean check(PhpContext ctx, String path, Check kind) {
         if (path.isEmpty()) {
             return false;
         }
+        String javaPath = PhpStrings.toJava(path);
+        Boolean host = switch (kind) {
+            case EXISTS -> HostFiles.exists(ctx, javaPath);
+            case FILE -> HostFiles.isFile(ctx, javaPath);
+            case DIRECTORY -> HostFiles.isDirectory(ctx, javaPath);
+            case READABLE -> HostFiles.isReadable(ctx, javaPath);
+            case WRITABLE -> HostFiles.isWritable(ctx, javaPath);
+            case EXECUTABLE -> HostFiles.isExecutable(ctx, javaPath);
+        };
+        if (host != null) {
+            return host;
+        }
         try {
-            return pred.test(ctx.env().getPublicTruffleFile(PhpStrings.toJava(path)));
+            return kind.test(ctx.env().getPublicTruffleFile(javaPath));
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }
@@ -123,8 +146,9 @@ final class FileFunctions {
                 continue;
             }
             if (part.equals("..") && prefix.length() > 0 && !prefix.toString().equals("/")) {
-                TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(prefix.toString()));
-                if (!dir.isDirectory()) {
+                String directory = PhpStrings.toJava(prefix.toString());
+                Boolean isDirectory = HostFiles.isDirectory(ctx, directory);
+                if (!(isDirectory != null ? isDirectory : ctx.env().getPublicTruffleFile(directory).isDirectory())) {
                     return false;
                 }
             }
@@ -137,6 +161,10 @@ final class FileFunctions {
     }
 
     private static Object realpath(PhpContext ctx, String path) {
+        if (path.indexOf('\0') >= 0) {
+            throw new PhpError(PhpError.VALUE_ERROR,
+                    "realpath(): Argument #1 ($path) must not contain any null bytes", null);
+        }
         boolean cacheable = REALPATH_TTL_NANOS > 0 && !path.isEmpty() && path.charAt(0) == '/';
         if (cacheable) {
             RealpathEntry e = REALPATH_CACHE.get(path);
@@ -145,10 +173,12 @@ final class FileFunctions {
             }
         }
         try {
+            String javaPath = PhpStrings.toJava(path);
             TruffleFile f = path.isEmpty()
                     ? ctx.env().getCurrentWorkingDirectory()
-                    : ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!f.exists() || !dotDotParentsExist(ctx, path)) {
+                    : ctx.env().getPublicTruffleFile(javaPath);
+            Boolean hostExists = HostFiles.exists(ctx, javaPath);
+            if (!(hostExists != null ? hostExists : f.exists()) || !dotDotParentsExist(ctx, path)) {
                 return false;
             }
             String resolved = PhpStrings.fromJava(f.getCanonicalFile().getPath());
@@ -220,7 +250,7 @@ final class FileFunctions {
             }
             TruffleFile f = file(ctx, path);
             try {
-                if (f == null || !f.isRegularFile()) {
+                if (f == null || !isFile(ctx, PhpStrings.toJava(path), f)) {
                     throw new IOException();
                 }
                 byte[] data = f.readAllBytes();
@@ -292,14 +322,14 @@ final class FileFunctions {
         });
         Builtins.def("filesize", 1, 1, (ctx, a) -> stat(ctx, "filesize", PhpOps.toStr(a[0]), f -> f.size()));
         Builtins.def("filemtime", 1, 1, (ctx, a) -> stat(ctx, "filemtime", PhpOps.toStr(a[0]), f -> f.getLastModifiedTime().toMillis() / 1000));
-        Builtins.def("is_writable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isWritable()));
-        Builtins.def("is_writeable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isWritable()));
-        Builtins.def("is_executable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), f -> f.exists() && f.isExecutable()));
+        Builtins.def("is_writable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.WRITABLE));
+        Builtins.def("is_writeable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.WRITABLE));
+        Builtins.def("is_executable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.EXECUTABLE));
         Builtins.def("chdir", 1, 1, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
             try {
                 TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-                if (!dir.isDirectory()) {
+                if (!isDirectory(ctx, PhpStrings.toJava(path), dir)) {
                     ctx.warning("chdir(): No such file or directory (errno 2)", 0);
                     return false;
                 }
@@ -320,7 +350,7 @@ final class FileFunctions {
             long order = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
             TruffleFile dir = file(ctx, path);
             try {
-                if (dir == null || !dir.isDirectory()) {
+                if (dir == null || !isDirectory(ctx, PhpStrings.toJava(path), dir)) {
                     throw new IOException();
                 }
                 java.util.List<String> names = new java.util.ArrayList<>();
@@ -346,11 +376,12 @@ final class FileFunctions {
             String path = PhpOps.toStr(a[0]);
             boolean recursive = a.length > 2 && PhpOps.toBool(a[2]);
             TruffleFile f = file(ctx, path);
+            String javaPath = PhpStrings.toJava(path);
             try {
                 if (f == null) {
                     throw new IOException();
                 }
-                if (f.exists()) {
+                if (exists(ctx, javaPath, f)) {
                     ctx.warning("mkdir(): File exists", 0);
                     return false;
                 }
@@ -367,6 +398,18 @@ final class FileFunctions {
         });
         Builtins.def("rmdir", 1, 2, (ctx, a) -> delete(ctx, "rmdir", PhpOps.toStr(a[0]), true));
         Builtins.def("unlink", 1, 2, (ctx, a) -> delete(ctx, "unlink", PhpOps.toStr(a[0]), false));
+        Builtins.def("symlink", 2, 2, (ctx, a) -> {
+            String target = PhpOps.toStr(a[0]);
+            String link = PhpOps.toStr(a[1]);
+            try {
+                TruffleFile linkFile = ctx.env().getPublicTruffleFile(PhpStrings.toJava(link));
+                linkFile.createSymbolicLink(ctx.env().getPublicTruffleFile(PhpStrings.toJava(target)));
+                return true;
+            } catch (IOException | SecurityException | IllegalArgumentException e) {
+                ctx.warning("symlink(): No such file or directory", 0);
+                return false;
+            }
+        });
     }
 
     private static TruffleFile file(PhpContext ctx, String path) {
@@ -380,6 +423,24 @@ final class FileFunctions {
         }
     }
 
+    /** f.exists(), through java.io.File when the context is on the host default file system. */
+    private static boolean exists(PhpContext ctx, String javaPath, TruffleFile file) {
+        Boolean host = HostFiles.exists(ctx, javaPath);
+        return host != null ? host : file.exists();
+    }
+
+    /** f.isRegularFile(), through java.io.File when the context is on the host default file system. */
+    private static boolean isFile(PhpContext ctx, String javaPath, TruffleFile file) {
+        Boolean host = HostFiles.isFile(ctx, javaPath);
+        return host != null ? host : file.isRegularFile();
+    }
+
+    /** f.isDirectory(), through java.io.File when the context is on the host default file system. */
+    private static boolean isDirectory(PhpContext ctx, String javaPath, TruffleFile file) {
+        Boolean host = HostFiles.isDirectory(ctx, javaPath);
+        return host != null ? host : file.isDirectory();
+    }
+
     @FunctionalInterface
     private interface FileStat {
         long get(TruffleFile file) throws IOException;
@@ -388,7 +449,7 @@ final class FileFunctions {
     private static Object stat(PhpContext ctx, String fn, String path, FileStat stat) {
         TruffleFile f = file(ctx, path);
         try {
-            if (f == null || !f.exists()) {
+            if (f == null || !exists(ctx, PhpStrings.toJava(path), f)) {
                 throw new IOException();
             }
             return stat.get(f);
@@ -401,18 +462,33 @@ final class FileFunctions {
     private static Object delete(PhpContext ctx, String fn, String path, boolean directory) {
         clearRealpathCache();
         TruffleFile f = file(ctx, path);
+        String javaPath = PhpStrings.toJava(path);
         try {
-            if (f == null || !f.exists()) {
+            if (f == null) {
                 ctx.warning(fn + "(" + path + "): No such file or directory", 0);
                 return false;
             }
-            if (f.isDirectory() != directory) {
+            // unlink removes the link itself, even when its target is missing; rmdir does not
+            // remove links at all. php's plain stat above would report both as "missing".
+            if (f.isSymbolicLink()) {
+                if (directory) {
+                    ctx.warning(fn + "(" + path + "): Not a directory", 0);
+                    return false;
+                }
+                f.delete();
+                return true;
+            }
+            if (!exists(ctx, javaPath, f)) {
+                ctx.warning(fn + "(" + path + "): No such file or directory", 0);
+                return false;
+            }
+            if (isDirectory(ctx, javaPath, f) != directory) {
                 ctx.warning(fn + "(" + path + "): " + (directory ? "Not a directory" : "Is a directory"), 0);
                 return false;
             }
             f.delete();
             return true;
-        } catch (IOException | SecurityException e) {
+        } catch (IOException | SecurityException | IllegalArgumentException e) {
             ctx.warning(fn + "(" + path + "): " + (directory ? "Directory not empty" : "Permission denied"), 0);
             return false;
         }
