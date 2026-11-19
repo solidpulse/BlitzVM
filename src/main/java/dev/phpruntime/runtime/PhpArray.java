@@ -45,6 +45,29 @@ public final class PhpArray implements TruffleObject {
     public PhpArray() {
     }
 
+    /**
+     * An empty array with room for {@code expected} entries, in the hash layout when the first keys
+     * are known to be strings. Semantics are those of {@link #PhpArray()}; only the allocation
+     * changes, so callers that build a known number of entries avoid converting and doubling.
+     */
+    public static PhpArray withCapacity(int expected, boolean stringKeys) {
+        PhpArray a = new PhpArray();
+        if (expected <= 0) {
+            return a;
+        }
+        // Grow to the same power-of-two bucket the array would reach by doubling, but in one
+        // allocation. Keeping 8 as the minimum also leaves the same room for later appends that
+        // the old first conversion did.
+        int capacity = Math.max(8, Integer.highestOneBit(expected - 1) << 1);
+        a.values = new Object[capacity];
+        if (stringKeys) {
+            a.keys = new Object[capacity];
+            a.hashes = new int[capacity];
+            a.index = new int[capacity * 2];
+        }
+        return a;
+    }
+
     /** Makes this array immutable; every array nested in it must already be immutable. */
     public PhpArray freeze() {
         immutable = true;

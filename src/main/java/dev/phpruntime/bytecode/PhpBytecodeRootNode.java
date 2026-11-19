@@ -1191,6 +1191,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /** {@link #NewArray} with the literal's element count and layout known at compile time. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "expected")
+    @ConstantOperand(type = boolean.class, name = "stringKeys")
+    public static final class NewArraySized {
+        @Specialization
+        static PhpArray create(int expected, boolean stringKeys) {
+            return PhpArray.withCapacity(expected, stringKeys);
+        }
+    }
+
     /** Adds one element to an array under construction; a null key appends. */
     @Operation
     public static final class ArrayPut {

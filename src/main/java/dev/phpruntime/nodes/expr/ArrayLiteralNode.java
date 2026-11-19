@@ -73,6 +73,31 @@ public final class ArrayLiteralNode extends PhpNode {
                 || v == PhpNull.INSTANCE;
     }
 
+    /** True when every element is a plain append or the constant key matching its position. */
+    private boolean buildsPacked() {
+        for (int i = 0; i < values.length; i++) {
+            if (spread[i]) {
+                return false;
+            }
+            if (keys[i] == null) {
+                continue;
+            }
+            if (!(keys[i] instanceof ConstNode c) || !(c.value() instanceof Long l) || l != i) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean hasSpread() {
+        for (boolean s : spread) {
+            if (s) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         var b = e.builder();
@@ -96,7 +121,11 @@ public final class ArrayLiteralNode extends PhpNode {
                 b.beginArrayPut();
             }
         }
-        b.emitNewArray();
+        if (hasSpread()) {
+            b.emitNewArray();
+        } else {
+            b.emitNewArraySized(values.length, !buildsPacked());
+        }
         for (int i = 0; i < values.length; i++) {
             if (spread[i]) {
                 e.expr(values[i]);
