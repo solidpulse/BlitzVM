@@ -637,32 +637,65 @@ public final class PhpClass {
         if (instanceProps.isEmpty()) {
             return;
         }
-        Defaults d = defaults;
-        if (d == null) {
-            d = buildDefaults();
-            defaults = d;
-        }
-        Object[] vals = d.values();
-        if (d.dynamic()) {
-            // Initializers can read global constants, so they run once per request.
-            RequestState state = PhpContext.get(null).classState(this);
-            if (state.defaultValues == null) {
-                Object[] evaluated = vals.clone();
-                for (int i = 0; i < evaluated.length; i++) {
-                    InstanceProp p = instanceProps.get(i);
-                    if (p.defaultTarget() != null) {
-                        evaluated[i] = evalExpr(p.constDefault(), p.defaultTarget(), this);
-                    }
-                }
-                state.defaultValues = evaluated;
-            }
-            vals = state.defaultValues;
-        }
+        Defaults d = defaults();
+        Object[] vals = d.dynamic() ? dynamicDefaultValues(d) : d.values();
         String[] keys = d.keys();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         for (int i = 0; i < keys.length; i++) {
             put.execute(obj, keys[i], PhpOps.copyOnAssign(vals[i]));
         }
+    }
+
+    /**
+     * Storage keys of the declared instance properties, in the order {@link #defaultValues()}
+     * returns their values. Fixed for the life of the class, so a {@code new} site can cache one
+     * PutNode per key.
+     */
+    @TruffleBoundary
+    public String[] defaultKeys() {
+        return defaults().keys();
+    }
+
+    /**
+     * Default values matching {@link #defaultKeys()} when none depends on the request (they are
+     * then the same array for every object, so a {@code new} site can cache it); else null.
+     */
+    @TruffleBoundary
+    public Object[] constantDefaultValuesOrNull() {
+        Defaults d = defaults();
+        return d.dynamic() ? null : d.values();
+    }
+
+    /** Default values matching {@link #defaultKeys()}, evaluated for this request; not yet copied for assignment. */
+    @TruffleBoundary
+    public Object[] defaultValues() {
+        Defaults d = defaults();
+        return d.dynamic() ? dynamicDefaultValues(d) : d.values();
+    }
+
+    private Defaults defaults() {
+        Defaults d = defaults;
+        if (d == null) {
+            d = buildDefaults();
+            defaults = d;
+        }
+        return d;
+    }
+
+    /** Initializers can read global constants, so they run once per request. */
+    private Object[] dynamicDefaultValues(Defaults d) {
+        RequestState state = PhpContext.get(null).classState(this);
+        if (state.defaultValues == null) {
+            Object[] evaluated = d.values().clone();
+            for (int i = 0; i < evaluated.length; i++) {
+                InstanceProp p = instanceProps.get(i);
+                if (p.defaultTarget() != null) {
+                    evaluated[i] = evalExpr(p.constDefault(), p.defaultTarget(), this);
+                }
+            }
+            state.defaultValues = evaluated;
+        }
+        return state.defaultValues;
     }
 
     private Defaults buildDefaults() {

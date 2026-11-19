@@ -23,6 +23,8 @@ import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.FrameInstance;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
+import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
@@ -3696,11 +3698,44 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** {@code new Cls(...)}: validates the class, creates the object and populates its defaults. */
     @Operation
     public static final class NewObject {
-        @Specialization
+        /**
+         * A site that keeps instantiating the same class: one PutNode per declared property, so
+         * the chain of shape transitions folds away in compiled code instead of running through
+         * uncached puts behind a boundary.
+         */
+        @Specialization(guards = "cls == cachedCls", limit = "3")
+        static PhpObject createCached(PhpClass cls, @Bind Node node, @Bind BytecodeNode bytecode,
+                                      @Bind("$bytecodeIndex") int bci,
+                                      @Cached("cls") PhpClass cachedCls,
+                                      @Cached(value = "cls.defaultKeys()", dimensions = 1) String[] keys,
+                                      @Cached(value = "cls.constantDefaultValuesOrNull()", dimensions = 1) Object[] constValues,
+                                      @Cached("createPuts(keys.length)") DynamicObject.PutNode[] puts,
+                                      @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            PhpContext ctx = PhpContext.get(node);
+            checkInstantiable(ctx, cachedCls);
+            PhpObject obj = new PhpObject(cachedCls, ctx.nextObjectId());
+            putDefaults(obj, keys, constValues != null ? constValues : cachedCls.defaultValues(), puts);
+            if (cachedCls.isThrowable()) {
+                dev.phpruntime.runtime.PhpExceptions.initNewThrowable(obj, location);
+            }
+            return obj;
+        }
+
+        @Specialization(replaces = "createCached")
         static PhpObject create(PhpClass cls, @Bind Node node, @Bind BytecodeNode bytecode,
                                 @Bind("$bytecodeIndex") int bci,
                                 @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             PhpContext ctx = PhpContext.get(node);
+            checkInstantiable(ctx, cls);
+            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
+            cls.populateDefaults(obj);
+            if (cls.isThrowable()) {
+                dev.phpruntime.runtime.PhpExceptions.initNewThrowable(obj, location);
+            }
+            return obj;
+        }
+
+        private static void checkInstantiable(PhpContext ctx, PhpClass cls) {
             if (cls == ctx.closureClass()) {
                 CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Instantiation of Closure is not allowed");
@@ -3710,12 +3745,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Cannot instantiate " + kind + cls.name());
             }
-            PhpObject obj = new PhpObject(cls, ctx.nextObjectId());
-            cls.populateDefaults(obj);
-            if (cls.isThrowable()) {
-                dev.phpruntime.runtime.PhpExceptions.initNewThrowable(obj, location);
+        }
+
+        static DynamicObject.PutNode[] createPuts(int n) {
+            DynamicObject.PutNode[] puts = new DynamicObject.PutNode[n];
+            for (int i = 0; i < n; i++) {
+                puts[i] = DynamicObject.PutNode.create();
             }
-            return obj;
+            return puts;
+        }
+
+        @ExplodeLoop
+        private static void putDefaults(PhpObject obj, String[] keys, Object[] values, DynamicObject.PutNode[] puts) {
+            for (int i = 0; i < puts.length; i++) {
+                puts[i].execute(obj, keys[i], PhpOps.copyOnAssign(values[i]));
+            }
         }
     }
 
