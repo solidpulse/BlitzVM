@@ -1,7 +1,10 @@
 package dev.phpruntime.nodes.var;
 
+import com.oracle.truffle.api.CompilerDirectives;
+import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.expr.ClassRefNode;
@@ -12,6 +15,9 @@ import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.Visibility;
 
+import java.util.Arrays;
+import java.util.concurrent.locks.Lock;
+
 /** {@code Foo::$prop}, {@code self::$prop}, {@code static::$prop}, {@code parent::$prop}. */
 public final class StaticPropertyLValueNode extends LValueNode {
 
@@ -20,6 +26,21 @@ public final class StaticPropertyLValueNode extends LValueNode {
     @Child private PhpNode dynamicNameExpr;
     private final String callingClassLower;
     private final int traitSelfSlot;
+
+    /**
+     * How (class, name, trait caller) resolves for this site: the declaration and whether this
+     * site may access it. The slot itself is per request and never cached here. Published as one
+     * immutable object so a request reading it while another installs it never sees half an entry.
+     */
+    private record Resolution(PhpClass cls, String name, PhpClass traitCaller,
+                              PhpClass.StaticDecl decl, boolean accessible) {
+    }
+
+    /** Distinct triples one site caches before falling back to the boundary path. */
+    private static final int CACHE_LIMIT = 8;
+    private static final Resolution[] MEGAMORPHIC = new Resolution[0];
+
+    @CompilationFinal(dimensions = 1) private Resolution[] cache;
 
     public StaticPropertyLValueNode(ClassRefNode classRef, String staticName, PhpNode dynamicNameExpr,
                                     String callingClassLower) {
@@ -75,11 +96,11 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
-        PhpClass.StaticSlot slot = cls.lookupStaticProperty(PhpContext.get(this), name);
-        if (slot == null || !isAccessible(cls, slot, caller)) {
+        Resolution res = resolution(cls, name, caller);
+        if (res.decl() == null || !res.accessible()) {
             return null;
         }
-        return slot.get();
+        return res.decl().slot(PhpContext.get(this)).get();
     }
 
     @Override
@@ -107,46 +128,124 @@ public final class StaticPropertyLValueNode extends LValueNode {
     public void unset(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
-        com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+        CompilerDirectives.transferToInterpreter();
         throw new PhpError("Attempt to unset static property " + cls.name() + "::$" + name, this);
     }
 
-    @TruffleBoundary
     private PhpClass.StaticSlot requireSlot(PhpClass cls, String name, PhpClass traitCaller) {
-        PhpClass.StaticSlot slot = cls.lookupStaticProperty(PhpContext.get(this), name);
-        if (slot == null) {
-            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Access to undeclared static property " + cls.name() + "::$" + name, this);
+        Resolution res = resolution(cls, name, traitCaller);
+        if (res.decl() == null) {
+            CompilerDirectives.transferToInterpreter();
+            throw undeclared(cls, name);
         }
-        if (!isAccessible(cls, slot, traitCaller)) {
-            String level = slot.visibility == Visibility.PRIVATE ? "private" : "protected";
-            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-            throw new PhpError(
-                    "Cannot access " + level + " property " + slot.declaringClass.name() + "::$" + name,
-                    this);
+        if (!res.accessible()) {
+            CompilerDirectives.transferToInterpreter();
+            throw inaccessible(res.decl(), name);
         }
-        return slot;
+        return res.decl().slot(PhpContext.get(this));
     }
 
     @TruffleBoundary
-    private boolean isAccessible(PhpClass targetClass, PhpClass.StaticSlot slot, PhpClass traitCaller) {
-        if (slot.visibility == Visibility.PUBLIC) {
+    private PhpError undeclared(PhpClass cls, String name) {
+        return new PhpError("Access to undeclared static property " + cls.name() + "::$" + name, this);
+    }
+
+    @TruffleBoundary
+    private PhpError inaccessible(PhpClass.StaticDecl decl, String name) {
+        String level = decl.visibility() == Visibility.PRIVATE ? "private" : "protected";
+        return new PhpError("Cannot access " + level + " property " + decl.declaringClass().name() + "::$" + name, this);
+    }
+
+    @TruffleBoundary
+    private boolean isAccessible(PhpClass targetClass, PhpClass.StaticDecl decl, PhpClass traitCaller) {
+        if (decl.visibility() == Visibility.PUBLIC) {
             return true;
         }
         if (traitCaller != null) {
-            if (slot.visibility == Visibility.PRIVATE) {
-                return slot.declaringClass == traitCaller;
+            if (decl.visibility() == Visibility.PRIVATE) {
+                return decl.declaringClass() == traitCaller;
             }
-            return targetClass.isInstanceOf(traitCaller) || traitCaller.isInstanceOf(slot.declaringClass);
+            return targetClass.isInstanceOf(traitCaller) || traitCaller.isInstanceOf(decl.declaringClass());
         }
         if (callingClassLower == null) {
             return false;
         }
-        if (slot.visibility == Visibility.PRIVATE) {
-            return dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(slot.declaringClass.name(), callingClassLower);
+        if (decl.visibility() == Visibility.PRIVATE) {
+            return dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(decl.declaringClass().name(), callingClassLower);
         }
         PhpClass caller = PhpContext.get(this).lookupClass(callingClassLower);
-        return caller != null && (targetClass.isInstanceOf(caller) || caller.isInstanceOf(slot.declaringClass));
+        return caller != null && (targetClass.isInstanceOf(caller) || caller.isInstanceOf(decl.declaringClass()));
+    }
+
+    /** The cached resolution for this site, filling it in on the interpreter path on a miss. */
+    private Resolution resolution(PhpClass cls, String name, PhpClass traitCaller) {
+        Resolution[] entries = cache;
+        if (entries == MEGAMORPHIC) {
+            return resolveSlow(cls, name, traitCaller);
+        }
+        Resolution hit = lookup(entries, cls, name, traitCaller);
+        if (hit != null) {
+            return hit;
+        }
+        CompilerDirectives.transferToInterpreterAndInvalidate();
+        return cacheResolution(cls, name, traitCaller);
+    }
+
+    @ExplodeLoop
+    private Resolution lookup(Resolution[] entries, PhpClass cls, String name, PhpClass traitCaller) {
+        if (entries == null) {
+            return null;
+        }
+        for (int i = 0; i < entries.length; i++) {
+            Resolution c = entries[i];
+            if (c.cls() == cls && c.traitCaller() == traitCaller && name.equals(c.name())) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    @TruffleBoundary
+    private Resolution resolveSlow(PhpClass cls, String name, PhpClass traitCaller) {
+        PhpClass.StaticDecl decl = cls.lookupStaticDecl(name);
+        return new Resolution(cls, name, traitCaller, decl, decl != null && isAccessible(cls, decl, traitCaller));
+    }
+
+    @TruffleBoundary
+    private Resolution cacheResolution(PhpClass cls, String name, PhpClass traitCaller) {
+        PhpClass.StaticDecl decl = cls.lookupStaticDecl(name);
+        Resolution entry = new Resolution(cls, name, traitCaller, decl,
+                decl != null && isAccessible(cls, decl, traitCaller));
+        Lock lock = getLock();
+        lock.lock();
+        try {
+            Resolution[] entries = cache;
+            if (entries != MEGAMORPHIC) {
+                boolean present = false;
+                if (entries != null) {
+                    for (Resolution c : entries) {
+                        present |= c.cls() == cls && c.traitCaller() == traitCaller && name.equals(c.name());
+                    }
+                }
+                if (!present) {
+                    Resolution[] next;
+                    if (entries == null) {
+                        next = new Resolution[]{entry};
+                    } else if (entries.length >= CACHE_LIMIT) {
+                        next = MEGAMORPHIC;
+                    } else {
+                        next = Arrays.copyOf(entries, entries.length + 1);
+                        next[entries.length] = entry;
+                    }
+                    // Readers take the array without the lock: its elements must be visible first.
+                    java.lang.invoke.VarHandle.storeStoreFence();
+                    cache = next;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+        return entry;
     }
 
     @Override
