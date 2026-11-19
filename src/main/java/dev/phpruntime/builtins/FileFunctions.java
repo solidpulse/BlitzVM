@@ -333,7 +333,7 @@ final class FileFunctions {
                     ctx.warning("chdir(): No such file or directory (errno 2)", 0);
                     return false;
                 }
-                ctx.env().setCurrentWorkingDirectory(dir);
+                ctx.env().setCurrentWorkingDirectory(dir.getAbsoluteFile());
                 return true;
             } catch (SecurityException | IllegalArgumentException e) {
                 ctx.warning("chdir(): No such file or directory (errno 2)", 0);
