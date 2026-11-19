@@ -174,6 +174,82 @@ class MysqliConformanceTest {
         assertEquals("0", b.get("lastid"), "LAST_INSERT_ID survived the reset" + context);
     }
 
+    private static final String SELECT_DATABASE_FIRST_SCRIPT = """
+            <?php
+            mysqli_report(MYSQLI_REPORT_OFF);
+            $db = mysqli_init();
+            if (!@mysqli_real_connect($db, '127.0.0.1', 'root', 'wp', null, 33307)) {
+                echo 'failed=', mysqli_connect_errno(), PHP_EOL;
+                exit(1);
+            }
+            $r = mysqli_query($db, 'SELECT DATABASE()');
+            $row = mysqli_fetch_row($r);
+            echo 'database=', $row[0] === null ? 'NULL' : $row[0], PHP_EOL;
+            $r = mysqli_query($db, 'SELECT CONNECTION_ID()');
+            echo 'id=', mysqli_fetch_row($r)[0], PHP_EOL;
+            echo 'select=', var_export($db->select_db('wp'), true), PHP_EOL;
+            $r = mysqli_query($db, 'SELECT DATABASE()');
+            echo 'selected=', mysqli_fetch_row($r)[0], PHP_EOL;
+            mysqli_close($db);
+            """;
+
+    private static final String SELECT_WP_FIRST_SCRIPT = """
+            <?php
+            mysqli_report(MYSQLI_REPORT_OFF);
+            $db = mysqli_init();
+            if (!@mysqli_real_connect($db, '127.0.0.1', 'root', 'wp', null, 33307)) {
+                echo 'failed=', mysqli_connect_errno(), PHP_EOL;
+                exit(1);
+            }
+            if (!mysqli_select_db($db, 'wp')) {
+                echo 'select_failed=', mysqli_errno($db), PHP_EOL;
+                exit(1);
+            }
+            $r = mysqli_query($db, 'SELECT CONNECTION_ID()');
+            echo 'id=', mysqli_fetch_row($r)[0], PHP_EOL;
+            $r = mysqli_query($db, 'SELECT DATABASE()');
+            echo 'database=', mysqli_fetch_row($r)[0], PHP_EOL;
+            mysqli_close($db);
+            """;
+
+    /**
+     * WordPress connects without a database and then selects wp. Such a link is pooled and
+     * handed to the next no-database connect, which must still see no database. Selecting wp
+     * again is not a server round trip and keeps the pooled connection; querying before
+     * selecting must discard that connection and use a fresh session with no database.
+     */
+    @Test
+    void pooledConnectionWithSelectedDatabase(@TempDir Path dir) throws Exception {
+        Assumptions.assumeTrue(wpServerAvailable(), "MariaDB on 127.0.0.1:33307 is not available");
+        Path selectFirst = Files.writeString(dir.resolve("no-db-select-first.php"), SELECT_WP_FIRST_SCRIPT);
+        Path queryFirst = Files.writeString(dir.resolve("no-db-query-first.php"), SELECT_DATABASE_FIRST_SCRIPT);
+
+        PhpEngine.Result one = engine.execute(selectFirst, new PhpRequest());
+        assertEquals(200, one.status(), one.bodyText() + one.errors());
+        Map<String, String> a = outputFields(one.bodyText());
+        assertEquals("wp", a.get("database"), "select_db did not select wp" + "\nfirst: " + one.bodyText());
+
+        PhpEngine.Result two = engine.execute(selectFirst, new PhpRequest());
+        assertEquals(200, two.status(), two.bodyText() + two.errors());
+        Map<String, String> b = outputFields(two.bodyText());
+        assertEquals(a.get("id"), b.get("id"),
+                "selecting wp on a no-database connect did not reuse the pooled connection"
+                        + "\nfirst: " + one.bodyText() + "second: " + two.bodyText());
+        assertEquals("wp", b.get("database"), "select_db did not select wp" + "\nsecond: " + two.bodyText());
+
+        PhpEngine.Result three = engine.execute(queryFirst, new PhpRequest());
+        assertEquals(200, three.status(), three.bodyText() + three.errors());
+        Map<String, String> c = outputFields(three.bodyText());
+        assertEquals("NULL", c.get("database"),
+                "the pooled session's database leaked into PHP's view"
+                        + "\nfirst: " + one.bodyText() + "third: " + three.bodyText());
+        assertTrue(!a.get("id").equals(c.get("id")),
+                "the pooled connection with wp was not discarded"
+                        + "\nfirst: " + one.bodyText() + "third: " + three.bodyText());
+        assertEquals("true", c.get("select"), "the mysqli::select_db method failed" + "\nthird: " + three.bodyText());
+        assertEquals("wp", c.get("selected"), "the mysqli::select_db method did not select wp" + "\nthird: " + three.bodyText());
+    }
+
     private static boolean wpServerAvailable() {
         Properties props = new Properties();
         props.setProperty("user", "root");
