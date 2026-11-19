@@ -47,6 +47,8 @@ public final class PropertyLValueNode extends LValueNode {
     private static final Resolution MEGAMORPHIC = new Resolution(-2, -2, null, false, false, false, false, null);
 
     @CompilationFinal private Resolution cache;
+    /** Language-wide class id of {@link #callingClassLower}, resolved on first use; -1 until then. */
+    @CompilationFinal private int callerClassId = -1;
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
         this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1, false);
@@ -608,15 +610,14 @@ public final class PropertyLValueNode extends LValueNode {
         if (callingClassLower == null) {
             return -1;
         }
-        return callerHierarchyIdBoundary(PhpContext.get(this));
-    }
-
-    @TruffleBoundary
-    private long callerHierarchyIdBoundary(PhpContext ctx) {
-        if (callingClassLower == null) {
-            return -1;
+        int id = callerClassId;
+        if (id < 0) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            id = dev.phpruntime.PhpLanguage.get(this).classId(callingClassLower);
+            callerClassId = id;
         }
-        PhpClass caller = ctx.lookupClass(callingClassLower);
+        // An array read in this request's class table instead of a name lookup behind a boundary.
+        PhpClass caller = PhpContext.get(this).classById(id);
         return caller != null ? caller.hierarchyId() : -1;
     }
 
