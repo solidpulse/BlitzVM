@@ -28,7 +28,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -1019,26 +1018,26 @@ final class MysqliFunctions {
         });
     }
 
+    /** The session-setup statements that cannot name a table or reveal the current database. */
+    private static final Pattern SET_NAMES = Pattern.compile(
+            "(?is)^SET\\s+NAMES\\s+(?:'[^']*'|\"[^\"]*\"|[A-Za-z0-9_]+)"
+                    + "(?:\\s+COLLATE\\s+(?:'[^']*'|\"[^\"]*\"|[A-Za-z0-9_]+))?$");
+    private static final Pattern SET_SESSION = Pattern.compile(
+            "(?is)^SET\\s+(?:SESSION\\s+|@@SESSION\\.|@@)[A-Za-z0-9_.]+\\s*=\\s*"
+                    + "(?:'(?:[^'\\\\]|\\\\.|'')*'|\"[^\"]*\"|[A-Za-z0-9_,.+-]+)$");
+    private static final Pattern SELECT_SESSION_VARS = Pattern.compile(
+            "(?is)^SELECT\\s+@@[A-Za-z0-9_.]+(?:\\s*,\\s*@@[A-Za-z0-9_.]+)*$");
+
     /**
      * True for the session-setup statements whose effect does not depend on the default
      * database: SET NAMES, setting a session system variable to a literal, and reading
-     * session system variables. Deliberately narrow: a FROM clause, a subquery or a
-     * DATABASE()/SCHEMA() call takes the statement out of this set.
+     * session system variables. Deliberately narrow: a FROM clause, a subquery, a function
+     * call or a DATABASE()/SCHEMA() call takes the statement out of this set.
      */
     private static boolean databaseIndependent(String sql) {
-        String s = sql.stripLeading().toUpperCase(Locale.ROOT);
-        if (s.startsWith("SET NAMES ")) {
-            return true;
-        }
-        if ((s.startsWith("SET SESSION ") || s.startsWith("SET @@SESSION.") || s.startsWith("SET @@"))
-                && s.indexOf('=') > 0 && s.indexOf("SELECT") < 0) {
-            return true;
-        }
-        if (s.startsWith("SELECT @@")) {
-            return s.indexOf("FROM") < 0 && s.indexOf("DATABASE") < 0 && s.indexOf("SCHEMA") < 0
-                    && s.indexOf("SELECT", 6) < 0;
-        }
-        return false;
+        String s = sql.stripLeading();
+        return SET_NAMES.matcher(s).matches() || SET_SESSION.matcher(s).matches()
+                || SELECT_SESSION_VARS.matcher(s).matches();
     }
 
     private static void execute(PhpContext ctx, Link l, String sql) throws SQLException {
