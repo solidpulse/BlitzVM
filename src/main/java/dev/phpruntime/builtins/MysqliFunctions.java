@@ -2,13 +2,16 @@ package dev.phpruntime.builtins;
 
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.GuestScheduler;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpError;
+import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 
@@ -20,11 +23,16 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -36,8 +44,9 @@ import java.util.regex.Pattern;
  * gives its CPU slot to other requests. Results are read fully when the query runs, so
  * fetching never blocks. Values come back as strings, as mysqli does by default.
  *
- * <p>TODO: connections are opened per request and closed at its end; a pool shared across
- * requests would save the connect round trips.
+ * <p>Closing a link does not normally close the JDBC connection: it is reset with
+ * MariaDB's {@code COM_RESET_CONNECTION} and returned to a small engine-wide pool, so the next
+ * request with the same URL, credentials and driver properties can skip the connect handshake.
  */
 final class MysqliFunctions {
 
@@ -53,6 +62,15 @@ final class MysqliFunctions {
     private static final String CLIENT_INFO = "mysqlnd 8.5.0";
     private static final long CLIENT_VERSION = 80500;
     private static final Pattern CONN_PREFIX = Pattern.compile("^\\(conn=\\d+\\) ");
+
+    /** The session values a fresh connection has, and that a reset has to restore. */
+    private static final String SESSION_QUERY = "SELECT @@SESSION.sql_mode, "
+            + "@@character_set_client, @@character_set_connection, @@character_set_results, "
+            + "@@collation_connection, @@autocommit, @@time_zone, @@transaction_isolation, "
+            + "@@SESSION.session_track_system_variables";
+    private static final int MAX_IDLE_PER_KEY = 16;
+    private static final long MAX_IDLE_NANOS = TimeUnit.SECONDS.toNanos(60);
+    private static final long VALIDATE_AFTER_NANOS = TimeUnit.SECONDS.toNanos(3);
 
     // ------------------------------------------------------------------ state
 
@@ -79,15 +97,47 @@ final class MysqliFunctions {
         int fieldCount;
         boolean closed;
 
+        /** Non-null when this link may go back to the pool. */
+        PoolKey key;
+        SessionState freshSession;
+        String connectedCatalog;
+        String poolServerInfo;
+        boolean poolable;
+
         @Override
         public void close() throws SQLException {
             closed = true;
-            if (conn != null) {
-                Connection c = conn;
-                conn = null;
-                c.close();
+            Connection c = conn;
+            conn = null;
+            if (c == null) {
+                return;
             }
+            if (poolable) {
+                try {
+                    Pool.release(PhpRequest.current().scheduler, key, c, poolServerInfo, freshSession,
+                            connectedCatalog);
+                    return;
+                } catch (SQLException | RuntimeException ignored) {
+                    // the connection is in an unknown state; discard it below
+                }
+            }
+            c.close();
         }
+    }
+
+    /** The session values a reset connection has to restore to the values a fresh one had. */
+    record SessionState(String sqlMode, String charsetClient, String charsetConnection,
+                        String charsetResults, String collationConnection, String autocommit,
+                        String timeZone, String transactionIsolation, String sessionTrack) {
+    }
+
+    /** Everything that determines the session at connect time, and therefore what may be reused. */
+    record PoolKey(String url, String user, String password, Map<String, String> properties) {
+    }
+
+    /** An idle connection and the state it had when it was opened. */
+    record Idle(Connection connection, String serverInfo, SessionState session, String catalog,
+                long sinceNanos) {
     }
 
     /** A column as mysqli_fetch_field describes it. */
@@ -117,6 +167,174 @@ final class MysqliFunctions {
         return cs.mysqli;
     }
 
+    // ------------------------------------------------------------------ pool
+
+    /**
+     * Idle JDBC connections, shared by every language context in the engine. A connection is
+     * only offered to the pool after its session was reset and made equal to a fresh one.
+     */
+    static final class Pool {
+        private static final Map<PoolKey, Deque<Idle>> IDLE = new ConcurrentHashMap<>();
+
+        private Pool() {
+        }
+
+        static boolean enabled() {
+            return !"false".equalsIgnoreCase(System.getProperty("blitz.mysqli.pool"));
+        }
+
+        static Idle take(PoolKey key) {
+            Deque<Idle> idle = IDLE.get(key);
+            if (idle == null) {
+                return null;
+            }
+            synchronized (idle) {
+                long now = System.nanoTime();
+                while (!idle.isEmpty()) {
+                    Idle head = idle.pollFirst();
+                    long age = now - head.sinceNanos();
+                    if (age > MAX_IDLE_NANOS) {
+                        closeQuietly(head.connection());
+                        continue;
+                    }
+                    if (age > VALIDATE_AFTER_NANOS) {
+                        try {
+                            if (!head.connection().isValid(1)) {
+                                closeQuietly(head.connection());
+                                continue;
+                            }
+                        } catch (SQLException | RuntimeException e) {
+                            closeQuietly(head.connection());
+                            continue;
+                        }
+                    }
+                    return head;
+                }
+            }
+            return null;
+        }
+
+        /** Returns false when the pool is full and the caller has to close the connection. */
+        static boolean offer(PoolKey key, Connection c, String serverInfo, SessionState session, String catalog) {
+            Deque<Idle> idle = IDLE.computeIfAbsent(key, k -> new ArrayDeque<>());
+            synchronized (idle) {
+                long now = System.nanoTime();
+                while (!idle.isEmpty() && now - idle.peekLast().sinceNanos() > MAX_IDLE_NANOS) {
+                    closeQuietly(idle.pollLast().connection());
+                }
+                if (idle.size() >= MAX_IDLE_PER_KEY) {
+                    return false;
+                }
+                idle.addFirst(new Idle(c, serverInfo, session, catalog, now));
+                return true;
+            }
+        }
+
+        static void release(GuestScheduler scheduler, PoolKey key, Connection c, String serverInfo,
+                            SessionState fresh, String connectedCatalog) throws SQLException {
+            if (key == null || fresh == null) {
+                c.close();
+                return;
+            }
+            boolean pooled = blocking(scheduler, () -> {
+                if (!Objects.equals(c.getCatalog(), connectedCatalog)) {
+                    // mysqli_select_db moved the session to another database; a fresh
+                    // connection would have the original one.
+                    return false;
+                }
+                ((org.mariadb.jdbc.Connection) c).reset();
+                if (!Objects.equals(c.getCatalog(), connectedCatalog)) {
+                    // The reset is supposed to restore the connect-time database; do not
+                    // pool the connection if this driver or server did not.
+                    return false;
+                }
+                SessionState current = readSession(c);
+                if (!current.equals(fresh)) {
+                    restoreSession(c, fresh, current);
+                }
+                return offer(key, c, serverInfo, fresh, connectedCatalog);
+            });
+            if (!pooled) {
+                c.close();
+            }
+        }
+
+        private static void closeQuietly(Connection c) {
+            try {
+                c.close();
+            } catch (SQLException ignored) {
+                // discarded either way
+            }
+        }
+    }
+
+    /** Reads the session values the pool compares before and after a reset. */
+    private static SessionState readSession(Connection c) throws SQLException {
+        try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery(SESSION_QUERY)) {
+            rs.next();
+            return new SessionState(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                    rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9));
+        }
+    }
+
+    /** Re-applies what the driver set up at connect time and COM_RESET_CONNECTION undid. */
+    private static void restoreSession(Connection c, SessionState fresh, SessionState current) throws SQLException {
+        StringBuilder sql = new StringBuilder("SET SESSION ");
+        addAssignment(sql, "sql_mode", fresh.sqlMode(), current.sqlMode());
+        addAssignment(sql, "session_track_system_variables", fresh.sessionTrack(), current.sessionTrack());
+        addAssignment(sql, "character_set_client", fresh.charsetClient(), current.charsetClient());
+        addAssignment(sql, "character_set_connection", fresh.charsetConnection(), current.charsetConnection());
+        addAssignment(sql, "character_set_results", fresh.charsetResults(), current.charsetResults());
+        addAssignment(sql, "collation_connection", fresh.collationConnection(), current.collationConnection());
+        addAssignment(sql, "autocommit", fresh.autocommit(), current.autocommit());
+        addAssignment(sql, "time_zone", fresh.timeZone(), current.timeZone());
+        addAssignment(sql, "transaction_isolation", fresh.transactionIsolation(), current.transactionIsolation());
+        if (sql.length() == "SET SESSION ".length()) {
+            return;
+        }
+        try (Statement st = c.createStatement()) {
+            st.execute(sql.toString());
+        }
+    }
+
+    private static void addAssignment(StringBuilder sql, String name, String fresh, String current) {
+        if (Objects.equals(fresh, current)) {
+            return;
+        }
+        if (sql.length() > "SET SESSION ".length()) {
+            sql.append(", ");
+        }
+        sql.append(name).append('=').append(literal(fresh));
+    }
+
+    private static String literal(String value) {
+        return value == null ? "NULL" : "'" + value.replace("'", "''") + "'";
+    }
+
+    /** Whether the server implements COM_RESET_CONNECTION, which is what makes pooling safe. */
+    private static boolean supportsReset(String serverInfo) {
+        if (serverInfo == null || !serverInfo.contains("MariaDB")) {
+            return false;
+        }
+        // Some MariaDB 10.x servers announce "5.5.5-10.x.y-MariaDB" for old clients.
+        String version = serverInfo.startsWith("5.5.5-") ? serverInfo.substring(6) : serverInfo;
+        String[] parts = version.split("[.-]");
+        try {
+            int major = Integer.parseInt(parts[0]);
+            int minor = Integer.parseInt(parts[1]);
+            int patch = Integer.parseInt(parts[2]);
+            if (major != 10) {
+                return major > 10;
+            }
+            if (minor != 2 && minor != 3) {
+                return minor > 3;
+            }
+            return minor == 3 ? patch >= 13 : patch >= 22;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     // ------------------------------------------------------------------ classes
 
     private static PhpClassTemplate.PropertyDecl prop(String name, Object def) {
@@ -133,7 +351,28 @@ final class MysqliFunctions {
             prop("num_rows", 0L), prop("type", 0L));
 
     private static PhpClassTemplate mysqliTemplate(PhpContext ctx) {
-        return ctx.language().mysqliTemplate(linkProps());
+        PhpClassTemplate tpl = ctx.language().mysqliTemplateOrNull();
+        return tpl != null ? tpl : ctx.language().mysqliTemplate(linkProps(), linkMethods(ctx));
+    }
+
+    /** The mysqli object's methods; {@code $mysqli->close()} shares the builtin's close path. */
+    private static Map<String, PhpClassTemplate.MethodDecl> linkMethods(PhpContext ctx) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new HashMap<>();
+        String name = "close";
+        String lower = name.toLowerCase();
+        var root = new PhpExceptions.BuiltinMethodRootNode(ctx.language(), name, (c, self, args) -> {
+            Link l = link(c, self, "mysqli::close");
+            try {
+                l.close();
+            } catch (SQLException ignored) {
+                // closing a broken connection still closes it
+            }
+            c.request().resources.remove(l);
+            return true;
+        });
+        methods.put(lower, new PhpClassTemplate.MethodDecl(name, lower, ctx.language().methodId(name),
+                Visibility.PUBLIC, false, false, false, root.getCallTarget()));
+        return methods;
     }
 
     private static PhpClassTemplate resultTemplate(PhpContext ctx) {
@@ -268,13 +507,17 @@ final class MysqliFunctions {
      * Runs a call that waits on the server with the CPU slot released. The call runs at most
      * once even if the scheduler retries the blocked section after an interrupt.
      */
-    @SuppressWarnings("unchecked")
     private static <T> T blocking(PhpContext ctx, SqlCall<T> call) throws SQLException {
+        return blocking(ctx.request().scheduler, call);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T blocking(GuestScheduler scheduler, SqlCall<T> call) throws SQLException {
         Object[] out = new Object[1];
         SQLException[] err = new SQLException[1];
         RuntimeException[] rte = new RuntimeException[1];
         boolean[] done = new boolean[1];
-        ctx.request().scheduler.blocking(null, () -> {
+        scheduler.blocking(null, () -> {
             if (done[0]) {
                 return;
             }
@@ -453,12 +696,9 @@ final class MysqliFunctions {
             }
         });
         Builtins.def("mysqli_close", 1, 1, (ctx, a) -> {
-            Link l = connected(ctx, a[0], "mysqli_close");
+            Link l = link(ctx, a[0], "mysqli_close");
             try {
-                blocking(ctx, () -> {
-                    l.close();
-                    return null;
-                });
+                l.close();
             } catch (SQLException ignored) {
                 // closing a broken connection still closes it
             }
@@ -608,19 +848,30 @@ final class MysqliFunctions {
         props.setProperty("connectTimeout", "10000");
         props.setProperty("permitMysqlScheme", "true");
         final Link l = link;
+        boolean pooling = Pool.enabled();
+        Properties driverProps = new Properties();
+        driverProps.putAll(props);
+        if (pooling) {
+            // Makes Connection.reset() send COM_RESET_CONNECTION, which clears the session
+            // state that a fresh connection would not have.
+            driverProps.setProperty("useResetConnection", "true");
+        }
+        final PoolKey key = pooling ? new PoolKey(url,
+                user == null ? null : PhpStrings.toJava(user),
+                password == null ? null : PhpStrings.toJava(password),
+                propertyMap(driverProps)) : null;
         try {
-            Connection conn = blocking(ctx, () -> {
-                Connection c = new org.mariadb.jdbc.Driver().connect(url, props);
-                if (c == null) {
-                    throw new SQLException("Unsupported connection URL", "HY000", 2002);
-                }
-                return c;
-            });
-            l.conn = conn;
+            Opened opened = blocking(ctx, () -> open(key, url, driverProps, pooling));
+            l.conn = opened.connection();
             l.closed = false;
             l.host = host;
-            l.charset = "utf8mb4";
-            l.serverInfo = PhpStrings.fromJava(blocking(ctx, () -> conn.getMetaData().getDatabaseProductVersion()));
+            l.serverInfo = PhpStrings.fromJava(opened.serverInfo());
+            l.poolServerInfo = opened.serverInfo();
+            l.freshSession = opened.session();
+            l.connectedCatalog = opened.catalog();
+            l.key = key;
+            l.poolable = l.freshSession != null;
+            l.charset = l.freshSession == null ? "utf8mb4" : l.freshSession.charsetClient();
             st.connectErrno = 0;
             st.connectError = null;
             clearError(l);
@@ -648,6 +899,44 @@ final class MysqliFunctions {
             }
             return false;
         }
+    }
+
+    /** A connection ready for one request, either newly opened or taken from the pool. */
+    private record Opened(Connection connection, String serverInfo, SessionState session,
+                          String catalog, boolean pooled) {
+    }
+
+    private static Opened open(PoolKey key, String url, Properties props, boolean allowPool) throws SQLException {
+        if (allowPool) {
+            Idle idle = Pool.take(key);
+            if (idle != null) {
+                return new Opened(idle.connection(), idle.serverInfo(), idle.session(), idle.catalog(), true);
+            }
+        }
+        Connection conn = new org.mariadb.jdbc.Driver().connect(url, props);
+        if (conn == null) {
+            throw new SQLException("Unsupported connection URL", "HY000", 2002);
+        }
+        try {
+            String serverInfo = conn.getMetaData().getDatabaseProductVersion();
+            SessionState session = allowPool && supportsReset(serverInfo) ? readSession(conn) : null;
+            return new Opened(conn, serverInfo, session, conn.getCatalog(), false);
+        } catch (SQLException | RuntimeException e) {
+            try {
+                conn.close();
+            } catch (SQLException ignored) {
+                // the connect already failed
+            }
+            throw e;
+        }
+    }
+
+    private static Map<String, String> propertyMap(Properties props) {
+        Map<String, String> map = new HashMap<>();
+        for (String name : props.stringPropertyNames()) {
+            map.put(name, props.getProperty(name));
+        }
+        return Map.copyOf(map);
     }
 
     private static String connectFailureMessage(SQLException e, String host) {
