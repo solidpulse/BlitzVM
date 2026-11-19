@@ -148,9 +148,15 @@ class MysqliConformanceTest {
      * physical connection and a session equal to a fresh one: no open transaction, user
      * variables, session sql_mode, temporary table, named lock or last insert id.
      */
+    @org.junit.jupiter.api.AfterEach
+    void clearPoolProperty() {
+        System.clearProperty("blitz.mysqli.pool");
+    }
+
     @Test
     void pooledConnectionResetsTheSession(@TempDir Path dir) throws Exception {
         Assumptions.assumeTrue(wpServerAvailable(), "MariaDB on 127.0.0.1:33307 is not available");
+        System.setProperty("blitz.mysqli.pool", "true"); // pooling is opt-in
         Path first = Files.writeString(dir.resolve("pool-first.php"), FIRST_POOL_SCRIPT);
         Path second = Files.writeString(dir.resolve("pool-second.php"), SECOND_POOL_SCRIPT);
 
@@ -221,6 +227,7 @@ class MysqliConformanceTest {
     @Test
     void pooledConnectionWithSelectedDatabase(@TempDir Path dir) throws Exception {
         Assumptions.assumeTrue(wpServerAvailable(), "MariaDB on 127.0.0.1:33307 is not available");
+        System.setProperty("blitz.mysqli.pool", "true"); // pooling is opt-in
         Path selectFirst = Files.writeString(dir.resolve("no-db-select-first.php"), SELECT_WP_FIRST_SCRIPT);
         Path queryFirst = Files.writeString(dir.resolve("no-db-query-first.php"), SELECT_DATABASE_FIRST_SCRIPT);
 

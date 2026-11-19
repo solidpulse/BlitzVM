@@ -193,8 +193,13 @@ final class MysqliFunctions {
         private Pool() {
         }
 
+        /**
+         * Off unless -Dblitz.mysqli.pool=true. Measured on the WordPress front page (2026-11-19): no
+         * latency gain at steady state, and each idle pooled connection kept about 32 MB of driver
+         * buffers alive (16 connections, about 510 MB of live heap).
+         */
         static boolean enabled() {
-            return !"false".equalsIgnoreCase(System.getProperty("blitz.mysqli.pool"));
+            return "true".equalsIgnoreCase(System.getProperty("blitz.mysqli.pool"));
         }
 
         static Idle take(PoolKey key) {
