@@ -327,6 +327,14 @@ final class FileFunctions {
         Builtins.def("is_executable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.EXECUTABLE));
         Builtins.def("chdir", 1, 1, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
+            if (path.indexOf('\0') >= 0) {
+                throw new PhpError(PhpError.VALUE_ERROR,
+                        "chdir(): Argument #1 ($directory) must not contain any null bytes", null);
+            }
+            if (path.isEmpty()) {
+                ctx.warning("chdir(): No such file or directory (errno 2)", 0);
+                return false;
+            }
             try {
                 TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
                 if (!isDirectory(ctx, PhpStrings.toJava(path), dir)) {
