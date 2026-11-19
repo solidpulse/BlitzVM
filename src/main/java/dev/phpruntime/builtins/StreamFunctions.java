@@ -852,7 +852,7 @@ final class StreamFunctions {
         String dirPath = prefix.isEmpty() ? "." : prefix;
         try {
             TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(dirPath));
-            if (!dir.isDirectory()) {
+            if (!isDir(ctx, dirPath)) {
                 return;
             }
             List<String> names = new ArrayList<>();
