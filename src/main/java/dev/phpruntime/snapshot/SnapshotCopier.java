@@ -235,6 +235,8 @@ final class SnapshotCopier {
             state = new SplArrayState(copyValue(node.object()), node.flags());
         }
         state.position = node.position();
+        state.storage.version = node.version();
+        state.storage.size = node.size();
         if (node.iteratorClass() != null) {
             state.iteratorClass = node.iteratorClass();
         }

@@ -73,7 +73,8 @@ public final class Snapshot {
     }
 
     /** An ArrayObject/ArrayIterator storage; its array or object is mapped through the copier. */
-    record NativeArrayNode(Object array, Object object, int flags, int position, String iteratorClass) {
+    record NativeArrayNode(Object array, Object object, int flags, int position, String iteratorClass,
+                           long version, int size) {
     }
 
     record ClassStateNode(PhpClass cls, PhpClass.RequestState.StateSnapshot state) {

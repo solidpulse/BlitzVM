@@ -602,7 +602,7 @@ final class SnapshotCapture {
                 dev.phpruntime.runtime.SplArrayState arrayState = (dev.phpruntime.runtime.SplArrayState) state;
                 return new Snapshot.NativeArrayNode(value(arrayState.storage.array),
                         value(arrayState.storage.object), arrayState.flags, arrayState.position,
-                        arrayState.iteratorClass);
+                        arrayState.iteratorClass, arrayState.storage.version, arrayState.storage.size);
             }
             // DateTime*, DateInterval and SplFileInfo states own no request objects; copy()
             // produces a prototype whose copy() is taken again for each restore.
