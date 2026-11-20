@@ -33,6 +33,9 @@ final class ContextState {
     /** mysqli: per-object state keyed by object id, the last connect error and the report mode. */
     MysqliFunctions.State mysqli;
 
+    /** PDO: connections and statements keyed by object id, all owned by this request. */
+    PdoFunctions.State pdo;
+
     /** Next resource id. PHP's CLI has STDIN, STDOUT and STDERR as 1 to 3, so the first is 4. */
     long nextResourceId = 4;
     /** Whether the default stream context has taken its id (the first stream open does this). */

@@ -66,6 +66,7 @@ public final class Builtins {
         SerializeFunctions.register();
         EnvFunctions.register();
         MysqliFunctions.register();
+        PdoFunctions.register();
         OutputBufferFunctions.register();
         PointerFunctions.register();
         StreamFunctions.register();

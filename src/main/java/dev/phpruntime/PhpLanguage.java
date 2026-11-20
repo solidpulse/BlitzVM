@@ -84,6 +84,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
                     dev.phpruntime.builtins.DateTimeClasses.buildTemplates(this, all);
                     all.putAll(SplClasses.buildTemplates(this));
                     dev.phpruntime.builtins.DirClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.PdoClasses.buildTemplates(this, all);
                     m = Map.copyOf(all);
                     int max = -1;
                     for (String lower : m.keySet()) {
