@@ -1,0 +1,407 @@
+assoc: array (
+  0 => 
+  array (
+    'id' => 1,
+    'grp' => 'g1',
+    'name' => 'a',
+    'n' => 1,
+  ),
+  1 => 
+  array (
+    'id' => 2,
+    'grp' => 'g1',
+    'name' => 'b',
+    'n' => 2,
+  ),
+  2 => 
+  array (
+    'id' => 3,
+    'grp' => 'g2',
+    'name' => 'c',
+    'n' => NULL,
+  ),
+)
+num: array (
+  0 => 
+  array (
+    0 => 1,
+    1 => 'g1',
+    2 => 'a',
+    3 => 1,
+  ),
+  1 => 
+  array (
+    0 => 2,
+    1 => 'g1',
+    2 => 'b',
+    3 => 2,
+  ),
+  2 => 
+  array (
+    0 => 3,
+    1 => 'g2',
+    2 => 'c',
+    3 => NULL,
+  ),
+)
+both: array (
+  0 => 
+  array (
+    'id' => 1,
+    0 => 1,
+    'grp' => 'g1',
+    1 => 'g1',
+    'name' => 'a',
+    2 => 'a',
+    'n' => 1,
+    3 => 1,
+  ),
+  1 => 
+  array (
+    'id' => 2,
+    0 => 2,
+    'grp' => 'g1',
+    1 => 'g1',
+    'name' => 'b',
+    2 => 'b',
+    'n' => 2,
+    3 => 2,
+  ),
+  2 => 
+  array (
+    'id' => 3,
+    0 => 3,
+    'grp' => 'g2',
+    1 => 'g2',
+    'name' => 'c',
+    2 => 'c',
+    'n' => NULL,
+    3 => NULL,
+  ),
+)
+obj: array (
+  0 => 
+  array (
+    'id' => 1,
+    'grp' => 'g1',
+    'name' => 'a',
+    'n' => 1,
+  ),
+  1 => 
+  array (
+    'id' => 2,
+    'grp' => 'g1',
+    'name' => 'b',
+    'n' => 2,
+  ),
+  2 => 
+  array (
+    'id' => 3,
+    'grp' => 'g2',
+    'name' => 'c',
+    'n' => NULL,
+  ),
+)
+named: array (
+  0 => 
+  array (
+    'id' => 1,
+    'grp' => 'g1',
+    'name' => 'a',
+    'n' => 1,
+  ),
+  1 => 
+  array (
+    'id' => 2,
+    'grp' => 'g1',
+    'name' => 'b',
+    'n' => 2,
+  ),
+  2 => 
+  array (
+    'id' => 3,
+    'grp' => 'g2',
+    'name' => 'c',
+    'n' => NULL,
+  ),
+)
+== lazy ==
+class: 'PDORow'
+values: array (
+  0 => 'SELECT id, name, n FROM pdo_fetch ORDER BY id',
+  1 => 1,
+  2 => 'a',
+  3 => 1,
+)
+isset: array (
+  0 => true,
+  1 => false,
+)
+second: array (
+  0 => 2,
+  1 => 'b',
+)
+end: array (
+  0 => 'SELECT id, name, n FROM pdo_fetch ORDER BY id',
+  1 => 3,
+  2 => 'c',
+)
+end2: false
+== column and key pair ==
+column-default: array (
+  0 => 1,
+  1 => 2,
+  2 => 3,
+)
+column-1: array (
+  0 => 'a',
+  1 => 'b',
+  2 => 'c',
+)
+key-pair: array (
+  'a' => 1,
+  'b' => 2,
+  'c' => 3,
+)
+key-pair-empty: array (
+)
+key-pair-wrong: PDOException code='HY000' msg=SQLSTATE[HY000]: General error: PDO::FETCH_KEY_PAIR fetch mode requires the result set to contain exactly 2 columns. info=array (
+  0 => 'HY000',
+  1 => 0,
+)
+== group and unique ==
+group-assoc: array (
+  'g1' => 
+  array (
+    0 => 
+    array (
+      'id' => 1,
+      'name' => 'a',
+    ),
+    1 => 
+    array (
+      'id' => 2,
+      'name' => 'b',
+    ),
+  ),
+  'g2' => 
+  array (
+    0 => 
+    array (
+      'id' => 3,
+      'name' => 'c',
+    ),
+  ),
+)
+group-num: array (
+  'g1' => 
+  array (
+    0 => 
+    array (
+      0 => 1,
+      1 => 'a',
+    ),
+    1 => 
+    array (
+      0 => 2,
+      1 => 'b',
+    ),
+  ),
+  'g2' => 
+  array (
+    0 => 
+    array (
+      0 => 3,
+      1 => 'c',
+    ),
+  ),
+)
+group-both: array (
+  'g1' => 
+  array (
+    0 => 
+    array (
+      'name' => 'a',
+      1 => 'a',
+    ),
+    1 => 
+    array (
+      'name' => 'b',
+      1 => 'b',
+    ),
+  ),
+  'g2' => 
+  array (
+    0 => 
+    array (
+      'name' => 'c',
+      1 => 'c',
+    ),
+  ),
+)
+group-column: array (
+  'g1' => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  'g2' => 
+  array (
+    0 => 'c',
+  ),
+)
+group-obj: array (
+  'g1' => 
+  array (
+    0 => 
+    array (
+      'name' => 'a',
+    ),
+    1 => 
+    array (
+      'name' => 'b',
+    ),
+  ),
+  'g2' => 
+  array (
+    0 => 
+    array (
+      'name' => 'c',
+    ),
+  ),
+)
+unique-both: array (
+  'g1' => 
+  array (
+    'name' => 'b',
+    1 => 'b',
+  ),
+  'g2' => 
+  array (
+    'name' => 'c',
+    1 => 'c',
+  ),
+)
+unique-assoc: array (
+  'g1' => 
+  array (
+    'name' => 'b',
+  ),
+  'g2' => 
+  array (
+    'name' => 'c',
+  ),
+)
+unique-num: array (
+  'g1' => 
+  array (
+    0 => 'b',
+  ),
+  'g2' => 
+  array (
+    0 => 'c',
+  ),
+)
+== fetch class ==
+ctor(early)
+ctor(early)
+ctor(early)
+fetch-class: array (
+  0 => 
+  \PdoFetchRow::__set_state(array(
+     'id' => 1,
+     'name' => 'a',
+     'grp' => 'g1',
+     'n' => 1,
+     'extra' => 'extra',
+     'tag' => 'early',
+  )),
+  1 => 
+  \PdoFetchRow::__set_state(array(
+     'id' => 2,
+     'name' => 'b',
+     'grp' => 'g1',
+     'n' => 2,
+     'extra' => 'extra',
+     'tag' => 'early',
+  )),
+  2 => 
+  \PdoFetchRow::__set_state(array(
+     'id' => 3,
+     'name' => 'c',
+     'grp' => 'g2',
+     'n' => NULL,
+     'extra' => 'extra',
+     'tag' => 'early',
+  )),
+)
+ctor(late)
+ctor(late)
+ctor(late)
+fetch-class-late: array (
+  0 => 
+  \PdoFetchRow::__set_state(array(
+     'id' => 1,
+     'name' => 'a',
+     'grp' => 'g1',
+     'n' => 1,
+     'extra' => 'extra',
+     'tag' => 'late',
+  )),
+  1 => 
+  \PdoFetchRow::__set_state(array(
+     'id' => 2,
+     'name' => 'b',
+     'grp' => 'g1',
+     'n' => 2,
+     'extra' => 'extra',
+     'tag' => 'late',
+  )),
+  2 => 
+  \PdoFetchRow::__set_state(array(
+     'id' => 3,
+     'name' => 'c',
+     'grp' => 'g2',
+     'n' => NULL,
+     'extra' => 'extra',
+     'tag' => 'late',
+  )),
+)
+ctor(object)
+fetchObject: \PdoFetchRow::__set_state(array(
+   'id' => 1,
+   'name' => 'a',
+   'grp' => 'prot',
+   'n' => 'priv',
+   'extra' => 'extra',
+   'tag' => 'object',
+))
+fetchObject-std: array (
+  'id' => 2,
+  'name' => 'b',
+)
+fetch-class-missing: TypeError code=0 msg=PDOStatement::fetchAll(): Argument #2 must be a valid class
+fetch-class-none: PDOException code='HY000' msg=SQLSTATE[HY000]: General error: No fetch class specified info=array (
+  0 => 'HY000',
+  1 => 0,
+)
+== fetch into ==
+into-protected: Error code=0 msg=Cannot access protected property PdoIntoProt::$grp
+into: array (
+  'id' => 1,
+  'name' => 'a',
+)
+into-fetchall: ValueError code=0 msg=PDOStatement::fetchAll(): Argument #1 ($mode) PDO::FETCH_INTO cannot be used with PDOStatement::fetchAll()
+== fetch args ==
+assoc: array (
+  'id' => 1,
+  'name' => 'a',
+)
+column: 2
+default: array (
+  'id' => 3,
+  0 => 3,
+  'name' => 'c',
+  1 => 'c',
+)
+bad-mode: ValueError code=0 msg=PDOStatement::fetch(): Argument #1 ($mode) cannot use PDO::FETCH_CLASSTYPE, PDO::FETCH_PROPS_LATE, or PDO::FETCH_SERIALIZE fetch flags with a fetch mode other than PDO::FETCH_CLASS
