@@ -219,25 +219,35 @@ final class PdoFunctions {
     }
 
     private static Stmt stmt(PhpContext ctx, Object value, String fn) {
-        if (!(value instanceof PhpObject obj) || !obj.phpClass().name().equalsIgnoreCase("PDOStatement")) {
+        if (!(value instanceof PhpObject obj)) {
             throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($statement) must be of type PDOStatement, "
                     + PhpOps.typeName(value) + " given", null);
         }
         Stmt st = state(ctx).statements.get(obj.id());
         if (st == null) {
-            throw new PhpError("PDOStatement object is not initialized");
+            PhpClass base = ctx.lookupClass("PDOStatement");
+            if (base != null && obj.phpClass().isInstanceOf(base)) {
+                throw new PhpError("PDOStatement object is not initialized");
+            }
+            throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($statement) must be of type PDOStatement, "
+                    + PhpOps.typeName(value) + " given", null);
         }
         return st;
     }
 
     private static Dbh dbh(PhpContext ctx, Object value, String fn) {
-        if (!(value instanceof PhpObject obj) || !obj.phpClass().name().equalsIgnoreCase("PDO")) {
+        if (!(value instanceof PhpObject obj)) {
             throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($pdo) must be of type PDO, "
                     + PhpOps.typeName(value) + " given", null);
         }
         Dbh dbh = state(ctx).connections.get(obj.id());
         if (dbh == null || dbh.conn == null) {
-            throw new PhpError("PDO object is not initialized");
+            PhpClass base = ctx.lookupClass("PDO");
+            if (base != null && obj.phpClass().isInstanceOf(base)) {
+                throw new PhpError("PDO object is not initialized");
+            }
+            throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($pdo) must be of type PDO, "
+                    + PhpOps.typeName(value) + " given", null);
         }
         return dbh;
     }
@@ -608,7 +618,7 @@ final class PdoFunctions {
         props.setProperty("useServerPrepStmts", "true");
 
         Dbh dbh = new Dbh();
-        applyOptions(dbh, options);
+        applyOptions(ctx, dbh, options);
         if (dbh.timeout > 0 && dbh.timeout != 28800) {
             props.setProperty("connectTimeout", Long.toString(dbh.timeout * 1000L));
         }
@@ -670,7 +680,7 @@ final class PdoFunctions {
                     throw new ConnectFailure(stateOf(e), errno(e), errno(e), cleanMessage(e));
                 }
             }
-            applyOptions(dbh, options);
+            applyOptions(ctx, dbh, options);
             if (!dbh.autocommit) {
                 MysqliFunctions.blocking(ctx, () -> {
                     dbh.conn.setAutoCommit(false);
@@ -776,7 +786,7 @@ final class PdoFunctions {
 
     // ------------------------------------------------------------------ options and attributes
 
-    private static void applyOptions(Dbh dbh, PhpArray options) {
+    private static void applyOptions(PhpContext ctx, Dbh dbh, PhpArray options) {
         if (options == null) {
             return;
         }
@@ -795,10 +805,11 @@ final class PdoFunctions {
                 case (int) ATTR_AUTOCOMMIT -> dbh.autocommit = PhpOps.toBool(value);
                 case (int) ATTR_DEFAULT_STR_PARAM -> dbh.defaultStrParam = PhpOps.toLong(value);
                 case (int) ATTR_STATEMENT_CLASS -> {
-                    if (value instanceof PhpArray arr && arr.size() > 0 && arr.get(0) instanceof String name) {
+                    if (value instanceof PhpArray arr && arr.size() > 0 && arr.get(0L) instanceof String name) {
+                        validateStatementClass(ctx, "PDO::__construct", name);
                         dbh.statementClass = name;
                         dbh.statementClassArgs.clear();
-                        if (arr.size() > 1 && arr.get(1) instanceof PhpArray ctor) {
+                        if (arr.size() > 1 && arr.get(1L) instanceof PhpArray ctor) {
                             for (var e : ctor.rawEntries()) {
                                 dbh.statementClassArgs.add(e.getValue());
                             }
@@ -1028,14 +1039,16 @@ final class PdoFunctions {
                 // accepted and stored nowhere, like pdo_mysql
             }
             case (int) ATTR_STATEMENT_CLASS -> {
-                if (!(value instanceof PhpArray arr) || arr.size() == 0 || !(arr.get(0) instanceof String)) {
+                if (!(value instanceof PhpArray arr) || arr.size() == 0 || !(arr.get(0L) instanceof String)) {
                     throw new PhpError(PhpError.TYPE_ERROR,
                             "PDO::setAttribute(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS value must be of type array, "
                                     + PhpOps.typeName(value) + " given", null);
                 }
-                dbh.statementClass = (String) arr.get(0);
+                String name = (String) arr.get(0L);
+                validateStatementClass(ctx, "PDO::setAttribute", name);
+                dbh.statementClass = name;
                 dbh.statementClassArgs.clear();
-                if (arr.size() > 1 && arr.get(1) instanceof PhpArray ctor) {
+                if (arr.size() > 1 && arr.get(1L) instanceof PhpArray ctor) {
                     for (var e : ctor.rawEntries()) {
                         dbh.statementClassArgs.add(e.getValue());
                     }
@@ -1160,8 +1173,25 @@ final class PdoFunctions {
         return stmtObj;
     }
 
-    private static PhpObject retypeStatement(PhpContext ctx, Dbh dbh, PhpObject statement, Stmt st) {
-        PhpClass cls = ctx.lookupOrAutoloadClass(dbh.statementClass);
+    private static void validateStatementClass(PhpContext ctx, String fn, String name) {
+        PhpClass cls = ctx.lookupOrAutoloadClass(name);
+        PhpClass base = ctx.lookupClass("PDOStatement");
+        if (cls == null) {
+            throw new PhpError(PhpError.TYPE_ERROR, fn
+                    + "(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS class must be a valid class", null);
+        }
+        if (!cls.isInstanceOf(base)) {
+            throw new PhpError(PhpError.TYPE_ERROR, fn
+                    + "(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS class must be derived from PDOStatement", null);
+        }
+        PhpClass.MethodEntry ctor = cls.constructMethod();
+        if (ctor != null && ctor.visibility() == Visibility.PUBLIC) {
+            throw new PhpError(PhpError.TYPE_ERROR, fn
+                    + "(): Argument #2 ($value) User-supplied statement class cannot have a public constructor", null);
+        }
+    }
+
+    private static PhpObject retypeStatement(PhpContext ctx, Dbh dbh, PhpObject statement, Stmt st) {        PhpClass cls = ctx.lookupOrAutoloadClass(dbh.statementClass);
         if (cls == null) {
             throw pdoException(ctx, "Class \"" + dbh.statementClass + "\" not found", 0L, null);
         }
@@ -1228,10 +1258,11 @@ final class PdoFunctions {
                     // pdo_mysql supports forward-only; CURSOR_SCROLL falls back to the same
                 }
             } else if (attr == ATTR_STATEMENT_CLASS) {
-                if (value instanceof PhpArray arr && arr.size() > 0 && arr.get(0) instanceof String name) {
+                if (value instanceof PhpArray arr && arr.size() > 0 && arr.get(0L) instanceof String name) {
+                    validateStatementClass(ctx, "PDO::prepare", name);
                     dbh.statementClass = name;
                     dbh.statementClassArgs.clear();
-                    if (arr.size() > 1 && arr.get(1) instanceof PhpArray ctor) {
+                    if (arr.size() > 1 && arr.get(1L) instanceof PhpArray ctor) {
                         for (var e : ctor.rawEntries()) {
                             dbh.statementClassArgs.add(e.getValue());
                         }
