@@ -2639,6 +2639,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         static long refMaskSlow(com.oracle.truffle.api.nodes.RootNode root) {
+            if (root instanceof dev.phpruntime.runtime.PhpExceptions.BuiltinMethodRootNode builtinMethod) {
+                return builtinMethod.refMask();
+            }
             PhpFunctionRootNode fn = PhpFunctionRootNode.of(root);
             return fn == null ? 0L : fn.refMask();
         }

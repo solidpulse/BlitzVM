@@ -508,11 +508,22 @@ public final class PhpExceptions {
     public static final class BuiltinMethodRootNode extends RootNode {
         private final String name;
         private final BuiltinMethod impl;
+        private final long refMask;
 
         public BuiltinMethodRootNode(PhpLanguage language, String name, BuiltinMethod impl) {
+            this(language, name, impl, 0L);
+        }
+
+        public BuiltinMethodRootNode(PhpLanguage language, String name, BuiltinMethod impl, long refMask) {
             super(language);
             this.name = name;
             this.impl = impl;
+            this.refMask = refMask;
+        }
+
+        /** Bit i set means argument i (after {@code this} and the called class) is by reference. */
+        public long refMask() {
+            return refMask;
         }
 
         @Override
