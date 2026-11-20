@@ -242,6 +242,8 @@ class TypeAttributeMetadataTest {
         assertEquals("?string", name.type().toString());
         PhpParameter promotedId = cls.methods().get("__construct").signature().parameters().get(0);
         assertTrue(promotedId.promoted());
+        assertEquals("int", promotedId.type().toString());
+        assertEquals(List.of(NS + "Marker"), names(promotedId.attributes()));
 
         PhpClassTemplate.MethodDecl selfType = cls.methods().get("selftype");
         assertEquals(NS + "C", selfType.signature().parameters().get(0).type().toString());
