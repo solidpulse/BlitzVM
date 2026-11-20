@@ -169,6 +169,21 @@ js() { # $1 target (truffle or node): the JavaScript handlers in www/*.js
   stop_all
 }
 
+suite() { # $1 target: framework-free routes (hello, template, db, api); 4 workers, 16 connections, then 1
+  local t="$1" w="${SUITE_WARMUP:-}"
+  [[ -z "$w" ]] && { [[ "$t" == truffle* ]] && w=45 || w=10; }
+  echo "################ $t suite"
+  start "$t" "$THROUGHPUT_WORKERS"
+  for path in "hello.php" "index.php?name=bench" "db.php" "api.php?n=300"; do
+    echo "== $path: $THROUGHPUT_WORKERS workers, 16 connections, ${LOAD_SECONDS}s after ${w}s warm-up"
+    java -Dwarmup="$w" "$ROOT/bench/LoadGen.java" load "$BASE/$path" 16 "$LOAD_SECONDS"
+    echo "== $path: 1 connection, 10s"
+    java -Dwarmup=2 "$ROOT/bench/LoadGen.java" load "$BASE/$path" 1 10
+  done
+  echo "== memory after load: $(rss_mb "$t") MB"
+  stop_all
+}
+
 wordpress() { # $1 target (truffle, fpm or fpm-jit): an installed WordPress, see scripts/wordpress.sh
   local t="$1" wl="java -Dwarmup=${WP_WARMUP:-60} -Dhost=$WP_HOST $ROOT/bench/LoadGen.java"
   echo "################ $t wordpress"
@@ -192,4 +207,4 @@ trap stop_all EXIT
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
-for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed, js or wordpress
+for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed, js, suite or wordpress
