@@ -1,0 +1,2 @@
+<?php
+$relativeValue = 'relative boot';

@@ -1,0 +1,1 @@
+output was written during boot

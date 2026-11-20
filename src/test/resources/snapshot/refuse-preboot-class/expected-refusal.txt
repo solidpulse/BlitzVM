@@ -1,0 +1,1 @@
+boot changed the state of the pre-boot class PreBootClass

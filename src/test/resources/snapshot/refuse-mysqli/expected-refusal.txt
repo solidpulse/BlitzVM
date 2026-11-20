@@ -1,0 +1,1 @@
+mysqli state was left by boot
