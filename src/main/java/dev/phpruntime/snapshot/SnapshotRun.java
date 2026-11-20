@@ -131,6 +131,11 @@ public final class SnapshotRun {
         return done;
     }
 
+    /** Whether this run captures: the only mode that records database session setup. */
+    public boolean isTemplate() {
+        return mode == Mode.TEMPLATE;
+    }
+
     public String bootPath() {
         return bootPath;
     }

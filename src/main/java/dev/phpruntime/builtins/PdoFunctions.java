@@ -15,6 +15,7 @@ import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
+import dev.phpruntime.snapshot.SnapshotGeneration;
 
 import java.io.IOException;
 import java.math.BigInteger;
@@ -146,6 +147,8 @@ final class PdoFunctions {
         boolean repeatedNamed;
         boolean emulated;
         boolean direct;
+        /** Whether executing this statement bumps the snapshot generation; classified at prepare. */
+        boolean bump;
         final Map<Integer, Param> bindings = new LinkedHashMap<>();
         final Map<Integer, BoundColumn> boundColumns = new LinkedHashMap<>();
         boolean unknownBinding;
@@ -1166,6 +1169,9 @@ final class PdoFunctions {
             throw new PhpError(PhpError.VALUE_ERROR,
                     "PDO::exec(): Argument #1 ($statement) must not be empty", null);
         }
+        if (MysqliFunctions.writesStatement(sql)) {
+            SnapshotGeneration.bump();
+        }
         try {
             Run run = runDirect(ctx, dbh, sql);
             dbh.lastInsertId = Long.toString(run.insertId);
@@ -1192,6 +1198,10 @@ final class PdoFunctions {
         st.nativeSql = sql;
         st.direct = true;
         st.emulated = false;
+        st.bump = MysqliFunctions.writesStatement(sql);
+        if (st.bump) {
+            SnapshotGeneration.bump();
+        }
         try {
             runDirectInto(ctx, dbh, st, sql);
         } catch (SQLException e) {
@@ -1256,6 +1266,7 @@ final class PdoFunctions {
         st.dbhId = self.id();
         st.sql = sql;
         st.emulated = dbh.emulate;
+        st.bump = MysqliFunctions.writesStatement(sql);
         parseTokens(st);
         if (args.length > 1) {
             PhpArray options = arrayArg(args[1], "PDO::prepare", 2, "options", false);
@@ -1593,6 +1604,9 @@ final class PdoFunctions {
             st.sentSql = sql;
         } else {
             sql = st.nativeSql;
+        }
+        if (st.bump) {
+            SnapshotGeneration.bump();
         }
         try {
             Run run = st.emulated || st.direct

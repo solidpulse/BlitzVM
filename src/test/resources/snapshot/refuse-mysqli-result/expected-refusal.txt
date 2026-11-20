@@ -1,0 +1,1 @@
+an unfreed mysqli result was left by boot

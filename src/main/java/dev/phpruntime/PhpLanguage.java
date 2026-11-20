@@ -70,6 +70,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     private volatile PhpClassTemplate closureTemplate;
     private volatile PhpClassTemplate mysqliTemplate;
     private volatile PhpClassTemplate mysqliResultTemplate;
+    private volatile PhpClassTemplate mysqliStmtTemplate;
     private volatile Map<String, PhpClassTemplate> builtinClassTemplates;
     private volatile String[] builtinClassNamesById;
 
@@ -142,6 +143,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
                     tpl = new PhpClassTemplate(nextTemplateId(), "mysqli_result", false, false, false, false,
                             null, List.of(), props, List.of(), Map.of());
                     mysqliResultTemplate = tpl;
+                }
+            }
+        }
+        return tpl;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public PhpClassTemplate mysqliStmtTemplate(List<PhpClassTemplate.PropertyDecl> props) {
+        PhpClassTemplate tpl = mysqliStmtTemplate;
+        if (tpl == null) {
+            synchronized (this) {
+                tpl = mysqliStmtTemplate;
+                if (tpl == null) {
+                    tpl = new PhpClassTemplate(nextTemplateId(), "mysqli_stmt", false, false, false, false,
+                            null, List.of(), props, List.of(), Map.of());
+                    mysqliStmtTemplate = tpl;
                 }
             }
         }
