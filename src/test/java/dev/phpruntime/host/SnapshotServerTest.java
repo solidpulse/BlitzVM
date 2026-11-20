@@ -188,6 +188,16 @@ class SnapshotServerTest {
                 assertEquals(expected, r.body());
             }
             assertEquals(1, count(log, "output was written during boot"));
+
+            // A changed included file retries the refused capture without logging it again.
+            long rebuilds = snap.snapshots().rebuildCount();
+            Files.setLastModifiedTime(app.resolve("boot.php"),
+                    FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+            snap.get("/");
+            assertTrue(await(() -> snap.snapshots().rebuildCount() > rebuilds),
+                    "refused capture was not retried after boot.php changed");
+            assertEquals(1, count(log, "output was written during boot"));
+            assertEquals(expected, snap.get("/").body());
         }
     }
 
@@ -334,9 +344,13 @@ class SnapshotServerTest {
     }
 
     private static boolean waitForLog(List<String> log, String needle) throws InterruptedException {
+        return await(() -> count(log, needle) > 0);
+    }
+
+    private static boolean await(java.util.function.BooleanSupplier condition) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 20_000;
         while (System.currentTimeMillis() < deadline) {
-            if (count(log, needle) > 0) {
+            if (condition.getAsBoolean()) {
                 return true;
             }
             Thread.sleep(20);

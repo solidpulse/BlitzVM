@@ -176,6 +176,11 @@ public final class SnapshotServer implements AutoCloseable {
         this.logger = newLogger;
     }
 
+    /** How many template runs have started; tests use it to observe a retry. */
+    long rebuildCount() {
+        return counters.rebuilds.sum();
+    }
+
     /** Every difference verify mode has reported, for tests and debugging. */
     public List<String> verifyDifferences() {
         synchronized (verifyDifferences) {
