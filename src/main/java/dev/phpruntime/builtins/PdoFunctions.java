@@ -271,6 +271,46 @@ final class PdoFunctions {
         return i < args.length ? args[i] : fallback;
     }
 
+    /** PHP's weak-mode int parameter check: non-numeric strings are a TypeError, not 0. */
+    private static long intArg(Object value, String fn, int index, String name, boolean nullable) {
+        if (value == PhpNull.INSTANCE) {
+            if (nullable) {
+                return FETCH_DEFAULT;
+            }
+            throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + index + " ($" + name
+                    + ") must be of type int, null given", null);
+        }
+        if (value instanceof Long l) {
+            return l;
+        }
+        if (value instanceof Double || value instanceof Boolean) {
+            return PhpOps.toLong(value);
+        }
+        if (value instanceof String s && PhpOps.isNumericString(s)) {
+            return PhpOps.toLong(s);
+        }
+        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + index + " ($" + name
+                + ") must be of type " + (nullable ? "?" : "") + "int, " + PhpOps.typeName(value) + " given", null);
+    }
+
+    /** fetch()/fetchAll() declare {@code int $mode} but accept null as FETCH_DEFAULT. */
+    private static long fetchModeArg(Object value, String fn) {
+        if (value == PhpNull.INSTANCE) {
+            return FETCH_DEFAULT;
+        }
+        return intArg(value, fn, 1, "mode", false);
+    }
+
+    private static PhpArray arrayArg(Object value, String fn, int index, String name, boolean nullable) {        if (value instanceof PhpArray arr) {
+            return arr;
+        }
+        if (value == PhpNull.INSTANCE && nullable) {
+            return null;
+        }
+        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + index + " ($" + name
+                + ") must be of type " + (nullable ? "?" : "") + "array, " + PhpOps.typeName(value) + " given", null);
+    }
+
     /** Argument keys are 1-based positions in the SQL, or parameter names without the colon. */
     private static Object paramKey(Object value, String fn) {
         if (value instanceof Long l) {
@@ -565,7 +605,7 @@ final class PdoFunctions {
             Dsn parsed = parseDsn(dsn);
             String user = args.length > 1 && args[1] != PhpNull.INSTANCE ? PhpOps.toStr(args[1]) : null;
             String password = args.length > 2 && args[2] != PhpNull.INSTANCE ? PhpOps.toStr(args[2]) : null;
-            PhpArray options = args.length > 3 && args[3] instanceof PhpArray arr ? arr : null;
+            PhpArray options = args.length > 3 ? arrayArg(args[3], "PDO::__construct", 4, "options", true) : null;
             Dbh dbh = open(ctx, parsed, user, password, options);
             state(ctx).connections.put(self.id(), dbh);
             ctx.request().resources.add(dbh.conn);
@@ -1160,7 +1200,7 @@ final class PdoFunctions {
         }
         noteStatement(dbh, sql, !st.cols.isEmpty());
         if (args.length > 1 && args[1] != PhpNull.INSTANCE) {
-            long mode = PhpOps.toLong(args[1]);
+            long mode = intArg(args[1], "PDO::query", 2, "fetchMode", true);
             Object[] modeArgs = new Object[Math.max(0, args.length - 2)];
             System.arraycopy(args, 2, modeArgs, 0, modeArgs.length);
             st.fetchMode = mode;
@@ -1217,7 +1257,8 @@ final class PdoFunctions {
         st.sql = sql;
         st.emulated = dbh.emulate;
         parseTokens(st);
-        if (args.length > 1 && args[1] instanceof PhpArray options) {
+        if (args.length > 1) {
+            PhpArray options = arrayArg(args[1], "PDO::prepare", 2, "options", false);
             applyStatementOptions(ctx, dbh, st, options);
         }
         if (!st.emulated) {
@@ -1440,6 +1481,10 @@ final class PdoFunctions {
         Object key = args[0];
         BoundColumn bc = new BoundColumn();
         if (key instanceof Long l) {
+            if (l < 1) {
+                throw new PhpError(PhpError.VALUE_ERROR,
+                        "PDOStatement::bindColumn(): Argument #1 ($column) must be greater than or equal to 1", null);
+            }
             bc.index = (int) (l - 1);
         } else {
             bc.name = PhpOps.toStr(key);
@@ -1459,7 +1504,7 @@ final class PdoFunctions {
             throw new PhpError("PDO object is not initialized");
         }
         clearStmtError(st);
-        PhpArray params = args.length > 0 && args[0] instanceof PhpArray arr ? arr : null;
+        PhpArray params = args.length > 0 ? arrayArg(args[0], "PDOStatement::execute", 1, "params", true) : null;
         if (st.mixed) {
             failStmt(ctx, dbh, st, "PDOStatement::execute", "HY093", 0, "mixed named and positional parameters");
             return false;
@@ -1867,7 +1912,7 @@ final class PdoFunctions {
         long mode;
         Object[] extra;
         if (args.length > 0 && args[0] != PhpNull.INSTANCE) {
-            mode = PhpOps.toLong(args[0]);
+            mode = fetchModeArg(args[0], "PDOStatement::fetch");
             extra = new Object[Math.max(0, args.length - 1)];
             System.arraycopy(args, 1, extra, 0, extra.length);
         } else {
@@ -1903,7 +1948,7 @@ final class PdoFunctions {
         long mode;
         Object[] extra;
         if (args.length > 0 && args[0] != PhpNull.INSTANCE) {
-            mode = PhpOps.toLong(args[0]);
+            mode = fetchModeArg(args[0], "PDOStatement::fetchAll");
             extra = new Object[Math.max(0, args.length - 1)];
             System.arraycopy(args, 1, extra, 0, extra.length);
         } else {
@@ -2316,7 +2361,7 @@ final class PdoFunctions {
     static Object setFetchMode(PhpContext ctx, PhpObject self, Object[] args) {
         requireArgs("PDOStatement::setFetchMode", args, 1, 256);
         Stmt st = stmt(ctx, self, "PDOStatement::setFetchMode");
-        long mode = PhpOps.toLong(args[0]);
+        long mode = intArg(args[0], "PDOStatement::setFetchMode", 1, "mode", false);
         validateFetchMode(mode, "PDOStatement::setFetchMode");
         st.fetchMode = mode;
         Object[] extra = new Object[Math.max(0, args.length - 1)];
