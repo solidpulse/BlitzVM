@@ -1,0 +1,226 @@
+insert-id: '2'
+== default fetch (BOTH) ==
+row1: array (
+  'id' => 1,
+  0 => 1,
+  'i' => -5,
+  1 => -5,
+  'ti' => 1,
+  2 => 1,
+  'si' => 300,
+  3 => 300,
+  'mi' => -70000,
+  4 => -70000,
+  'bi' => 9223372036854775807,
+  5 => 9223372036854775807,
+  'bu' => '18446744073709551615',
+  6 => '18446744073709551615',
+  'd' => '12.500',
+  7 => '12.500',
+  'f' => 1.1,
+  8 => 1.1,
+  'dbl' => 0.1,
+  9 => 0.1,
+)
+row2: array (
+  'id' => 2,
+  0 => 2,
+  'i' => NULL,
+  1 => NULL,
+  'ti' => NULL,
+  2 => NULL,
+  'si' => NULL,
+  3 => NULL,
+  'mi' => NULL,
+  4 => NULL,
+  'bi' => NULL,
+  5 => NULL,
+  'bu' => NULL,
+  6 => NULL,
+  'd' => NULL,
+  7 => NULL,
+  'f' => NULL,
+  8 => NULL,
+  'dbl' => NULL,
+  9 => NULL,
+)
+row3: false
+counts: array (
+  0 => 2,
+  1 => 10,
+)
+== strings and dates ==
+special: array (
+  'vc' => 'héllo',
+  'txt' => 'long ✓ text',
+  'dt' => '2024-02-29 13:45:01',
+  'da' => '2024-02-29',
+  'tm' => '-12:30:00',
+  'ts' => '2024-01-01 00:00:00',
+  'y' => '2024',
+  'b' => '6279746573',
+  'e' => 'b',
+  's' => 'x,y',
+  'bit8' => 170,
+  'js' => '{"a": 1}',
+)
+== nulls ==
+nulls: array (
+  'i' => NULL,
+  'vc' => 'x',
+  'dt' => '0000-00-00 00:00:00',
+  'b' => NULL,
+)
+== modes ==
+emu=1
+types: array (
+  'id' => 1,
+  'i' => -5,
+  'ti' => 1,
+  'si' => 300,
+  'mi' => -70000,
+  'bi' => 9223372036854775807,
+  'bu' => '18446744073709551615',
+  'd' => '12.500',
+  'f' => 1.1,
+  'dbl' => 0.1,
+)
+special: array (
+  'vc' => 'héllo',
+  'txt' => 'long ✓ text',
+  'dt' => '2024-02-29 13:45:01',
+  'b' => '6279746573',
+  'bit8' => 170,
+)
+emu=0
+types: array (
+  'id' => 1,
+  'i' => -5,
+  'ti' => 1,
+  'si' => 300,
+  'mi' => -70000,
+  'bi' => 9223372036854775807,
+  'bu' => '18446744073709551615',
+  'd' => '12.500',
+  'f' => 1.1,
+  'dbl' => 0.1,
+)
+special: array (
+  'vc' => 'héllo',
+  'txt' => 'long ✓ text',
+  'dt' => '2024-02-29 13:45:01',
+  'b' => '6279746573',
+  'bit8' => 170,
+)
+== stringify ==
+stringified: array (
+  'id' => '1',
+  'i' => '-5',
+  'f' => '1.1',
+  'dbl' => '0.1',
+  'd' => '12.500',
+  'bu' => '18446744073709551615',
+)
+stringified-native: array (
+  'id' => '1',
+  'i' => '-5',
+  'f' => '1.1',
+  'dbl' => '0.1',
+  'd' => '12.500',
+)
+== case ==
+natural: array (
+  'assoc' => 
+  array (
+    'Id' => 1,
+    'Name' => 'héllo',
+  ),
+  'obj' => 
+  array (
+    'Id' => 1,
+    'Name' => 'héllo',
+  ),
+  'meta' => 'Id',
+)
+upper: array (
+  'assoc' => 
+  array (
+    'ID' => 1,
+    'NAME' => 'héllo',
+  ),
+  'obj' => 
+  array (
+    'ID' => 1,
+    'NAME' => 'héllo',
+  ),
+  'meta' => 'ID',
+)
+lower: array (
+  'assoc' => 
+  array (
+    'id' => 1,
+    'name' => 'héllo',
+  ),
+  'obj' => 
+  array (
+    'id' => 1,
+    'name' => 'héllo',
+  ),
+  'meta' => 'id',
+)
+== oracle nulls ==
+natural: array (
+  0 => 
+  array (
+    'a' => -5,
+    'b' => 'héllo',
+    'c' => '2024-02-29 13:45:01',
+  ),
+  1 => 
+  array (
+    'a' => NULL,
+    'b' => 'x',
+    'c' => '0000-00-00 00:00:00',
+  ),
+)
+empty: array (
+  0 => 
+  array (
+    'a' => -5,
+    'b' => 'héllo',
+    'c' => '2024-02-29 13:45:01',
+  ),
+  1 => 
+  array (
+    'a' => NULL,
+    'b' => 'x',
+    'c' => '0000-00-00 00:00:00',
+  ),
+)
+tostring: array (
+  0 => 
+  array (
+    'a' => -5,
+    'b' => 'héllo',
+    'c' => '2024-02-29 13:45:01',
+  ),
+  1 => 
+  array (
+    'a' => '',
+    'b' => 'x',
+    'c' => '0000-00-00 00:00:00',
+  ),
+)
+== default fetch mode attribute ==
+query-fetch: array (
+  0 => 1,
+  1 => 'héllo',
+)
+override: array (
+  'id' => 1,
+  'vc' => 'héllo',
+)
+object: array (
+  'id' => 1,
+  'vc' => 'héllo',
+)

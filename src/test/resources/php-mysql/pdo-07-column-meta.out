@@ -1,0 +1,490 @@
+column-count: 23
+meta-0: array (
+  'native_type' => 'TINY',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'ti',
+  'len' => 4,
+  'precision' => 0,
+)
+meta-1: array (
+  'native_type' => 'TINY',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 't1',
+  'len' => 1,
+  'precision' => 0,
+)
+meta-2: array (
+  'native_type' => 'SHORT',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'si',
+  'len' => 6,
+  'precision' => 0,
+)
+meta-3: array (
+  'native_type' => 'INT24',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'mi',
+  'len' => 9,
+  'precision' => 0,
+)
+meta-4: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'i',
+  'len' => 11,
+  'precision' => 0,
+)
+meta-5: array (
+  'native_type' => 'LONGLONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'bi',
+  'len' => 20,
+  'precision' => 0,
+)
+meta-6: array (
+  'native_type' => 'LONGLONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'bu',
+  'len' => 20,
+  'precision' => 0,
+)
+meta-7: array (
+  'native_type' => 'FLOAT',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'f',
+  'len' => 12,
+  'precision' => 31,
+)
+meta-8: array (
+  'native_type' => 'DOUBLE',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'dbl',
+  'len' => 22,
+  'precision' => 31,
+)
+meta-9: array (
+  'native_type' => 'NEWDECIMAL',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'dec1',
+  'len' => 12,
+  'precision' => 2,
+)
+meta-10: array (
+  'native_type' => 'BIT',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'bit8',
+  'len' => 8,
+  'precision' => 0,
+)
+meta-11: array (
+  'native_type' => 'BLOB',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'blob',
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'bl',
+  'len' => 65535,
+  'precision' => 0,
+)
+meta-12: array (
+  'native_type' => 'BLOB',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'blob',
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'tx',
+  'len' => 262140,
+  'precision' => 0,
+)
+meta-13: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'vc',
+  'len' => 28,
+  'precision' => 0,
+)
+meta-14: array (
+  'native_type' => 'STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'ch',
+  'len' => 12,
+  'precision' => 0,
+)
+meta-15: array (
+  'native_type' => 'STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'en',
+  'len' => 4,
+  'precision' => 0,
+)
+meta-16: array (
+  'native_type' => 'STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'se',
+  'len' => 12,
+  'precision' => 0,
+)
+meta-17: array (
+  'native_type' => 'YEAR',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'y',
+  'len' => 4,
+  'precision' => 0,
+)
+meta-18: array (
+  'native_type' => 'BLOB',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'blob',
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'js',
+  'len' => 4294967295,
+  'precision' => 0,
+)
+meta-19: array (
+  'native_type' => 'DATETIME',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'dt',
+  'len' => 19,
+  'precision' => 0,
+)
+meta-20: array (
+  'native_type' => 'DATE',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'da',
+  'len' => 10,
+  'precision' => 0,
+)
+meta-21: array (
+  'native_type' => 'TIME',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'tm',
+  'len' => 10,
+  'precision' => 0,
+)
+meta-22: array (
+  'native_type' => 'TIMESTAMP',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'ts',
+  'len' => 19,
+  'precision' => 0,
+)
+out-of-range: false
+== keys and flags ==
+flags-0: array (
+  0 => 'u',
+  1 => 
+  array (
+    0 => 'not_null',
+    1 => 'primary_key',
+  ),
+)
+flags-1: array (
+  0 => 'a',
+  1 => 
+  array (
+    0 => 'multiple_key',
+  ),
+)
+flags-2: array (
+  0 => 'b',
+  1 => 
+  array (
+    0 => 'multiple_key',
+  ),
+)
+flags-3: array (
+  0 => 'c',
+  1 => 
+  array (
+    0 => 'multiple_key',
+    1 => 'blob',
+  ),
+)
+== expressions ==
+expr-0: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => '1+1',
+  'len' => 3,
+  'precision' => 0,
+)
+expr-1: array (
+  'native_type' => 'LONGLONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => 'c',
+  'len' => 21,
+  'precision' => 0,
+)
+expr-2: array (
+  'native_type' => 'TIMESTAMP',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => 'n',
+  'len' => 19,
+  'precision' => 0,
+)
+expr-3: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => 's',
+  'len' => 4,
+  'precision' => 39,
+)
+expr-4: array (
+  'native_type' => 'NEWDECIMAL',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => 'f',
+  'len' => 4,
+  'precision' => 1,
+)
+expr-5: array (
+  'native_type' => 'NULL',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => '',
+  'name' => 'z',
+  'len' => 0,
+  'precision' => 0,
+)
+== aliases and case ==
+upper-0: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'MIXED',
+  'len' => 28,
+  'precision' => 0,
+)
+upper-1: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'IDENT',
+  'len' => 11,
+  'precision' => 0,
+)
+lower: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'mixed',
+  'len' => 28,
+  'precision' => 0,
+)
+== prepared metadata ==
+emu=1
+before: array (
+)
+prep-0: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'i',
+  'len' => 11,
+  'precision' => 0,
+)
+prep-1: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'vc',
+  'len' => 28,
+  'precision' => 0,
+)
+prep-2: array (
+  'native_type' => 'NEWDECIMAL',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'dec1',
+  'len' => 12,
+  'precision' => 2,
+)
+prep-3: array (
+  'native_type' => 'BIT',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'bit8',
+  'len' => 8,
+  'precision' => 0,
+)
+emu=0
+before: array (
+)
+prep-0: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'i',
+  'len' => 11,
+  'precision' => 0,
+)
+prep-1: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'vc',
+  'len' => 28,
+  'precision' => 0,
+)
+prep-2: array (
+  'native_type' => 'NEWDECIMAL',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'dec1',
+  'len' => 12,
+  'precision' => 2,
+)
+prep-3: array (
+  'native_type' => 'BIT',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_meta',
+  'name' => 'bit8',
+  'len' => 8,
+  'precision' => 0,
+)

@@ -1,0 +1,385 @@
+== prepare and query string ==
+class: 'PDOStatement'
+queryString: 'SELECT id, name FROM pdo_stmt WHERE id = ?'
+columnCount-before: 0
+getColumnMeta-before: false
+rowCount-before: 0
+== execute forms ==
+execute-pos: true
+fetch-pos: array (
+  0 => 1,
+  1 => 'a',
+)
+rowCount-select: 1
+columnCount: 2
+execute-named: true
+fetch-named: array (
+  'id' => 2,
+  'name' => 'b',
+)
+bindValue-named: array (
+  0 => true,
+  1 => 'c',
+)
+== bind types ==
+bind-2-string: 'a\'b\\c
+'
+native-2-string: 'a\'b\\c
+'
+bind-1-integer: 42
+native-1-integer: 42
+bind-1-string: 42
+native-1-string: '42'
+bind-5-boolean: 1
+native-5-boolean: 1
+bind-5-boolean: 0
+native-5-boolean: 0
+bind-0-string: NULL
+native-0-string: NULL
+bind-3-string: 'lob\'x'
+native-3-string: 'lob\'x'
+bind-2-double: '1.5'
+native-2-double: '1.5'
+== bindParam by reference ==
+ref-one: 'one'
+ref-two: 'two'
+ref-int: 6
+== bindColumn ==
+bound: array (
+  0 => 'a',
+  1 => '1',
+)
+bound: array (
+  0 => 'b',
+  1 => '-7',
+)
+bound: array (
+  0 => 'c',
+  1 => NULL,
+)
+== fetchObject ==
+std: array (
+  'id' => 1,
+  'name' => 'a',
+)
+ctor(obj)
+class: \PdoRowClass::__set_state(array(
+   'id' => 2,
+   'name' => 'b',
+   'grp' => 'default-protected',
+   'n' => 'default-private',
+   'extra' => 'default-extra',
+   'tag' => 'obj',
+))
+again: array (
+  'id' => 3,
+  'name' => 'c',
+)
+== getColumnMeta ==
+meta-0: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+    0 => 'not_null',
+    1 => 'primary_key',
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'id',
+  'len' => 11,
+  'precision' => 0,
+)
+meta-1: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'grp',
+  'len' => 20,
+  'precision' => 0,
+)
+meta-2: array (
+  'native_type' => 'VAR_STRING',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'name',
+  'len' => 80,
+  'precision' => 0,
+)
+meta-3: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'n',
+  'len' => 11,
+  'precision' => 0,
+)
+meta-4: array (
+  'native_type' => 'DOUBLE',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'f',
+  'len' => 22,
+  'precision' => 31,
+)
+meta-5: array (
+  'native_type' => 'NEWDECIMAL',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'd',
+  'len' => 10,
+  'precision' => 2,
+)
+meta-6: array (
+  'native_type' => 'BLOB',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'blob',
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'body',
+  'len' => 65535,
+  'precision' => 0,
+)
+meta-7: array (
+  'native_type' => 'DATETIME',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'dt',
+  'len' => 19,
+  'precision' => 0,
+)
+meta-missing: false
+meta-expr0: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => '1+1',
+  'len' => 3,
+  'precision' => 0,
+)
+meta-expr1: array (
+  'native_type' => 'LONGLONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => 'c',
+  'len' => 21,
+  'precision' => 0,
+)
+meta-expr2: array (
+  'native_type' => 'TIMESTAMP',
+  'pdo_type' => 2,
+  'flags' => 
+  array (
+    0 => 'not_null',
+  ),
+  'table' => '',
+  'name' => 'n',
+  'len' => 19,
+  'precision' => 0,
+)
+meta-case: array (
+  'native_type' => 'LONG',
+  'pdo_type' => 1,
+  'flags' => 
+  array (
+    0 => 'not_null',
+    1 => 'primary_key',
+  ),
+  'table' => 'pdo_stmt',
+  'name' => 'IDENT',
+  'len' => 11,
+  'precision' => 0,
+)
+== debugDumpParams ==
+dump: 'SQL: [51] SELECT * FROM pdo_stmt WHERE name = :nm AND id > :i
+Sent SQL: [50] SELECT * FROM pdo_stmt WHERE name = \'a\' AND id > 0
+Params:  2
+Key: Name: [3] :nm
+paramno=-1
+name=[3] ":nm"
+is_param=1
+param_type=2
+Key: Name: [2] :i
+paramno=-1
+name=[2] ":i"
+is_param=1
+param_type=1
+'
+dump-return: NULL
+dump-quoted: 'SQL: [48] SELECT \':x\' AS a, ? AS b, 1 -- :comment
+, ? AS c
+Sent SQL: [50] SELECT \':x\' AS a, \'p\' AS b, 1 -- :comment
+, 0 AS c
+Params:  2
+Key: Position #0:
+paramno=0
+name=[0] ""
+is_param=1
+param_type=2
+Key: Position #1:
+paramno=1
+name=[0] ""
+is_param=1
+param_type=1
+'
+dump-native: 'SQL: [39] SELECT * FROM pdo_stmt WHERE name = :nm
+Params:  0
+'
+== statement misc ==
+fetchColumn-name: 'a'
+fetchColumn-num: 2
+fetch: array (
+  0 => 3,
+  1 => 'c',
+)
+closeCursor: true
+fetch-after-close: false
+closeCursor-again: true
+nextRowset: false
+error: array (
+  0 => '00000',
+  1 => 
+  array (
+    0 => '00000',
+    1 => NULL,
+    2 => NULL,
+  ),
+)
+execute-again: true
+fetch-again: array (
+  'id' => 1,
+  'name' => 'a',
+)
+== setFetchMode ==
+mode: true
+ctor(mode)
+fetch: \PdoRowClass::__set_state(array(
+   'id' => 1,
+   'name' => 'a',
+   'grp' => 'g1',
+   'n' => 1,
+   'extra' => 'default-extra',
+   'tag' => 'mode',
+))
+ctor(mode)
+fetch2: \PdoRowClass::__set_state(array(
+   'id' => 2,
+   'name' => 'b',
+   'grp' => 'g1',
+   'n' => -7,
+   'extra' => 'default-extra',
+   'tag' => 'mode',
+))
+assoc: array (
+  0 => 
+  array (
+    'id' => 1,
+    'name' => 'a',
+  ),
+  1 => 
+  array (
+    'id' => 2,
+    'name' => 'b',
+  ),
+  2 => 
+  array (
+    'id' => 3,
+    'name' => 'c',
+  ),
+)
+== foreach ==
+iter: array (
+  0 => 0,
+  1 => 
+  array (
+    'id' => 1,
+    0 => 1,
+    'name' => 'a',
+    1 => 'a',
+  ),
+)
+iter: array (
+  0 => 1,
+  1 => 
+  array (
+    'id' => 2,
+    0 => 2,
+    'name' => 'b',
+    1 => 'b',
+  ),
+)
+iter: array (
+  0 => 2,
+  1 => 
+  array (
+    'id' => 3,
+    0 => 3,
+    'name' => 'c',
+    1 => 'c',
+  ),
+)
+after: false
+iter2: array (
+  0 => 0,
+  1 => 
+  array (
+    'id' => 1,
+    0 => 1,
+    'name' => 'a',
+    1 => 'a',
+  ),
+)
+iter2: array (
+  0 => 1,
+  1 => 
+  array (
+    'id' => 2,
+    0 => 2,
+    'name' => 'b',
+    1 => 'b',
+  ),
+)
+iter2: array (
+  0 => 2,
+  1 => 
+  array (
+    'id' => 3,
+    0 => 3,
+    'name' => 'c',
+    1 => 'c',
+  ),
+)
+iterator-class: 'InternalIterator'
+iterator-rewind: NULL
+iterator-valid: false
+iterator-current: NULL
+iterator-key: NULL
+iterator-next: NULL
+iterator-current2: NULL

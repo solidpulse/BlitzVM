@@ -502,7 +502,7 @@ final class MysqliFunctions {
         set(obj, "type", 0L);
     }
 
-    private static Object serverVersion(String info) {
+    static Object serverVersion(String info) {
         // "11.4.2-MariaDB-ubu2404" -> 110402
         String[] parts = info.split("[.-]");
         try {
@@ -567,7 +567,7 @@ final class MysqliFunctions {
      * Runs a call that waits on the server with the CPU slot released. The call runs at most
      * once even if the scheduler retries the blocked section after an interrupt.
      */
-    private static <T> T blocking(PhpContext ctx, SqlCall<T> call) throws SQLException {
+    static <T> T blocking(PhpContext ctx, SqlCall<T> call) throws SQLException {
         return blocking(ctx.request().scheduler, call);
     }
 
@@ -601,7 +601,7 @@ final class MysqliFunctions {
 
     // ------------------------------------------------------------------ errors
 
-    private static String message(SQLException e) {
+    static String message(SQLException e) {
         String m = e.getMessage() == null ? "" : e.getMessage();
         return PhpStrings.fromJava(CONN_PREFIX.matcher(m).replaceFirst(""));
     }
@@ -1012,7 +1012,7 @@ final class MysqliFunctions {
         return Map.copyOf(map);
     }
 
-    private static String connectFailureMessage(SQLException e, String host) {
+    static String connectFailureMessage(SQLException e, String host) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof UnknownHostException) {
                 return "php_network_getaddresses: getaddrinfo for " + host + " failed: Name or service not known";
@@ -1215,7 +1215,7 @@ final class MysqliFunctions {
      * them from the result avoids a fresh JDBC metadata object for every query; null when the
      * driver is not MariaDB Connector/J or its internals moved.
      */
-    private static Object[] driverColumns(ResultSet rs) {
+    static Object[] driverColumns(ResultSet rs) {
         Field f = DRIVER_METADATA;
         if (f == null || !(rs instanceof org.mariadb.jdbc.client.result.Result result)) {
             return null;
@@ -1285,7 +1285,7 @@ final class MysqliFunctions {
         return new Result(fields, rows);
     }
 
-    private static FieldInfo field(org.mariadb.jdbc.client.Column c) {
+    static FieldInfo field(org.mariadb.jdbc.client.Column c) {
         long charset = 0;
         try {
             Field f = DRIVER_CHARSET;
@@ -1316,7 +1316,7 @@ final class MysqliFunctions {
         return (t <= 9 && (t != 7 || length == 14 || length == 8)) || (t == 13 && length == 4);
     }
 
-    private static FieldInfo field(ResultSetMetaData md, int i) throws SQLException {
+    static FieldInfo field(ResultSetMetaData md, int i) throws SQLException {
         return new FieldInfo(PhpStrings.fromJava(md.getColumnLabel(i)), PhpStrings.fromJava(md.getColumnName(i)),
                 PhpStrings.fromJava(md.getTableName(i)), PhpStrings.fromJava(md.getTableName(i)),
                 PhpStrings.fromJava(md.getCatalogName(i)), md.getPrecision(i), 0, md.isNullable(i) == ResultSetMetaData.columnNoNulls ? 1 : 0,

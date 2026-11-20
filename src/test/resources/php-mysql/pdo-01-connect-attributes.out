@@ -1,0 +1,185 @@
+== constants ==
+param: array (
+  0 => 0,
+  1 => 1,
+  2 => 2,
+  3 => 3,
+  4 => 5,
+)
+fetch: array (
+  0 => 0,
+  1 => 1,
+  2 => 2,
+  3 => 3,
+  4 => 4,
+  5 => 5,
+  6 => 6,
+  7 => 7,
+  8 => 8,
+  9 => 9,
+  10 => 11,
+  11 => 12,
+  12 => 32,
+  13 => 64,
+  14 => 256,
+)
+attr: array (
+  0 => 0,
+  1 => 2,
+  2 => 3,
+  3 => 8,
+  4 => 11,
+  5 => 12,
+  6 => 16,
+  7 => 17,
+  8 => 20,
+  9 => 19,
+  10 => 21,
+)
+err: array (
+  0 => 0,
+  1 => 1,
+  2 => 2,
+  3 => '00000',
+)
+case: array (
+  0 => 0,
+  1 => 1,
+  2 => 2,
+)
+nulls: array (
+  0 => 0,
+  1 => 1,
+  2 => 2,
+)
+mysql: array (
+  0 => 1000,
+  1 => 1002,
+  2 => 1004,
+  3 => 1005,
+  4 => 1008,
+)
+actual-constants: array (
+  0 => true,
+  1 => false,
+  2 => false,
+)
+== classes ==
+pdo-class: 'PDO'
+pdo-interfaces: array (
+)
+stmt-class: 'PDOStatement'
+stmt-interfaces: array (
+  0 => 'IteratorAggregate',
+  1 => 'Traversable',
+)
+drivers: array (
+  0 => 'mysql',
+)
+pdo-drivers: array (
+  0 => 'mysql',
+)
+== attributes ==
+errmode: 2
+fetch-mode: 4
+case: 0
+nulls: 0
+stringify: false
+emulate: true
+persistent: false
+autocommit: true
+driver: 'mysql'
+buffered: true
+str-param: 536870912
+stmt-class-attr: array (
+  0 => 'PDOStatement',
+)
+server-version-string: true
+client-version-prefix: true
+connection-status: true
+set-errmode: true
+errmode-2: 0
+set-errmode-2: true
+set-case: true
+case-2: 1
+set-nulls: true
+nulls-2: 2
+set-fetch: true
+fetch-mode-2: 2
+set-stringify: true
+stringify-2: true
+set-emulate: true
+emulate-2: false
+set-buffered: true
+buffered-2: false
+set-unknown: false
+== options ==
+option-errmode: 0
+option-fetch: 3
+option-emulate: false
+option-buffered: false
+option-init: 7
+option-persistent: true
+== quote ==
+plain: '\'abc\''
+quote: '\'it\\\'s\''
+backslash: '\'a\\\\b\''
+newline: '\'a\\nb\''
+nul: '\'a\\0b\''
+ctrl: '\'a\\Zb\''
+empty: '\'\''
+null: '\'\''
+int: '\'42\''
+true: '\'1\''
+false: '\'\''
+int-type: '\'abc\''
+== session ==
+charset: array (
+  0 => 'utf8mb4',
+  1 => 'utf8mb4',
+  2 => 'utf8mb4',
+)
+latin1: array (
+  0 => 'latin1',
+  1 => 'latin1',
+  2 => 'latin1',
+)
+== connect errors ==
+badpass: PDOException code=1045 msg=SQLSTATE[HY000] [1045] Access denied for user 'root'@'172.17.0.1' (using password: YES) info=array (
+  0 => 'HY000',
+  1 => 1045,
+  2 => 'Access denied for user \'root\'@\'172.17.0.1\' (using password: YES)',
+)
+nodb: PDOException code=1049 msg=SQLSTATE[HY000] [1049] Unknown database 'no_such_db_here' info=array (
+  0 => 'HY000',
+  1 => 1049,
+  2 => 'Unknown database \'no_such_db_here\'',
+)
+refused: PDOException code=2002 msg=SQLSTATE[HY000] [2002] Connection refused info=array (
+  0 => 'HY000',
+  1 => 2002,
+  2 => 'Connection refused',
+)
+badhost: PDOException code=2002 msg=SQLSTATE[HY000] [2002] php_network_getaddresses: getaddrinfo for no.such.host.invalid failed: Name or service not known info=array (
+  0 => 'HY000',
+  1 => 2002,
+  2 => 'php_network_getaddresses: getaddrinfo for no.such.host.invalid failed: Name or service not known',
+)
+empty-dsn: PDOException code=0 msg=PDO::__construct(): Argument #1 ($dsn) must be a valid data source name info=NULL
+no-colon: PDOException code=0 msg=PDO::__construct(): Argument #1 ($dsn) must be a valid data source name info=NULL
+unknown-driver: PDOException code=0 msg=could not find driver info=NULL
+bad-charset: PDOException code=2019 msg=SQLSTATE[HY000] [2019] Unknown character set info=array (
+  0 => 'HY000',
+  1 => 2019,
+  2 => 'Unknown character set',
+)
+empty-charset: PDOException code=2019 msg=SQLSTATE[HY000] [2019] Unknown character set info=array (
+  0 => 'HY000',
+  1 => 2019,
+  2 => 'Unknown character set',
+)
+bad-socket: PDOException code=2002 msg=SQLSTATE[HY000] [2002] No such file or directory info=array (
+  0 => 'HY000',
+  1 => 2002,
+  2 => 'No such file or directory',
+)

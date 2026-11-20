@@ -1,0 +1,199 @@
+== sql errors ==
+missing-table: PDOException code='42S02' msg=SQLSTATE[42S02]: Base table or view not found: 1146 Table 'blitz.nope' doesn't exist info=array (
+  0 => '42S02',
+  1 => 1146,
+  2 => 'Table \'blitz.nope\' doesn\'t exist',
+)
+missing-column: PDOException code='42S22' msg=SQLSTATE[42S22]: Column not found: 1054 Unknown column 'nope' in 'SELECT' info=array (
+  0 => '42S22',
+  1 => 1054,
+  2 => 'Unknown column \'nope\' in \'SELECT\'',
+)
+duplicate: PDOException code='23000' msg=SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '1' for key 'PRIMARY' info=array (
+  0 => '23000',
+  1 => 1062,
+  2 => 'Duplicate entry \'1\' for key \'PRIMARY\'',
+)
+too-long: PDOException code='22001' msg=SQLSTATE[22001]: String data, right truncated: 1406 Data too long for column 'v' at row 1 info=array (
+  0 => '22001',
+  1 => 1406,
+  2 => 'Data too long for column \'v\' at row 1',
+)
+not-null: PDOException code='23000' msg=SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'v' cannot be null info=array (
+  0 => '23000',
+  1 => 1048,
+  2 => 'Column \'v\' cannot be null',
+)
+bad-date: PDOException code='22007' msg=SQLSTATE[22007]: Invalid datetime format: 1292 Incorrect date value: '2024-13-01' for column `blitz`.`pdo_err`.`d` at row 1 info=array (
+  0 => '22007',
+  1 => 1292,
+  2 => 'Incorrect date value: \'2024-13-01\' for column `blitz`.`pdo_err`.`d` at row 1',
+)
+syntax: PDOException code='42000' msg=SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'SELEC 1' at line 1 info=array (
+  0 => '42000',
+  1 => 1064,
+  2 => 'You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near \'SELEC 1\' at line 1',
+)
+exec-missing: PDOException code='42S02' msg=SQLSTATE[42S02]: Base table or view not found: 1146 Table 'blitz.nope' doesn't exist info=array (
+  0 => '42S02',
+  1 => 1146,
+  2 => 'Table \'blitz.nope\' doesn\'t exist',
+)
+native-prepare-missing: PDOException code='42S02' msg=SQLSTATE[42S02]: Base table or view not found: 1146 Table 'blitz.nope' doesn't exist info=array (
+  0 => '42S02',
+  1 => 1146,
+  2 => 'Table \'blitz.nope\' doesn\'t exist',
+)
+empty-query: ValueError code=0 msg=PDO::query(): Argument #1 ($query) must not be empty
+empty-exec: ValueError code=0 msg=PDO::exec(): Argument #1 ($statement) must not be empty
+empty-prepare: ValueError code=0 msg=PDO::prepare(): Argument #1 ($query) must not be empty
+== silent mode ==
+query: false
+query-info: array (
+  0 => '42S02',
+  1 => 
+  array (
+    0 => '42S02',
+    1 => 1146,
+    2 => 'Table \'blitz.nope\' doesn\'t exist',
+  ),
+)
+ok: 1
+cleared: array (
+  0 => '00000',
+  1 => 
+  array (
+    0 => '00000',
+    1 => NULL,
+    2 => NULL,
+  ),
+)
+exec: false
+exec-info: array (
+  0 => '42000',
+  1 => 
+  array (
+    0 => '42000',
+    1 => 1064,
+    2 => 'You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near \'SELEC 1\' at line 1',
+  ),
+)
+stmt-execute: false
+stmt-info: array (
+  0 => '42S02',
+  1 => 
+  array (
+    0 => '42S02',
+    1 => 1146,
+    2 => 'Table \'blitz.nope\' doesn\'t exist',
+  ),
+)
+pdo-unchanged: array (
+  0 => '00000',
+)
+prepare-native: \Closure::__set_state(array(
+))
+prepare-info: array (
+  0 => '00000',
+  1 => 
+  array (
+    0 => '00000',
+    1 => NULL,
+    2 => NULL,
+  ),
+)
+== parameter errors ==
+emu=1
+repeated: true
+missing: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: number of bound variables does not match number of tokens info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+unknown: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: parameter was not defined info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+extra: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: number of bound variables does not match number of tokens info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+bind-zero: ValueError code=0 msg=PDOStatement::bindValue(): Argument #1 ($param) must be greater than or equal to 1
+mixed: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: mixed named and positional parameters info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+string-key: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: parameter was not defined info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+bind-out-of-range: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: parameter was not defined info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+empty-params: PDOException code='42000' msg=SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '? AS v' at line 1 info=array (
+  0 => '42000',
+  1 => 1064,
+  2 => 'You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near \'? AS v\' at line 1',
+)
+emu=0
+repeated: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+missing: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+unknown: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+extra: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+bind-zero: ValueError code=0 msg=PDOStatement::bindValue(): Argument #1 ($param) must be greater than or equal to 1
+mixed: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number: mixed named and positional parameters info=array (
+  0 => 'HY093',
+  1 => 0,
+)
+string-key: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+bind-out-of-range: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+empty-params: PDOException code='HY093' msg=SQLSTATE[HY093]: Invalid parameter number info=array (
+  0 => 'HY093',
+)
+== transaction ==
+in0: false
+begin: true
+in1: true
+insert: 1
+rollback: true
+in2: false
+count: 0
+rollback-none: PDOException code=0 msg=There is no active transaction info=NULL
+commit-none: PDOException code=0 msg=There is no active transaction info=NULL
+begin2: true
+begin-again: PDOException code=0 msg=There is already an active transaction info=NULL
+insert2: 1
+commit2: true
+count2: 1
+autocommit-off: true
+in3: false
+insert3: 1
+commit3: true
+count3: 2
+autocommit-on: true
+in4: false
+== attribute errors ==
+set-timeout: false
+get-timeout: false
+set-persistent: false
+get-persistent: false
+set-server-version: false
+set-unknown: false
+get-cursor: false
+stmt-get-errmode: false
+stmt-get-emulate: true
+stmt-set: false
+case-bad: ValueError code=0 msg=PDO::setAttribute(): Argument #2 ($value) Case folding mode must be one of the PDO::CASE_* constants
+errmode-bad: ValueError code=0 msg=PDO::setAttribute(): Argument #2 ($value) Error mode must be one of the PDO::ERRMODE_* constants
