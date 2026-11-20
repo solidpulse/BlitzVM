@@ -31,20 +31,30 @@ public final class ClosureInvokeRootNode extends PhpRootNode {
         PhpClosure closure = closureObj.closure();
         Object[] userArgs = new Object[args.length - 2];
         System.arraycopy(args, 2, userArgs, 0, userArgs.length);
-        Object res = switch (closure.kind()) {
-            case CLOSURE -> {
-                com.oracle.truffle.api.RootCallTarget target = closure.callTarget();
-                com.oracle.truffle.api.RootCallTarget cached = dispatch.cachedTarget();
-                if (cached == target) {
-                    yield dispatch.call(cached, PhpCallable.buildClosureArgs(cached, closure.boundThis(),
-                            closure.calledClass(), closureObj, userArgs, PhpContext.get(this), this));
+        PhpContext ctx = PhpContext.get(this);
+        // Closure::__invoke is an internal method: like array_map, it calls the closure weakly.
+        dev.phpruntime.runtime.CallMode previous = ctx.pendingCallMode();
+        ctx.setPendingCallMode(new dev.phpruntime.runtime.CallMode(false, null, 0,
+                closure.callTarget() == null ? null
+                        : dev.phpruntime.nodes.PhpFunctionRootNode.of(closure.callTarget().getRootNode())));
+        try {
+            Object res = switch (closure.kind()) {
+                case CLOSURE -> {
+                    com.oracle.truffle.api.RootCallTarget target = closure.callTarget();
+                    com.oracle.truffle.api.RootCallTarget cached = dispatch.cachedTarget();
+                    if (cached == target) {
+                        yield dispatch.call(cached, PhpCallable.buildClosureArgs(cached, closure.boundThis(),
+                                closure.calledClass(), closureObj, userArgs, ctx, this));
+                    }
+                    yield dispatch.call(target, PhpCallable.buildClosureArgs(target, closure.boundThis(),
+                            closure.calledClass(), closureObj, userArgs, ctx, this));
                 }
-                yield dispatch.call(target, PhpCallable.buildClosureArgs(target, closure.boundThis(),
-                        closure.calledClass(), closureObj, userArgs, PhpContext.get(this), this));
-            }
-            case USER_FUNCTION, METHOD, MAGIC_CALL, BUILTIN ->
-                    PhpCallable.invokeClosure(PhpContext.get(this), indirectCall, this, closureObj, closure, userArgs);
-        };
-        return res;
+                case USER_FUNCTION, METHOD, MAGIC_CALL, BUILTIN ->
+                        PhpCallable.invokeClosure(ctx, indirectCall, this, closureObj, closure, userArgs);
+            };
+            return res;
+        } finally {
+            ctx.setPendingCallMode(previous);
+        }
     }
 }

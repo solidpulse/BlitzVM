@@ -27,3 +27,5 @@ try { call_user_func('strictInt', "5"); } catch (TypeError $e) { echo 'cuf ', st
 try { call_user_func_array('strictInt', ["5"]); } catch (TypeError $e) { echo 'cufa ', strip($e->getMessage()), "\n"; }
 // Internal callback invocations use weak mode, unlike call_user_func.
 var_dump(array_map('strictInt', ["5"]));
+$strictClosure = function (int $x) { echo 'invoke ', var_export($x, true), "\n"; };
+$strictClosure->__invoke("6");
