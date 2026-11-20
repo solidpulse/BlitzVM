@@ -43,7 +43,7 @@ public final class IncludeNode extends PhpNode {
         return kind;
     }
 
-    private record PreparedInclude(CallTarget target, String canonicalPath) {
+    private record PreparedInclude(CallTarget target, String canonicalPath, boolean snapshotBoot) {
     }
 
     /** A copy without the path expression, for bytecode. */
@@ -54,7 +54,11 @@ public final class IncludeNode extends PhpNode {
     public Object executePath(String path) {
         Object prepared = prepare(path);
         if (prepared instanceof PreparedInclude inc) {
-            return callNode.call(inc.target(), new Object[]{inc.canonicalPath()});
+            Object result = callNode.call(inc.target(), new Object[]{inc.canonicalPath()});
+            if (inc.snapshotBoot()) {
+                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(PhpContext.get(this));
+            }
+            return result;
         }
         return prepared;
     }
@@ -63,7 +67,11 @@ public final class IncludeNode extends PhpNode {
     public Object executePath(String path, Object table) {
         Object prepared = prepare(path);
         if (prepared instanceof PreparedInclude inc) {
-            return callNode.call(inc.target(), new Object[]{inc.canonicalPath(), table});
+            Object result = callNode.call(inc.target(), new Object[]{inc.canonicalPath(), table});
+            if (inc.snapshotBoot()) {
+                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(PhpContext.get(this));
+            }
+            return result;
         }
         return prepared;
     }
@@ -98,10 +106,14 @@ public final class IncludeNode extends PhpNode {
         PhpLanguage.ResolvedInclude hit = cacheKey == null ? null : ctx.language().cachedInclude(cacheKey);
         if (hit != null) {
             if (once && ctx.isIncluded(hit.canonicalPath())) {
+                if (snapshotBegin(ctx, hit.canonicalPath())) {
+                    dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(ctx);
+                }
                 return Boolean.TRUE;
             }
+            boolean snapshotBoot = snapshotBegin(ctx, hit.canonicalPath());
             ctx.markIncluded(hit.canonicalPath());
-            return new PreparedInclude(hit.target(), hit.canonicalPath());
+            return new PreparedInclude(hit.target(), hit.canonicalPath(), snapshotBoot);
         }
         TruffleLanguage.Env env = ctx.env();
         TruffleFile resolved = resolveFile(ctx, env, path);
@@ -116,8 +128,12 @@ public final class IncludeNode extends PhpNode {
         }
         String key = canonical.getPath();
         if (once && ctx.isIncluded(key)) {
+            if (snapshotBegin(ctx, key)) {
+                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(ctx);
+            }
             return Boolean.TRUE;
         }
+        boolean snapshotBoot = snapshotBegin(ctx, key);
         ctx.markIncluded(key);
         Source source;
         try {
@@ -137,7 +153,13 @@ public final class IncludeNode extends PhpNode {
         if (cacheKey != null) {
             ctx.language().cacheInclude(cacheKey, key, target);
         }
-        return new PreparedInclude(target, key);
+        return new PreparedInclude(target, key, snapshotBoot);
+    }
+
+    /** Whether this include is the boot file of a snapshot run; ordinary requests have no run. */
+    private static boolean snapshotBegin(PhpContext ctx, String canonicalPath) {
+        dev.phpruntime.snapshot.SnapshotRun run = ctx.snapshotRun();
+        return run != null && run.beginBootInclude(ctx, canonicalPath);
     }
 
     /**

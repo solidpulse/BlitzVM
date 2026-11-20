@@ -66,10 +66,10 @@ public final class PhpContext {
     private long nextAnonymousId = 1;
     private final PhpClass stdClass;
     private final PhpClass closureClass;
-    private record ShutdownEntry(Object callable, Object[] args) {
+    public record ShutdownEntry(Object callable, Object[] args) {
     }
 
-    private record ErrorHandlerEntry(Object callable, long errorLevels) {
+    public record ErrorHandlerEntry(Object callable, long errorLevels) {
     }
 
     private final List<Object> autoloaders = new ArrayList<>();
@@ -87,6 +87,10 @@ public final class PhpContext {
     private Node currentBuiltinCallSite;
     private String byteStringOrigin;
     private Boolean hostFileSystem;
+    /** Set only by the snapshot harness (task 37a); null in ordinary requests. */
+    private dev.phpruntime.snapshot.SnapshotRun snapshotRun;
+    /** True when a template run was aborted at the boot-include boundary. */
+    private boolean snapshotAborted;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
@@ -821,6 +825,180 @@ public final class PhpContext {
 
     public long nextAnonymousId() {
         return nextAnonymousId++;
+    }
+
+    // ------------------------------------------------------------ snapshot access
+
+    public dev.phpruntime.snapshot.SnapshotRun snapshotRun() {
+        return snapshotRun;
+    }
+
+    public void attachSnapshotRun(dev.phpruntime.snapshot.SnapshotRun run) {
+        this.snapshotRun = run;
+    }
+
+    public void markSnapshotAborted() {
+        snapshotAborted = true;
+    }
+
+    public boolean snapshotAborted() {
+        return snapshotAborted;
+    }
+
+    /** One global symbol as the snapshot layer sees it: a name, its id (or -1) and its cell. */
+    public record SnapshotGlobal(String name, int id, boolean dynamic, PhpReference cell) {
+    }
+
+    /** Every defined global in definition order, id-based first then dynamic, for capture. */
+    @TruffleBoundary
+    public List<SnapshotGlobal> snapshotGlobals() {
+        List<SnapshotGlobal> out = new ArrayList<>(globalOrder.size() + dynamicGlobals.size());
+        for (Map.Entry<String, Integer> entry : globalOrder.entrySet()) {
+            int id = entry.getValue();
+            PhpReference cell = id < globalsById.length ? globalsById[id] : null;
+            if (cell != null && cell.getValue() != null && !"GLOBALS".equals(entry.getKey())) {
+                out.add(new SnapshotGlobal(entry.getKey(), id, false, cell));
+            }
+        }
+        for (Map.Entry<String, PhpReference> entry : dynamicGlobals.entrySet()) {
+            PhpReference cell = entry.getValue();
+            if (cell != null && cell.getValue() != null && !"GLOBALS".equals(entry.getKey())) {
+                out.add(new SnapshotGlobal(entry.getKey(), -1, true, cell));
+            }
+        }
+        return out;
+    }
+
+    @TruffleBoundary
+    public Map<String, Object> snapshotConstants() {
+        return constants;
+    }
+
+    @TruffleBoundary
+    public Set<String> snapshotIncludedFiles() {
+        return includedFiles;
+    }
+
+    @TruffleBoundary
+    public List<PhpFunction> snapshotDeclaredFunctions() {
+        return declaredFunctions;
+    }
+
+    @TruffleBoundary
+    public Map<String, PhpClass> snapshotClasses() {
+        return classes;
+    }
+
+    @TruffleBoundary
+    public Iterable<Map.Entry<PhpClass, PhpClass.RequestState>> snapshotClassStates() {
+        return classStates.entrySet();
+    }
+
+    @TruffleBoundary
+    public List<Object> snapshotAutoloaders() {
+        return autoloaders;
+    }
+
+    @TruffleBoundary
+    public List<ShutdownEntry> snapshotShutdownFunctions() {
+        return shutdownFunctions;
+    }
+
+    /** The error handler stack, top first. */
+    @TruffleBoundary
+    public List<ErrorHandlerEntry> snapshotErrorHandlers() {
+        return new ArrayList<>(errorHandlers);
+    }
+
+    /** The exception handler stack, top first. */
+    @TruffleBoundary
+    public List<Object> snapshotExceptionHandlers() {
+        return new ArrayList<>(exceptionHandlers);
+    }
+
+    @TruffleBoundary
+    public Iterable<Map.Entry<Object, Map<String, PhpReference>>> snapshotStaticLocals() {
+        return staticLocals.entrySet();
+    }
+
+    @TruffleBoundary
+    public long snapshotNextObjectId() {
+        return nextObjectId;
+    }
+
+    @TruffleBoundary
+    public long snapshotNextAnonymousId() {
+        return nextAnonymousId;
+    }
+
+    @TruffleBoundary
+    public void restoreObjectIds(long nextObject, long nextAnonymous) {
+        nextObjectId = nextObject;
+        nextAnonymousId = nextAnonymous;
+    }
+
+    /** Restores a global cell without changing its aliased flag (bindGlobalById would). */
+    @TruffleBoundary
+    public void restoreGlobalCell(int id, PhpReference cell) {
+        if (id >= globalsById.length) {
+            growGlobalsTable(id);
+        }
+        globalsById[id] = cell;
+        recordGlobal(id);
+    }
+
+    @TruffleBoundary
+    public void restoreDynamicGlobal(String name, PhpReference cell) {
+        dynamicGlobals.put(name, cell);
+    }
+
+    @TruffleBoundary
+    public void restoreConstant(String name, Object value) {
+        constants.put(name, value);
+    }
+
+    /** Declares a function captured in a snapshot, without the duplicate and deprecation checks. */
+    @TruffleBoundary
+    public void restoreFunction(PhpFunction fn) {
+        int id = fn.id(language);
+        if (id >= functionsById.length) {
+            functionsById = Arrays.copyOf(functionsById, Math.max(id + 1, functionsById.length * 2));
+        }
+        functionsById[id] = fn;
+        declaredFunctions.add(fn);
+    }
+
+    /** Registers a class (or class alias) captured in a snapshot; classes are engine-wide objects. */
+    @TruffleBoundary
+    public void restoreClass(String lowerName, PhpClass cls) {
+        PhpClass existing = classes.putIfAbsent(lowerName, cls);
+        if (existing != null) {
+            if (existing != cls) {
+                throw new IllegalStateException("snapshot class " + lowerName
+                        + " does not match this request's linked class");
+            }
+            return;
+        }
+        int id = cls.classId();
+        if (id >= classesById.length) {
+            classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
+        }
+        classesById[id] = cls;
+    }
+
+    @TruffleBoundary
+    public void restoreAutoload(Object callable) {
+        autoloaders.add(callable);
+    }
+
+    @TruffleBoundary
+    public void restoreStaticLocal(Object ownerKey, String name, PhpReference cell) {
+        staticLocals.computeIfAbsent(ownerKey, k -> new java.util.LinkedHashMap<>()).put(name, cell);
+    }
+
+    @TruffleBoundary
+    public PhpClass.RequestState classStateOrNull(PhpClass cls) {
+        return classStates.get(cls);
     }
 
     // ------------------------------------------------------------ callable cache

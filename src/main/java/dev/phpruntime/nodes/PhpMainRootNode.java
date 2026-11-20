@@ -67,6 +67,10 @@ public final class PhpMainRootNode extends PhpRootNode {
             body.get();
         } catch (ControlFlow.Exit e) {
             // exit() ends the entry script normally.
+        } catch (dev.phpruntime.snapshot.SnapshotAbort e) {
+            // The template run ends at the boot-include boundary; skip shutdown functions and
+            // output, which belong to the request the snapshot will serve.
+            ctx.markSnapshotAborted();
         } catch (dev.phpruntime.runtime.PhpException ex) {
             if (ctx.handleUncaughtException(ex.exceptionObject())) {
                 return PhpNull.INSTANCE;
@@ -181,6 +185,7 @@ public final class PhpMainRootNode extends PhpRootNode {
             ctx.writeGlobal("_SERVER", server);
         }
         ctx.initializeGlobalOrder();
+        dev.phpruntime.snapshot.SnapshotSupport.entryStarted(ctx);
     }
 
     @TruffleBoundary
@@ -205,6 +210,11 @@ public final class PhpMainRootNode extends PhpRootNode {
 
     @TruffleBoundary
     private static void finish(PhpContext ctx, PhpRequest request) {
+        if (ctx.snapshotAborted()) {
+            // The snapshot has been taken (or refused); nothing from the template request may run.
+            request.scheduler.detach();
+            return;
+        }
         try {
             ctx.runShutdownFunctions();
         } finally {

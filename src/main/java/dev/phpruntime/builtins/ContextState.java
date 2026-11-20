@@ -9,7 +9,7 @@ import java.time.ZoneId;
  * timezone). Kept in a field of the request's {@link PhpContext}, so it needs no locking
  * and goes away with the context.
  */
-final class ContextState {
+public final class ContextState {
 
     /** strtok: the string being tokenized and the position of the next token. */
     String strtokSubject;
@@ -55,5 +55,54 @@ final class ContextState {
             ctx.setBuiltinState(state);
         }
         return (ContextState) state;
+    }
+
+    // ------------------------------------------------------------ snapshot support
+
+    /** Reasons this request's builtin state cannot go into a boot snapshot, in a stable order. */
+    public static java.util.List<String> snapshotRefusals(PhpContext ctx) {
+        java.util.List<String> reasons = new java.util.ArrayList<>();
+        Object state = ctx.builtinState();
+        if (!(state instanceof ContextState cs)) {
+            return reasons;
+        }
+        if (cs.mysqli != null) {
+            reasons.add("mysqli state was left by boot");
+        }
+        if (cs.pdo != null) {
+            reasons.add("PDO state was left by boot");
+        }
+        if (!cs.hashContexts.isEmpty()) {
+            reasons.add("a hash context was left by boot");
+        }
+        if (cs.lastDir != null && !cs.lastDir.isClosed()) {
+            reasons.add("an open file, stream or directory handle was left by boot");
+        }
+        return reasons;
+    }
+
+    /** The copyable part of this request's builtin state. */
+    public static ContextStateSnapshot snapshot(PhpContext ctx) {
+        ContextState cs = of(ctx);
+        return new ContextStateSnapshot(cs.timezoneName, cs.mbEncoding, cs.mbSubstitute,
+                cs.mbDetectOrder, cs.nextResourceId, cs.defaultStreamContext, cs.umask, cs.ignoreUserAbort);
+    }
+
+    public static void restore(PhpContext ctx, ContextStateSnapshot snap) {
+        ContextState cs = of(ctx);
+        cs.timezoneName = snap.timezoneName();
+        cs.timezone = DateFunctions.UTC;
+        try {
+            cs.timezone = java.time.ZoneId.of(snap.timezoneName());
+        } catch (java.time.DateTimeException ignored) {
+            // keep UTC, as php does for a name the runtime does not know
+        }
+        cs.mbEncoding = snap.mbEncoding();
+        cs.mbSubstitute = snap.mbSubstitute();
+        cs.mbDetectOrder = java.util.List.copyOf(snap.mbDetectOrder());
+        cs.nextResourceId = snap.nextResourceId();
+        cs.defaultStreamContext = snap.defaultStreamContext();
+        cs.umask = snap.umask();
+        cs.ignoreUserAbort = snap.ignoreUserAbort();
     }
 }
