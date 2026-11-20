@@ -58,6 +58,9 @@ class TypeAttributeMetadataTest {
 
                 #[Marker]
                 public function m(#[Param] (Named&\\Countable)|null $x): static { return $this; }
+
+                #[Marker]
+                public function both(#[Param] Named&\\Countable $x): void {}
             }
 
             #[Marker]
@@ -226,6 +229,9 @@ class TypeAttributeMetadataTest {
         assertEquals("(App\\Contracts\\HasName&Countable)|null",
                 m.signature().parameters().get(0).type().toString());
         assertEquals(List.of(NS + "Marker"), names(m.attributes()));
+        PhpClassTemplate.MethodDecl both = trait.methods().get("both");
+        assertEquals("App\\Contracts\\HasName&Countable",
+                both.signature().parameters().get(0).type().toString());
 
         PhpClassTemplate iface = template(main, NS + "I");
         PhpClassTemplate.MethodDecl f = iface.methods().get("f");

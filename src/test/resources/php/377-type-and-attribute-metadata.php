@@ -103,6 +103,11 @@ function describe(#[M] (Counted&\Countable)|null $value): string {
 }
 
 #[M]
+function countBoth(#[M] Counted&\Countable $value): int {
+    return $value->count();
+}
+
+#[M]
 enum Suit: string implements Named {
     #[M('hearts')]
     case Hearts = 'H';
@@ -136,6 +141,7 @@ echo $item->name(), ' ', $item->greet('there'), ' ', $item->id, "\n";
 echo $item->with(new Item(6, 'six')), "\n";
 echo Item::LIMIT, ' ', Item::make(9)->name(), "\n";
 echo describe(new Bag()), ' ', describe(null), "\n";
+echo countBoth(new Bag()), "\n";
 
 $square = #[M] function (#[M] int $n): int {
     return $n * $n;
