@@ -1,0 +1,16 @@
+class attributes=Marker@1,Single@1,NotAnAttribute@1,
+marker=Marker repeated=0 target=1 arguments={"0":"class","options":{"a":1}}
+marker instance=Marker|class|{"a":1}
+single arguments=[5] instance=5
+filter count=1 exact count=1
+instanceof object count=1
+method attributes=2 target=4 repeated=1 args=["first"]
+parameter attribute=Marker target=32 args=["parameter"]
+property attribute=Marker target=8 args=["property"]
+constant attribute=Marker target=16 args=["constant"]
+function attribute=Marker target=2 args=["function"]
+repeated=1|1
+repeated instance=first
+Error: Attempting to use non-attribute class "NotAnAttribute" as attribute
+attribute constants=1,4,8,16,32,2,127,128,2
+Error: Attribute "MethodOnly" cannot target class (allowed targets: method)

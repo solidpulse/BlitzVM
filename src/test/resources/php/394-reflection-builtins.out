@@ -1,0 +1,12 @@
+strlen internal=1 user=0 closure=0 parameters=1 required=1 file=false start=false names=string,
+array_map internal=1 user=0 closure=0 parameters=3 required=2 file=false start=false names=callback,array,arrays,
+str_repeat internal=1 user=0 closure=0 parameters=2 required=2 file=false start=false names=string,times,
+strlen invoke=5
+str_repeat invoke=ababab
+stdClass internal=1 user=0 instantiable=1 interface=0 abstract=0 final=0 methods=0 properties=0 interfaces=0 parent=false file=false start=false
+stdClass new=stdClass
+Exception internal=1 instantiable=1 throwable=1
+DateTime format: name=format internal=1 declaring=DateTime public=1
+DateTime invoke=2020-01-02 03:04:05
+ReflectionClass internal=1 user=0
+ReflectionClass name=ReflectionClass

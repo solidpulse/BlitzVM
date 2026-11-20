@@ -1,0 +1,20 @@
+name=describe short=describe declaring=Shape
+public=1 protected=0 private=0 static=0 abstract=0 final=0 constructor=0 modifiers=1
+returnsReference=0 variadic=0 returnType=string hasReturnType=1
+invoke=square:9
+invokeArgs=named:16
+invoke missing default=shape:4
+static invoke=made:25
+from object=obj:4
+from string=str:4
+private invoke=secret
+closure=closed:36
+static closure=made:9
+abstract name=area declaring=Shape abstract=1 modifiers=66 file=385-reflection-method.php start=4 end=4
+ReflectionException: Trying to invoke non static method Shape::describe() without an object
+ReflectionException: Given object is not an instance of the class this method was declared in
+TypeError: ReflectionMethod::invoke(): Argument #1 ($object) must be of type ?object, int given
+ValueError: ReflectionMethod::getClosure(): Argument #1 ($object) cannot be null for non-static methods
+ReflectionException: Method Square::missing() does not exist
+ReflectionException: Class "MissingClass" does not exist
+ReflectionException: ReflectionMethod::__construct(): Argument #1 ($objectOrMethod) must be a valid method name

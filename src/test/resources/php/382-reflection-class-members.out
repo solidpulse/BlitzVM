@@ -1,0 +1,24 @@
+constructor=__construct declaration=Base
+has child method=1 inherited=1 inherited private=1 missing=0
+get method case=childMethod
+methods=run@Member,childMethod@Member,childPrivateMethod@Member,childStaticMethod@Member,baseMethod@Base,baseStaticMethod@Base,__construct@Base,
+public methods=run,childMethod,baseMethod,__construct,
+static methods=childStaticMethod,baseStaticMethod,
+zero filter methods=0
+properties=childPrivate@Member,childProtected@Member,childPublic@Member,childStatic@Member,baseProtected@Base,basePublic@Base,baseStatic@Base,
+public properties=childPublic,childStatic,basePublic,baseStatic,
+static properties=childStatic,baseStatic,
+has child property=1 inherited=1 inherited private=0
+constants={"CHILD_CONST":"child","BASE_CONST":"base","CONTRACT":"contract"}
+constant names=CHILD_CONST@Member,BASE_CONST@Base,CONTRACT@Contract,
+has constant=1 inherited private=0
+get constant=child missing=false
+reflection constant=CHILD_CONST missing=false
+static values={"childStatic":"cs","baseStatic":"bs"}
+default values={"childStatic":"cs","baseStatic":"bs","childPrivate":"cp","childProtected":"cprot","childPublic":"cpub","baseProtected":"bprot","basePublic":"bpub"}
+static read=cs default=fallback
+static after set=changed
+ReflectionException: Property Member::$basePrivate does not exist
+ReflectionException: Class Member does not have a property named missing
+ReflectionException: Property Member::$basePrivate does not exist
+ReflectionException: Method Member::missing() does not exist

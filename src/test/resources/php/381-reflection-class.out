@@ -1,0 +1,22 @@
+I1 iface=1 trait=0 enum=0 abstract=0 final=0 instantiable=0 internal=0 user=1 anonymous=0
+T1 iface=0 trait=1 enum=0 abstract=0 final=0 instantiable=0 internal=0 user=1 anonymous=0
+Suit iface=0 trait=0 enum=1 abstract=0 final=1 instantiable=0 internal=0 user=1 anonymous=0
+AbstractBase iface=0 trait=0 enum=0 abstract=1 final=0 instantiable=0 internal=0 user=1 anonymous=0
+ChildClass iface=0 trait=0 enum=0 abstract=0 final=0 instantiable=1 internal=0 user=1 anonymous=0
+stdClass iface=0 trait=0 enum=0 abstract=0 final=0 instantiable=1 internal=1 user=0 anonymous=0
+Closure iface=0 trait=0 enum=0 abstract=0 final=1 instantiable=0 internal=1 user=0 anonymous=0
+name=ChildClass short=ChildClass namespace= inNamespace=0
+parent=ParentClass
+interfaces=I1,I2
+interface keys=I1,I2
+traits=T1
+trait keys=T1
+subclass of parent=1 of self=0 of I1=1
+implements I1=1 I2=1
+parent of parent=false
+file=381-reflection-class.php start=8 end=10 doc=false
+i2 interfaces=I1
+parent interfaces=I1
+anonymous=1 short prefix=yes
+ReflectionException: ParentClass is not an interface
+ReflectionException: Class "MissingClass" does not exist
