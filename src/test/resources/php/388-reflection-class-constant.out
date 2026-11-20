@@ -1,0 +1,15 @@
+all={"CHILD_PRIVATE":"child-private","CHILD_PROTECTED":"child-protected","CHILD_PUBLIC":"child-public","BASE_PROTECTED":"base-protected","BASE_PUBLIC":"base-public","BASE_FINAL":"base-final"}
+public={"CHILD_PUBLIC":"child-public","BASE_PUBLIC":"base-public","BASE_FINAL":"base-final"}
+private={"CHILD_PRIVATE":"child-private"}
+constant names=CHILD_PRIVATE@ConstantChild,CHILD_PROTECTED@ConstantChild,CHILD_PUBLIC@ConstantChild,BASE_PROTECTED@ConstantBase,BASE_PUBLIC@ConstantBase,BASE_FINAL@ConstantBase,
+CHILD_PRIVATE value=child-private public=0 protected=0 private=1 final=0 modifiers=4 declaring=ConstantChild attributes=Marker@16 
+CHILD_PROTECTED value=child-protected public=0 protected=1 private=0 final=0 modifiers=2 declaring=ConstantChild attributes=
+CHILD_PUBLIC value=child-public public=1 protected=0 private=0 final=0 modifiers=1 declaring=ConstantChild attributes=
+BASE_PROTECTED value=base-protected public=0 protected=1 private=0 final=0 modifiers=2 declaring=ConstantBase attributes=
+BASE_PUBLIC value=base-public public=1 protected=0 private=0 final=0 modifiers=1 declaring=ConstantBase attributes=
+BASE_FINAL value=base-final public=1 protected=0 private=0 final=1 modifiers=33 declaring=ConstantBase attributes=
+constructed=CHILD_PUBLIC|child-public|ConstantChild
+inherited=BASE_PROTECTED|base-protected|ConstantBase
+final=1 modifiers=33
+ReflectionException: Constant ConstantChild::BASE_PRIVATE does not exist
+ReflectionException: Class "MissingClass" does not exist

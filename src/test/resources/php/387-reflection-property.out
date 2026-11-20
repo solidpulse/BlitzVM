@@ -1,0 +1,24 @@
+public declaring=PropertyHolder public=1 protected=0 private=0 static=0 readonly=0 promoted=0 default=1 hasDefault=1 modifiers=1 type=none attributes=Marker@8 
+protected declaring=PropertyHolder public=0 protected=1 private=0 static=0 readonly=0 promoted=0 default=1 hasDefault=1 modifiers=2 type=none attributes=
+private declaring=PropertyHolder public=0 protected=0 private=1 static=0 readonly=0 promoted=0 default=1 hasDefault=1 modifiers=4 type=none attributes=
+static declaring=PropertyHolder public=1 protected=0 private=0 static=1 readonly=0 promoted=0 default=1 hasDefault=1 modifiers=17 type=none attributes=
+protectedStatic declaring=PropertyHolder public=0 protected=1 private=0 static=1 readonly=0 promoted=0 default=1 hasDefault=1 modifiers=18 type=none attributes=
+typed declaring=PropertyHolder public=1 protected=0 private=0 static=0 readonly=0 promoted=0 default=1 hasDefault=1 modifiers=1 type=?string attributes=
+readonly declaring=PropertyHolder public=1 protected=0 private=0 static=0 readonly=1 promoted=0 default=1 hasDefault=0 modifiers=2177 type=int attributes=
+values=public-default|protected-default|private-default|static-default
+after=public-changed|protected-changed|private-changed|static-changed
+static default value='static-default' instance default='public-default'
+readonly initialized=1 value=10
+Error: Cannot modify readonly property PropertyHolder::$readonly
+readonly fresh=0
+Error: Typed property PropertyHolder::$readonly must not be accessed before initialization
+dynamic name=dynamic default=0 value=dynamic-value
+dynamic after=dynamic-changed
+TypeError: ReflectionProperty::getValue(): Argument #1 ($object) must be provided for instance properties
+ReflectionException: Property PropertyHolder::$missing does not exist
+typed static properties=[] initialized=0
+Error: Typed static property TypedStatic::$value must not be accessed before initialization
+typed static after={"value":4} initialized=1
+typed instance initialized=0
+Error: Typed property TypedInstance::$value must not be accessed before initialization
+typed instance after=1|8

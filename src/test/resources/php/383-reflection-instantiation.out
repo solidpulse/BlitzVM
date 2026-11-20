@@ -1,0 +1,15 @@
+new=Point|3|4
+newArgs=5|6
+named=7|8
+without=NoConstructor|default
+noCtor=NoConstructor|default
+isInstance=1 other=0
+no ctor args=ReflectionException: Class NoConstructor does not have a constructor, so you cannot pass any constructor arguments
+named unknown=Error: Unknown named parameter $z
+interface=Error: Cannot instantiate interface AnInterface
+trait=Error: Cannot instantiate trait AThing
+abstract=Error: Cannot instantiate abstract class AbstractThing
+enum=Error: Cannot instantiate enum AEnum
+private ctor=ReflectionException: Access to non-public constructor of class PrivateConstructor
+without abstract=Error: Cannot instantiate abstract class AbstractThing
+unknown class=ReflectionException: Class "MissingClass" does not exist

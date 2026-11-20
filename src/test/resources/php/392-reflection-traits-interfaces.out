@@ -1,0 +1,14 @@
+methods=baseMethod@TraitChild,rootMethod@TraitChild,childMethod@TraitChild,secondMethod@TraitChild,aliasedFirst@TraitChild,firstMethod@TraitChild,firstPrivateMethod@TraitChild,
+properties=basePublic@TraitChild,secondProperty@TraitChild,firstProperty@TraitChild,firstPrivate@TraitChild,baseProtected@TraitBase,
+constants=SECOND_CONST@TraitChild,FIRST_CONST@TraitChild,BASE_PROTECTED_CONST@TraitBase,CHILD_CONST@ChildInterface,ROOT_CONST@RootInterface,
+interfaces=ChildInterface,RootInterface
+traits=SecondTrait,FirstTrait
+defaults={"basePublic":"override","secondProperty":"second","firstProperty":"first","firstPrivate":"first-private","baseProtected":"base"}
+trait method hasMethod=1 private trait=1
+private inherited method=1 private inherited property=0
+overridden property value=override declaring=TraitChild
+interface methods=childMethod@ChildInterface,rootMethod@RootInterface,
+interface constants={"CHILD_CONST":"child","ROOT_CONST":"root"}
+root filter=7
+partial method=rootMethod declaring=RootInterface abstract=1
+Error: Cannot instantiate abstract class PartialImplementation

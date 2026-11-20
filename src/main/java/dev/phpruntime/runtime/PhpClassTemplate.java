@@ -53,10 +53,10 @@ public final class PhpClassTemplate {
         }
 
         public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
-                            Object constDefault, RootCallTarget defaultTarget,
-                            PhpType type, List<PhpAttribute> attributes) {
+                            Object constDefault, RootCallTarget defaultTarget, PhpType type,
+                            List<PhpAttribute> attributes) {
             this(name, visibility, isStatic, isReadonly, constDefault, defaultTarget, type, attributes,
-                    defaultTarget != null || (constDefault != null && constDefault != PhpNull.INSTANCE));
+                    type == null || constDefault != PhpNull.INSTANCE || defaultTarget != null);
         }
 
         public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
@@ -144,6 +144,10 @@ public final class PhpClassTemplate {
     private final PhpType enumBackingType;
     private final List<EnumCaseDecl> enumCases;
     private final Shape rootShape;
+    /** Where the declaration starts, for ReflectionClass; null for built-in classes. */
+    private volatile String sourceFile;
+    private volatile int startLine = -1;
+    private volatile int endLine = -1;
 
     public PhpClassTemplate(long id, String name, boolean isInterface, boolean isAbstract, boolean isFinal,
                             boolean isAnonymous, String parentName, List<String> interfaceNames,
@@ -293,5 +297,26 @@ public final class PhpClassTemplate {
 
     public Shape rootShape() {
         return rootShape;
+    }
+
+    /** Records the source location; called by the parser before the template is shared. */
+    public PhpClassTemplate withSource(String file, int start, int end) {
+        this.sourceFile = file;
+        this.startLine = start;
+        this.endLine = end;
+        return this;
+    }
+
+    /** The file the class was declared in, or null for a built-in class. */
+    public String sourceFile() {
+        return sourceFile;
+    }
+
+    public int startLine() {
+        return startLine;
+    }
+
+    public int endLine() {
+        return endLine;
     }
 }

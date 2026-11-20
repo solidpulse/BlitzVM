@@ -480,6 +480,11 @@ public final class PhpClass {
         return template.name();
     }
 
+    /** The lowercase class name, for case-insensitive lookups and table keys. */
+    public String lowerName() {
+        return template.lowerName();
+    }
+
     public PhpClass parent() {
         return parent;
     }

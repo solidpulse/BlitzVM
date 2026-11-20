@@ -1,0 +1,31 @@
+id position=0 type=int allowsNull=0 optional=0 defaultAvailable=0 variadic=0 byReference=0 byValue=1 promoted=1 declaring=__construct declaringClass=ParameterHolder
+label position=1 type=?string allowsNull=1 optional=1 defaultAvailable=1 default=NULL constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=1 declaring=__construct declaringClass=ParameterHolder
+required position=0 type=none allowsNull=1 optional=0 defaultAvailable=0 variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+number position=1 type=none allowsNull=1 optional=1 defaultAvailable=1 default=1 constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+text position=2 type=none allowsNull=1 optional=1 defaultAvailable=1 default='x' constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+nothing position=3 type=none allowsNull=1 optional=1 defaultAvailable=1 default=NULL constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+global position=4 type=none allowsNull=1 optional=1 defaultAvailable=1 default=42 constant=1 constantName='GLOBAL_LIMIT' variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+self position=5 type=none allowsNull=1 optional=1 defaultAvailable=1 default=9 constant=1 constantName='self::LOCAL' variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+target position=6 type=none allowsNull=1 optional=1 defaultAvailable=1 default=7 constant=1 constantName='Target::LIMIT' variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+new position=7 type=none allowsNull=1 optional=1 defaultAvailable=1 default=object:Dependency constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+array position=8 type=none allowsNull=1 optional=1 defaultAvailable=1 default=array (
+  0 => 1,
+  1 => 2,
+) constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+limit position=9 type=none allowsNull=1 optional=1 defaultAvailable=1 default=9223372036854775807 constant=1 constantName='PHP_INT_MAX' variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+nullable position=10 type=?int allowsNull=1 optional=1 defaultAvailable=1 default=NULL constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+union position=11 type=string|int allowsNull=0 optional=1 defaultAvailable=1 default='u' constant=0 constantName=NULL variadic=0 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+reference position=12 type=none allowsNull=1 optional=1 defaultAvailable=1 default=5 constant=0 constantName=NULL variadic=0 byReference=1 byValue=0 promoted=0 declaring=run declaringClass=ParameterHolder
+rest position=13 type=none allowsNull=1 optional=1 defaultAvailable=0 variadic=1 byReference=0 byValue=1 promoted=0 declaring=run declaringClass=ParameterHolder
+dependency position=0 type=Dependency allowsNull=0 optional=0 defaultAvailable=0 variadic=0 byReference=0 byValue=1 promoted=0 declaring=typed declaringClass=ParameterHolder
+  class=Dependency
+target position=1 type=?Target allowsNull=1 optional=0 defaultAvailable=0 variadic=0 byReference=0 byValue=1 promoted=0 declaring=typed declaringClass=ParameterHolder
+  class=Target
+union position=2 type=Target|int allowsNull=0 optional=0 defaultAvailable=0 variadic=0 byReference=0 byValue=1 promoted=0 declaring=typed declaringClass=ParameterHolder
+  class=Target
+constructor parameters=2 required=1
+run parameters=14 required=1
+property promoted=1 readonly=1 type=int
+ReflectionException: Internal error: Failed to retrieve the default value
+ReflectionException: Internal error: Failed to retrieve the default value
+ReflectionException: Internal error: Failed to retrieve the default value

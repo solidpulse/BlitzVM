@@ -1,0 +1,10 @@
+a init=true default=false
+b init=true default=true
+c init=false default=false
+d init=true default=true
+r init=true default=false
+s init=false
+t init=true
+s after null init=true
+Typed property P::$c must not be accessed before initialization
+NULL

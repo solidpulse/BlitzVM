@@ -15,6 +15,14 @@ public final class ClassConstNode extends PhpNode {
         this.literalClassName = constName.equalsIgnoreCase("class") && classRef.kind() == ClassRefNode.Kind.NAMED;
     }
 
+    public ClassRefNode classRef() {
+        return classRef;
+    }
+
+    public String constName() {
+        return constName;
+    }
+
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         if (literalClassName) {

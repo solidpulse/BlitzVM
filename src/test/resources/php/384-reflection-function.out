@@ -1,0 +1,20 @@
+handle short=handle closure=0 internal=0 user=1 parameters=3 required=1 variadic=1 returnsReference=0 returnType=string
+file=384-reflection-function.php start=3 end=13
+attributes=Route@2 
+count: type=?int optional=0 default=none variadic=0 declaring=handle declaringClass=null
+name: type=string optional=1 default='default' variadic=0 declaring=handle declaringClass=null
+rest: type=int optional=1 default=none variadic=1 declaring=handle declaringClass=null
+invoke=2:a:3,4
+invokeArgs=2:b:
+invokeNamed=2:c:
+staticVariables={"calls":4,"last":"c"}
+noTypes short=noTypes closure=0 internal=0 user=1 parameters=1 required=1 variadic=0 returnsReference=0 returnType=none
+noTypes parameter type=NULL allowsNull=1
+closure name prefix=yes
+closure invoke=5 args=10
+closure this=NULL scope=NULL
+closure roundtrip=11
+first class name=strlen closure=1 internal=1 invoke=4
+method closure name=handleValue this=Handler scope=Handler invoke=12
+ReflectionException: Function missingFunction() does not exist
+TypeError: ReflectionFunction::__construct(): Argument #1 ($function) must be of type Closure|string, array given

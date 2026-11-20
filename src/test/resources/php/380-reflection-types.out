@@ -1,0 +1,16 @@
+a class=ReflectionNamedType string=?int null=1 name=int builtin=1
+b class=ReflectionNamedType string=?int null=1 name=int builtin=1
+c class=ReflectionUnionType string=string|int|null null=1
+  member=ReflectionNamedType string=string name=string builtin=1
+  member=ReflectionNamedType string=int name=int builtin=1
+  member=ReflectionNamedType string=null name=null builtin=1
+d class=ReflectionUnionType string=(A&B)|null null=1
+  member=ReflectionIntersectionType string=A&B
+  member=ReflectionNamedType string=null name=null builtin=1
+e class=ReflectionNamedType string=Types null=0 name=Types builtin=0
+f class=ReflectionNamedType string=ParentType null=0 name=ParentType builtin=0
+return class=ReflectionNamedType string=static null=0 name=static builtin=0
+property class=ReflectionNamedType string=?int null=1 name=int builtin=1
+nullable-iterable class=ReflectionNamedType string=?iterable null=1 name=iterable builtin=1
+mixed class=ReflectionNamedType string=mixed null=1 name=mixed builtin=1
+none=null

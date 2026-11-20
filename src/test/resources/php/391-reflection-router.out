@@ -1,0 +1,8 @@
+GET /users -> index
+POST /users -> create
+GET /users/{id} -> show
+GET /users => index
+POST /users => create
+GET /users/{id} => show:1
+GET /missing => 404
+class route=GET /controller
