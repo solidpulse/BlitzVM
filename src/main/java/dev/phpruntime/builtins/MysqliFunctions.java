@@ -1763,11 +1763,11 @@ final class MysqliFunctions {
         if (sql.isEmpty()) {
             throw new PhpError("ValueError", "mysqli_query(): Argument #2 ($query) cannot be empty", null);
         }
-        if (writesStatement(sql)) {
-            SnapshotGeneration.bump();
-        }
         if (!ensureConnected(ctx, obj, l, "mysqli_query")) {
             return false;
+        }
+        if (writesStatement(sql)) {
+            SnapshotGeneration.bump();
         }
         try {
             beforeServerOperation(ctx, l, sql);
