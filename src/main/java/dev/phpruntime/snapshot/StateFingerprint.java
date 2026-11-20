@@ -29,7 +29,7 @@ import java.util.TreeMap;
  * {@code blitz-wp/tools/snapshot-probe.php}: shared objects are numbered in visit order, so two
  * runs that built the same graph hash the same even when their object allocations differed.
  */
-final class StateFingerprint {
+public final class StateFingerprint {
 
     private static final long FNV_OFFSET = 0xcbf29ce484222325L;
     private static final long FNV_PRIME = 0x100000001b3L;
@@ -308,7 +308,7 @@ final class StateFingerprint {
     }
 
     /** The full boundary fingerprint, one component per piece of state. */
-    static Map<String, String> fingerprint(PhpContext ctx) {
+    public static Map<String, String> fingerprint(PhpContext ctx) {
         Map<String, String> out = new TreeMap<>();
 
         List<PhpContext.SnapshotGlobal> globals = new ArrayList<>(ctx.snapshotGlobals());
