@@ -5,6 +5,8 @@ import dev.phpruntime.runtime.GuestScheduler;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.sched.Scheduler;
+import dev.phpruntime.snapshot.SnapshotRun;
+import dev.phpruntime.snapshot.SnapshotSupport;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.PolyglotException;
@@ -57,21 +59,33 @@ public final class PhpEngine implements AutoCloseable {
 
     /** Executes a script and buffers its output, as the HTTP server needs. */
     public Result execute(Path script, PhpRequest request) throws IOException {
+        return execute(script, request, null);
+    }
+
+    /**
+     * Executes a script with a snapshot run attached to the request's context: a template run
+     * that captures and aborts, or a restored run that fills the context from a snapshot.
+     */
+    public Result execute(Path script, PhpRequest request, SnapshotRun snapshotRun) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
-        int status = run(source(script), request, out, err);
+        int status = run(source(script), request, out, err, snapshotRun);
         return new Result(status, out.toByteArray(), request, PhpStrings.toJava(PhpStrings.of(err.toByteArray())));
     }
 
     /** Executes a script streaming output, as the CLI needs. Returns a process exit code. */
     public int executeStreaming(Path script, PhpRequest request, OutputStream out, OutputStream err) throws IOException {
-        return run(source(script), request, out, err) >= 500 ? 255 : 0;
+        return run(source(script), request, out, err, null) >= 500 ? 255 : 0;
     }
 
-    private int run(Source source, PhpRequest request, OutputStream out, OutputStream err) {
+    private int run(Source source, PhpRequest request, OutputStream out, OutputStream err,
+                    SnapshotRun snapshotRun) {
         Scheduler.Task task = scheduler == null ? null : scheduler.newTask(request.uri);
         request.scheduler = task == null ? GuestScheduler.NONE : task;
         request.install();
+        if (snapshotRun != null) {
+            SnapshotSupport.setPending(snapshotRun);
+        }
         boolean js = JsLanguage.ID.equals(source.getLanguage());
         try (Context ctx = Context.newBuilder(source.getLanguage()).engine(engine).allowIO(IOAccess.ALL).out(out).err(err).build()) {
             if (task != null) {
@@ -96,6 +110,9 @@ public final class PhpEngine implements AutoCloseable {
             // close() of a cancelled context rethrows the cancellation; report it only once
             return request.status >= 500 ? request.status : fail(request, out, task, e, js);
         } finally {
+            if (snapshotRun != null) {
+                SnapshotSupport.clearPending();
+            }
             request.closeResources();
             PhpRequest.uninstall();
         }

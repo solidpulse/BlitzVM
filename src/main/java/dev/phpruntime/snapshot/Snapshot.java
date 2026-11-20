@@ -147,4 +147,9 @@ public final class Snapshot {
     public int includedFileCount() {
         return includedFiles.size();
     }
+
+    /** The canonical paths of the files boot included; the server checks their modification times. */
+    public Set<String> includedFiles() {
+        return includedFiles;
+    }
 }
