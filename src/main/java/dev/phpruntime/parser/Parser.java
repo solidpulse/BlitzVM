@@ -57,6 +57,8 @@ public final class Parser {
     private boolean currentReturnsRef;
     private int hoistedClassesSlot = -1;
     private int pos;
+    /** The line of the closing token of the last blockUntil(), for getEndLine(). */
+    private int lastBlockEndLine = -1;
 
     public Parser(PhpLanguage language, Source source) {
         this(language, source, lex(source), new Scope(language, true), new ArrayList<>(), new ArrayList<>(),
@@ -515,8 +517,14 @@ public final class Parser {
 
     private PhpNode blockUntil(String closing) {
         List<PhpNode> stmts = new ArrayList<>();
-        while (!acceptOp(closing)) {
-            if (peek().kind() == Kind.EOF) {
+        while (true) {
+            Token t = peek();
+            if (t.isOp(closing)) {
+                next();
+                lastBlockEndLine = t.line();
+                break;
+            }
+            if (t.kind() == Kind.EOF) {
                 throw error("syntax error, unexpected end of file");
             }
             PhpNode s = statement();
@@ -940,14 +948,15 @@ public final class Parser {
     private record ParsedParams(String[] names, int[] slots, VarKind[] kinds, boolean[] byRef,
                                 PhpNode[] defaults, boolean variadic, List<PromotedProp> promoted,
                                 PhpType[] types, List<List<PhpAttribute>> attributes, boolean[] promotedFlags,
-                                Object[] defaultValues, RootCallTarget[] defaultTargets) {
+                                Object[] defaultValues, RootCallTarget[] defaultTargets,
+                                String[] defaultConstantNames) {
 
         PhpSignature signature(PhpType returnType, List<PhpAttribute> functionAttributes) {
             List<PhpParameter> parameters = new ArrayList<>(names.length);
             for (int i = 0; i < names.length; i++) {
                 boolean isVariadic = variadic && i == names.length - 1;
                 parameters.add(new PhpParameter(names[i], types[i], attributes.get(i), promotedFlags[i],
-                        isVariadic, byRef[i], defaultValues[i], defaultTargets[i]));
+                        isVariadic, byRef[i], defaultValues[i], defaultTargets[i], defaultConstantNames[i]));
             }
             return new PhpSignature(parameters, returnType, functionAttributes);
         }
@@ -969,6 +978,7 @@ public final class Parser {
         List<Boolean> promotedFlags = new ArrayList<>();
         List<Object> defaultValues = new ArrayList<>();
         List<RootCallTarget> defaultTargets = new ArrayList<>();
+        List<String> defaultConstantNames = new ArrayList<>();
         boolean variadic = false;
         while (!acceptOp(")")) {
             List<PhpAttribute> parameterAttributes = parseAttributes();
@@ -1017,6 +1027,7 @@ public final class Parser {
             RootCallTarget defaultTarget = defaultExpr == null ? null : memberInitTarget(defaultExpr, scope);
             defaultValues.add(defaultValue);
             defaultTargets.add(defaultTarget);
+            defaultConstantNames.add(defaultExpr == null ? null : defaultConstantName(defaultExpr));
             types.add(type);
             attributes.add(parameterAttributes);
             promotedFlags.add(promVis != null);
@@ -1037,7 +1048,8 @@ public final class Parser {
         return new ParsedParams(names.toArray(new String[0]), slotArray, kindArray, refArray,
                 defaults.toArray(new PhpNode[0]), variadic, promoted,
                 types.toArray(new PhpType[0]), attributes,
-                toBooleanArray(promotedFlags), defaultValues.toArray(), defaultTargets.toArray(new RootCallTarget[0]));
+                toBooleanArray(promotedFlags), defaultValues.toArray(), defaultTargets.toArray(new RootCallTarget[0]),
+                defaultConstantNames.toArray(new String[0]));
     }
 
     private static boolean[] toBooleanArray(List<Boolean> values) {
@@ -1065,7 +1077,8 @@ public final class Parser {
         try {
             ParsedParams params = parseParams();
             PhpType returnType = acceptOp(":") ? parseType() : null;
-            PhpSignature signature = params.signature(returnType, attributes);
+            PhpSignature signature = params.signature(returnType, attributes)
+                    .withSource(source.getPath(), nameTok.line());
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
@@ -1075,7 +1088,7 @@ public final class Parser {
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
-                    params.defaults(), params.variadic(), body).withSignature(signature));
+                    params.defaults(), params.variadic(), body).withSignature(signature.withEndLine(lastBlockEndLine)));
             if (scope.isGenerator()) {
                 root.asGenerator();
             }
@@ -1119,11 +1132,13 @@ public final class Parser {
                 }
             }
             PhpType returnType = acceptOp(":") ? parseType() : null;
-            PhpSignature signature = params.signature(returnType, attributes);
+            PhpSignature signature = params.signature(returnType, attributes)
+                    .withSource(source.getPath(), line);
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            return finishClosure(outer, !isStatic, returnsRef, params, signature, body, line, "{closure}");
+            return finishClosure(outer, !isStatic, returnsRef, params,
+                    signature.withEndLine(lastBlockEndLine), body, line, "{closure}");
         } finally {
             scope = outer;
             currentFunction = outerFunction;
@@ -1142,14 +1157,16 @@ public final class Parser {
         try {
             ParsedParams params = parseParams();
             PhpType returnType = acceptOp(":") ? parseType() : null;
-            PhpSignature signature = params.signature(returnType, attributes);
+            PhpSignature signature = params.signature(returnType, attributes)
+                    .withSource(source.getPath(), line);
             expectOp("=>");
             PhpNode expr = expression();
             if (returnsRef && expr instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
                 lv.kind().markCell();
             }
             PhpNode body = new JumpNode(JumpNode.Kind.RETURN, 0, expr, returnsRef).at(line);
-            return finishClosure(outer, !isStatic, returnsRef, params, signature, body, line, "{closure}");
+            return finishClosure(outer, !isStatic, returnsRef, params,
+                    signature.withEndLine(expr.line()), body, line, "{closure}");
         } finally {
             scope = outer;
             currentFunction = outerFunction;
@@ -1213,6 +1230,7 @@ public final class Parser {
         PhpClassTemplate template = parseClassTemplate(
                 language.nextTemplateId(), name, isInterface, isTrait, isEnum, isAbstract, isFinal,
                 isReadonly, false, attributes);
+        template.withSource(source.getPath(), line, lastBlockEndLine);
         if (topLevel) {
             int idx = topLevelClasses.size();
             topLevelClasses.add(template);
@@ -1258,13 +1276,19 @@ public final class Parser {
         currentParentClass = parentName;
         currentIsTrait = isTrait;
         try {
-            while (!acceptOp("}")) {
-                if (peek().kind() == Kind.EOF) {
+            while (true) {
+                Token classEnd = peek();
+                if (classEnd.isOp("}")) {
+                    next();
+                    lastBlockEndLine = classEnd.line();
+                    break;
+                }
+                if (classEnd.kind() == Kind.EOF) {
                     throw error("syntax error, unexpected end of file in class " + name);
                 }
                 List<PhpAttribute> memberAttributes = parseAttributes();
-                if (acceptOp("}")) {
-                    break;
+                if (peek().isOp("}")) {
+                    continue;
                 }
                 if (acceptKeyword("use")) {
                     traitUses.add(parseTraitUse());
@@ -1338,7 +1362,7 @@ public final class Parser {
                         RootCallTarget valTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
                         properties.add(new PhpClassTemplate.PropertyDecl(
                                 propTok.text(), vis, isStatic, pReadonly, constVal, valTarget,
-                                propertyType, memberAttributes));
+                                propertyType, memberAttributes, expr != null));
                     } while (acceptOp(","));
                     expectOp(";");
                 }
@@ -1379,6 +1403,31 @@ public final class Parser {
         }
         if (expr instanceof dev.phpruntime.nodes.expr.ArrayLiteralNode a) {
             return a.constant();
+        }
+        return null;
+    }
+
+    /**
+     * The name php reports for a default that is a constant expression: the resolved
+     * constant name, or {@code Class::CONST} with {@code self}/{@code parent} kept as written.
+     */
+    private static String defaultConstantName(PhpNode expr) {
+        if (expr instanceof ConstNode constant) {
+            return constant.constantName();
+        }
+        if (expr instanceof dev.phpruntime.nodes.expr.ReadConstantNode read) {
+            return read.namespaceName() != null ? read.namespaceName() : read.name();
+        }
+        if (expr instanceof dev.phpruntime.nodes.expr.ClassConstNode clsConst
+                && !clsConst.constName().equalsIgnoreCase("class")) {
+            dev.phpruntime.nodes.expr.ClassRefNode ref = clsConst.classRef();
+            String owner = switch (ref.kind()) {
+                case SELF, TRAIT_SELF -> "self";
+                case PARENT, TRAIT_PARENT -> "parent";
+                case STATIC -> "static";
+                default -> ref.staticName();
+            };
+            return owner == null ? null : owner + "::" + clsConst.constName();
         }
         return null;
     }
@@ -1457,14 +1506,18 @@ public final class Parser {
         try {
             ParsedParams params = parseParams(isCtor && !isAbstract);
             PhpType returnType = acceptOp(":") ? parseType() : null;
-            PhpSignature signature = params.signature(returnType, methodAttributes);
+            PhpSignature signature = params.signature(returnType, methodAttributes)
+                    .withSource(source.getPath(), nameTok.line());
             RootCallTarget callTarget;
+            int endLine;
             if (isAbstract) {
+                endLine = peek().line();
                 expectOp(";");
                 callTarget = null;
             } else {
                 expectOp("{");
                 PhpNode body = blockUntil("}");
+                endLine = lastBlockEndLine;
                 scope.validateGotos();
                 if (!params.promoted().isEmpty()) {
                     List<PhpNode> initStmts = new ArrayList<>(params.promoted().size() + 1);
@@ -1472,7 +1525,7 @@ public final class Parser {
                         boolean propRo = pp.isReadonly() || classReadonly;
                         classProps.add(new PhpClassTemplate.PropertyDecl(
                                 pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null,
-                                pp.type(), pp.attributes()));
+                                pp.type(), pp.attributes(), false));
                         LValueNode thisVar = scope.variable("this").at(pp.line());
                         LValueNode propLv = new PropertyLValueNode(thisVar, pp.name(), null, currentClassLower(),
                                 scope.traitSelfSlot()).at(pp.line());
@@ -1492,7 +1545,7 @@ public final class Parser {
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
-                        params.defaults(), params.variadic(), body).withSignature(signature));
+                        params.defaults(), params.variadic(), body).withSignature(signature.withEndLine(endLine)));
                 if (scope.isGenerator()) {
                     root.asGenerator();
                 }
@@ -1500,7 +1553,7 @@ public final class Parser {
             }
             return new PhpClassTemplate.MethodDecl(
                     mName, lower, language.methodId(mName), vis, isStatic, isAbstract, isFinal, callTarget,
-                    signature);
+                    signature.withEndLine(endLine));
         } finally {
             scope = outerScope;
             currentFunction = outerFunction;
@@ -2203,6 +2256,7 @@ public final class Parser {
             String anonName = "class@anonymous\0" + magicFile() + ":" + line + "$" + tid;
             PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, false, false,
                     anonReadonly, true, attributes);
+            tpl.withSource(source.getPath(), line, lastBlockEndLine);
             ClassRefNode ref = ClassRefNode.anonymous(tpl, language.classId(anonName));
             return new NewNode(ref, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
         }
@@ -2476,7 +2530,7 @@ public final class Parser {
             }
             Object constant = PhpConstants.compileTime(rn.primary());
             if (constant != null) {
-                return new ConstNode(constant).at(line);
+                return new ConstNode(constant, rn.primary()).at(line);
             }
             return new ReadConstantNode(rn.primary()).at(line);
         }

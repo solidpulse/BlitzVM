@@ -11,10 +11,17 @@ import java.util.List;
  */
 public record PhpParameter(String name, PhpType type, List<PhpAttribute> attributes,
                            boolean promoted, boolean variadic, boolean byRef,
-                           Object defaultValue, RootCallTarget defaultTarget) {
+                           Object defaultValue, RootCallTarget defaultTarget,
+                           String defaultConstantName) {
 
     public PhpParameter {
         attributes = attributes == null ? List.of() : List.copyOf(attributes);
+    }
+
+    public PhpParameter(String name, PhpType type, List<PhpAttribute> attributes,
+                        boolean promoted, boolean variadic, boolean byRef,
+                        Object defaultValue, RootCallTarget defaultTarget) {
+        this(name, type, attributes, promoted, variadic, byRef, defaultValue, defaultTarget, null);
     }
 
     public boolean hasDefault() {

@@ -62,6 +62,11 @@ public final class ReadConstantNode extends PhpNode {
         return name;
     }
 
+    /** The namespace-qualified name when this constant was written unqualified inside a namespace. */
+    public String namespaceName() {
+        return nsName;
+    }
+
     /** A fresh copy for the bytecode {@code ReadConstant} operation, with no resolved builtin yet. */
     public ReadConstantNode headless() {
         return new ReadConstantNode(name, nsName).at(line());

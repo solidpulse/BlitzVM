@@ -418,9 +418,16 @@ public final class PhpContext {
         return map == null ? null : map.get(name);
     }
 
+    /** The static-local cells belonging to a function root or closure object, for reflection. */
+    @TruffleBoundary
+    public Map<String, PhpReference> staticLocalsOf(Object ownerKey) {
+        return staticLocals.get(ownerKey);
+    }
+
     @TruffleBoundary
     public PhpReference initStaticLocal(Object ownerKey, String name, Object initialValue) {
-        Map<String, PhpReference> map = staticLocals.computeIfAbsent(ownerKey, k -> new HashMap<>());
+        Map<String, PhpReference> map = staticLocals.computeIfAbsent(ownerKey,
+                k -> new java.util.LinkedHashMap<>());
         PhpReference ref = map.get(name);
         if (ref == null) {
             ref = new PhpReference(initialValue);
@@ -436,7 +443,7 @@ public final class PhpContext {
         if (share) {
             staticLocals.put(copy, values);
         } else {
-            Map<String, PhpReference> cloned = new HashMap<>();
+            Map<String, PhpReference> cloned = new java.util.LinkedHashMap<>();
             for (var entry : values.entrySet()) {
                 cloned.put(entry.getKey(), new PhpReference(PhpOps.copyOnAssign(entry.getValue().getValue())));
             }
