@@ -7,6 +7,7 @@ import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.builtins.Builtins;
 import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.CallMode;
 import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClassTemplate;
@@ -477,6 +478,14 @@ public final class PhpContext {
         }
         functionsById[id] = fn;
         declaredFunctions.add(fn);
+        dev.phpruntime.nodes.PhpFunctionRootNode root =
+                dev.phpruntime.nodes.PhpFunctionRootNode.of(fn.callTarget().getRootNode());
+        if (root != null && root.implicitNullable().length > 0) {
+            for (String parameter : root.implicitNullable()) {
+                deprecated(root.qualifiedCallableName() + "(): Implicitly marking parameter $" + parameter
+                        + " as nullable is deprecated, the explicit nullable type must be used instead", root.line());
+            }
+        }
     }
 
     /** The function with this {@link PhpLanguage#functionId id} in this context, or null. Cheap enough for every call. */
@@ -1129,6 +1138,22 @@ public final class PhpContext {
     @TruffleBoundary
     public void notice(String message, int line) {
         emitDiagnostic(8L, "Notice", message, line);
+    }
+
+    @TruffleBoundary
+    public void deprecated(String message, int line) {
+        emitDiagnostic(8192L, "Deprecated", message, line);
+    }
+
+    /** A one-shot mode for the user function a builtin is about to call, or null. */
+    private CallMode pendingCallMode;
+
+    public CallMode pendingCallMode() {
+        return pendingCallMode;
+    }
+
+    public void setPendingCallMode(CallMode mode) {
+        this.pendingCallMode = mode;
     }
 
     /**

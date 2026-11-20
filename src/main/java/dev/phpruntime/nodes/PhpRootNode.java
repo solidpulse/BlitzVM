@@ -12,6 +12,11 @@ public abstract class PhpRootNode extends RootNode {
 
     private Source source;
     private int line;
+    /**
+     * {@code declare(strict_types=1)} in the file this code was parsed from. Set once at parse
+     * time, before the root is shared between requests.
+     */
+    private boolean strictTypes;
 
     protected PhpRootNode(PhpLanguage language, FrameDescriptor fd, Source source, int line) {
         super(language, fd);
@@ -31,6 +36,15 @@ public abstract class PhpRootNode extends RootNode {
 
     public final Source source() {
         return source;
+    }
+
+    public final void setStrictTypes(boolean strict) {
+        this.strictTypes = strict;
+    }
+
+    /** Whether the file declaring this code uses {@code strict_types=1}. */
+    public final boolean strictTypes() {
+        return strictTypes;
     }
 
     @Override

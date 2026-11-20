@@ -1,0 +1,35 @@
+int(5)
+int(1000)
+int(5)
+int(5)
+int(1)
+int(0)
+int(0)
+DEPRECATED: Implicit conversion from float 5.7 to int loses precision
+int(5)
+DEPRECATED: Implicit conversion from float-string "5.5" to int loses precision
+int(5)
+int(5)
+asInt(): Argument #1 ($x) must be of type int, string given, called in 395-weak-parameter-coercion.php on line 24
+asInt(): Argument #1 ($x) must be of type int, string given, called in 395-weak-parameter-coercion.php on line 24
+asInt(): Argument #1 ($x) must be of type int, null given, called in 395-weak-parameter-coercion.php on line 24
+asInt(): Argument #1 ($x) must be of type int, array given, called in 395-weak-parameter-coercion.php on line 24
+float(3.0)
+float(3.25)
+float(100.0)
+float(1.0)
+float(0.0)
+string('12')
+string('1.5')
+string('1')
+string('')
+bool(false)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+asBool(): Argument #1 ($x) must be of type bool, array given, called in 395-weak-parameter-coercion.php on line 33
+asString(): Argument #1 ($x) must be of type string, stdClass given, called in 395-weak-parameter-coercion.php on line 35
+string('made')
