@@ -1,0 +1,17 @@
+float(3)
+NULL
+bool(false)
+bool(true)
+array(0) {
+}
+string(8) "anything"
+strictInt(): Return value must be of type int, string returned
+strictString(): Return value must be of type string, int returned
+Generator
+Generator
+Generator
+strictReference(): Return value must be of type int, string returned
+string(1) "5"
+NULL
+Factory
+Factory

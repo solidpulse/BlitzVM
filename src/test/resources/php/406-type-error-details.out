@@ -1,0 +1,10 @@
+TypeError|406-type-error-details.php:11|takesInt(): Argument #1 ($x) must be of type int, string given, called in 406-type-error-details.php on line 13
+TypeError|406-type-error-details.php:16|Handler::method(): Argument #1 ($x) must be of type int, string given, called in 406-type-error-details.php on line 23
+TypeError|406-type-error-details.php:17|Handler::staticMethod(): Argument #1 ($x) must be of type string, array given, called in 406-type-error-details.php on line 24
+TypeError|406-type-error-details.php:25|{closure:406-type-error-details.php:25}(): Argument #1 ($x) must be of type int, string given, called in 406-type-error-details.php on line 26
+TypeError|406-type-error-details.php:19|Handler::returnWrong(): Return value must be of type int, string returned
+TypeError|406-type-error-details.php:28|Cannot assign string to property Handler::$property of type int
+Error|406-type-error-details.php:29|Typed property Handler::$property must not be accessed before initialization
+Error|406-type-error-details.php:31|Typed property Handler::$property must not be accessed before initialization
+TypeError|406-type-error-details.php:33|nested(): Argument #1 ($x) must be of type int, string given, called in 406-type-error-details.php on line 35
+index 1 Handler::method(): Argument #1 ($x) must be of type int, array given, called in 406-type-error-details.php on line 40

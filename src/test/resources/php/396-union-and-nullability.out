@@ -1,0 +1,49 @@
+int|string '5'
+float|string '5'
+int|float 5
+string|bool '5'
+int|bool 5
+all '5'
+DEPRECATED: Implicit conversion from float 4.5 to int loses precision
+int|string 4
+float|string 4.5
+int|float 4.5
+string|bool '4.5'
+DEPRECATED: Implicit conversion from float 4.5 to int loses precision
+int|bool 4
+all 4.5
+int|string 'abc'
+float|string 'abc'
+intOrFloat(): Argument #1 ($x) must be of type int|float, string given, called in 396-union-and-nullability.php on line 24
+string|bool 'abc'
+int|bool true
+all 'abc'
+int|string '5.5'
+float|string '5.5'
+int|float 5.5
+string|bool '5.5'
+DEPRECATED: Implicit conversion from float-string "5.5" to int loses precision
+int|bool 5
+all '5.5'
+int|string 1
+float|string 1.0
+int|float 1
+string|bool true
+int|bool true
+all true
+intOrString(): Argument #1 ($x) must be of type string|int, null given, called in 396-union-and-nullability.php on line 24
+floatOrString(): Argument #1 ($x) must be of type string|float, null given, called in 396-union-and-nullability.php on line 24
+intOrFloat(): Argument #1 ($x) must be of type int|float, null given, called in 396-union-and-nullability.php on line 24
+stringOrBool(): Argument #1 ($x) must be of type string|bool, null given, called in 396-union-and-nullability.php on line 24
+intOrBool(): Argument #1 ($x) must be of type int|bool, null given, called in 396-union-and-nullability.php on line 24
+allFour(): Argument #1 ($x) must be of type string|int|float|bool, null given, called in 396-union-and-nullability.php on line 24
+maybe NULL
+maybe 12
+explicit NULL
+explicit 7
+noNull(): Argument #1 ($x) must be of type string|int, null given, called in 396-union-and-nullability.php on line 31
+noNull(): Argument #1 ($x) must be of type string|int, array given, called in 396-union-and-nullability.php on line 32
+nullableIterable(): Return value must be of type Traversable|array|null, int returned
+array
+object
+iterableArg(): Argument #1 ($x) must be of type Traversable|array, int given, called in 396-union-and-nullability.php on line 38

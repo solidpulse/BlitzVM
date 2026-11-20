@@ -1,0 +1,21 @@
+Typed property Typed::$number must not be accessed before initialization
+Typed property Typed::$text must not be accessed before initialization
+Typed static property Typed::$staticNumber must not be accessed before initialization
+Cannot access uninitialized non-nullable property Typed::$number by reference
+Cannot access uninitialized non-nullable property Typed::$staticNumber by reference
+int(21)
+Typed property Typed::$number must not be accessed before initialization
+int(23)
+int(23)
+int(25)
+int(25)
+NULL
+NULL
+int(26)
+int(28)
+int(28)
+int(30)
+int(30)
+int(26)
+int(30)
+string(2) "31"

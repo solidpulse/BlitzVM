@@ -47,9 +47,16 @@ public final class PhpClassTemplate {
 
     public record PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
                                Object constDefault, RootCallTarget defaultTarget,
-                               PhpType type, List<PhpAttribute> attributes) {
+                               PhpType type, List<PhpAttribute> attributes, boolean hasDefault) {
         public PropertyDecl {
             attributes = attributes == null ? List.of() : List.copyOf(attributes);
+        }
+
+        public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
+                            Object constDefault, RootCallTarget defaultTarget,
+                            PhpType type, List<PhpAttribute> attributes) {
+            this(name, visibility, isStatic, isReadonly, constDefault, defaultTarget, type, attributes,
+                    defaultTarget != null || (constDefault != null && constDefault != PhpNull.INSTANCE));
         }
 
         public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,

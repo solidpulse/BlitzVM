@@ -62,6 +62,8 @@ import dev.phpruntime.runtime.PhpException;
 import dev.phpruntime.runtime.PhpGenerator;
 import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpFunction;
+import dev.phpruntime.runtime.DeclaredType;
+import dev.phpruntime.runtime.CallMode;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
@@ -114,12 +116,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     void init(PhpFunctionRootNode fn) {
         this.function = fn;
         this.refMask = fn.refMask();
+        setStrictTypes(fn.strictTypes());
         SourceSection ss = fn.getSourceSection();
         initSource(fn.source(), ss != null ? ss.getStartLine() : -1);
     }
 
     void initMain(dev.phpruntime.nodes.PhpMainRootNode m) {
         this.main = m;
+        setStrictTypes(m.strictTypes());
         initSource(m.source(), 1);
     }
 
@@ -772,6 +776,245 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             store(frame, acc, info, bytecode, rest);
         }
+    }
+
+    // ------------------------------------------------------------------ declared types
+
+    /** A parameter's value for its type check: the argument or the evaluated default, unwrapped. */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = int.class, name = "argIndex")
+    public static final class ParamValue {
+        @Specialization
+        static Object value(VirtualFrame frame, LocalAccessor acc, int argIndex, @Bind BytecodeNode bytecode) {
+            Object[] args = frame.getArguments();
+            Object raw = argIndex < args.length ? args[argIndex] : PhpFunctionRootNode.UNPASSED;
+            if (raw == PhpFunctionRootNode.UNPASSED) {
+                raw = acc.isCleared(bytecode, frame) ? null : acc.getObject(bytecode, frame);
+            }
+            if (raw instanceof PhpReference ref) {
+                raw = ref.getValue();
+            }
+            return raw == null ? PhpNull.INSTANCE : raw;
+        }
+    }
+
+    /**
+     * Checks one parameter after binding. The fast specializations read only the declared
+     * type's final flags; a mismatch goes through the boundary, which coerces in weak mode or
+     * throws php's TypeError, and writes the coerced value back to the local (or the referenced
+     * cell for a by-reference parameter).
+     */
+    @Operation
+    @ConstantOperand(type = DeclaredType.class)
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = String.class, name = "paramName")
+    public static final class CheckParam {
+        @Specialization(guards = "type.isMixed()")
+        static void mixed(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                          String name, Object value) {
+        }
+
+        @Specialization(guards = "type.acceptsLong()")
+        static void longValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                              String name, long value) {
+        }
+
+        @Specialization(guards = "type.acceptsDouble()")
+        static void doubleValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                                String name, double value) {
+        }
+
+        @Specialization(guards = "type.acceptsString()")
+        static void stringValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                                String name, String value) {
+        }
+
+        @Specialization(guards = "type.acceptsBool()")
+        static void boolValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                              String name, boolean value) {
+        }
+
+        @Specialization(guards = "type.acceptsArray()")
+        static void arrayValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                               String name, PhpArray value) {
+        }
+
+        @Specialization(guards = "type.acceptsNull()")
+        static void nullValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                              String name, PhpNull value) {
+        }
+
+        @Specialization(guards = "type.acceptsAnyObject()")
+        static void objectValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                                String name, PhpObject value) {
+        }
+
+        @Specialization(guards = "type.hasFastClass()")
+        static void classValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                               String name, PhpObject value, @Bind Node node, @Bind BytecodeNode bytecode) {
+            if (type.fastClassMatches(value, PhpContext.get(node), DeclaredTypes.selfClass(rootOf(node), frame))) {
+                return;
+            }
+            slow(frame, type, acc, info, param, name, value, node, bytecode);
+        }
+
+        @Fallback
+        static void fallback(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                             String name, Object value, @Bind Node node, @Bind BytecodeNode bytecode) {
+            slow(frame, type, acc, info, param, name, value, node, bytecode);
+        }
+
+        private static void slow(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                                 String name, Object value, Node node, BytecodeNode bytecode) {
+            PhpBytecodeRootNode root = rootOf(node);
+            Object result = type.checkParameter(value, root, node, param, name,
+                    DeclaredTypes.selfClass(root, frame), DeclaredTypes.calledClass(root, frame));
+            Object raw = acc.isCleared(bytecode, frame) ? null : acc.getObject(bytecode, frame);
+            if (raw instanceof PhpReference ref) {
+                ref.setValue(result);
+            } else {
+                store(frame, acc, info, bytecode, result);
+            }
+        }
+    }
+
+    /** Checks every element of a typed variadic parameter, preserving by-reference cells. */
+    @Operation
+    @ConstantOperand(type = DeclaredType.class)
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = int.class, name = "param")
+    @ConstantOperand(type = String.class, name = "paramName")
+    public static final class CheckVariadic {
+        @Specialization
+        static void check(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
+                          String name, @Bind BytecodeNode bytecode, @Bind Node node) {
+            Object raw = acc.isCleared(bytecode, frame) ? null : acc.getObject(bytecode, frame);
+            if (!(raw instanceof PhpArray array)) {
+                return;
+            }
+            PhpBytecodeRootNode root = (PhpBytecodeRootNode) node.getRootNode();
+            PhpArray checked = Ops.checkVariadic(type, array, root, node, frame.materialize(), param, name);
+            if (checked != array) {
+                store(frame, acc, info, bytecode, checked);
+            }
+        }
+    }
+
+    /** Checks a returned value: weak coercion or TypeError, in the declaring file's mode. */
+    @Operation
+    @ConstantOperand(type = DeclaredType.class)
+    @ConstantOperand(type = boolean.class, name = "implicit")
+    public static final class CheckReturn {
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.isMixed()"})
+        static Object mixed(DeclaredType type, boolean implicit, Object value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsLong()"})
+        static long longValue(DeclaredType type, boolean implicit, long value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsDouble()"})
+        static double doubleValue(DeclaredType type, boolean implicit, double value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsString()"})
+        static String stringValue(DeclaredType type, boolean implicit, String value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsBool()"})
+        static boolean boolValue(DeclaredType type, boolean implicit, boolean value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsArray()"})
+        static PhpArray arrayValue(DeclaredType type, boolean implicit, PhpArray value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsNull()"})
+        static PhpNull nullValue(DeclaredType type, boolean implicit, PhpNull value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.acceptsAnyObject()"})
+        static PhpObject objectValue(DeclaredType type, boolean implicit, PhpObject value) {
+            return value;
+        }
+
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.hasFastClass()"})
+        static Object classValue(VirtualFrame frame, DeclaredType type, boolean implicit, PhpObject value,
+                                 @Bind Node node) {
+            PhpBytecodeRootNode root = rootOf(node);
+            if (type.fastClassMatches(value, PhpContext.get(node), DeclaredTypes.selfClass(root, frame))) {
+                return value;
+            }
+            return slowReturn(frame, type, implicit, value, node);
+        }
+
+        @Fallback
+        static Object slow(VirtualFrame frame, DeclaredType type, boolean implicit, Object value, @Bind Node node) {
+            return slowReturn(frame, type, implicit, value, node);
+        }
+
+        private static Object slowReturn(VirtualFrame frame, DeclaredType type, boolean implicit, Object value,
+                                         Node node) {
+            PhpBytecodeRootNode root = rootOf(node);
+            if (value instanceof PhpReference ref) {
+                Object checked = type.checkReturn(ref.getValue(), root, node, implicit,
+                        DeclaredTypes.selfClass(root, frame), DeclaredTypes.calledClass(root, frame));
+                ref.setValue(checked);
+                return ref;
+            }
+            return type.checkReturn(value, root, node, implicit,
+                    DeclaredTypes.selfClass(root, frame), DeclaredTypes.calledClass(root, frame));
+        }
+    }
+
+    /** The runtime class helpers the type operations need, derived from the running frame. */
+    static final class DeclaredTypes {
+        static PhpClass selfClass(PhpBytecodeRootNode root, com.oracle.truffle.api.frame.Frame frame) {
+            PhpFunctionRootNode fn = root.function();
+            if (fn == null) {
+                return null;
+            }
+            Object[] args = frame.getArguments();
+            if (fn.traitSelfSlot() >= 0) {
+                if (fn.isClosure()) {
+                    if (args.length > 2 && args[2] instanceof PhpObject obj && obj.closure() != null
+                            && obj.closure().traitSelf() != null) {
+                        return obj.closure().traitSelf();
+                    }
+                } else if (args.length > 2 && args[2] instanceof PhpClass c) {
+                    return c;
+                }
+            }
+            return fn.declaringClass() == null ? null : PhpContext.get(root).lookupClass(fn.declaringClass());
+        }
+
+        static PhpClass calledClass(PhpBytecodeRootNode root, VirtualFrame frame) {
+            Object[] args = frame.getArguments();
+            if (root.function() != null && root.function().argOffset() > 0) {
+                if (args.length > 1 && args[1] instanceof PhpClass c) {
+                    return c;
+                }
+                if (args.length > 0 && args[0] instanceof PhpObject obj) {
+                    return obj.phpClass();
+                }
+            }
+            return null;
+        }
+    }
+
+    private static PhpBytecodeRootNode rootOf(Node node) {
+        return (PhpBytecodeRootNode) node.getRootNode();
     }
 
     /** A closure's captured variable {@code index}, from the closure object in argument 2. */
@@ -2635,6 +2878,54 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object callComplexBuiltinBoundary(com.oracle.truffle.api.frame.MaterializedFrame frame,
                                                  Builtins.Def def, CallArgHelper.RawCallArgs raw, Node site) {
             return CallArgHelper.callComplexBuiltinRaw(frame, def, raw, site);
+        }
+
+        @TruffleBoundary
+        static PhpArray checkVariadic(DeclaredType type, PhpArray array, PhpBytecodeRootNode root, Node node,
+                                      com.oracle.truffle.api.frame.MaterializedFrame frame, int param, String name) {
+            PhpContext ctx = PhpContext.get(node);
+            PhpClass self = DeclaredTypes.selfClass(root, frame);
+            PhpClass called = DeclaredTypes.calledClass(root, frame);
+            PhpArray out = null;
+            int index = param;
+            for (Object key : array.keys()) {
+                Object raw = array.getRaw(key);
+                if (raw instanceof PhpReference ref) {
+                    Object value = ref.getValue();
+                    Object checked = type.checkParameter(value == null ? PhpNull.INSTANCE : value, root, node,
+                            index, null, self, called);
+                    if (checked != value) {
+                        ref.setValue(checked);
+                        if (out == null) {
+                            out = copyWithRefs(array);
+                        }
+                    }
+                } else {
+                    Object value = array.get(key);
+                    Object checked = type.checkParameter(value, root, node, index, null, self, called);
+                    if (checked != value) {
+                        if (out == null) {
+                            out = copyWithRefs(array);
+                        }
+                        out.put(key, checked);
+                    }
+                }
+                index++;
+            }
+            return out == null ? array : out;
+        }
+
+        private static PhpArray copyWithRefs(PhpArray source) {
+            PhpArray out = new PhpArray();
+            for (Object key : source.keys()) {
+                Object raw = source.getRaw(key);
+                if (raw instanceof PhpReference ref) {
+                    out.putRef(key, ref);
+                } else {
+                    out.put(key, source.get(key));
+                }
+            }
+            return out;
         }
 
         @TruffleBoundary

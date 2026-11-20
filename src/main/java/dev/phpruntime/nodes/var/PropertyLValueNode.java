@@ -14,6 +14,8 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.DeclaredType;
+import dev.phpruntime.runtime.CallMode;
 import dev.phpruntime.runtime.Visibility;
 import dev.phpruntime.runtime.SplArrayState;
 
@@ -42,7 +44,7 @@ public final class PropertyLValueNode extends LValueNode {
      */
     private record Resolution(long hierarchyId, long callerHierarchyId, String storageKey,
                               boolean isProtected, boolean accessible, boolean isReadonly,
-                              boolean canInitReadonly, String declaringClass) {
+                              boolean canInitReadonly, String declaringClass, DeclaredType type) {
     }
 
     /** Most class hierarchies (or hierarchy and caller pairs) one site caches before going megamorphic. */
@@ -239,6 +241,7 @@ public final class PropertyLValueNode extends LValueNode {
                 return;
             }
             String storageKey = fast.storageKey();
+            value = checkType(fast.type(), obj, name, fast.declaringClass(), value);
             Object existing = getNode.execute(obj, storageKey, null);
             if (fast.isReadonly()) {
                 writeReadonly(obj, name, storageKey, existing, fast.canInitReadonly(), fast.declaringClass(), value);
@@ -265,6 +268,7 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         String storageKey = res.storageKey();
+        value = checkType(res.type(), obj, name, res.declaringClass(), value);
         Object existing = getNode.execute(obj, storageKey, null);
         if (res.isReadonly()) {
             writeReadonly(obj, name, storageKey, existing, res.canInitReadonly(), res.declaringClass(), value);
@@ -335,13 +339,30 @@ public final class PropertyLValueNode extends LValueNode {
             return arrayAccess().cell(obj, name);
         }
         checkNotReadonlyForIndirectWrite(frame, keys);
-        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
-        if (storageKey == null) {
+        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
+        if (!res.accessible()) {
             throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
+        String storageKey = res.storageKey();
         Object existing = getNode.execute(obj, storageKey, null);
+        if (existing == PhpClass.UNINITIALIZED) {
+            if (res.type() != null && !res.type().acceptsNull()) {
+                String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+                throw new PhpError("Cannot access uninitialized non-nullable property " + owner + "::$" + name
+                        + " by reference", this);
+            }
+            PhpReference ref = new PhpReference(PhpNull.INSTANCE);
+            if (res.type() != null) {
+                ref.setCellCheck(cellCheck(res, obj, name));
+            }
+            putNode.execute(obj, storageKey, ref);
+            return ref;
+        }
         if (existing instanceof PhpReference ref) {
             ref.ensureDefined();
+            if (res.type() != null) {
+                ref.setCellCheck(cellCheck(res, obj, name));
+            }
             return ref;
         }
         if (existing == null && magicUsable(obj.phpClass().getMethod(), obj, name, PhpObject.GUARD_GET)) {
@@ -349,6 +370,9 @@ public final class PropertyLValueNode extends LValueNode {
             return new PhpReference(PhpOps.copyOnAssign(val));
         }
         PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);
+        if (res.type() != null) {
+            ref.setCellCheck(cellCheck(res, obj, name));
+        }
         putNode.execute(obj, storageKey, ref);
         return ref;
     }
@@ -366,9 +390,19 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         checkNotReadonlyForIndirectWrite(frame, keys);
-        String storageKey = resolveKeyIfAccessible(frame, obj, name, keys);
-        if (storageKey == null) {
+        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
+        if (!res.accessible()) {
             throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
+        }
+        String storageKey = res.storageKey();
+        if (res.type() != null) {
+            Object current = cell.getValue();
+            Object checked = res.type().checkProperty(current, PhpContext.get(this), this, CallMode.strictAt(this),
+                    selfClass(res), res.declaringClass(), name);
+            if (checked != current) {
+                cell.setValue(checked);
+            }
+            cell.setCellCheck(cellCheck(res, obj, name));
         }
         putNode.execute(obj, storageKey, cell);
     }
@@ -385,7 +419,7 @@ public final class PropertyLValueNode extends LValueNode {
             arrayAccess().unset(obj, name);
             return;
         }
-        PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame, keys));
+        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
         if (res.accessible() && res.isReadonly()) {
             Object existing = getNode.execute(obj, res.storageKey(), null);
             if (existing != PhpClass.UNINITIALIZED || !res.canInitReadonly()) {
@@ -396,7 +430,7 @@ public final class PropertyLValueNode extends LValueNode {
         }
         String storageKey = res.accessible() ? res.storageKey() : null;
         if (storageKey != null && getNode.execute(obj, storageKey, null) != null) {
-            if (res.isReadonly()) {
+            if (res.isReadonly() || res.type() != null) {
                 putNode.execute(obj, storageKey, PhpClass.UNINITIALIZED);
             } else {
                 removeNode.execute(obj, storageKey);
@@ -404,6 +438,25 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         unsetFallback(obj, name, storageKey == null, effectiveCallerLower(frame, keys));
+    }
+
+    private PhpClass selfClass(PhpClass.PropertyResolution res) {
+        String owner = res.declaringClass();
+        return owner == null ? null : PhpContext.get(this).lookupClass(owner);
+    }
+
+    private Object checkType(DeclaredType type, PhpObject obj, String name, String owner, Object value) {
+        if (type == null) {
+            return value;
+        }
+        return type.checkProperty(value, PhpContext.get(this), this, CallMode.strictAt(this),
+                owner == null ? null : PhpContext.get(this).lookupClass(owner),
+                owner != null ? owner : obj.phpClass().name(), name);
+    }
+
+    private PhpReference.CellCheck cellCheck(PhpClass.PropertyResolution res, PhpObject obj, String name) {
+        String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
+        return res.type().propertyCellCheck(PhpContext.get(this), CallMode.strictAt(this), selfClass(res), owner, name);
     }
 
     @TruffleBoundary
@@ -416,6 +469,20 @@ public final class PropertyLValueNode extends LValueNode {
         String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
         CompilerDirectives.transferToInterpreter();
         throw new PhpError("Typed property " + owner + "::$" + name + " must not be accessed before initialization", this);
+    }
+
+    /**
+     * The site's cached resolution when it has one, else the full lookup. Visibility is only
+     * approximate on the cached path; callers rebuild it for errors through inaccessibleError.
+     */
+    private PhpClass.PropertyResolution resolveCached(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null) {
+            return new PhpClass.PropertyResolution(fast.storageKey(), fast.accessible(),
+                    fast.isProtected() ? Visibility.PROTECTED : Visibility.PUBLIC, fast.isReadonly(),
+                    fast.canInitReadonly(), fast.declaringClass(), fast.type());
+        }
+        return resolveFull(obj, name, effectiveCallerLower(frame, keys));
     }
 
     @TruffleBoundary
@@ -564,7 +631,7 @@ public final class PropertyLValueNode extends LValueNode {
             Resolution[] entries = cache;
             if (entries != MEGAMORPHIC) {
                 Resolution entry = new Resolution(h, callerH, res.storageKey(), res.visibility() == Visibility.PROTECTED,
-                        res.accessible(), res.isReadonly(), res.canInitReadonly(), res.declaringClass());
+                        res.accessible(), res.isReadonly(), res.canInitReadonly(), res.declaringClass(), res.type());
                 boolean present = false;
                 if (entries != null) {
                     for (Resolution c : entries) {

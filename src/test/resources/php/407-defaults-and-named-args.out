@@ -1,0 +1,17 @@
+5|x|null
+7|x|null
+3|12|null
+5|x|2
+defaults(): Argument #1 ($number) must be of type int, string given, called in 407-defaults-and-named-args.php on line 20
+1:a,b
+2:3
+int(9)
+bool(false)
+int(1)
+bool(true)
+DEPRECATED: implicitNullable(): Implicitly marking parameter $number as nullable is deprecated, the explicit nullable type must be used instead
+NULL
+12
+implicitNullable(): Argument #1 ($number) must be of type ?int, array given, called in 407-defaults-and-named-args.php on line 39
+4:
+6:7

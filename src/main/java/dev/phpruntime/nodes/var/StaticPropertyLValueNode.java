@@ -13,6 +13,7 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.CallMode;
 import dev.phpruntime.runtime.Visibility;
 
 import java.util.Arrays;
@@ -63,6 +64,9 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
         PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
         Object val = slot.get();
+        if (val == PhpClass.UNINITIALIZED) {
+            throw uninitialized(cls, name);
+        }
         return val == null ? PhpNull.INSTANCE : val;
     }
 
@@ -100,7 +104,11 @@ public final class StaticPropertyLValueNode extends LValueNode {
         if (res.decl() == null || !res.accessible()) {
             return null;
         }
-        return res.decl().slot(PhpContext.get(this)).get();
+        Object val = res.decl().slot(PhpContext.get(this)).get();
+        if (val == PhpClass.UNINITIALIZED) {
+            throw uninitialized(cls, name);
+        }
+        return val;
     }
 
     @Override
@@ -108,20 +116,75 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
-        PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
-        slot.set(value);
+        Resolution res = resolution(cls, name, caller);
+        if (res.decl() == null) {
+            CompilerDirectives.transferToInterpreter();
+            throw undeclared(cls, name);
+        }
+        if (!res.accessible()) {
+            CompilerDirectives.transferToInterpreter();
+            throw inaccessible(res.decl(), name);
+        }
+        if (res.decl().declaredType() != null) {
+            value = res.decl().declaredType().checkProperty(value, PhpContext.get(this), this,
+                    CallMode.strictAt(this), res.decl().declaringClass(), res.decl().declaringClass().name(), name);
+        }
+        res.decl().slot(PhpContext.get(this)).set(value);
     }
 
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
-        return requireSlot((PhpClass) keys[0], (String) keys[1], caller).obtainCell();
+        PhpClass cls = (PhpClass) keys[0];
+        String name = (String) keys[1];
+        Resolution res = resolution(cls, name, caller);
+        if (res.decl() == null) {
+            throw undeclared(cls, name);
+        }
+        if (!res.accessible()) {
+            throw inaccessible(res.decl(), name);
+        }
+        PhpClass.StaticSlot slot = res.decl().slot(PhpContext.get(this));
+        if (slot.get() == PhpClass.UNINITIALIZED) {
+            if (res.decl().declaredType() != null && !res.decl().declaredType().acceptsNull()) {
+                throw new PhpError("Cannot access uninitialized non-nullable property "
+                        + res.decl().declaringClass().name() + "::$" + name + " by reference", this);
+            }
+            slot.set(PhpNull.INSTANCE);
+        }
+        PhpReference cell = slot.obtainCell();
+        if (res.decl().declaredType() != null) {
+            cell.setCellCheck(res.decl().declaredType().propertyCellCheck(PhpContext.get(this),
+                    CallMode.strictAt(this), res.decl().declaringClass(),
+                    res.decl().declaringClass().name(), name));
+        }
+        return cell;
     }
 
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
-        requireSlot((PhpClass) keys[0], (String) keys[1], caller).bindCell(cell);
+        PhpClass cls = (PhpClass) keys[0];
+        String name = (String) keys[1];
+        Resolution res = resolution(cls, name, caller);
+        if (res.decl() == null) {
+            throw undeclared(cls, name);
+        }
+        if (!res.accessible()) {
+            throw inaccessible(res.decl(), name);
+        }
+        if (res.decl().declaredType() != null) {
+            Object current = cell.getValue();
+            Object checked = res.decl().declaredType().checkProperty(current, PhpContext.get(this), this,
+                    CallMode.strictAt(this), res.decl().declaringClass(), res.decl().declaringClass().name(), name);
+            if (checked != current) {
+                cell.setValue(checked);
+            }
+            cell.setCellCheck(res.decl().declaredType().propertyCellCheck(PhpContext.get(this),
+                    CallMode.strictAt(this), res.decl().declaringClass(),
+                    res.decl().declaringClass().name(), name));
+        }
+        res.decl().slot(PhpContext.get(this)).bindCell(cell);
     }
 
     @Override
@@ -148,6 +211,12 @@ public final class StaticPropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private PhpError undeclared(PhpClass cls, String name) {
         return new PhpError("Access to undeclared static property " + cls.name() + "::$" + name, this);
+    }
+
+    @TruffleBoundary
+    private PhpError uninitialized(PhpClass cls, String name) {
+        return new PhpError("Typed static property " + cls.name() + "::$" + name
+                + " must not be accessed before initialization", this);
     }
 
     @TruffleBoundary

@@ -52,6 +52,8 @@ public final class PhpFunctionRootNode extends PhpRootNode {
      * time before the root is shared, so it is read without a guard.
      */
     @CompilationFinal private dev.phpruntime.runtime.PhpSignature signature = dev.phpruntime.runtime.PhpSignature.EMPTY;
+    /** Parameter names whose type is made nullable by a {@code null} default (php 8.4 deprecation). */
+    @CompilationFinal(dimensions = 1) private String[] implicitNullable = new String[0];
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
     private final int declaringClassId;
 
@@ -293,7 +295,50 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     /** Attaches the declared signature; called by the parser before this root is shared. */
     public PhpFunctionRootNode withSignature(dev.phpruntime.runtime.PhpSignature signature) {
         this.signature = signature == null ? dev.phpruntime.runtime.PhpSignature.EMPTY : signature;
+        java.util.List<String> implicit = new java.util.ArrayList<>();
+        for (dev.phpruntime.runtime.PhpParameter parameter : this.signature.parameters()) {
+            if (parameter.type() != null && !allowsNull(parameter.type())
+                    && parameter.defaultValue() == PhpNull.INSTANCE) {
+                implicit.add(parameter.name());
+            }
+        }
+        this.implicitNullable = implicit.toArray(new String[0]);
         return this;
+    }
+
+    private static boolean allowsNull(dev.phpruntime.runtime.PhpType type) {
+        if (type instanceof dev.phpruntime.runtime.PhpType.Nullable) {
+            return true;
+        }
+        if (type instanceof dev.phpruntime.runtime.PhpType.Named named) {
+            String lower = dev.phpruntime.runtime.PhpStrings.lower(named.name());
+            return lower.equals("null") || lower.equals("mixed");
+        }
+        if (type instanceof dev.phpruntime.runtime.PhpType.Union union) {
+            for (dev.phpruntime.runtime.PhpType member : union.members()) {
+                if (allowsNull(member)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Parameters made nullable by a null default, for the php 8.4 deprecation. */
+    public String[] implicitNullable() {
+        return implicitNullable;
+    }
+
+    /** This function called weakly by internal code (array_map, Closure::__invoke); made once. */
+    private dev.phpruntime.runtime.CallMode internalCallMode;
+
+    public dev.phpruntime.runtime.CallMode internalCallMode() {
+        dev.phpruntime.runtime.CallMode m = internalCallMode;
+        if (m == null) {
+            m = new dev.phpruntime.runtime.CallMode(false, null, 0, this);
+            internalCallMode = m;
+        }
+        return m;
     }
 
     public dev.phpruntime.runtime.PhpSignature signature() {

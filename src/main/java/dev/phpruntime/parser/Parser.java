@@ -57,6 +57,8 @@ public final class Parser {
     private boolean currentReturnsRef;
     private int hoistedClassesSlot = -1;
     private int pos;
+    /** {@code declare(strict_types=1)} seen in this file. */
+    private boolean strictTypes;
 
     public Parser(PhpLanguage language, Source source) {
         this(language, source, lex(source), new Scope(language, true), new ArrayList<>(), new ArrayList<>(),
@@ -108,8 +110,10 @@ public final class Parser {
             }
             scope.validateGotos();
             PhpNode body = block(stmts);
-            return new PhpMainRootNode(language, scope.build(), source, body,
+            PhpMainRootNode main = new PhpMainRootNode(language, scope.build(), source, body,
                     functions, topLevelClasses, hoistedClassesSlot);
+            main.setStrictTypes(strictTypes);
+            return main;
         } catch (PhpParseError e) {
             throw e.withSource(source);
         }
@@ -475,10 +479,18 @@ public final class Parser {
                     return tryStatement(line);
                 }
                 case "declare" -> {
-                    // declare(strict_types=1); is accepted and ignored.
                     next();
                     expectOp("(");
                     while (!acceptOp(")")) {
+                        if (peek().kind() == Kind.IDENT
+                                && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(peek().text(), "strict_types")
+                                && peek(1).isOp("=")) {
+                            next();
+                            next();
+                            Token value = next();
+                            strictTypes = value.kind() == Kind.INT && "1".equals(value.text());
+                            continue;
+                        }
                         next();
                     }
                     endStatement();
@@ -1076,6 +1088,7 @@ public final class Parser {
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
                     params.defaults(), params.variadic(), body).withSignature(signature));
+            root.setStrictTypes(strictTypes);
             if (scope.isGenerator()) {
                 root.asGenerator();
             }
@@ -1182,6 +1195,7 @@ public final class Parser {
                 params.names(), params.slots(), params.kinds(), params.byRef(),
                 params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis())
                 .withSignature(signature));
+        root.setStrictTypes(strictTypes);
         if (scope.isGenerator()) {
             root.asGenerator();
         }
@@ -1338,7 +1352,7 @@ public final class Parser {
                         RootCallTarget valTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
                         properties.add(new PhpClassTemplate.PropertyDecl(
                                 propTok.text(), vis, isStatic, pReadonly, constVal, valTarget,
-                                propertyType, memberAttributes));
+                                propertyType, memberAttributes, expr != null));
                     } while (acceptOp(","));
                     expectOp(";");
                 }
@@ -1493,6 +1507,7 @@ public final class Parser {
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
                         params.defaults(), params.variadic(), body).withSignature(signature));
+                root.setStrictTypes(strictTypes);
                 if (scope.isGenerator()) {
                     root.asGenerator();
                 }

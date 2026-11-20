@@ -1,0 +1,24 @@
+base Child
+contract ContractImpl
+object stdClass
+array 2
+callable yes
+callable yes
+iterable array
+iterable ArrayIterator
+mixed NULL
+false false
+true true
+intersection Both
+dnf Both
+dnf null
+takeBase(): Argument #1 ($x) must be of type Base, stdClass given, called in 397-class-and-special-types.php on line 49
+takeContract(): Argument #1 ($x) must be of type Contract, Base given, called in 397-class-and-special-types.php on line 49
+takeObject(): Argument #1 ($x) must be of type object, int given, called in 397-class-and-special-types.php on line 49
+takeArray(): Argument #1 ($x) must be of type array, string given, called in 397-class-and-special-types.php on line 49
+takeCallable(): Argument #1 ($x) must be of type callable, string given, called in 397-class-and-special-types.php on line 49
+takeIterable(): Argument #1 ($x) must be of type Traversable|array, int given, called in 397-class-and-special-types.php on line 49
+takeFalse(): Argument #1 ($x) must be of type false, int given, called in 397-class-and-special-types.php on line 49
+takeTrue(): Argument #1 ($x) must be of type true, int given, called in 397-class-and-special-types.php on line 49
+takeIntersection(): Argument #1 ($x) must be of type Contract&Base, Base given, called in 397-class-and-special-types.php on line 49
+takeDnf(): Argument #1 ($x) must be of type (Contract&Base)|null, int given, called in 397-class-and-special-types.php on line 51

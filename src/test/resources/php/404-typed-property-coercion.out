@@ -1,0 +1,30 @@
+int(5)
+Cannot assign string to property Typed::$i of type int
+DEPRECATED: Implicit conversion from float 5.75 to int loses precision
+int(5)
+int(1)
+Cannot assign null to property Typed::$i of type int
+float(3)
+float(4.5)
+string(2) "12"
+string(3) "1.5"
+bool(false)
+bool(true)
+bool(true)
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+Cannot assign string to property Typed::$a of type array
+Child
+Cannot assign stdClass to property Typed::$o of type Base
+int(9)
+string(4) "nine"
+DEPRECATED: Implicit conversion from float 9.5 to int loses precision
+int(9)
+Cannot assign array to property Typed::$u of type string|int
+NULL
+int(12)
+Cannot assign array to property Typed::$n of type ?int

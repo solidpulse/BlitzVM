@@ -1,0 +1,16 @@
+ints 1,2,3
+ints 
+strings 1|2.5|1
+allInts(): Argument #2 must be of type int, string given, called in 398-variadic-and-byref-params.php on line 36
+DEPRECATED: Implicit conversion from float 2.5 to int loses precision
+ints 1,2
+bump 42
+int(42)
+bumpAll 11,12
+int(11)
+int(12)
+NULL
+7
+int(7)
+nullable(): Argument #1 ($value) must be of type ?int, array given, called in 398-variadic-and-byref-params.php on line 54
+bump(): Argument #1 ($value) must be of type int, string given, called in 398-variadic-and-byref-params.php on line 56

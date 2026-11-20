@@ -20,6 +20,7 @@ import dev.phpruntime.runtime.PhpObject;
 public final class GeneratorEntryRootNode extends RootNode {
     private final PhpFunctionRootNode function;
     private final long refMask;
+    private final dev.phpruntime.runtime.DeclaredType returnType;
     @Child private DirectCallNode body;
 
     GeneratorEntryRootNode(PhpLanguage language, PhpFunctionRootNode function, RootCallTarget bytecode) {
@@ -27,6 +28,8 @@ public final class GeneratorEntryRootNode extends RootNode {
         this.function = function;
         this.body = DirectCallNode.create(bytecode);
         this.refMask = function.refMask();
+        this.returnType = dev.phpruntime.runtime.DeclaredType.of(function.returnType(), function.declaringClass(),
+                language);
     }
 
     /** {@link PhpFunctionRootNode#refMask} of the generator function. */
@@ -44,6 +47,9 @@ public final class GeneratorEntryRootNode extends RootNode {
         PhpContext ctx = PhpContext.get(this);
         PhpObject object = new PhpObject(ctx.lookupClass("Generator"), ctx.nextObjectId());
         object.setNativeState(new PhpGenerator(start, function));
+        if (returnType != null) {
+            returnType.checkGeneratorReturn(object, function, this, ctx);
+        }
         return object;
     }
 

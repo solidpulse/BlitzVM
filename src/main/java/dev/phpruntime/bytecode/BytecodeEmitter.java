@@ -12,7 +12,11 @@ import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.var.IndexReadNode;
 import dev.phpruntime.nodes.var.LocalVarNode;
 import dev.phpruntime.nodes.var.VarKind;
+import dev.phpruntime.runtime.DeclaredType;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpParameter;
+import dev.phpruntime.runtime.PhpSignature;
+import dev.phpruntime.runtime.PhpType;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -61,6 +65,8 @@ public final class BytecodeEmitter {
     private BytecodeLocal hoisted;
     /** The PhpGenerator of a generator function's body (null elsewhere). */
     private BytecodeLocal generator;
+    /** The declared return type of the function being compiled, checked on every return. */
+    private DeclaredType bodyReturnType;
 
     /** The local holding the running generator; only a generator body contains yields. */
     public BytecodeLocal generatorLocal() {
@@ -230,6 +236,8 @@ public final class BytecodeEmitter {
     private void emitRoot() {
         b.beginSource(source);
         b.beginRoot();
+        bodyReturnType = fn != null && !fn.isGenerator()
+                ? DeclaredType.of(fn.returnType(), fn.declaringClass(), language) : null;
         SourceSection whole = fn.getSourceSection();
         if (whole != null) {
             // Everything on the declaration's line reports that line; deeper nodes nest their own.
@@ -256,7 +264,13 @@ public final class BytecodeEmitter {
             stmt(fn.body());
         }
         b.beginReturn();
-        b.emitLoadConstant(PhpNull.INSTANCE);
+        if (bodyReturnType != null) {
+            b.beginCheckReturn(bodyReturnType, true);
+            b.emitLoadConstant(PhpNull.INSTANCE);
+            b.endCheckReturn();
+        } else {
+            b.emitLoadConstant(PhpNull.INSTANCE);
+        }
         b.endReturn();
         if (whole != null) {
             b.endSourceSection();
@@ -372,24 +386,76 @@ public final class BytecodeEmitter {
             BytecodeLocal acc = accessor(slots[i], name);
             if (defaults[i] == null) {
                 b.emitBindRequired(acc, info, offset + i, fn.isParamByRef(i), i);
-                continue;
+            } else {
+                b.beginIfThen();
+                b.beginNot();
+                b.emitBindParam(acc, info, offset + i, fn.isParamByRef(i));
+                b.endNot();
+                b.beginStoreVar(acc, info);
+                b.beginCopy();
+                expr(defaults[i]);
+                b.endCopy();
+                b.endStoreVar();
+                b.endIfThen();
             }
-            b.beginIfThen();
-            b.beginNot();
-            b.emitBindParam(acc, info, offset + i, fn.isParamByRef(i));
-            b.endNot();
-            b.beginStoreVar(acc, info);
-            b.beginCopy();
-            expr(defaults[i]);
-            b.endCopy();
-            b.endStoreVar();
-            b.endIfThen();
+            DeclaredType type = paramType(i);
+            if (type != null) {
+                b.beginCheckParam(type, acc, info, i, name);
+                b.emitParamValue(acc, offset + i);
+                b.endCheckParam();
+            }
         }
         if (fn.isVariadic()) {
             String name = fn.paramName(normal) != null ? fn.paramName(normal) : "#variadic";
             PhpBytecodeRootNode.VarInfo info = info(slots[normal], kinds[normal], name);
-            b.emitBindVariadic(accessor(slots[normal], name), info, offset + normal, fn.isParamByRef(normal));
+            BytecodeLocal acc = accessor(slots[normal], name);
+            b.emitBindVariadic(acc, info, offset + normal, fn.isParamByRef(normal));
+            DeclaredType type = paramType(normal);
+            if (type != null) {
+                b.emitCheckVariadic(type, acc, info, normal, name);
+            }
         }
+    }
+
+    /** The prepared type of parameter {@code index}, or null when it declares none. */
+    private DeclaredType paramType(int index) {
+        PhpSignature signature = fn.signature();
+        if (index >= signature.parameters().size()) {
+            return null;
+        }
+        PhpParameter parameter = signature.parameters().get(index);
+        PhpType type = parameter.type();
+        if (type == null) {
+            return null;
+        }
+        if (!allowsNull(type) && parameter.defaultValue() == PhpNull.INSTANCE) {
+            // PHP 8.4: `int $x = null` makes the parameter nullable, with a deprecation.
+            type = new PhpType.Nullable(type);
+        }
+        return DeclaredType.of(type, fn.declaringClass(), language);
+    }
+
+    private static boolean allowsNull(PhpType type) {
+        if (type instanceof PhpType.Nullable) {
+            return true;
+        }
+        if (type instanceof PhpType.Named named) {
+            String lower = dev.phpruntime.runtime.PhpStrings.lower(named.name());
+            return lower.equals("null") || lower.equals("mixed");
+        }
+        if (type instanceof PhpType.Union union) {
+            for (PhpType member : union.members()) {
+                if (allowsNull(member)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** The return type to check at each return, or null for an untyped or generator body. */
+    public DeclaredType returnCheck() {
+        return bodyReturnType;
     }
 
     // ------------------------------------------------------------------ helpers for nodes

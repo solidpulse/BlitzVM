@@ -238,13 +238,13 @@ public final class PhpCallable {
     @TruffleBoundary
     public Object callRaw(PhpContext ctx, IndirectCallNode indirectCall, Node loc, Object... userArgs) {
         return switch (kind) {
-            case CLOSURE -> invokeTarget(indirectCall, callTarget,
+            case CLOSURE -> invokeTarget(ctx, indirectCall, callTarget,
                     buildClosureArgs(callTarget, boundThis, calledClass, closureObj, userArgs, ctx, loc));
-            case USER_FUNCTION -> invokeTarget(indirectCall, callTarget,
+            case USER_FUNCTION -> invokeTarget(ctx, indirectCall, callTarget,
                     prepareUserArgs(callTarget, userArgs, ctx, loc));
-            case METHOD -> invokeTarget(indirectCall, callTarget,
+            case METHOD -> invokeTarget(ctx, indirectCall, callTarget,
                     withTraitSelf(buildMethodArgs(callTarget, boundThis, calledClass, userArgs, ctx, loc), traitSelf));
-            case MAGIC_CALL -> invokeTarget(indirectCall, callTarget,
+            case MAGIC_CALL -> invokeTarget(ctx, indirectCall, callTarget,
                     new Object[]{boundThis, calledClass, magicMethodName, buildMagicArray(userArgs)});
             case BUILTIN -> callBuiltin(ctx, builtin, userArgs, loc);
         };
@@ -255,14 +255,14 @@ public final class PhpCallable {
     public static Object invokeClosure(PhpContext ctx, IndirectCallNode indirectCall, Node loc,
                                        PhpObject closureObj, PhpClosure c, Object[] userArgs) {
         Object res = switch (c.kind()) {
-            case CLOSURE -> invokeTarget(indirectCall, c.callTarget(),
+            case CLOSURE -> invokeTarget(ctx, indirectCall, c.callTarget(),
                     buildClosureArgs(c.callTarget(), c.boundThis(), c.calledClass(), closureObj, userArgs, ctx, loc));
-            case USER_FUNCTION -> invokeTarget(indirectCall, c.callTarget(),
+            case USER_FUNCTION -> invokeTarget(ctx, indirectCall, c.callTarget(),
                     prepareUserArgs(c.callTarget(), userArgs, ctx, loc));
-            case METHOD -> invokeTarget(indirectCall, c.callTarget(),
+            case METHOD -> invokeTarget(ctx, indirectCall, c.callTarget(),
                     withTraitSelf(buildMethodArgs(c.callTarget(), c.boundThis(), c.calledClass(), userArgs, ctx, loc),
                             c.traitSelf()));
-            case MAGIC_CALL -> invokeTarget(indirectCall, c.callTarget(),
+            case MAGIC_CALL -> invokeTarget(ctx, indirectCall, c.callTarget(),
                     new Object[]{c.boundThis(), c.calledClass(), c.magicMethodName(), buildMagicArray(userArgs)});
             case BUILTIN -> callBuiltin(ctx, c.builtin(), userArgs, loc);
         };
@@ -359,8 +359,18 @@ public final class PhpCallable {
         return arr;
     }
 
-    private static Object invokeTarget(IndirectCallNode indirectCall, RootCallTarget target, Object[] args) {
-        return indirectCall != null ? indirectCall.call(target, args) : target.call(args);
+    private static Object invokeTarget(PhpContext ctx, IndirectCallNode indirectCall, RootCallTarget target, Object[] args) {
+        CallMode previous = ctx == null ? null : ctx.pendingCallMode();
+        if (ctx != null && previous == null) {
+            ctx.setPendingCallMode(CallMode.internal(dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode())));
+        }
+        try {
+            return indirectCall != null ? indirectCall.call(target, args) : target.call(args);
+        } finally {
+            if (ctx != null) {
+                ctx.setPendingCallMode(previous);
+            }
+        }
     }
 
     private static Object callBuiltin(PhpContext ctx, Builtins.Def def, Object[] userArgs, Node loc) {
@@ -374,10 +384,18 @@ public final class PhpCallable {
             }
         }
         Object result;
+        Node previousSite = ctx.currentBuiltinCallSite();
+        if (loc != null) {
+            ctx.setCurrentBuiltinCallSite(loc);
+        }
         try {
             result = def.call(ctx, args);
         } catch (PhpError e) {
             throw loc != null ? e.at(loc) : e;
+        } finally {
+            if (loc != null) {
+                ctx.setCurrentBuiltinCallSite(previousSite);
+            }
         }
         for (int i = 0; i < userArgs.length; i++) {
             if (def.isRef(i) && userArgs[i] instanceof PhpReference ref) {

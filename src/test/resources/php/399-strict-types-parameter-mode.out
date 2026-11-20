@@ -1,0 +1,14 @@
+int 5
+float 5.0
+strictInt(): Argument #1 ($x) must be of type int, string given, called in 399-strict-types-parameter-mode.php on line 21
+strictString(): Argument #1 ($x) must be of type string, int given, called in 399-strict-types-parameter-mode.php on line 22
+strictFloat(): Argument #1 ($x) must be of type float, string given, called in 399-strict-types-parameter-mode.php on line 23
+strictReturnInt(): Return value must be of type int, string returned
+cuf strictInt(): Argument #1 ($x) must be of type int, string given, called in 399-strict-types-parameter-mode.php on line 26
+cufa strictInt(): Argument #1 ($x) must be of type int, string given, called in 399-strict-types-parameter-mode.php on line 27
+int 5
+array(1) {
+  [0]=>
+  NULL
+}
+invoke 6
