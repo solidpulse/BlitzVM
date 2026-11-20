@@ -1,0 +1,37 @@
+string(1) "5"
+int(5)
+NULL
+array(1) {
+  [0]=>
+  int(1)
+}
+string(1) "5"
+int(5)
+string(1) "5"
+NULL
+int(5)
+maybeInt(): Argument #1 ($value) must be of type ?int, array given, called in 408-type-edge-cases.php on line 28
+bool(false)
+bool(true)
+int(0)
+bool(false)
+int(1)
+int(0)
+literalFalse(): Argument #1 ($value) must be of type false, int given, called in 408-type-edge-cases.php on line 39
+literalTrue(): Argument #1 ($value) must be of type true, false given, called in 408-type-edge-cases.php on line 40
+intOrFalse(): Argument #1 ($value) must be of type int|false, null given, called in 408-type-edge-cases.php on line 41
+NULL
+string(1) "5"
+array(1) {
+  [0]=>
+  int(1)
+}
+float(5.5)
+stdClass
+objectValue(): Argument #1 ($value) must be of type object, null given, called in 408-type-edge-cases.php on line 51
+Descendant
+Ancestor::selfParam(): Argument #1 ($other) must be of type Ancestor, Unrelated given, called in 408-type-edge-cases.php on line 60
+ParentClass
+ChildClass::parentParam(): Argument #1 ($value) must be of type ParentClass, Unrelated given, called in 408-type-edge-cases.php on line 67
+Generator
+string(6) "closed"

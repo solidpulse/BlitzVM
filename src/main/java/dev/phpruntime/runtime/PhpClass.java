@@ -34,18 +34,39 @@ public final class PhpClass {
         public final PhpClass declaringClass;
         private final Object constDefault;
         private final RootCallTarget defaultTarget;
+        private final DeclaredType declaredType;
+        private final boolean hasDefault;
         private boolean initialized;
         private Object value;
 
         public StaticSlot(String name, Visibility visibility, PhpClass declaringClass,
-                          Object constDefault, RootCallTarget defaultTarget) {
+                          Object constDefault, RootCallTarget defaultTarget, DeclaredType declaredType,
+                          boolean hasDefault) {
             this.name = name;
             this.visibility = visibility;
             this.declaringClass = declaringClass;
             this.constDefault = constDefault;
             this.defaultTarget = defaultTarget;
+            this.declaredType = declaredType;
+            this.hasDefault = hasDefault;
             this.initialized = defaultTarget == null;
-            this.value = defaultTarget == null ? PhpOps.copyOnAssign(constDefault) : null;
+            if (defaultTarget != null) {
+                this.value = null;
+            } else if (declaredType != null && !hasDefault) {
+                this.value = UNINITIALIZED;
+            } else {
+                this.value = PhpOps.copyOnAssign(constDefault);
+            }
+        }
+
+        public StaticSlot(String name, Visibility visibility, PhpClass declaringClass,
+                          Object constDefault, RootCallTarget defaultTarget) {
+            this(name, visibility, declaringClass, constDefault, defaultTarget, null, true);
+        }
+
+        /** The declared type, for the property lvalue's check on assignment. */
+        public DeclaredType declaredType() {
+            return declaredType;
         }
 
         /** The stored value, possibly a {@link PhpReference} cell; runs the initializer on first use. */
@@ -101,7 +122,13 @@ public final class PhpClass {
 
     /** A declared static property; its value lives in each request's {@link RequestState}. */
     public record StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
-                             Object constDefault, RootCallTarget defaultTarget) {
+                             Object constDefault, RootCallTarget defaultTarget,
+                             PhpType type, DeclaredType declaredType, boolean hasDefault) {
+
+        public StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
+                          Object constDefault, RootCallTarget defaultTarget) {
+            this(name, visibility, declaringClass, constDefault, defaultTarget, null, null, true);
+        }
 
         /** This request's slot for the property, created on first use. */
         @TruffleBoundary
@@ -109,7 +136,8 @@ public final class PhpClass {
             RequestState state = ctx.classState(declaringClass);
             StaticSlot slot = state.statics.get(name);
             if (slot == null) {
-                slot = new StaticSlot(name, visibility, declaringClass, constDefault, defaultTarget);
+                slot = new StaticSlot(name, visibility, declaringClass, constDefault, defaultTarget,
+                        declaredType, hasDefault);
                 state.statics.put(name, slot);
             }
             return slot;
@@ -132,16 +160,19 @@ public final class PhpClass {
     public static final Object UNINITIALIZED = new Object();
 
     public record InstanceProp(String name, String storageKey, Visibility visibility, boolean isReadonly,
-                               PhpClass declaringClass, Object constDefault, RootCallTarget defaultTarget) {
+                               PhpClass declaringClass, Object constDefault, RootCallTarget defaultTarget,
+                               PhpType type, DeclaredType declaredType) {
     }
 
     public record PropertyResolution(String storageKey, boolean accessible, Visibility visibility,
-                                     boolean isReadonly, boolean canInitReadonly, String declaringClass) {
+                                     boolean isReadonly, boolean canInitReadonly, String declaringClass,
+                                     DeclaredType type) {
     }
 
     private final PhpClassTemplate template;
     private final long hierarchyId;
     private final int classId;
+    private final PhpLanguage language;
     private final PhpClass parent;
     private final List<PhpClass> interfaces;
     private final List<PhpClass> usedTraits;
@@ -177,6 +208,7 @@ public final class PhpClass {
     public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent,
                     List<PhpClass> interfaces, Map<String, PhpClass> resolvedTraits) {
         this.template = template;
+        this.language = language;
         this.parent = parent;
         this.interfaces = List.copyOf(interfaces);
         int interfaceBits = template.isInterface() ? SplInterfaces.declared(template.lowerName()) : 0;
@@ -391,17 +423,21 @@ public final class PhpClass {
 
     private void applyPropertyDecl(PhpClassTemplate.PropertyDecl p) {
         this.declaredPropNames.add(p.name());
+        DeclaredType declaredType = DeclaredType.of(p.type(), template.name(), language);
         if (p.isStatic()) {
-            this.staticDecls.put(p.name(), new StaticDecl(p.name(), p.visibility(), this, p.constDefault(), p.defaultTarget()));
+            this.staticDecls.put(p.name(), new StaticDecl(p.name(), p.visibility(), this, p.constDefault(),
+                    p.defaultTarget(), p.type(), declaredType, p.hasDefault()));
         } else if (p.visibility() == Visibility.PRIVATE) {
             String storageKey = "\0" + template.name() + "\0" + p.name();
-            Object defVal = p.isReadonly() ? UNINITIALIZED : p.constDefault();
-            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, p.isReadonly(), this, defVal, p.defaultTarget());
+            Object defVal = defaultFor(p);
+            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, p.isReadonly(), this,
+                    defVal, p.defaultTarget(), p.type(), declaredType);
             this.instanceProps.add(ip);
             this.privateProps.put(template.lowerName() + "\0" + p.name(), ip);
         } else {
-            Object defVal = p.isReadonly() ? UNINITIALIZED : p.constDefault();
-            InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), p.isReadonly(), this, defVal, p.defaultTarget());
+            Object defVal = defaultFor(p);
+            InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), p.isReadonly(), this,
+                    defVal, p.defaultTarget(), p.type(), declaredType);
             InstanceProp prev = this.visibleProps.put(p.name(), ip);
             if (prev != null) {
                 int idx = this.instanceProps.indexOf(prev);
@@ -414,6 +450,17 @@ public final class PhpClass {
                 this.instanceProps.add(ip);
             }
         }
+    }
+
+    /** A typed property without an explicit default starts uninitialized, as php does. */
+    private static Object defaultFor(PhpClassTemplate.PropertyDecl p) {
+        if (p.isReadonly()) {
+            return UNINITIALIZED;
+        }
+        if (p.type() != null && !p.hasDefault()) {
+            return UNINITIALIZED;
+        }
+        return p.constDefault();
     }
 
     public PhpClassTemplate template() {
@@ -651,7 +698,7 @@ public final class PhpClass {
             InstanceProp priv = privateProps.get(callingClassLower + "\0" + name);
             if (priv != null) {
                 return new PropertyResolution(priv.storageKey(), true, Visibility.PRIVATE,
-                        priv.isReadonly(), priv.isReadonly(), priv.declaringClass().name());
+                        priv.isReadonly(), priv.isReadonly(), priv.declaringClass().name(), priv.declaredType());
             }
         }
         InstanceProp vis = visibleProps.get(name);
@@ -660,14 +707,14 @@ public final class PhpClass {
                     || isProtectedAccessible(ctx, vis.declaringClass(), callingClassLower);
             boolean canInit = vis.isReadonly() && isProtectedAccessible(ctx, vis.declaringClass(), callingClassLower);
             return new PropertyResolution(vis.storageKey(), accessible, vis.visibility(),
-                    vis.isReadonly(), canInit, vis.declaringClass().name());
+                    vis.isReadonly(), canInit, vis.declaringClass().name(), vis.declaredType());
         }
         InstanceProp ownPriv = privateProps.get(template.lowerName() + "\0" + name);
         if (ownPriv != null) {
             return new PropertyResolution(ownPriv.storageKey(), false, Visibility.PRIVATE,
-                    ownPriv.isReadonly(), false, ownPriv.declaringClass().name());
+                    ownPriv.isReadonly(), false, ownPriv.declaringClass().name(), ownPriv.declaredType());
         }
-        return new PropertyResolution(name, true, Visibility.PUBLIC, false, false, null);
+        return new PropertyResolution(name, true, Visibility.PUBLIC, false, false, null, null);
     }
 
     private boolean isProtectedAccessible(PhpContext ctx, PhpClass declaring, String callingClassLower) {
