@@ -981,7 +981,8 @@ final class MysqliFunctions {
                     ? mariadb.getContext().getVersion().getVersion()
                     : conn.getMetaData().getDatabaseProductVersion();
             SessionState session = allowPool && supportsReset(serverInfo) ? readSession(conn) : null;
-            return new Opened(conn, serverInfo, session, conn.getCatalog(), false);
+            // The session starts in the URL's database; asking the driver would send SELECT DATABASE().
+            return new Opened(conn, serverInfo, session, urlDatabase(url), false);
         } catch (SQLException | RuntimeException e) {
             try {
                 conn.close();
@@ -993,6 +994,12 @@ final class MysqliFunctions {
     }
 
     /** A connect-time database name; an empty name means no database, as in the handshake. */
+    /** The database a jdbc:mariadb://host:port/db URL connects to, or null when it names none. */
+    private static String urlDatabase(String url) {
+        String db = url.substring(url.indexOf('/', "jdbc:mariadb://".length()) + 1);
+        return db.isEmpty() ? null : db;
+    }
+
     private static String databaseOrNull(String db) {
         return db == null || db.isEmpty() ? null : PhpStrings.toJava(db);
     }
@@ -1120,8 +1127,9 @@ final class MysqliFunctions {
                 l.conn.setCatalog(db);
                 return null;
             });
+            // COM_INIT_DB succeeded, so the session is in db; asking would cost a SELECT DATABASE().
             l.logicalCatalog = db;
-            l.physicalCatalog = l.conn.getCatalog();
+            l.physicalCatalog = db;
             clearError(l);
             sync(ctx, obj, l);
             return true;
