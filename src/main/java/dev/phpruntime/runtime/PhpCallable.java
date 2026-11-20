@@ -362,8 +362,7 @@ public final class PhpCallable {
     private static Object invokeTarget(PhpContext ctx, IndirectCallNode indirectCall, RootCallTarget target, Object[] args) {
         CallMode previous = ctx == null ? null : ctx.pendingCallMode();
         if (ctx != null && previous == null) {
-            ctx.setPendingCallMode(new CallMode(false, null, 0,
-                    dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode())));
+            ctx.setPendingCallMode(CallMode.internal(dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode())));
         }
         try {
             return indirectCall != null ? indirectCall.call(target, args) : target.call(args);

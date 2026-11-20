@@ -18,9 +18,73 @@ import dev.phpruntime.nodes.PhpRootNode;
  * call. Parameter checks use the caller's mode, returns the declaring file's. Internal calls
  * (builtin callbacks and the like) carry no source location.
  */
-public record CallMode(boolean strict, String file, int line, PhpFunctionRootNode target) {
-
+public final class CallMode {
     public static final CallMode INTERNAL = new CallMode(false, null, 0, null);
+
+    private final boolean strict;
+    private final PhpFunctionRootNode target;
+    /** The builtin call site whose location is worked out only when a message needs it. */
+    private final Node site;
+    private boolean located;
+    private String file;
+    private int line;
+
+    public CallMode(boolean strict, String file, int line, PhpFunctionRootNode target) {
+        this.strict = strict;
+        this.file = file;
+        this.line = line;
+        this.target = target;
+        this.site = null;
+        this.located = true;
+    }
+
+    private CallMode(boolean strict, Node site, PhpFunctionRootNode target) {
+        this.strict = strict;
+        this.target = target;
+        this.site = site;
+    }
+
+    /** A weak internal call into {@code target} (array_map and similar callbacks). */
+    public static CallMode internal(PhpFunctionRootNode target) {
+        return target == null ? INTERNAL : target.internalCallMode();
+    }
+
+    public boolean strict() {
+        return strict;
+    }
+
+    public PhpFunctionRootNode target() {
+        return target;
+    }
+
+    public String file() {
+        locate();
+        return file;
+    }
+
+    public int line() {
+        locate();
+        return line;
+    }
+
+    @TruffleBoundary
+    private void locate() {
+        if (located) {
+            return;
+        }
+        located = true;
+        SourceSection section = site == null ? null : site.getEncapsulatingSourceSection();
+        if (section != null) {
+            if (section.getSource() != null && section.getSource().getPath() != null) {
+                file = PhpStrings.fromJava(section.getSource().getPath());
+            }
+            line = section.getStartLine();
+        } else if (site != null) {
+            String path = PhpBacktrace.sourcePath(site);
+            file = path.isEmpty() ? null : path;
+            line = PhpBacktrace.sourceLine(site);
+        }
+    }
 
     /**
      * The mode of the code calling {@code root}: the builtin callback mode set for this exact
@@ -100,21 +164,7 @@ public record CallMode(boolean strict, String file, int line, PhpFunctionRootNod
      * The mode of the PHP code that called a builtin at {@code site}: used by call_user_func,
      * which forwards its caller's mode to the callback (array_map and friends do not).
      */
-    @TruffleBoundary
     public static CallMode atBuiltin(Node site, PhpFunctionRootNode target) {
-        SourceSection section = site == null ? null : site.getEncapsulatingSourceSection();
-        String file = null;
-        int line = 0;
-        if (section != null) {
-            if (section.getSource() != null && section.getSource().getPath() != null) {
-                file = PhpStrings.fromJava(section.getSource().getPath());
-            }
-            line = section.getStartLine();
-        } else if (site != null) {
-            String path = PhpBacktrace.sourcePath(site);
-            file = path.isEmpty() ? null : path;
-            line = PhpBacktrace.sourceLine(site);
-        }
-        return new CallMode(site != null && strictAt(site), file, line, target);
+        return new CallMode(site != null && strictAt(site), site, target);
     }
 }

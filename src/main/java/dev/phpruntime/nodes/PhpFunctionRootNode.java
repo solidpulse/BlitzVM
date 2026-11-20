@@ -329,6 +329,18 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return implicitNullable;
     }
 
+    /** This function called weakly by internal code (array_map, Closure::__invoke); made once. */
+    private dev.phpruntime.runtime.CallMode internalCallMode;
+
+    public dev.phpruntime.runtime.CallMode internalCallMode() {
+        dev.phpruntime.runtime.CallMode m = internalCallMode;
+        if (m == null) {
+            m = new dev.phpruntime.runtime.CallMode(false, null, 0, this);
+            internalCallMode = m;
+        }
+        return m;
+    }
+
     public dev.phpruntime.runtime.PhpSignature signature() {
         return signature;
     }

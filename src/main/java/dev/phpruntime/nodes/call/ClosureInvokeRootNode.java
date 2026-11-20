@@ -34,9 +34,8 @@ public final class ClosureInvokeRootNode extends PhpRootNode {
         PhpContext ctx = PhpContext.get(this);
         // Closure::__invoke is an internal method: like array_map, it calls the closure weakly.
         dev.phpruntime.runtime.CallMode previous = ctx.pendingCallMode();
-        ctx.setPendingCallMode(new dev.phpruntime.runtime.CallMode(false, null, 0,
-                closure.callTarget() == null ? null
-                        : dev.phpruntime.nodes.PhpFunctionRootNode.of(closure.callTarget().getRootNode())));
+        ctx.setPendingCallMode(dev.phpruntime.runtime.CallMode.internal(closure.callTarget() == null ? null
+                : dev.phpruntime.nodes.PhpFunctionRootNode.of(closure.callTarget().getRootNode())));
         try {
             Object res = switch (closure.kind()) {
                 case CLOSURE -> {
