@@ -339,7 +339,7 @@ public final class PropertyLValueNode extends LValueNode {
             return arrayAccess().cell(obj, name);
         }
         checkNotReadonlyForIndirectWrite(frame, keys);
-        PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame, keys));
+        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
         if (!res.accessible()) {
             throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
@@ -390,10 +390,9 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         checkNotReadonlyForIndirectWrite(frame, keys);
-        String callerLower = effectiveCallerLower(frame, keys);
-        PhpClass.PropertyResolution res = resolveFull(obj, name, callerLower);
+        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
         if (!res.accessible()) {
-            throw inaccessibleError(obj, name, callerLower);
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
         String storageKey = res.storageKey();
         if (res.type() != null) {
@@ -420,7 +419,7 @@ public final class PropertyLValueNode extends LValueNode {
             arrayAccess().unset(obj, name);
             return;
         }
-        PhpClass.PropertyResolution res = resolveFull(obj, name, effectiveCallerLower(frame, keys));
+        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
         if (res.accessible() && res.isReadonly()) {
             Object existing = getNode.execute(obj, res.storageKey(), null);
             if (existing != PhpClass.UNINITIALIZED || !res.canInitReadonly()) {
@@ -470,6 +469,20 @@ public final class PropertyLValueNode extends LValueNode {
         String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
         CompilerDirectives.transferToInterpreter();
         throw new PhpError("Typed property " + owner + "::$" + name + " must not be accessed before initialization", this);
+    }
+
+    /**
+     * The site's cached resolution when it has one, else the full lookup. Visibility is only
+     * approximate on the cached path; callers rebuild it for errors through inaccessibleError.
+     */
+    private PhpClass.PropertyResolution resolveCached(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null) {
+            return new PhpClass.PropertyResolution(fast.storageKey(), fast.accessible(),
+                    fast.isProtected() ? Visibility.PROTECTED : Visibility.PUBLIC, fast.isReadonly(),
+                    fast.canInitReadonly(), fast.declaringClass(), fast.type());
+        }
+        return resolveFull(obj, name, effectiveCallerLower(frame, keys));
     }
 
     @TruffleBoundary
