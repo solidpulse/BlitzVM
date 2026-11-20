@@ -115,7 +115,7 @@ public final class SnapshotCheck {
     }
 
     /** Captures one snapshot for tests that need to restore it themselves. */
-    static Snapshot captureSnapshot(Engine engine, Path bootFile, Path entryFile) throws IOException {
+    public static Snapshot captureSnapshot(Engine engine, Path bootFile, Path entryFile) throws IOException {
         Path boot = bootFile.toRealPath();
         Path entry = entryFile.toRealPath();
         Run template = run(engine, entry, SnapshotRun.template(boot.toString()));
@@ -129,7 +129,7 @@ public final class SnapshotCheck {
     }
 
     /** Runs one restore and returns its stdout, for concurrency tests. */
-    static String restoredOutput(Engine engine, Path bootFile, Path entryFile, Snapshot snapshot)
+    public static String restoredOutput(Engine engine, Path bootFile, Path entryFile, Snapshot snapshot)
             throws IOException {
         Path boot = bootFile.toRealPath();
         Path entry = entryFile.toRealPath();

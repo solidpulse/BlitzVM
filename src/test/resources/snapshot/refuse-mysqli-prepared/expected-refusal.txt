@@ -1,0 +1,1 @@
+a prepared statement was left open by boot

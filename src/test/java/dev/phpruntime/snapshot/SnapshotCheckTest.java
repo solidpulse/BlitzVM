@@ -73,10 +73,10 @@ class SnapshotCheckTest {
     }
 
     private static void check(Path dir) throws IOException {
-        if (dir.getFileName().toString().equals("refuse-pdo")) {
+        if (Files.isRegularFile(dir.resolve("requires-mysql"))) {
             Assumptions.assumeTrue(System.getenv("BLITZ_MYSQL_HOST") != null
                     && !System.getenv("BLITZ_MYSQL_HOST").isEmpty(),
-                    "needs BLITZ_MYSQL_HOST for a real PDO connection");
+                    "needs BLITZ_MYSQL_HOST for a live database");
         }
         Path expectedFile = dir.resolve("expected-refusal.txt");
         SnapshotCheck.Result result = SnapshotCheck.check(engine,
