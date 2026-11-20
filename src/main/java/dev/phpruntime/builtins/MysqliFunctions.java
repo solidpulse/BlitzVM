@@ -62,6 +62,10 @@ import java.util.regex.Pattern;
  * discarded. Session setup that cannot name a table or ask for the current database is the one
  * exception, so a request that selects its database after setting the charset and sql_mode can
  * still reuse the pooled connection.
+ *
+ * <p>A link restored from a boot snapshot has no connection. Its first server operation opens
+ * one and replays the session setup the template run recorded ({@link MysqliSnapshot}); cached
+ * counters, server information and escaping never connect.
  */
 final class MysqliFunctions {
 
