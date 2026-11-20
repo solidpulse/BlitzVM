@@ -123,7 +123,14 @@ public final class Main {
         }
         Scheduler scheduler = new Scheduler(cpus, quantum, maxExec);
         PhpEngine engine = new PhpEngine(scheduler);
-        PhpDispatcher dispatcher = new PhpDispatcher(docRoot, engine, profile);
+        PhpDispatcher dispatcher;
+        try {
+            dispatcher = new PhpDispatcher(docRoot, engine, profile);
+        } catch (IllegalArgumentException e) {
+            System.err.println("php-truffle: " + e.getMessage());
+            System.exit(64);
+            return;
+        }
         PhpServer server = http.equals("jdk")
                 ? new PhpHttpServer(dispatcher, port, 256)
                 : new NettyPhpServer(dispatcher, port, 256);
