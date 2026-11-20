@@ -306,7 +306,9 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     @Override
     protected PhpContext createContext(Env env) {
         ensureBuiltinTemplates();
-        return new PhpContext(this, env);
+        PhpContext ctx = new PhpContext(this, env);
+        dev.phpruntime.snapshot.SnapshotSupport.attachNewContext(ctx);
+        return ctx;
     }
 
     @Override

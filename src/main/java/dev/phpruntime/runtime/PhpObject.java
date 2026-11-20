@@ -20,7 +20,8 @@ public final class PhpObject extends DynamicObject {
 
     private final PhpClass phpClass;
     private final long id;
-    private final PhpClosure closure;
+    /** Set once at creation; the snapshot copier fills it in after the object exists (cycles). */
+    private PhpClosure closure;
     private boolean cloning;
     /** php's property guards: name -> bits of the magic methods running for it (zend_get_property_guard). */
     private java.util.HashMap<String, Integer> magicGuards;
@@ -76,6 +77,11 @@ public final class PhpObject extends DynamicObject {
 
     public PhpClosure closure() {
         return closure;
+    }
+
+    /** Used by the snapshot copier, which must register the object before copying its closure. */
+    public void setClosure(PhpClosure closure) {
+        this.closure = closure;
     }
 
     public boolean isCloning() {

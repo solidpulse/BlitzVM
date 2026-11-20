@@ -1,0 +1,2 @@
+<?php
+$storage = new SplObjectStorage();

@@ -37,6 +37,13 @@ public final class PhpReference {
         public Object check(Object value) {
             return type.checkProperty(value, context, null, strict, selfClass, owner, property);
         }
+
+        /** The pieces the snapshot copier re-creates the check from (with a restored context). */
+        public DeclaredType declaredType() { return type; }
+        public boolean strict() { return strict; }
+        public PhpClass selfClass() { return selfClass; }
+        public String owner() { return owner; }
+        public String property() { return property; }
     }
 
     public static PhpReference local(Object value) {
@@ -62,6 +69,11 @@ public final class PhpReference {
     /** Makes this cell the cell of a typed property; must be set before the first write. */
     public void setCellCheck(CellCheck check) {
         this.cellCheck = check;
+    }
+
+    /** The typed-property check on this cell, or null; the snapshot copier re-creates it. */
+    public CellCheck cellCheckForSnapshot() {
+        return cellCheck;
     }
 
     /** Taking an existing reference is not a value read and must not copy its append prefix. */

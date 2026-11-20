@@ -85,8 +85,9 @@ import java.util.Map;
 @GenerateBytecode(languageClass = PhpLanguage.class, enableQuickening = true, enableYield = true,
         boxingEliminationTypes = {long.class, double.class, boolean.class},
         enableBlockScoping = false,
-        // exit/die skips finally blocks in PHP: it must pass through guest handlers.
-        unwindExceptions = {ControlFlow.Exit.class})
+        // exit/die skips finally blocks in PHP: it must pass through guest handlers. The
+        // snapshot boundary abort behaves the same way.
+        unwindExceptions = {ControlFlow.Exit.class, dev.phpruntime.snapshot.SnapshotAbort.class})
 @TypeSystemReference(PhpTypes.class)
 @ShortCircuitOperation(name = "PhpAnd", operator = ShortCircuitOperation.Operator.AND_RETURN_CONVERTED,
         booleanConverter = PhpBytecodeRootNode.ToBool.class)

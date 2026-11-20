@@ -7,6 +7,7 @@ import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -118,6 +119,22 @@ public final class PhpClass {
             initialized = true;
             value = cell;
         }
+
+        /** Snapshot support: whether the initializer has run (never runs it). */
+        public boolean initializedForSnapshot() {
+            return initialized;
+        }
+
+        /** Snapshot support: the stored value, possibly a reference cell or the uninitialized sentinel. */
+        public Object rawValueForSnapshot() {
+            return value;
+        }
+
+        /** Snapshot support: puts a captured slot back without running its initializer. */
+        public void restoreForSnapshot(boolean initialized, Object value) {
+            this.initialized = initialized;
+            this.value = value;
+        }
     }
 
     /** A declared static property; its value lives in each request's {@link RequestState}. */
@@ -150,6 +167,56 @@ public final class PhpClass {
         private HashMap<String, Object> constants;
         private HashSet<String> evaluatingConstants;
         private Object[] defaultValues;
+
+        /** A captured static property: whether its initializer ran and the raw stored value. */
+        public record StaticValue(boolean initialized, Object value) {
+        }
+
+        /**
+         * A request's class state at a point in time. The values are raw PHP values (possibly
+         * reference cells and arrays); the snapshot layer maps them through its copier.
+         */
+        public record StateSnapshot(Map<String, StaticValue> statics,
+                                    Map<String, Object> constants,
+                                    Object[] defaultValues) {
+            public StateSnapshot {
+                statics = Collections.unmodifiableMap(new LinkedHashMap<>(statics));
+                constants = constants == null ? null
+                        : Collections.unmodifiableMap(new LinkedHashMap<>(constants));
+                defaultValues = defaultValues == null ? null : defaultValues.clone();
+            }
+        }
+
+        public StateSnapshot captureState() {
+            Map<String, StaticValue> slots = new LinkedHashMap<>();
+            statics.forEach((name, slot) ->
+                    slots.put(name, new StaticValue(slot.initializedForSnapshot(), slot.rawValueForSnapshot())));
+            return new StateSnapshot(slots,
+                    constants == null ? null : new LinkedHashMap<>(constants),
+                    defaultValues == null ? null : defaultValues.clone());
+        }
+
+    }
+
+    /** Restores a captured class state; the values must already be mapped into this request. */
+    @TruffleBoundary
+    public void restoreState(PhpContext ctx, RequestState.StateSnapshot snap) {
+        RequestState state = ctx.classState(this);
+        for (Map.Entry<String, RequestState.StaticValue> entry : snap.statics().entrySet()) {
+            StaticDecl decl = staticDecls.get(entry.getKey());
+            StaticSlot slot = decl != null
+                    ? decl.slot(ctx)
+                    : new StaticSlot(entry.getKey(), Visibility.PUBLIC, this, PhpNull.INSTANCE, null);
+            RequestState.StaticValue value = entry.getValue();
+            slot.restoreForSnapshot(value.initialized(), value.value());
+        }
+        if (snap.constants() != null) {
+            state.constants = new HashMap<>(snap.constants());
+            state.evaluatingConstants = new HashSet<>();
+        }
+        if (snap.defaultValues() != null) {
+            state.defaultValues = snap.defaultValues().clone();
+        }
     }
 
     /** Property defaults: storage keys and constant values, or null where an initializer must run. */

@@ -1,0 +1,1 @@
+boot changed the pre-boot global $shared
