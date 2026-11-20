@@ -1006,6 +1006,18 @@ final class MysqliFunctions {
         return ensureConnected(ctx, o, l, fn) ? l : null;
     }
 
+    /**
+     * A link used only through values cached on it. A restored link may be unconnected; an
+     * ordinary link from {@code mysqli_init()} keeps PHP's not-initialized error.
+     */
+    private static Link cached(PhpContext ctx, Object v, String fn) {
+        Link l = link(ctx, v, fn);
+        if (l.conn == null && (!l.restored || l.url == null)) {
+            throw new PhpError("mysqli object is not fully initialized");
+        }
+        return l;
+    }
+
     private static Result result(PhpContext ctx, Object v, String fn) {
         if (!(v instanceof PhpObject o) || o.phpClass().template() != resultTemplate(ctx)) {
             throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($result) must be of type mysqli_result, "
@@ -1219,41 +1231,41 @@ final class MysqliFunctions {
                 sync(ctx, (PhpObject) a[0], l);
             }
         });
-        Builtins.def("mysqli_character_set_name", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_character_set_name").charset);
+        Builtins.def("mysqli_character_set_name", 1, 1, (ctx, a) -> cached(ctx, a[0], "mysqli_character_set_name").charset);
         Builtins.def("mysqli_query", 2, 3, MysqliFunctions::query);
         Builtins.def("mysqli_real_query", 2, 2, (ctx, a) -> {
             Object r = query(ctx, a);
             return r != Boolean.FALSE;
         });
         Builtins.def("mysqli_real_escape_string", 2, 2, (ctx, a) -> {
-            link(ctx, a[0], "mysqli_real_escape_string");
+            cached(ctx, a[0], "mysqli_real_escape_string");
             return escape(PhpOps.toStr(a[1]));
         });
         Builtins.def("mysqli_escape_string", 2, 2, (ctx, a) -> {
-            link(ctx, a[0], "mysqli_escape_string");
+            cached(ctx, a[0], "mysqli_escape_string");
             return escape(PhpOps.toStr(a[1]));
         });
-        Builtins.def("mysqli_error", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_error").error);
-        Builtins.def("mysqli_errno", 1, 1, (ctx, a) -> (long) link(ctx, a[0], "mysqli_errno").errno);
-        Builtins.def("mysqli_sqlstate", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_sqlstate").sqlstate);
-        Builtins.def("mysqli_affected_rows", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_affected_rows").affectedRows);
-        Builtins.def("mysqli_insert_id", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_insert_id").insertId);
-        Builtins.def("mysqli_field_count", 1, 1, (ctx, a) -> (long) link(ctx, a[0], "mysqli_field_count").fieldCount);
+        Builtins.def("mysqli_error", 1, 1, (ctx, a) -> cached(ctx, a[0], "mysqli_error").error);
+        Builtins.def("mysqli_errno", 1, 1, (ctx, a) -> (long) cached(ctx, a[0], "mysqli_errno").errno);
+        Builtins.def("mysqli_sqlstate", 1, 1, (ctx, a) -> cached(ctx, a[0], "mysqli_sqlstate").sqlstate);
+        Builtins.def("mysqli_affected_rows", 1, 1, (ctx, a) -> cached(ctx, a[0], "mysqli_affected_rows").affectedRows);
+        Builtins.def("mysqli_insert_id", 1, 1, (ctx, a) -> cached(ctx, a[0], "mysqli_insert_id").insertId);
+        Builtins.def("mysqli_field_count", 1, 1, (ctx, a) -> (long) cached(ctx, a[0], "mysqli_field_count").fieldCount);
         Builtins.def("mysqli_more_results", 1, 1, (ctx, a) -> {
-            link(ctx, a[0], "mysqli_more_results");
+            cached(ctx, a[0], "mysqli_more_results");
             return false;
         });
         Builtins.def("mysqli_next_result", 1, 1, (ctx, a) -> {
-            link(ctx, a[0], "mysqli_next_result");
+            cached(ctx, a[0], "mysqli_next_result");
             return false;
         });
-        Builtins.def("mysqli_get_server_info", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_get_server_info").serverInfo);
+        Builtins.def("mysqli_get_server_info", 1, 1, (ctx, a) -> cached(ctx, a[0], "mysqli_get_server_info").serverInfo);
         Builtins.def("mysqli_get_server_version", 1, 1, (ctx, a) ->
-                serverVersion(link(ctx, a[0], "mysqli_get_server_version").serverInfo));
+                serverVersion(cached(ctx, a[0], "mysqli_get_server_version").serverInfo));
         Builtins.def("mysqli_get_client_info", 0, 1, (ctx, a) -> CLIENT_INFO);
         Builtins.def("mysqli_get_client_version", 0, 0, (ctx, a) -> CLIENT_VERSION);
         Builtins.def("mysqli_get_host_info", 1, 1, (ctx, a) -> {
-            String host = link(ctx, a[0], "mysqli_get_host_info").host;
+            String host = cached(ctx, a[0], "mysqli_get_host_info").host;
             return host.isEmpty() ? PhpNull.INSTANCE : host + " via TCP/IP";
         });
         Builtins.def("mysqli_ping", 1, 1, (ctx, a) -> {
