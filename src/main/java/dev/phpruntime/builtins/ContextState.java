@@ -67,7 +67,7 @@ public final class ContextState {
             return reasons;
         }
         if (cs.mysqli != null) {
-            reasons.add("mysqli state was left by boot");
+            reasons.addAll(MysqliFunctions.snapshotRefusals(ctx));
         }
         if (cs.pdo != null) {
             reasons.add("PDO state was left by boot");
@@ -85,7 +85,8 @@ public final class ContextState {
     public static ContextStateSnapshot snapshot(PhpContext ctx) {
         ContextState cs = of(ctx);
         return new ContextStateSnapshot(cs.timezoneName, cs.mbEncoding, cs.mbSubstitute,
-                cs.mbDetectOrder, cs.nextResourceId, cs.defaultStreamContext, cs.umask, cs.ignoreUserAbort);
+                cs.mbDetectOrder, cs.nextResourceId, cs.defaultStreamContext, cs.umask, cs.ignoreUserAbort,
+                MysqliFunctions.snapshot(ctx));
     }
 
     public static void restore(PhpContext ctx, ContextStateSnapshot snap) {
@@ -104,5 +105,6 @@ public final class ContextState {
         cs.defaultStreamContext = snap.defaultStreamContext();
         cs.umask = snap.umask();
         cs.ignoreUserAbort = snap.ignoreUserAbort();
+        cs.mysqli = MysqliFunctions.restore(ctx, snap.mysqli());
     }
 }

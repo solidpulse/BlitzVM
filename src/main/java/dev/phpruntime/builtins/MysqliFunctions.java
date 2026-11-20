@@ -14,11 +14,14 @@ import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
+import dev.phpruntime.snapshot.SnapshotGeneration;
+import dev.phpruntime.snapshot.SnapshotRun;
 
 import java.lang.reflect.Field;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -27,12 +30,17 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -79,12 +87,16 @@ final class MysqliFunctions {
     private static final long MAX_IDLE_NANOS = TimeUnit.SECONDS.toNanos(60);
     private static final long VALIDATE_AFTER_NANOS = TimeUnit.SECONDS.toNanos(3);
 
+    /** Counts JDBC connections opened by this process, so a test can prove lazy restore. */
+    private static final AtomicLong OPENED_CONNECTIONS = new AtomicLong();
+
     // ------------------------------------------------------------------ state
 
     /** Per-request mysqli state. */
     static final class State {
         final Map<Long, Link> links = new HashMap<>();
         final Map<Long, Result> results = new HashMap<>();
+        final Map<Long, Prepared> statements = new HashMap<>();
         long reportMode = REPORT_ERROR | REPORT_STRICT;
         int connectErrno;
         String connectError;
@@ -119,6 +131,26 @@ final class MysqliFunctions {
         /** The database the current JDBC session actually has, or null when it has none. */
         String physicalCatalog;
 
+        /** The PHP object this link belongs to, for refreshing its properties after a statement. */
+        PhpObject object;
+
+        /** Set for a link restored from a snapshot: conn is null until the first server operation. */
+        boolean restored;
+        /** Session setup recorded while a template run captures, or replayed by a restored link. */
+        List<MysqliSnapshot.Setup> setup;
+        /** Whether a transaction is currently open (tracked while a template run records). */
+        boolean transaction;
+        /** Autocommit as PHP last set it (tracked while a template run records). */
+        boolean autocommit = true;
+        /** Whether a statement ran after autocommit was switched off. */
+        boolean ranSinceAutocommitOff;
+        /** Refusals found while recording; empty outside a template run. */
+        final Set<String> refusals = new LinkedHashSet<>();
+
+        /** mysqli_options values set before connecting. */
+        final Map<Long, Object> options = new LinkedHashMap<>();
+        String initCommand;
+
         @Override
         public void close() throws SQLException {
             closed = true;
@@ -137,6 +169,22 @@ final class MysqliFunctions {
             }
             c.close();
         }
+    }
+
+    /** One prepared statement (the Java side of a {@code mysqli_stmt} object). */
+    static final class Prepared {
+        long linkId;
+        String sql = "";
+        boolean bump;
+        PreparedStatement ps;
+        boolean closed;
+        Result result;
+        long affectedRows;
+        long insertId;
+        long fieldCount;
+        int errno;
+        String error = "";
+        String sqlstate = "00000";
     }
 
     /** The session values a reset connection has to restore to the values a fresh one had. */
@@ -179,6 +227,374 @@ final class MysqliFunctions {
             cs.mysqli = new State();
         }
         return cs.mysqli;
+    }
+
+    // ------------------------------------------------------------------ snapshot state
+
+    private static final String USER_VARIABLE_LEFT = "a user variable was set by boot";
+    private static final String TRANSACTION_LEFT = "a transaction was left open by boot";
+    private static final String TEMPORARY_TABLE_LEFT = "a temporary table was left by boot";
+    private static final String TABLE_LOCK_LEFT = "a table lock was left by boot";
+    private static final String PREPARED_LEFT = "a prepared statement was left open by boot";
+    private static final String RESULT_LEFT = "an unfreed mysqli result was left by boot";
+    private static final String SESSION_STATEMENT_LEFT = "a session statement was left by boot";
+
+    private static boolean recording(PhpContext ctx) {
+        SnapshotRun run = ctx.snapshotRun();
+        return run != null && run.isTemplate();
+    }
+
+    /** Reasons the mysqli state at the end of boot cannot be carried into a snapshot. */
+    static List<String> snapshotRefusals(PhpContext ctx) {
+        State st = ContextState.of(ctx).mysqli;
+        if (st == null) {
+            return List.of();
+        }
+        Set<String> reasons = new LinkedHashSet<>();
+        for (Link link : st.links.values()) {
+            if (link.closed) {
+                continue;
+            }
+            reasons.addAll(link.refusals);
+            if (link.transaction || (!link.autocommit && link.ranSinceAutocommitOff)) {
+                reasons.add(TRANSACTION_LEFT);
+            }
+        }
+        if (!st.statements.isEmpty()) {
+            reasons.add(PREPARED_LEFT);
+        }
+        for (Result result : st.results.values()) {
+            // A result whose rows were all read is only a handle: WordPress keeps $wpdb->result
+            // that way. Rows still waiting to be read are consumption state and are refused.
+            if (!result.freed && result.position < result.rows.size()) {
+                reasons.add(RESULT_LEFT);
+            }
+        }
+        return new ArrayList<>(reasons);
+    }
+
+    /** The copyable mysqli state, or null when boot did not touch mysqli. */
+    static MysqliSnapshot snapshot(PhpContext ctx) {
+        State st = ContextState.of(ctx).mysqli;
+        if (st == null) {
+            return null;
+        }
+        List<MysqliSnapshot.LinkState> links = new ArrayList<>();
+        for (Map.Entry<Long, Link> entry : st.links.entrySet()) {
+            Link link = entry.getValue();
+            Map<String, String> props = new LinkedHashMap<>();
+            if (link.driverProps != null) {
+                for (String name : link.driverProps.stringPropertyNames()) {
+                    props.put(name, link.driverProps.getProperty(name));
+                }
+            }
+            links.add(new MysqliSnapshot.LinkState(entry.getKey(), link.url, Map.copyOf(props), link.host,
+                    link.serverInfo, link.charset, link.logicalCatalog, link.physicalCatalog,
+                    Map.copyOf(link.options), link.initCommand, link.closed, link.autocommit,
+                    link.affectedRows, link.insertId, link.fieldCount, link.errno, link.error,
+                    link.sqlstate, link.setup == null ? List.of() : List.copyOf(link.setup)));
+        }
+        List<MysqliSnapshot.ResultState> results = new ArrayList<>();
+        for (Map.Entry<Long, Result> entry : st.results.entrySet()) {
+            Result result = entry.getValue();
+            results.add(new MysqliSnapshot.ResultState(entry.getKey(), List.copyOf(result.fields),
+                    result.rows, result.position, result.fieldPosition, result.freed));
+        }
+        return new MysqliSnapshot(st.reportMode, st.connectErrno, st.connectError, links, results);
+    }
+
+    /** Rebuilds a request's mysqli state from a snapshot; links stay unconnected until used. */
+    static State restore(PhpContext ctx, MysqliSnapshot snap) {
+        if (snap == null) {
+            return null;
+        }
+        State st = new State();
+        st.reportMode = snap.reportMode;
+        st.connectErrno = snap.connectErrno;
+        st.connectError = snap.connectError;
+        for (MysqliSnapshot.LinkState in : snap.links) {
+            Link link = new Link();
+            link.restored = true;
+            link.closed = in.closed();
+            link.host = in.host();
+            link.serverInfo = in.serverInfo();
+            link.charset = in.charset();
+            link.logicalCatalog = in.logicalCatalog();
+            link.physicalCatalog = in.physicalCatalog();
+            link.affectedRows = in.affectedRows();
+            link.insertId = in.insertId();
+            link.fieldCount = (int) in.fieldCount();
+            link.errno = in.errno();
+            link.error = in.error();
+            link.sqlstate = in.sqlstate();
+            link.autocommit = in.autocommit();
+            link.url = in.url();
+            if (in.properties() != null) {
+                Properties props = new Properties();
+                props.putAll(in.properties());
+                link.driverProps = props;
+            }
+            if (in.options() != null) {
+                link.options.putAll(in.options());
+            }
+            link.initCommand = in.initCommand();
+            link.setup = new ArrayList<>(in.setup());
+            st.links.put(in.objectId(), link);
+        }
+        for (MysqliSnapshot.ResultState in : snap.results) {
+            Result result = new Result(in.fields(), in.rows());
+            result.position = in.position();
+            result.fieldPosition = in.fieldPosition();
+            result.freed = in.freed();
+            st.results.put(in.objectId(), result);
+        }
+        return st;
+    }
+
+    static long connectionsOpenedForTest() {
+        return OPENED_CONNECTIONS.get();
+    }
+
+    /**
+     * Opens a restored link and replays the session setup boot performed, inside
+     * {@code blocking(...)}. Returns false after reporting a lost connection on {@code fn}.
+     */
+    private static boolean ensureConnected(PhpContext ctx, PhpObject obj, Link link, String fn) {
+        if (link.conn != null) {
+            return true;
+        }
+        if (!link.restored) {
+            throw new PhpError("mysqli object is not fully initialized");
+        }
+        if (link.url == null) {
+            // An init-only link restored from a snapshot has no connect parameters.
+            throw new PhpError("mysqli object is not fully initialized");
+        }
+        try {
+            Opened opened = blocking(ctx, () -> open(null, link.url, link.driverProps, false, false));
+            link.conn = opened.connection();
+            link.closed = false;
+            link.serverInfo = PhpStrings.fromJava(opened.serverInfo());
+            link.poolServerInfo = opened.serverInfo();
+            link.freshSession = opened.session();
+            link.poolable = false;
+            link.physicalCatalog = opened.catalog();
+            if (link.initCommand != null && !link.initCommand.isEmpty()) {
+                runSetup(ctx, link, link.initCommand);
+            }
+            replay(ctx, link);
+            // The captured view is authoritative; replay should already have produced it.
+            if (link.logicalCatalog != null && !link.logicalCatalog.equals(link.physicalCatalog)) {
+                blocking(ctx, () -> {
+                    link.conn.setCatalog(link.logicalCatalog);
+                    return null;
+                });
+                link.physicalCatalog = link.logicalCatalog;
+            }
+            ctx.request().resources.add(link);
+            sync(ctx, obj, link);
+            return true;
+        } catch (SQLException e) {
+            // A restored link in php would already have failed at boot; the operation that
+            // needed the server reports the loss as mysqlnd does after the server goes away.
+            link.errno = 2006;
+            link.error = "MySQL server has gone away";
+            link.sqlstate = "HY000";
+            link.affectedRows = -1;
+            report(ctx, fn, link.sqlstate, 2006, link.error);
+            syncQuery(obj, link);
+            return false;
+        }
+    }
+
+    /** Runs the recorded setup in order on the freshly opened connection. */
+    private static void replay(PhpContext ctx, Link link) throws SQLException {
+        for (MysqliSnapshot.Setup step : link.setup) {
+            switch (step.kind()) {
+                case SQL -> runSetup(ctx, link, step.text());
+                case CHARSET -> {
+                    runSetup(ctx, link, "SET NAMES " + step.text());
+                    link.charset = step.text();
+                }
+                case DATABASE -> {
+                    blocking(ctx, () -> {
+                        link.conn.setCatalog(step.text());
+                        return null;
+                    });
+                    link.physicalCatalog = step.text();
+                    link.logicalCatalog = step.text();
+                }
+                case AUTOCOMMIT -> {
+                    blocking(ctx, () -> {
+                        link.conn.setAutoCommit(step.flag());
+                        return null;
+                    });
+                    link.autocommit = step.flag();
+                }
+                case OPTION -> {
+                    // Connect parameters already carry the option's effect.
+                }
+            }
+        }
+    }
+
+    private static void runSetup(PhpContext ctx, Link link, String sql) throws SQLException {
+        String javaSql = MysqliSql.toJava(sql);
+        blocking(ctx, () -> {
+            try (Statement st = link.conn.createStatement()) {
+                st.execute(javaSql);
+            }
+            return null;
+        });
+    }
+
+    // ------------------------------------------------------------------ classification
+
+    /** The first SQL keyword, skipping whitespace, comments and leading parentheses. */
+    static String leadingKeyword(String sql) {
+        int i = skipTrivia(sql, 0);
+        int n = sql.length();
+        while (i < n && sql.charAt(i) == '(') {
+            i = skipTrivia(sql, i + 1);
+        }
+        int start = i;
+        while (i < n && Character.isLetter(sql.charAt(i))) {
+            i++;
+        }
+        return sql.substring(start, i).toUpperCase(Locale.ROOT);
+    }
+
+    /** The keyword after the first one, or "" when there is none. */
+    private static String secondKeyword(String sql) {
+        int i = skipTrivia(sql, 0);
+        int n = sql.length();
+        while (i < n && Character.isLetter(sql.charAt(i))) {
+            i++;
+        }
+        i = skipTrivia(sql, i);
+        int start = i;
+        while (i < n && Character.isLetter(sql.charAt(i))) {
+            i++;
+        }
+        return sql.substring(start, i).toUpperCase(Locale.ROOT);
+    }
+
+    private static int skipTrivia(String sql, int i) {
+        int n = sql.length();
+        while (i < n) {
+            char c = sql.charAt(i);
+            if (Character.isWhitespace(c)) {
+                i++;
+                continue;
+            }
+            if (c == '#') {
+                int end = sql.indexOf('\n', i);
+                i = end < 0 ? n : end + 1;
+                continue;
+            }
+            if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-'
+                    && (i + 2 >= n || Character.isWhitespace(sql.charAt(i + 2)))) {
+                int end = sql.indexOf('\n', i);
+                i = end < 0 ? n : end + 1;
+                continue;
+            }
+            if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
+                int end = sql.indexOf("*/", i + 2);
+                i = end < 0 ? n : end + 2;
+                continue;
+            }
+            break;
+        }
+        return i;
+    }
+
+    /**
+     * Statements that cannot change data. Everything else bumps the snapshot generation before
+     * it is sent, including DDL and statements whose leading keyword is not recognised.
+     */
+    static boolean writesStatement(String sql) {
+        String keyword = leadingKeyword(sql);
+        return switch (keyword) {
+            case "SELECT", "SHOW", "SET", "DESCRIBE", "DESC", "EXPLAIN", "USE", "DO",
+                    "BEGIN", "COMMIT", "ROLLBACK" -> false;
+            case "START" -> !"TRANSACTION".equals(secondKeyword(sql));
+            default -> true;
+        };
+    }
+
+    private static final Pattern SET_AUTOCOMMIT = Pattern.compile(
+            "(?is)^SET\\s+(?:SESSION\\s+)?autocommit\\s*=\\s*(0|1|on|off)$");
+    private static final Pattern SET_USER_VARIABLE = Pattern.compile("(?is)^SET\\s+@(?!@).*");
+    private static final Pattern SET_GLOBAL = Pattern.compile("(?is)^SET\\s+(?:@@)?global[\\s.].*");
+
+    /** Tracks one statement in a template run and records it when it is safe session setup. */
+    private static void recordStatement(PhpContext ctx, Link link, String sql) {
+        if (!recording(ctx)) {
+            return;
+        }
+        String keyword = leadingKeyword(sql);
+        switch (keyword) {
+            case "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "DO" -> {
+                markTransaction(link, keyword);
+            }
+            case "SET" -> {
+                String stripped = sql.stripLeading();
+                java.util.regex.Matcher auto = SET_AUTOCOMMIT.matcher(stripped);
+                if (SET_GLOBAL.matcher(stripped).matches()) {
+                    // Server-global state, not this session's.
+                } else if (auto.matches()) {
+                    boolean on = auto.group(1).equals("1") || auto.group(1).equalsIgnoreCase("on");
+                    link.autocommit = on;
+                    link.ranSinceAutocommitOff = false;
+                    if (on) {
+                        link.transaction = false;
+                    }
+                    addSetup(link, MysqliSnapshot.Setup.autocommit(on));
+                } else if (databaseIndependent(sql)) {
+                    addSetup(link, MysqliSnapshot.Setup.sql(sql));
+                } else if (SET_USER_VARIABLE.matcher(stripped).matches()) {
+                    link.refusals.add(USER_VARIABLE_LEFT);
+                } else {
+                    link.refusals.add(SESSION_STATEMENT_LEFT);
+                }
+            }
+            case "BEGIN", "START" -> link.transaction = true;
+            case "COMMIT", "ROLLBACK" -> link.transaction = false;
+            case "CREATE", "DROP", "ALTER", "TRUNCATE", "RENAME" -> {
+                // DDL commits an open transaction implicitly.
+                link.transaction = false;
+                if (upper(sql).contains("TEMPORARY")) {
+                    link.refusals.add(TEMPORARY_TABLE_LEFT);
+                }
+            }
+            case "USE" -> {
+                addSetup(link, MysqliSnapshot.Setup.sql(sql));
+            }
+            case "LOCK" -> link.refusals.add(TABLE_LOCK_LEFT);
+            case "UNLOCK" -> link.refusals.remove(TABLE_LOCK_LEFT);
+            case "PREPARE" -> link.refusals.add(PREPARED_LEFT);
+            default -> markTransaction(link, keyword);
+        }
+    }
+
+    private static void markTransaction(Link link, String keyword) {
+        if (link.autocommit) {
+            return;
+        }
+        if (!keyword.equals("SET") && !keyword.equals("SHOW") && !keyword.equals("DO")) {
+            link.ranSinceAutocommitOff = true;
+        }
+    }
+
+    private static void addSetup(Link link, MysqliSnapshot.Setup step) {
+        if (link.setup == null) {
+            link.setup = new ArrayList<>();
+        }
+        link.setup.add(step);
+    }
+
+    private static String upper(String sql) {
+        return sql.toUpperCase(Locale.ROOT);
     }
 
     // ------------------------------------------------------------------ pool
@@ -364,6 +780,11 @@ final class MysqliFunctions {
             prop("current_field", 0L), prop("field_count", 0L), prop("lengths", PhpNull.INSTANCE),
             prop("num_rows", 0L), prop("type", 0L));
 
+    private static final List<PhpClassTemplate.PropertyDecl> STMT_PROPS = List.of(
+            prop("affected_rows", 0L), prop("errno", 0L), prop("error", ""),
+            prop("error_list", PhpNull.INSTANCE), prop("field_count", 0L), prop("insert_id", 0L),
+            prop("num_rows", 0L), prop("param_count", 0L), prop("sqlstate", "00000"));
+
     private static PhpClassTemplate mysqliTemplate(PhpContext ctx) {
         PhpClassTemplate tpl = ctx.language().mysqliTemplateOrNull();
         return tpl != null ? tpl : ctx.language().mysqliTemplate(linkProps(), linkMethods(ctx));
@@ -388,6 +809,9 @@ final class MysqliFunctions {
                         "mysqli::select_db() expects exactly 1 argument, 0 given", null);
             }
             Link l = connected(c, self, "mysqli::select_db");
+            if (l == null) {
+                return false;
+            }
             return selectDatabase(c, self, l, PhpStrings.toJava(PhpOps.toStr(args[0])), "mysqli::select_db");
         }));
         return methods;
@@ -403,6 +827,10 @@ final class MysqliFunctions {
 
     private static PhpClassTemplate resultTemplate(PhpContext ctx) {
         return ctx.language().mysqliResultTemplate(RESULT_PROPS);
+    }
+
+    private static PhpClassTemplate stmtTemplate(PhpContext ctx) {
+        return ctx.language().mysqliStmtTemplate(STMT_PROPS);
     }
 
     private static List<PhpClassTemplate.PropertyDecl> linkProps() {
@@ -502,6 +930,42 @@ final class MysqliFunctions {
         set(obj, "type", 0L);
     }
 
+    private static PhpObject newPreparedObject(PhpContext ctx, Prepared p) {
+        PhpObject obj = newObject(ctx, stmtTemplate(ctx));
+        set(obj, "param_count", 0L);
+        set(obj, "error_list", PhpNull.INSTANCE);
+        syncPrepared(obj, p);
+        return obj;
+    }
+
+    private static void syncPrepared(PhpObject obj, Prepared p) {
+        set(obj, "affected_rows", p.affectedRows);
+        set(obj, "errno", (long) p.errno);
+        set(obj, "error", p.error);
+        set(obj, "field_count", p.fieldCount);
+        set(obj, "insert_id", p.insertId);
+        set(obj, "num_rows", p.result == null ? 0L : (long) p.result.rows.size());
+        set(obj, "sqlstate", p.sqlstate);
+    }
+
+    private static PhpObject stmtObject(PhpContext ctx, Object v, String fn) {
+        if (v instanceof PhpObject o && o.phpClass().template() == stmtTemplate(ctx)) {
+            return o;
+        }
+        throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($statement) must be of type mysqli_stmt, "
+                + PhpOps.typeName(v) + " given", null);
+    }
+
+    private static Prepared prepared(PhpContext ctx, PhpObject obj, String fn) {
+        Prepared p = state(ctx).statements.get(obj.id());
+        if (p == null || p.closed) {
+            throw new PhpError(p == null
+                    ? "mysqli_stmt object is not fully initialized"
+                    : "mysqli_stmt object is already closed");
+        }
+        return p;
+    }
+
     static Object serverVersion(String info) {
         // "11.4.2-MariaDB-ubu2404" -> 110402
         String[] parts = info.split("[.-]");
@@ -531,13 +995,11 @@ final class MysqliFunctions {
         return l;
     }
 
-    /** A link that must be connected (most functions). */
+    /** A link that must be connected; a restored link connects here. Null when that failed. */
     private static Link connected(PhpContext ctx, Object v, String fn) {
+        PhpObject o = linkObject(ctx, v, fn);
         Link l = link(ctx, v, fn);
-        if (l.conn == null) {
-            throw new PhpError("mysqli object is not fully initialized");
-        }
-        return l;
+        return ensureConnected(ctx, o, l, fn) ? l : null;
     }
 
     private static Result result(PhpContext ctx, Object v, String fn) {
@@ -681,15 +1143,69 @@ final class MysqliFunctions {
         });
         Builtins.def("mysqli_select_db", 2, 2, (ctx, a) -> {
             Link l = connected(ctx, a[0], "mysqli_select_db");
+            if (l == null) {
+                return false;
+            }
             String db = PhpStrings.toJava(PhpOps.toStr(a[1]));
             return selectDatabase(ctx, (PhpObject) a[0], l, db, "mysqli_select_db");
         });
+        Builtins.def("mysqli_options", 3, 3, (ctx, a) -> {
+            Link l = link(ctx, a[0], "mysqli_options");
+            if (l.conn != null) {
+                ctx.warning("mysqli_options(): Cannot set option after mysqli_real_connect", 0);
+                return false;
+            }
+            long option = PhpOps.toLong(a[1]);
+            Object value = a[2];
+            l.options.put(option, value);
+            if (option == 3L) { // MYSQLI_INIT_COMMAND
+                l.initCommand = PhpOps.toStr(value);
+            }
+            if (recording(ctx)) {
+                addSetup(l, MysqliSnapshot.Setup.option(option, PhpOps.toStr(value)));
+            }
+            return true;
+        });
+        Builtins.def("mysqli_autocommit", 2, 2, (ctx, a) -> {
+            Link l = connected(ctx, a[0], "mysqli_autocommit");
+            if (l == null) {
+                return false;
+            }
+            boolean on = PhpOps.toBool(a[1]);
+            try {
+                blocking(ctx, () -> {
+                    l.conn.setAutoCommit(on);
+                    return null;
+                });
+                l.autocommit = on;
+                l.ranSinceAutocommitOff = false;
+                if (on) {
+                    l.transaction = false;
+                }
+                if (recording(ctx)) {
+                    addSetup(l, MysqliSnapshot.Setup.autocommit(on));
+                }
+                clearError(l);
+                return true;
+            } catch (SQLException e) {
+                fail(ctx, l, e, "mysqli_autocommit");
+                return false;
+            } finally {
+                sync(ctx, (PhpObject) a[0], l);
+            }
+        });
         Builtins.def("mysqli_set_charset", 2, 2, (ctx, a) -> {
             Link l = connected(ctx, a[0], "mysqli_set_charset");
+            if (l == null) {
+                return false;
+            }
             String cs = PhpOps.toStr(a[1]);
             try {
                 execute(ctx, l, "SET NAMES " + cs);
                 l.charset = cs;
+                if (recording(ctx)) {
+                    addSetup(l, MysqliSnapshot.Setup.charset(cs));
+                }
                 clearError(l);
                 return true;
             } catch (SQLException e) {
@@ -699,42 +1215,48 @@ final class MysqliFunctions {
                 sync(ctx, (PhpObject) a[0], l);
             }
         });
-        Builtins.def("mysqli_character_set_name", 1, 1, (ctx, a) -> connected(ctx, a[0], "mysqli_character_set_name").charset);
+        Builtins.def("mysqli_character_set_name", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_character_set_name").charset);
         Builtins.def("mysqli_query", 2, 3, MysqliFunctions::query);
         Builtins.def("mysqli_real_query", 2, 2, (ctx, a) -> {
             Object r = query(ctx, a);
             return r != Boolean.FALSE;
         });
         Builtins.def("mysqli_real_escape_string", 2, 2, (ctx, a) -> {
-            connected(ctx, a[0], "mysqli_real_escape_string");
+            link(ctx, a[0], "mysqli_real_escape_string");
             return escape(PhpOps.toStr(a[1]));
         });
         Builtins.def("mysqli_escape_string", 2, 2, (ctx, a) -> {
-            connected(ctx, a[0], "mysqli_escape_string");
+            link(ctx, a[0], "mysqli_escape_string");
             return escape(PhpOps.toStr(a[1]));
         });
         Builtins.def("mysqli_error", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_error").error);
         Builtins.def("mysqli_errno", 1, 1, (ctx, a) -> (long) link(ctx, a[0], "mysqli_errno").errno);
         Builtins.def("mysqli_sqlstate", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_sqlstate").sqlstate);
-        Builtins.def("mysqli_affected_rows", 1, 1, (ctx, a) -> connected(ctx, a[0], "mysqli_affected_rows").affectedRows);
-        Builtins.def("mysqli_insert_id", 1, 1, (ctx, a) -> connected(ctx, a[0], "mysqli_insert_id").insertId);
-        Builtins.def("mysqli_field_count", 1, 1, (ctx, a) -> (long) connected(ctx, a[0], "mysqli_field_count").fieldCount);
+        Builtins.def("mysqli_affected_rows", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_affected_rows").affectedRows);
+        Builtins.def("mysqli_insert_id", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_insert_id").insertId);
+        Builtins.def("mysqli_field_count", 1, 1, (ctx, a) -> (long) link(ctx, a[0], "mysqli_field_count").fieldCount);
         Builtins.def("mysqli_more_results", 1, 1, (ctx, a) -> {
-            connected(ctx, a[0], "mysqli_more_results");
+            link(ctx, a[0], "mysqli_more_results");
             return false;
         });
         Builtins.def("mysqli_next_result", 1, 1, (ctx, a) -> {
-            connected(ctx, a[0], "mysqli_next_result");
+            link(ctx, a[0], "mysqli_next_result");
             return false;
         });
-        Builtins.def("mysqli_get_server_info", 1, 1, (ctx, a) -> connected(ctx, a[0], "mysqli_get_server_info").serverInfo);
+        Builtins.def("mysqli_get_server_info", 1, 1, (ctx, a) -> link(ctx, a[0], "mysqli_get_server_info").serverInfo);
         Builtins.def("mysqli_get_server_version", 1, 1, (ctx, a) ->
-                serverVersion(connected(ctx, a[0], "mysqli_get_server_version").serverInfo));
+                serverVersion(link(ctx, a[0], "mysqli_get_server_version").serverInfo));
         Builtins.def("mysqli_get_client_info", 0, 1, (ctx, a) -> CLIENT_INFO);
         Builtins.def("mysqli_get_client_version", 0, 0, (ctx, a) -> CLIENT_VERSION);
-        Builtins.def("mysqli_get_host_info", 1, 1, (ctx, a) -> connected(ctx, a[0], "mysqli_get_host_info").host + " via TCP/IP");
+        Builtins.def("mysqli_get_host_info", 1, 1, (ctx, a) -> {
+            String host = link(ctx, a[0], "mysqli_get_host_info").host;
+            return host.isEmpty() ? PhpNull.INSTANCE : host + " via TCP/IP";
+        });
         Builtins.def("mysqli_ping", 1, 1, (ctx, a) -> {
             Link l = connected(ctx, a[0], "mysqli_ping");
+            if (l == null) {
+                return false;
+            }
             try {
                 execute(ctx, l, "DO 1");
                 return true;
@@ -743,6 +1265,65 @@ final class MysqliFunctions {
                 return false;
             }
         });
+        Builtins.def("mysqli_prepare", 2, 2, MysqliFunctions::prepare);
+        Builtins.def("mysqli_stmt_execute", 1, 1, MysqliFunctions::stmtExecute);
+        Builtins.def("mysqli_stmt_close", 1, 1, (ctx, a) -> {
+            PhpObject o = stmtObject(ctx, a[0], "mysqli_stmt_close");
+            Prepared p = prepared(ctx, o, "mysqli_stmt_close");
+            if (p.ps != null) {
+                try {
+                    p.ps.close();
+                } catch (SQLException ignored) {
+                    // the statement is discarded either way
+                }
+            }
+            p.closed = true;
+            p.result = null;
+            state(ctx).statements.remove(o.id());
+            return true;
+        });
+        Builtins.def("mysqli_stmt_get_result", 1, 1, (ctx, a) -> {
+            PhpObject o = stmtObject(ctx, a[0], "mysqli_stmt_get_result");
+            Prepared p = prepared(ctx, o, "mysqli_stmt_get_result");
+            if (p.result == null) {
+                return false;
+            }
+            Result copy = new Result(p.result.fields, p.result.rows);
+            copy.position = p.result.position;
+            copy.fieldPosition = p.result.fieldPosition;
+            PhpObject ro = newResultObject(ctx, copy);
+            state(ctx).results.put(ro.id(), copy);
+            return ro;
+        });
+        Builtins.def("mysqli_stmt_free_result", 1, 1, (ctx, a) -> {
+            Prepared p = prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_free_result"),
+                    "mysqli_stmt_free_result");
+            if (p.result != null) {
+                p.result.freed = true;
+                p.result = null;
+            }
+            return PhpNull.INSTANCE;
+        });
+        Builtins.def("mysqli_stmt_affected_rows", 1, 1, (ctx, a) ->
+                prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_affected_rows"),
+                        "mysqli_stmt_affected_rows").affectedRows);
+        Builtins.def("mysqli_stmt_insert_id", 1, 1, (ctx, a) ->
+                prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_insert_id"),
+                        "mysqli_stmt_insert_id").insertId);
+        Builtins.def("mysqli_stmt_field_count", 1, 1, (ctx, a) ->
+                prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_field_count"),
+                        "mysqli_stmt_field_count").fieldCount);
+        Builtins.def("mysqli_stmt_num_rows", 1, 1, (ctx, a) -> {
+            Prepared p = prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_num_rows"),
+                    "mysqli_stmt_num_rows");
+            return p.result == null ? 0L : (long) p.result.rows.size();
+        });
+        Builtins.def("mysqli_stmt_errno", 1, 1, (ctx, a) ->
+                (long) prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_errno"), "mysqli_stmt_errno").errno);
+        Builtins.def("mysqli_stmt_error", 1, 1, (ctx, a) ->
+                prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_error"), "mysqli_stmt_error").error);
+        Builtins.def("mysqli_stmt_sqlstate", 1, 1, (ctx, a) ->
+                prepared(ctx, stmtObject(ctx, a[0], "mysqli_stmt_sqlstate"), "mysqli_stmt_sqlstate").sqlstate);
         Builtins.def("mysqli_close", 1, 1, (ctx, a) -> {
             Link l = link(ctx, a[0], "mysqli_close");
             try {
@@ -840,6 +1421,7 @@ final class MysqliFunctions {
     private static PhpObject init(PhpContext ctx) {
         PhpObject obj = newObject(ctx, mysqliTemplate(ctx));
         Link link = new Link();
+        link.object = obj;
         state(ctx).links.put(obj.id(), link);
         set(obj, "client_info", CLIENT_INFO);
         set(obj, "client_version", CLIENT_VERSION);
@@ -901,6 +1483,15 @@ final class MysqliFunctions {
         props.setProperty("jdbcCompliantTruncation", "false");
         props.setProperty("disableSessionTracking", "true");
         props.setProperty("sessionVariables", "sql_mode=DEFAULT");
+        Object connectTimeout = link.options.get(0L); // MYSQLI_OPT_CONNECT_TIMEOUT, in seconds
+        if (connectTimeout != null) {
+            props.setProperty("connectTimeout", Long.toString(PhpOps.toLong(connectTimeout) * 1000L));
+        }
+        Object readTimeout = link.options.get(11L); // MYSQLI_OPT_READ_TIMEOUT, in seconds
+        if (readTimeout != null) {
+            props.setProperty("socketTimeout", Long.toString(PhpOps.toLong(readTimeout) * 1000L));
+        }
+        String initCommand = link.initCommand;
         final Link l = link;
         boolean pooling = Pool.enabled();
         Properties driverProps = new Properties();
@@ -929,6 +1520,16 @@ final class MysqliFunctions {
             l.key = key;
             l.poolable = l.freshSession != null;
             l.charset = l.freshSession == null ? "utf8mb4" : l.freshSession.charsetClient();
+            l.restored = false;
+            l.setup = null;
+            l.refusals.clear();
+            l.transaction = false;
+            l.autocommit = true;
+            l.ranSinceAutocommitOff = false;
+            l.object = obj;
+            if (initCommand != null && !initCommand.isEmpty()) {
+                runSetup(ctx, l, initCommand);
+            }
             st.connectErrno = 0;
             st.connectError = null;
             clearError(l);
@@ -975,6 +1576,7 @@ final class MysqliFunctions {
         if (conn == null) {
             throw new SQLException("Unsupported connection URL", "HY000", 2002);
         }
+        OPENED_CONNECTIONS.incrementAndGet();
         try {
             // The handshake already carries the server version; querying it again costs a round trip.
             String serverInfo = conn instanceof org.mariadb.jdbc.Connection mariadb
@@ -1119,6 +1721,9 @@ final class MysqliFunctions {
         try {
             if (Objects.equals(db, l.physicalCatalog)) {
                 l.logicalCatalog = db;
+                if (recording(ctx)) {
+                    addSetup(l, MysqliSnapshot.Setup.database(db));
+                }
                 clearError(l);
                 sync(ctx, obj, l);
                 return true;
@@ -1130,6 +1735,9 @@ final class MysqliFunctions {
             // COM_INIT_DB succeeded, so the session is in db; asking would cost a SELECT DATABASE().
             l.logicalCatalog = db;
             l.physicalCatalog = db;
+            if (recording(ctx)) {
+                addSetup(l, MysqliSnapshot.Setup.database(db));
+            }
             clearError(l);
             sync(ctx, obj, l);
             return true;
@@ -1146,10 +1754,16 @@ final class MysqliFunctions {
 
     private static Object query(PhpContext ctx, Object[] a) {
         PhpObject obj = linkObject(ctx, a[0], "mysqli_query");
-        Link l = connected(ctx, obj, "mysqli_query");
+        Link l = link(ctx, obj, "mysqli_query");
         String sql = PhpOps.toStr(a[1]);
         if (sql.isEmpty()) {
             throw new PhpError("ValueError", "mysqli_query(): Argument #2 ($query) cannot be empty", null);
+        }
+        if (writesStatement(sql)) {
+            SnapshotGeneration.bump();
+        }
+        if (!ensureConnected(ctx, obj, l, "mysqli_query")) {
+            return false;
         }
         try {
             beforeServerOperation(ctx, l, sql);
@@ -1173,6 +1787,7 @@ final class MysqliFunctions {
                 }
             });
             clearError(l);
+            recordStatement(ctx, l, sql);
             if (out.result() != null) {
                 Result r = out.result();
                 l.affectedRows = r.rows.size();
@@ -1191,6 +1806,106 @@ final class MysqliFunctions {
         } catch (SQLException e) {
             fail(ctx, l, e, "mysqli_query");
             syncQuery(obj, l);
+            return false;
+        }
+    }
+
+    // ------------------------------------------------------------------ prepared statements
+
+    private static Object prepare(PhpContext ctx, Object[] a) {
+        PhpObject obj = linkObject(ctx, a[0], "mysqli_prepare");
+        Link l = link(ctx, obj, "mysqli_prepare");
+        String sql = PhpOps.toStr(a[1]);
+        if (sql.isEmpty()) {
+            throw new PhpError("ValueError", "mysqli_prepare(): Argument #2 ($query) cannot be empty", null);
+        }
+        if (!ensureConnected(ctx, obj, l, "mysqli_prepare")) {
+            return false;
+        }
+        Prepared p = new Prepared();
+        p.linkId = obj.id();
+        p.sql = sql;
+        p.bump = writesStatement(sql);
+        try {
+            beforeServerOperation(ctx, l, sql);
+            p.ps = blocking(ctx, () -> l.conn.prepareStatement(MysqliSql.toJava(sql),
+                    Statement.RETURN_GENERATED_KEYS));
+        } catch (SQLException e) {
+            fail(ctx, l, e, "mysqli_prepare");
+            syncQuery(obj, l);
+            return false;
+        }
+        clearError(l);
+        PhpObject st = newPreparedObject(ctx, p);
+        state(ctx).statements.put(st.id(), p);
+        return st;
+    }
+
+    private static Object stmtExecute(PhpContext ctx, Object[] a) {
+        PhpObject obj = stmtObject(ctx, a[0], "mysqli_stmt_execute");
+        Prepared p = prepared(ctx, obj, "mysqli_stmt_execute");
+        State st = state(ctx);
+        Link l = st.links.get(p.linkId);
+        if (l == null || l.closed) {
+            throw new PhpError("mysqli object is already closed");
+        }
+        if (!ensureConnected(ctx, l.object, l, "mysqli_stmt_execute")) {
+            return false;
+        }
+        if (p.bump) {
+            SnapshotGeneration.bump();
+        }
+        try {
+            beforeServerOperation(ctx, l, p.sql);
+            Outcome out = blocking(ctx, () -> {
+                boolean has = p.ps.execute();
+                if (has) {
+                    try (ResultSet rs = p.ps.getResultSet()) {
+                        return new Outcome(read(rs), -1, 0);
+                    }
+                }
+                long count = p.ps.getLargeUpdateCount();
+                long id = 0;
+                try (ResultSet keys = p.ps.getGeneratedKeys()) {
+                    if (keys != null && keys.next()) {
+                        id = keys.getLong(1);
+                    }
+                }
+                return new Outcome(null, count, id);
+            });
+            clearError(l);
+            p.errno = 0;
+            p.error = "";
+            p.sqlstate = "00000";
+            if (out.result() != null) {
+                p.result = out.result();
+                p.affectedRows = out.result().rows.size();
+                p.insertId = 0;
+                p.fieldCount = out.result().fields.size();
+            } else {
+                p.result = null;
+                p.affectedRows = out.updateCount();
+                p.insertId = out.insertId();
+                p.fieldCount = 0;
+            }
+            l.affectedRows = p.affectedRows;
+            l.insertId = p.insertId;
+            l.fieldCount = (int) p.fieldCount;
+            if (l.object != null) {
+                syncQuery(l.object, l);
+            }
+            syncPrepared(obj, p);
+            return true;
+        } catch (SQLException e) {
+            fail(ctx, l, e, "mysqli_stmt_execute");
+            p.errno = l.errno;
+            p.error = l.error;
+            p.sqlstate = l.sqlstate;
+            p.affectedRows = -1;
+            if (l.object != null) {
+                syncQuery(l.object, l);
+            }
+            syncPrepared(obj, p);
             return false;
         }
     }

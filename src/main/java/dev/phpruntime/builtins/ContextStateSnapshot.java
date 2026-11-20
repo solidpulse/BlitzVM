@@ -8,7 +8,8 @@ import java.util.List;
  */
 public record ContextStateSnapshot(String timezoneName, String mbEncoding, Object mbSubstitute,
                                    List<String> mbDetectOrder, long nextResourceId,
-                                   boolean defaultStreamContext, long umask, long ignoreUserAbort) {
+                                   boolean defaultStreamContext, long umask, long ignoreUserAbort,
+                                   MysqliSnapshot mysqli) {
 
     public ContextStateSnapshot {
         mbDetectOrder = List.copyOf(mbDetectOrder);
