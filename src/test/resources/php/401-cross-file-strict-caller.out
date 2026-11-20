@@ -1,0 +1,12 @@
+takesInt 1
+takesInt(): Argument #1 ($x) must be of type int, string given, called in 401-cross-file-strict-caller.php on line 15
+weakParam weakParam(): Argument #1 ($x) must be of type int, string given, called in 401-cross-file-strict-caller.php on line 16
+strictParam strictParam(): Argument #1 ($x) must be of type int, string given, called in 401-cross-file-strict-caller.php on line 17
+9
+10
+7
+strictReturn(): Return value must be of type int, string returned
+Cannot assign string to property TypedHolder::$number of type int
+int(13)
+Cannot assign string to property StrictTypedHolder::$number of type int
+int(15)

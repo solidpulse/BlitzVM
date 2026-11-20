@@ -3,6 +3,7 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.expr.IncludeNode;
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.CallMode;
 import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
@@ -35,14 +36,35 @@ final class CallableFunctions {
 
     private static Object callUserFunc(PhpContext ctx, Object[] a) {
         PhpCallable cb = PhpCallable.resolve(ctx, a[0], null);
-        return cb.call(ctx, null, null, Arrays.copyOfRange(a, 1, a.length));
+        CallMode previous = ctx.pendingCallMode();
+        ctx.setPendingCallMode(CallMode.atBuiltin(ctx.currentBuiltinCallSite(), targetFunction(cb)));
+        try {
+            return cb.call(ctx, null, null, Arrays.copyOfRange(a, 1, a.length));
+        } finally {
+            ctx.setPendingCallMode(previous);
+        }
+    }
+
+    private static dev.phpruntime.nodes.PhpFunctionRootNode targetFunction(PhpCallable cb) {
+        return cb.callTarget() == null ? null
+                : dev.phpruntime.nodes.PhpFunctionRootNode.of(cb.callTarget().getRootNode());
     }
 
     private static Object callUserFuncArray(PhpContext ctx, Object[] a) {
+        CallMode previous = ctx.pendingCallMode();
+        PhpCallable resolved = PhpCallable.resolve(ctx, a[0], ctx.currentBuiltinCallSite());
+        ctx.setPendingCallMode(CallMode.atBuiltin(ctx.currentBuiltinCallSite(), targetFunction(resolved)));
+        try {
+            return callUserFuncArrayBound(ctx, a, resolved);
+        } finally {
+            ctx.setPendingCallMode(previous);
+        }
+    }
+
+    private static Object callUserFuncArrayBound(PhpContext ctx, Object[] a, PhpCallable cb) {
         if (!(a[1] instanceof PhpArray arr)) {
             throw new PhpError(PhpError.TYPE_ERROR, "call_user_func_array(): Argument #2 ($args) must be of type array", null);
         }
-        PhpCallable cb = PhpCallable.resolve(ctx, a[0], ctx.currentBuiltinCallSite());
         if (cb.kind() != PhpCallable.Kind.BUILTIN && cb.kind() != PhpCallable.Kind.MAGIC_CALL
                 && cb.callTarget() != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(cb.callTarget().getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
             boolean hasStringKey = false;

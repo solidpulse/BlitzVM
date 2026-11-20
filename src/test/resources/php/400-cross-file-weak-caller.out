@@ -1,0 +1,6 @@
+5
+6
+7
+strictReturn(): Return value must be of type int, string returned
+int(10)
+int(11)
