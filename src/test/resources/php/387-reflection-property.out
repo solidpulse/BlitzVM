@@ -9,10 +9,16 @@ values=public-default|protected-default|private-default|static-default
 after=public-changed|protected-changed|private-changed|static-changed
 static default value='static-default' instance default='public-default'
 readonly initialized=1 value=10
+Error: Cannot modify readonly property PropertyHolder::$readonly
 readonly fresh=0
+Error: Typed property PropertyHolder::$readonly must not be accessed before initialization
 dynamic name=dynamic default=0 value=dynamic-value
 dynamic after=dynamic-changed
 TypeError: ReflectionProperty::getValue(): Argument #1 ($object) must be provided for instance properties
 ReflectionException: Property PropertyHolder::$missing does not exist
 typed static properties=[] initialized=0
+Error: Typed static property TypedStatic::$value must not be accessed before initialization
 typed static after={"value":4} initialized=1
+typed instance initialized=0
+Error: Typed property TypedInstance::$value must not be accessed before initialization
+typed instance after=1|8

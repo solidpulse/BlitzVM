@@ -51,8 +51,18 @@ $static->setValue('static-changed');
 echo 'after=', $public->getValue($object), '|', $protected->getValue($object), '|', $private->getValue($object), '|', $static->getValue(), "\n";
 echo 'static default value=', var_export($static->getDefaultValue(), true), ' instance default=', var_export($public->getDefaultValue(), true), "\n";
 echo 'readonly initialized=', (int)$readonly->isInitialized($object), ' value=', $readonly->getValue($object), "\n";
+try {
+    $readonly->setValue($object, 11);
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
 $fresh = (new ReflectionClass('PropertyHolder'))->newInstanceWithoutConstructor();
 echo 'readonly fresh=', (int)$readonly->isInitialized($fresh), "\n";
+try {
+    $readonly->getValue($fresh);
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
 
 $dynamicObject = new PropertyHolder();
 $dynamicObject->dynamic = 'dynamic-value';
@@ -76,6 +86,23 @@ class TypedStatic { public static int $value; }
 $typedStatic = new ReflectionClass('TypedStatic');
 echo 'typed static properties=', json_encode($typedStatic->getStaticProperties()),
     ' initialized=', (int)(new ReflectionProperty('TypedStatic', 'value'))->isInitialized(), "\n";
+try {
+    (new ReflectionProperty('TypedStatic', 'value'))->getValue();
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
 $typedStatic->setStaticPropertyValue('value', 4);
 echo 'typed static after=', json_encode($typedStatic->getStaticProperties()),
     ' initialized=', (int)(new ReflectionProperty('TypedStatic', 'value'))->isInitialized(), "\n";
+
+class TypedInstance { public int $value; }
+$typedInstance = new TypedInstance();
+$typedInstanceProperty = new ReflectionProperty('TypedInstance', 'value');
+echo 'typed instance initialized=', (int)$typedInstanceProperty->isInitialized($typedInstance), "\n";
+try {
+    $typedInstanceProperty->getValue($typedInstance);
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
+$typedInstance->value = 8;
+echo 'typed instance after=', (int)$typedInstanceProperty->isInitialized($typedInstance), '|', $typedInstanceProperty->getValue($typedInstance), "\n";

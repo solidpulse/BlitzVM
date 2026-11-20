@@ -1608,10 +1608,15 @@ public final class ReflectionClasses {
                 name = closure.builtin().name();
             } else if (root != null) {
                 name = root.rawFunctionName();
+            } else if (closure.callTarget() != null
+                    && closure.callTarget().getRootNode() instanceof PhpExceptions.BuiltinMethodRootNode builtinMethod) {
+                name = builtinMethod.getName();
             } else {
                 name = "{closure}";
             }
-            boolean internal = closure.kind() == PhpClosure.Kind.BUILTIN;
+            boolean internal = closure.kind() == PhpClosure.Kind.BUILTIN
+                    || (closure.callTarget() != null
+                    && closure.callTarget().getRootNode() instanceof PhpExceptions.BuiltinMethodRootNode);
             return new FunctionState(name, callable, object, root, closure.builtin(), signature, true, internal);
         }
         if (!(value instanceof String) && !(value instanceof PhpObject)) {
@@ -1809,7 +1814,15 @@ public final class ReflectionClasses {
             }
             if (state.decl().isStatic()) {
                 PhpClass.StaticSlot slot = state.declaring().lookupStaticProperty(ctx, state.name());
-                return slot == null ? PhpNull.INSTANCE : slot.get();
+                if (slot == null) {
+                    return PhpNull.INSTANCE;
+                }
+                if (!staticPropertyInitialized(slot,
+                        new PropertyInfo(state.reflected(), state.declaring(), state.decl()))) {
+                    throw new PhpError("Typed static property " + state.declaring().name() + "::$" + state.name()
+                            + " must not be accessed before initialization");
+                }
+                return slot.get();
             }
             PhpObject object = requireInstanceObject(args, 0, "ReflectionProperty::getValue");
             return getInstanceProperty(ctx, object, state);
@@ -1842,6 +1855,16 @@ public final class ReflectionClasses {
             }
             requireArgCount("ReflectionProperty::setValue", args, 2, 2);
             PhpObject object = requireInstanceObject(args, 0, "ReflectionProperty::setValue");
+            if (state.decl().isReadonly()) {
+                Object current = rawInstanceProperty(ctx, object, state);
+                PropertyInfo info = new PropertyInfo(state.reflected(), state.declaring(), state.decl());
+                boolean initialized = current != PhpClass.UNINITIALIZED
+                        && !(current == PhpNull.INSTANCE && !propertyHasDefault(info));
+                if (initialized) {
+                    throw new PhpError("Cannot modify readonly property "
+                            + state.declaring().name() + "::$" + state.name());
+                }
+            }
             setInstanceProperty(ctx, object, state, args[1]);
             return PhpNull.INSTANCE;
         });
@@ -1857,7 +1880,11 @@ public final class ReflectionClasses {
                 return DynamicObject.ContainsKeyNode.getUncached().execute(object, state.dynamicName());
             }
             Object value = rawInstanceProperty(ctx, object, state);
-            return value != PhpClass.UNINITIALIZED;
+            if (value == PhpClass.UNINITIALIZED) {
+                return false;
+            }
+            PropertyInfo info = new PropertyInfo(state.reflected(), state.declaring(), state.decl());
+            return !(value == PhpNull.INSTANCE && !propertyHasDefault(info));
         });
         addMethod(language, methods, "getType", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PhpType type = propertyState(self).decl() == null ? null : propertyState(self).decl().type();
@@ -1947,8 +1974,13 @@ public final class ReflectionClasses {
     private static Object getInstanceProperty(PhpContext ctx, PhpObject object, PropertyState state) {
         Object value = rawInstanceProperty(ctx, object, state);
         if (value == PhpClass.UNINITIALIZED) {
-            throw new PhpError("Cannot access uninitialized non-nullable property "
-                    + state.declaring().name() + "::$" + state.name());
+            throw new PhpError("Typed property " + state.declaring().name() + "::$" + state.name()
+                    + " must not be accessed before initialization");
+        }
+        PropertyInfo info = new PropertyInfo(state.reflected(), state.declaring(), state.decl());
+        if (value == PhpNull.INSTANCE && !propertyHasDefault(info)) {
+            throw new PhpError("Typed property " + state.declaring().name() + "::$" + state.name()
+                    + " must not be accessed before initialization");
         }
         return PhpClass.unwrapProp(value);
     }
