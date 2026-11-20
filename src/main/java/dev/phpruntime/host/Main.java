@@ -50,6 +50,14 @@ public final class Main {
             serve(args);
             return;
         }
+        if (args[0].equals("--snapshot-check")) {
+            if (args.length != 3) {
+                usage();
+                System.exit(64);
+            }
+            System.exit(dev.phpruntime.snapshot.SnapshotCheck.runCli(
+                    Path.of(args[1]), Path.of(args[2])));
+        }
         if (args[0].equals("-r")) {
             if (args.length < 2) {
                 usage();
@@ -119,6 +127,7 @@ public final class Main {
 
     private static void usage() {
         System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [docroot]");
+        System.err.println("       php-truffle --snapshot-check <boot.php> <entry.php>   capture, restore twice and compare");
         System.err.println("       php-truffle --engine-options   list runtime and engine option descriptors");
     }
 }
