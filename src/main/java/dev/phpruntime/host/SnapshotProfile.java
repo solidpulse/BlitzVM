@@ -25,10 +25,26 @@ public final class SnapshotProfile {
     /** The documented properties-file keys, in the order the report lists them. */
     public static final List<String> KEYS = List.of(
             "boot", "entries", "methods", "skip_cookie_prefixes", "after_restore",
-            "request_time_constants", "ttl_ms", "template_host");
+            "request_time_constants", "ttl_ms", "template_host", "verify_ignore");
 
     private static final String WORDPRESS_AFTER_RESTORE =
             "dev/phpruntime/snapshot/wordpress-after-restore.php";
+
+    /**
+     * Fingerprint components verify is expected to see differ on every WordPress request,
+     * both function-static memos whose value cannot affect a response:
+     *
+     * <ul>
+     *   <li>{@code wp_is_json_media_type} caches a pure function of one string. Boot calls it
+     *       with the request's {@code Accept} header; the synthetic template request has no
+     *       such header, so the snapshot simply has a colder cache and recomputes on demand.
+     *   <li>{@code wpdb::placeholder_escape} is a random marker per boot, used internally by
+     *       {@code prepare()} and removed by the {@code query} filter before SQL runs.
+     * </ul>
+     */
+    private static final List<String> WORDPRESS_VERIFY_IGNORE = List.of(
+            "static-locals:function:wp_is_json_media_type",
+            "static-locals:function:wpdb::placeholder_escape");
 
     private final String name;
     private final String boot;
@@ -40,11 +56,12 @@ public final class SnapshotProfile {
     private final List<String> requestTimeConstants;
     private final long ttlMs;
     private final String templateHost;
+    private final List<String> verifyIgnore;
 
     private SnapshotProfile(String name, String boot, List<String> entries, Set<String> methods,
                             List<String> skipCookiePrefixes, String afterRestore,
                             String afterRestoreResource, List<String> requestTimeConstants,
-                            long ttlMs, String templateHost) {
+                            long ttlMs, String templateHost, List<String> verifyIgnore) {
         this.name = name;
         this.boot = boot;
         this.entries = List.copyOf(entries);
@@ -55,13 +72,15 @@ public final class SnapshotProfile {
         this.requestTimeConstants = List.copyOf(requestTimeConstants);
         this.ttlMs = ttlMs;
         this.templateHost = templateHost;
+        this.verifyIgnore = List.copyOf(verifyIgnore);
     }
 
     public static SnapshotProfile wordpress() {
         return new SnapshotProfile("wordpress", "wp-load.php", List.of("index.php"),
                 new LinkedHashSet<>(List.of("GET", "HEAD")),
                 List.of("wordpress_", "wp-", "comment_author_", "wp-postpass_"),
-                null, WORDPRESS_AFTER_RESTORE, List.of("WP_START_TIMESTAMP"), 2000L, "localhost");
+                null, WORDPRESS_AFTER_RESTORE, List.of("WP_START_TIMESTAMP"), 2000L, "localhost",
+                WORDPRESS_VERIFY_IGNORE);
     }
 
     /**
@@ -107,7 +126,8 @@ public final class SnapshotProfile {
                 trimmedOrNull(p.getProperty("after_restore")), null,
                 list(p.getProperty("request_time_constants")), ttl,
                 trimmedOrNull(p.getProperty("template_host")) != null
-                        ? p.getProperty("template_host").trim() : "localhost");
+                        ? p.getProperty("template_host").trim() : "localhost",
+                list(p.getProperty("verify_ignore")));
     }
 
     private static String required(Properties p, String key, Path file) {
@@ -179,6 +199,15 @@ public final class SnapshotProfile {
     }
 
     /**
+     * Fingerprint components that verify must not report when they differ. Empty by default; the
+     * built-in WordPress profile lists two function-static memos that are request-dependent but
+     * cannot change a response (see {@link #WORDPRESS_VERIFY_IGNORE}).
+     */
+    public List<String> verifyIgnore() {
+        return verifyIgnore;
+    }
+
+    /**
      * The after-restore program, or null when the profile has none. A resource ships with the
      * runtime; a file path is resolved against the document root. A file keeps its path so the
      * runtime reads it with php's byte encoding, and {@code __FILE__} points at it.
@@ -226,6 +255,7 @@ public final class SnapshotProfile {
         out.put("request_time_constants", String.join(",", requestTimeConstants));
         out.put("ttl_ms", Long.toString(ttlMs));
         out.put("template_host", templateHost);
+        out.put("verify_ignore", String.join(",", verifyIgnore));
         return out;
     }
 }

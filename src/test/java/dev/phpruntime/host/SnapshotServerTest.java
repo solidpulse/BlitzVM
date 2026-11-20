@@ -168,6 +168,10 @@ class SnapshotServerTest {
         assertEquals(java.util.Set.of("GET", "HEAD"), profile.methods());
         assertTrue(profile.skipCookiePrefixes().contains("wp-postpass_"));
         assertEquals(List.of("WP_START_TIMESTAMP"), profile.requestTimeConstants());
+        assertTrue(profile.verifyIgnore().contains("static-locals:function:wpdb::placeholder_escape"),
+                profile.verifyIgnore().toString());
+        assertTrue(profile.verifyIgnore().contains("static-locals:function:wp_is_json_media_type"),
+                profile.verifyIgnore().toString());
         SnapshotProfile.Program program = profile.afterRestoreProgram(temp);
         assertNotNull(program);
         assertTrue(program.code().contains("wp_magic_quotes"), program.code());
@@ -253,6 +257,27 @@ class SnapshotServerTest {
             assertTrue(differences.stream().anyMatch(d -> d.contains("global:from_get")
                             || d.contains("response body")),
                     "differences did not name the request dependency: " + differences);
+        }
+    }
+
+    @Test
+    void verifyIgnoreSuppressesAProfileDeclaredComponent() throws Exception {
+        System.setProperty(VERIFY, "true");
+        Path app = copyApp("snapshot-app-verify-ignore", temp.resolve("app"));
+        try (Fixture snap = Fixture.start(app, app.resolve("profile.properties"), null)) {
+            waitForHit(snap, "/?x=1");
+            assertEquals("hit", snap.get("/?x=1").snapshot());
+            List<String> differences = snap.snapshots().verifyDifferences();
+            assertTrue(differences.stream().anyMatch(d -> d.contains("static-locals:function:request_memo")),
+                    "the static-local dependency was not reported: " + differences);
+        }
+        try (Fixture snap = Fixture.start(app, app.resolve("profile-ignore.properties"), null)) {
+            waitForHit(snap, "/?x=1");
+            Response hit = snap.get("/?x=1");
+            assertEquals("hit", hit.snapshot());
+            assertEquals("stable\n", hit.body());
+            List<String> differences = snap.snapshots().verifyDifferences();
+            assertTrue(differences.isEmpty(), "ignored component was still reported: " + differences);
         }
     }
 

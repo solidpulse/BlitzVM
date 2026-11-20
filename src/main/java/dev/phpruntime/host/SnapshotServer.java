@@ -123,6 +123,7 @@ public final class SnapshotServer implements AutoCloseable {
     private final boolean verify;
     private final long ttlNanos;
     private final long revalidateNanos;
+    private final Set<String> verifyIgnore;
     private final Source afterRestoreSource;
     private volatile CallTarget afterRestoreTarget;
     private final ScheduledExecutorService reporter;
@@ -146,6 +147,7 @@ public final class SnapshotServer implements AutoCloseable {
         this.verify = Boolean.getBoolean("blitz.snapshot.verify");
         this.ttlNanos = TimeUnit.MILLISECONDS.toNanos(profile.ttlMs());
         this.revalidateNanos = Long.getLong("blitz.include.revalidateMs", 2000L) * 1_000_000L;
+        this.verifyIgnore = Set.copyOf(profile.verifyIgnore());
         this.afterRestoreSource = afterRestoreSource(profile.afterRestoreProgram(this.docRoot));
         if (report) {
             reporter = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -291,9 +293,16 @@ public final class SnapshotServer implements AutoCloseable {
                 }
                 String a = want.get(name);
                 String b = have.get(name);
-                if (!Objects.equals(a, b)) {
-                    differences.add("fingerprint " + name + " (full " + a + ", restored " + b + ")");
+                if (Objects.equals(a, b)) {
+                    continue;
                 }
+                if (verifyIgnore.contains(name)) {
+                    // A profile-declared expected difference: a per-request memo or a random
+                    // marker that cannot change the response. Counted so the report shows it.
+                    counters.verifyIgnored(name);
+                    continue;
+                }
+                differences.add("fingerprint " + name + " (full " + a + ", restored " + b + ")");
             }
         }
         if (!Arrays.equals(restored.body(), expected.body())) {
@@ -619,6 +628,7 @@ public final class SnapshotServer implements AutoCloseable {
         counters.detail("ineligible", counters.ineligibleReasons).forEach(System.out::println);
         counters.detail("stale", counters.staleReasons).forEach(System.out::println);
         counters.detail("refused", counters.refusalReasons).forEach(System.out::println);
+        counters.detail("verify ignored", counters.verifyIgnoredReasons).forEach(System.out::println);
         reported.set(false);
     }
 
@@ -648,6 +658,7 @@ public final class SnapshotServer implements AutoCloseable {
         final ConcurrentHashMap<String, LongAdder> ineligibleReasons = new ConcurrentHashMap<>();
         final ConcurrentHashMap<String, LongAdder> staleReasons = new ConcurrentHashMap<>();
         final ConcurrentHashMap<String, LongAdder> refusalReasons = new ConcurrentHashMap<>();
+        final ConcurrentHashMap<String, LongAdder> verifyIgnoredReasons = new ConcurrentHashMap<>();
 
         void stale(String reason) {
             stale.increment();
@@ -656,6 +667,10 @@ public final class SnapshotServer implements AutoCloseable {
 
         void refusal(String reason) {
             refusalReasons.computeIfAbsent(reason, k -> new LongAdder()).increment();
+        }
+
+        void verifyIgnored(String component) {
+            verifyIgnoredReasons.computeIfAbsent(component, k -> new LongAdder()).increment();
         }
 
         String line() {
