@@ -2,7 +2,7 @@
 # Compares php-truffle with php-fpm (behind nginx) and Swoole on the same scenarios.
 #   [SCENARIO=compute] bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit swoole swoole-preempt (default: all)
 #   SCENARIO=wordpress WP_DIR=../blitz-wp/wordpress WP_HOST=localhost:8080 bench/run.sh truffle fpm-jit
-# Needs: php-fpm8.5 on the host, docker (nginx:alpine, phpswoole/swoole:latest).
+# Needs: php-fpm8.5 on the host, nginx on the host (else docker nginx:alpine), docker for phpswoole/swoole:latest.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN="${RUN_DIR:-$ROOT/target/bench}"
@@ -24,12 +24,25 @@ start_truffle() { # $1 workers, $2 http front end (netty|jdk)
 start_fpm() { # $1 workers, $2 jit mode
   sed -e "s|__RUN__|$RUN|g" -e "s|__FPM_PORT__|$FPM_PORT|g" -e "s|__WORKERS__|$1|g" -e "s|__JIT__|$2|g" \
     "$ROOT/bench/fpm/php-fpm.conf.tmpl" > "$RUN/php-fpm.conf"
+  # Native nginx when installed: Docker Desktop's host networking stalls connections for 60 s under load.
+  local main="" http="" root=/www
+  if command -v nginx >/dev/null; then
+    main="pid $RUN/nginx.pid; error_log $RUN/nginx-error.log;"
+    http="client_body_temp_path $RUN/nginx-body; fastcgi_temp_path $RUN/nginx-fcgi; proxy_temp_path $RUN/nginx-proxy; uwsgi_temp_path $RUN/nginx-uwsgi; scgi_temp_path $RUN/nginx-scgi;"
+    root="$WWW"
+  fi
   sed -e "s|__HTTP_PORT__|$HTTP_PORT|g" -e "s|__FPM_PORT__|$FPM_PORT|g" -e "s|__WWW__|$WWW|g" \
+    -e "s|__MAIN__|$main|" -e "s|__HTTP__|  $http|" -e "s|__ROOT__|$root|" \
     "$ROOT/bench/fpm/nginx.conf.tmpl" > "$RUN/nginx.conf"
   # JIT settings only take effect at process start, so they go on the master's command line.
   php-fpm8.5 -d opcache.enable=1 -d opcache.jit="$2" -d opcache.jit_buffer_size=64M -F -y "$RUN/php-fpm.conf" -p "$RUN" > "$RUN/fpm.out" 2>&1 &
   PIDS=$!
-  docker run -d --rm --name bench-nginx --network host -v "$RUN/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$WWW:/www:ro" nginx:alpine >/dev/null
+  if command -v nginx >/dev/null; then
+    nginx -c "$RUN/nginx.conf" -p "$RUN" -g 'daemon off;' > "$RUN/nginx.out" 2>&1 &
+    PIDS="$PIDS $!"
+  else
+    docker run -d --rm --name bench-nginx --network host -v "$RUN/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$WWW:/www:ro" nginx:alpine >/dev/null
+  fi
   BASE=http://127.0.0.1:$HTTP_PORT; wait_up "$BASE/${PROBE:-hello.php}"
 }
 start_swoole() { # $1 workers, $2 preempt 0|1
