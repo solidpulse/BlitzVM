@@ -169,12 +169,21 @@ js() { # $1 target (truffle or node): the JavaScript handlers in www/*.js
   stop_all
 }
 
+bench_db() { # MariaDB for www/db.php on host networking: Docker Desktop's port proxy drops connections under churn
+  docker exec bench-db-host mariadb -uroot -pwp -e 'select 1 from bench.items limit 1' >/dev/null 2>&1 && return 0
+  docker rm -f bench-db-host >/dev/null 2>&1
+  docker run -d --name bench-db-host --network host -e MARIADB_ROOT_PASSWORD=wp mariadb:11 --port=33308 --bind-address=127.0.0.1 >/dev/null
+  for _ in $(seq 1 60); do docker exec bench-db-host mariadb -uroot -pwp -e 'select 1' >/dev/null 2>&1 && break; sleep 1; done
+  docker exec -i bench-db-host mariadb -uroot -pwp < "$ROOT/bench/db/bench.sql"
+}
+
 suite() { # $1 target: framework-free routes (hello, template, db, api); 4 workers, 16 connections, then 1
   local t="$1" w="${SUITE_WARMUP:-}"
+  bench_db
   [[ -z "$w" ]] && { [[ "$t" == truffle* ]] && w=45 || w=10; }
   echo "################ $t suite"
   start "$t" "$THROUGHPUT_WORKERS"
-  for path in "hello.php" "index.php?name=bench" "db.php" "api.php?n=300"; do
+  for path in ${SUITE_PATHS:-hello.php index.php?name=bench db.php api.php?n=300}; do
     echo "== $path: $THROUGHPUT_WORKERS workers, 16 connections, ${LOAD_SECONDS}s after ${w}s warm-up"
     java -Dwarmup="$w" "$ROOT/bench/LoadGen.java" load "$BASE/$path" 16 "$LOAD_SECONDS"
     echo "== $path: 1 connection, 10s"
@@ -207,4 +216,4 @@ trap stop_all EXIT
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(truffle truffle-jdk fpm fpm-jit swoole swoole-preempt)
 (cd "$ROOT" && mvn -q -B -DskipTests package)
-for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed, js, suite or wordpress
+for t in "${TARGETS[@]}"; do "${SCENARIO:-scenario}" "$t"; done   # SCENARIO=compute, mixed, js, suite (SUITE_PATHS to pick routes) or wordpress

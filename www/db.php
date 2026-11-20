@@ -1,9 +1,10 @@
 <?php
 // A typical read API: one connection, a filtered page of rows and a count, returned as JSON.
+// The database is bench-db-host on 33308, started and seeded by bench/run.sh (SCENARIO=suite).
 $categories = ['books', 'games', 'tools', 'music', 'garden'];
 $cat = $categories[mt_rand(0, 4)];
 $page = mt_rand(0, 9);
-$db = mysqli_connect('127.0.0.1', 'root', 'wp', 'bench', 33307);
+$db = mysqli_connect('127.0.0.1', 'root', 'wp', 'bench', 33308);
 $c = mysqli_real_escape_string($db, $cat);
 $res = mysqli_query($db, "SELECT id, sku, name, price, stock, created_at FROM items WHERE category = '$c' ORDER BY price DESC LIMIT 20 OFFSET " . ($page * 20));
 $items = [];
