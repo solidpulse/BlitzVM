@@ -36,6 +36,10 @@ public final class ClosureNode extends PhpNode {
         return this;
     }
 
+    public RootCallTarget callTarget() {
+        return callTarget;
+    }
+
     public ClosureNode(RootCallTarget callTarget, boolean bindThis, int outerThisSlot, int outerCalledClassSlot,
                        int outerTraitSelfSlot, LValueNode[] captureReads, boolean[] warnIfUndefined, boolean[] byRef) {
         this.callTarget = callTarget;

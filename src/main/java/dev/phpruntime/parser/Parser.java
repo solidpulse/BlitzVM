@@ -15,11 +15,15 @@ import dev.phpruntime.nodes.stmt.*;
 import dev.phpruntime.nodes.var.*;
 import dev.phpruntime.parser.Token.Kind;
 import dev.phpruntime.runtime.PhpArith;
+import dev.phpruntime.runtime.PhpAttribute;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpConstants;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpFunction;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpParameter;
+import dev.phpruntime.runtime.PhpSignature;
+import dev.phpruntime.runtime.PhpType;
 import dev.phpruntime.runtime.Visibility;
 
 import java.nio.file.Path;
@@ -44,6 +48,7 @@ public final class Parser {
     private Scope scope;
     private String currentFunction;
     private String currentClass;
+    private String currentParentClass;
     private boolean currentIsTrait;
     private String currentNamespace;
     private final Map<String, String> classAliases;
@@ -172,21 +177,46 @@ public final class Parser {
         return next();
     }
 
-    private void skipAttributes() {
+    /** Parses the attribute groups at the current position; empty when there are none. */
+    private List<PhpAttribute> parseAttributes() {
+        if (!peek().isOp("#[")) {
+            return List.of();
+        }
+        List<PhpAttribute> attributes = new ArrayList<>();
         while (acceptOp("#[")) {
-            int depth = 1;
-            while (depth > 0) {
-                Token tok = next();
-                if (tok.kind() == Kind.EOF) {
-                    throw error("syntax error, unexpected end of file in attribute");
+            if (acceptOp("]")) {
+                continue;
+            }
+            while (true) {
+                attributes.add(parseAttribute());
+                if (!acceptOp(",") || peek().isOp("]")) {
+                    break;
                 }
-                if (tok.isOp("[") || tok.isOp("#[")) {
-                    depth++;
-                } else if (tok.isOp("]")) {
-                    depth--;
+            }
+            expectOp("]");
+        }
+        return attributes;
+    }
+
+    private PhpAttribute parseAttribute() {
+        String name = resolveClassName(expectIdent().text());
+        List<PhpAttribute.Argument> arguments = new ArrayList<>();
+        if (acceptOp("(")) {
+            while (!acceptOp(")")) {
+                String argumentName = null;
+                if (peek().kind() == Kind.IDENT && peek(1).isOp(":")) {
+                    argumentName = next().text();
+                    next();
+                }
+                PhpNode expr = expression();
+                arguments.add(new PhpAttribute.Argument(argumentName, literalValue(expr),
+                        memberInitTarget(expr, scope)));
+                if (!peek().isOp(")")) {
+                    expectOp(",");
                 }
             }
         }
+        return new PhpAttribute(name, arguments);
     }
 
     /** A statement ends with ';' or a closing tag; end of file is also accepted. */
@@ -222,7 +252,7 @@ public final class Parser {
     }
 
     private PhpNode statement(boolean topLevel) {
-        skipAttributes();
+        List<PhpAttribute> attributes = parseAttributes();
         Token t = peek();
         if (t.kind() == Kind.EOF) {
             return null;
@@ -336,7 +366,14 @@ public final class Parser {
                 case "function" -> {
                     if (peek(1).kind() == Kind.IDENT || (peek(1).isOp("&") && peek(2).kind() == Kind.IDENT)) {
                         next();
-                        return functionDeclaration(topLevel, line);
+                        return functionDeclaration(topLevel, line, attributes);
+                    }
+                    if (!attributes.isEmpty() && (peek(1).isOp("(")
+                            || (peek(1).isOp("&") && peek(2).isOp("(")))) {
+                        next();
+                        PhpNode closure = parseClosure(line, false, attributes);
+                        endStatement();
+                        return closure;
                     }
                 }
                 case "const" -> {
@@ -401,6 +438,15 @@ public final class Parser {
                         next();
                         return staticStatement(line);
                     }
+                    if (!attributes.isEmpty() && (peek(1).isKeyword("function") || peek(1).isKeyword("fn"))) {
+                        next();
+                        boolean arrow = peek().isKeyword("fn");
+                        next();
+                        PhpNode closure = arrow ? parseArrowFunction(line, true, attributes)
+                                : parseClosure(line, true, attributes);
+                        endStatement();
+                        return closure;
+                    }
                 }
                 case "unset" -> {
                     next();
@@ -417,7 +463,12 @@ public final class Parser {
                     return new UnsetNode(targets.toArray(new LValueNode[0])).at(line);
                 }
                 case "abstract", "final", "readonly", "class", "interface", "trait" -> {
-                    return classDeclaration(topLevel, line);
+                    return classDeclaration(topLevel, line, attributes);
+                }
+                case "enum" -> {
+                    if (peek(1).kind() == Kind.IDENT) {
+                        return classDeclaration(topLevel, line, attributes);
+                    }
                 }
                 case "try" -> {
                     next();
@@ -882,11 +933,25 @@ public final class Parser {
         return new DefineConstantNode(names.toArray(new String[0]), values.toArray(new PhpNode[0])).at(line);
     }
 
-    private record PromotedProp(String name, Visibility visibility, boolean isReadonly, boolean byRef, int line) {
+    private record PromotedProp(String name, Visibility visibility, boolean isReadonly, boolean byRef,
+                                PhpType type, List<PhpAttribute> attributes, int line) {
     }
 
     private record ParsedParams(String[] names, int[] slots, VarKind[] kinds, boolean[] byRef,
-                                PhpNode[] defaults, boolean variadic, List<PromotedProp> promoted) {}
+                                PhpNode[] defaults, boolean variadic, List<PromotedProp> promoted,
+                                PhpType[] types, List<List<PhpAttribute>> attributes, boolean[] promotedFlags,
+                                Object[] defaultValues, RootCallTarget[] defaultTargets) {
+
+        PhpSignature signature(PhpType returnType, List<PhpAttribute> functionAttributes) {
+            List<PhpParameter> parameters = new ArrayList<>(names.length);
+            for (int i = 0; i < names.length; i++) {
+                boolean isVariadic = variadic && i == names.length - 1;
+                parameters.add(new PhpParameter(names[i], types[i], attributes.get(i), promotedFlags[i],
+                        isVariadic, byRef[i], defaultValues[i], defaultTargets[i]));
+            }
+            return new PhpSignature(parameters, returnType, functionAttributes);
+        }
+    }
 
     private ParsedParams parseParams() {
         return parseParams(false);
@@ -899,9 +964,14 @@ public final class Parser {
         List<Boolean> byRef = new ArrayList<>();
         List<PhpNode> defaults = new ArrayList<>();
         List<PromotedProp> promoted = new ArrayList<>();
+        List<PhpType> types = new ArrayList<>();
+        List<List<PhpAttribute>> attributes = new ArrayList<>();
+        List<Boolean> promotedFlags = new ArrayList<>();
+        List<Object> defaultValues = new ArrayList<>();
+        List<RootCallTarget> defaultTargets = new ArrayList<>();
         boolean variadic = false;
         while (!acceptOp(")")) {
-            skipAttributes();
+            List<PhpAttribute> parameterAttributes = parseAttributes();
             Visibility promVis = null;
             boolean promReadonly = false;
             boolean parsingMods = true;
@@ -920,7 +990,7 @@ public final class Parser {
             if (promVis != null && !allowPromotion) {
                 throw error("Cannot declare promoted property outside a constructor");
             }
-            skipType();
+            PhpType type = isTypeStart() ? parseType() : null;
             boolean isRef = acceptOp("&");
             boolean isVarArg = acceptOp("...");
             if (isVarArg) {
@@ -941,9 +1011,17 @@ public final class Parser {
             names.add(pName);
             slots.add(scope.slot(pName));
             byRef.add(isRef);
-            defaults.add(acceptOp("=") ? expression() : null);
+            PhpNode defaultExpr = acceptOp("=") ? expression() : null;
+            defaults.add(defaultExpr);
+            Object defaultValue = defaultExpr == null ? null : literalValue(defaultExpr);
+            RootCallTarget defaultTarget = defaultExpr == null ? null : memberInitTarget(defaultExpr, scope);
+            defaultValues.add(defaultValue);
+            defaultTargets.add(defaultTarget);
+            types.add(type);
+            attributes.add(parameterAttributes);
+            promotedFlags.add(promVis != null);
             if (promVis != null) {
-                promoted.add(new PromotedProp(pName, promVis, promReadonly, isRef, v.line()));
+                promoted.add(new PromotedProp(pName, promVis, promReadonly, isRef, type, parameterAttributes, v.line()));
             }
             if (!peek().isOp(")")) {
                 expectOp(",");
@@ -957,10 +1035,20 @@ public final class Parser {
             refArray[i] = byRef.get(i);
         }
         return new ParsedParams(names.toArray(new String[0]), slotArray, kindArray, refArray,
-                defaults.toArray(new PhpNode[0]), variadic, promoted);
+                defaults.toArray(new PhpNode[0]), variadic, promoted,
+                types.toArray(new PhpType[0]), attributes,
+                toBooleanArray(promotedFlags), defaultValues.toArray(), defaultTargets.toArray(new RootCallTarget[0]));
     }
 
-    private PhpNode functionDeclaration(boolean topLevel, int line) {
+    private static boolean[] toBooleanArray(List<Boolean> values) {
+        boolean[] out = new boolean[values.size()];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = values.get(i);
+        }
+        return out;
+    }
+
+    private PhpNode functionDeclaration(boolean topLevel, int line, List<PhpAttribute> attributes) {
         boolean returnsRef = acceptOp("&");
         Token nameTok = next();
         String name = qualifyDeclaration(nameTok.text());
@@ -976,9 +1064,8 @@ public final class Parser {
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
-            if (acceptOp(":")) {
-                skipType();
-            }
+            PhpType returnType = acceptOp(":") ? parseType() : null;
+            PhpSignature signature = params.signature(returnType, attributes);
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
@@ -988,7 +1075,7 @@ public final class Parser {
                     null, name, false, returnsRef, -1, -1, -1,
                     new int[0], new VarKind[0], new boolean[0],
                     params.names(), params.slots(), params.kinds(), params.byRef(),
-                    params.defaults(), params.variadic(), body));
+                    params.defaults(), params.variadic(), body).withSignature(signature));
             if (scope.isGenerator()) {
                 root.asGenerator();
             }
@@ -1007,7 +1094,7 @@ public final class Parser {
         }
     }
 
-    private PhpNode parseClosure(int line, boolean isStatic) {
+    private PhpNode parseClosure(int line, boolean isStatic, List<PhpAttribute> attributes) {
         boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
@@ -1031,13 +1118,12 @@ public final class Parser {
                     }
                 }
             }
-            if (acceptOp(":")) {
-                skipType();
-            }
+            PhpType returnType = acceptOp(":") ? parseType() : null;
+            PhpSignature signature = params.signature(returnType, attributes);
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            return finishClosure(outer, !isStatic, returnsRef, params, body, line, "{closure}");
+            return finishClosure(outer, !isStatic, returnsRef, params, signature, body, line, "{closure}");
         } finally {
             scope = outer;
             currentFunction = outerFunction;
@@ -1045,7 +1131,7 @@ public final class Parser {
         }
     }
 
-    private PhpNode parseArrowFunction(int line, boolean isStatic) {
+    private PhpNode parseArrowFunction(int line, boolean isStatic, List<PhpAttribute> attributes) {
         boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
@@ -1055,16 +1141,15 @@ public final class Parser {
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
-            if (acceptOp(":")) {
-                skipType();
-            }
+            PhpType returnType = acceptOp(":") ? parseType() : null;
+            PhpSignature signature = params.signature(returnType, attributes);
             expectOp("=>");
             PhpNode expr = expression();
             if (returnsRef && expr instanceof LocalVarNode lv && !"this".equals(lv.varName())) {
                 lv.kind().markCell();
             }
             PhpNode body = new JumpNode(JumpNode.Kind.RETURN, 0, expr, returnsRef).at(line);
-            return finishClosure(outer, !isStatic, returnsRef, params, body, line, "{closure}");
+            return finishClosure(outer, !isStatic, returnsRef, params, signature, body, line, "{closure}");
         } finally {
             scope = outer;
             currentFunction = outerFunction;
@@ -1072,7 +1157,8 @@ public final class Parser {
         }
     }
 
-    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params, PhpNode body, int line, String fnName) {
+    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params,
+                                  PhpSignature signature, PhpNode body, int line, String fnName) {
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -1094,7 +1180,8 @@ public final class Parser {
                 scope.closureObjSlot(), scope.traitSelfSlot(),
                 captureSlots, captureKinds, byRef,
                 params.names(), params.slots(), params.kinds(), params.byRef(),
-                params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis()));
+                params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis())
+                .withSignature(signature));
         if (scope.isGenerator()) {
             root.asGenerator();
         }
@@ -1103,7 +1190,7 @@ public final class Parser {
                 .inClass(currentClass != null ? language.classId(currentClass) : -1).at(line);
     }
 
-    private PhpNode classDeclaration(boolean topLevel, int line) {
+    private PhpNode classDeclaration(boolean topLevel, int line, List<PhpAttribute> attributes) {
         boolean isAbstract = false;
         boolean isFinal = false;
         boolean isReadonly = false;
@@ -1118,12 +1205,14 @@ public final class Parser {
         }
         boolean isTrait = acceptKeyword("trait");
         boolean isInterface = !isTrait && acceptKeyword("interface");
-        if (!isTrait && !isInterface) {
+        boolean isEnum = !isTrait && !isInterface && acceptKeyword("enum");
+        if (!isTrait && !isInterface && !isEnum) {
             expectKeyword("class");
         }
         String name = qualifyDeclaration(expectIdent().text());
         PhpClassTemplate template = parseClassTemplate(
-                language.nextTemplateId(), name, isInterface, isTrait, isAbstract, isFinal, isReadonly, false);
+                language.nextTemplateId(), name, isInterface, isTrait, isEnum, isAbstract, isFinal,
+                isReadonly, false, attributes);
         if (topLevel) {
             int idx = topLevelClasses.size();
             topLevelClasses.add(template);
@@ -1133,8 +1222,9 @@ public final class Parser {
     }
 
     private PhpClassTemplate parseClassTemplate(long templateId, String name, boolean isInterface, boolean isTrait,
-                                                  boolean isAbstract, boolean isFinal, boolean classReadonly,
-                                                  boolean isAnonymous) {
+                                                  boolean isEnum, boolean isAbstract, boolean isFinal,
+                                                  boolean classReadonly, boolean isAnonymous,
+                                                  List<PhpAttribute> classAttributes) {
         String parentName = null;
         List<String> interfaceNames = new ArrayList<>();
         if (acceptKeyword("extends")) {
@@ -1146,6 +1236,10 @@ public final class Parser {
                 parentName = resolveClassName(expectIdent().text());
             }
         }
+        PhpType enumBackingType = null;
+        if (isEnum && acceptOp(":")) {
+            enumBackingType = parseType();
+        }
         if (!isInterface && acceptKeyword("implements")) {
             do {
                 interfaceNames.add(resolveClassName(expectIdent().text()));
@@ -1155,22 +1249,36 @@ public final class Parser {
         List<PhpClassTemplate.TraitUse> traitUses = new ArrayList<>();
         List<PhpClassTemplate.PropertyDecl> properties = new ArrayList<>();
         List<PhpClassTemplate.ConstantDecl> constants = new ArrayList<>();
+        List<PhpClassTemplate.EnumCaseDecl> enumCases = new ArrayList<>();
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
         String outerClass = currentClass;
+        String outerParent = currentParentClass;
         boolean outerIsTrait = currentIsTrait;
         currentClass = name;
+        currentParentClass = parentName;
         currentIsTrait = isTrait;
         try {
             while (!acceptOp("}")) {
                 if (peek().kind() == Kind.EOF) {
                     throw error("syntax error, unexpected end of file in class " + name);
                 }
-                skipAttributes();
+                List<PhpAttribute> memberAttributes = parseAttributes();
                 if (acceptOp("}")) {
                     break;
                 }
                 if (acceptKeyword("use")) {
                     traitUses.add(parseTraitUse());
+                    continue;
+                }
+                if (isEnum && acceptKeyword("case")) {
+                    String caseName = expectIdent().text();
+                    Scope[] exprScope = new Scope[1];
+                    PhpNode expr = acceptOp("=") ? parseMemberInitializer(isTrait, exprScope) : null;
+                    Object caseValue = expr == null ? null : literalValue(expr);
+                    RootCallTarget caseTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
+                    expectOp(";");
+                    enumCases.add(new PhpClassTemplate.EnumCaseDecl(
+                            caseName, caseValue, caseTarget, memberAttributes));
                     continue;
                 }
                 Visibility vis = Visibility.PUBLIC;
@@ -1193,9 +1301,8 @@ public final class Parser {
                     }
                 }
                 if (acceptKeyword("const")) {
-                    if ((peek().isOp("?") || peek().kind() == Kind.IDENT) && !peek(1).isOp("=")) {
-                        skipType();
-                    }
+                    PhpType constType = peek().kind() == Kind.IDENT && peek(1).isOp("=")
+                            ? null : parseType();
                     do {
                         String constName = expectIdent().text();
                         expectOp("=");
@@ -1203,18 +1310,19 @@ public final class Parser {
                         PhpNode expr = parseMemberInitializer(isTrait, exprScope);
                         Object constVal = literalValue(expr);
                         RootCallTarget valTarget = memberInitTarget(expr, exprScope[0]);
-                        constants.add(new PhpClassTemplate.ConstantDecl(constName, vis, mFinal, constVal, valTarget));
+                        constants.add(new PhpClassTemplate.ConstantDecl(
+                                constName, vis, mFinal, constVal, valTarget, constType, memberAttributes));
                     } while (acceptOp(","));
                     expectOp(";");
                 } else if (acceptKeyword("function")) {
                     PhpClassTemplate.MethodDecl m = parseMethod(vis, isStatic, isInterface || mAbstract, mFinal,
-                            classReadonly, properties);
+                            classReadonly, properties, memberAttributes);
                     methods.put(m.lowerName(), m);
                 } else {
                     if (isStatic && (explicitReadonly || classReadonly)) {
                         throw error("Static property cannot be readonly");
                     }
-                    skipType();
+                    PhpType propertyType = isTypeStart() ? parseType() : null;
                     do {
                         Token propTok = next();
                         if (propTok.kind() != Kind.VARIABLE) {
@@ -1228,18 +1336,22 @@ public final class Parser {
                         Object constVal = expr == null ? PhpNull.INSTANCE
                                 : literalValue(expr);
                         RootCallTarget valTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
-                        properties.add(new PhpClassTemplate.PropertyDecl(propTok.text(), vis, isStatic, pReadonly, constVal, valTarget));
+                        properties.add(new PhpClassTemplate.PropertyDecl(
+                                propTok.text(), vis, isStatic, pReadonly, constVal, valTarget,
+                                propertyType, memberAttributes));
                     } while (acceptOp(","));
                     expectOp(";");
                 }
             }
         } finally {
             currentClass = outerClass;
+            currentParentClass = outerParent;
             currentIsTrait = outerIsTrait;
         }
         return new PhpClassTemplate(
                 templateId, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous,
-                parentName, interfaceNames, traitUses, properties, constants, methods);
+                parentName, interfaceNames, traitUses, properties, constants, methods, Map.of(),
+                classAttributes, isEnum, enumBackingType, enumCases);
     }
 
     private PhpNode parseMemberInitializer(boolean isTrait, Scope[] outExprScope) {
@@ -1329,7 +1441,8 @@ public final class Parser {
     }
 
     private PhpClassTemplate.MethodDecl parseMethod(Visibility vis, boolean isStatic, boolean isAbstract, boolean isFinal,
-                                                    boolean classReadonly, List<PhpClassTemplate.PropertyDecl> classProps) {
+                                                    boolean classReadonly, List<PhpClassTemplate.PropertyDecl> classProps,
+                                                    List<PhpAttribute> methodAttributes) {
         boolean returnsRef = acceptOp("&");
         Token nameTok = expectIdent();
         String mName = nameTok.text();
@@ -1343,9 +1456,8 @@ public final class Parser {
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams(isCtor && !isAbstract);
-            if (acceptOp(":")) {
-                skipType();
-            }
+            PhpType returnType = acceptOp(":") ? parseType() : null;
+            PhpSignature signature = params.signature(returnType, methodAttributes);
             RootCallTarget callTarget;
             if (isAbstract) {
                 expectOp(";");
@@ -1359,7 +1471,8 @@ public final class Parser {
                     for (PromotedProp pp : params.promoted()) {
                         boolean propRo = pp.isReadonly() || classReadonly;
                         classProps.add(new PhpClassTemplate.PropertyDecl(
-                                pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null));
+                                pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null,
+                                pp.type(), pp.attributes()));
                         LValueNode thisVar = scope.variable("this").at(pp.line());
                         LValueNode propLv = new PropertyLValueNode(thisVar, pp.name(), null, currentClassLower(),
                                 scope.traitSelfSlot()).at(pp.line());
@@ -1379,14 +1492,15 @@ public final class Parser {
                         currentClass, mName, isStatic, returnsRef, scope.thisSlot(), scope.calledClassSlot(), -1,
                         scope.traitSelfSlot(), new int[0], new VarKind[0], new boolean[0],
                         params.names(), params.slots(), params.kinds(), params.byRef(),
-                        params.defaults(), params.variadic(), body));
+                        params.defaults(), params.variadic(), body).withSignature(signature));
                 if (scope.isGenerator()) {
                     root.asGenerator();
                 }
                 callTarget = dev.phpruntime.bytecode.BytecodeEmitter.target(language, root);
             }
             return new PhpClassTemplate.MethodDecl(
-                    mName, lower, language.methodId(mName), vis, isStatic, isAbstract, isFinal, callTarget);
+                    mName, lower, language.methodId(mName), vis, isStatic, isAbstract, isFinal, callTarget,
+                    signature);
         } finally {
             scope = outerScope;
             currentFunction = outerFunction;
@@ -1394,18 +1508,69 @@ public final class Parser {
         }
     }
 
-    /** Skips an optional type declaration such as {@code ?int}, {@code int|string} or {@code array}. */
-    private void skipType() {
-        acceptOp("?");
-        while (peek().kind() == Kind.IDENT && (peek(1).kind() == Kind.VARIABLE || peek(1).isOp("|")
-                || peek(1).isOp("&") || peek(1).isOp("...") || peek(1).isOp("{") || peek(1).isOp(")")
-                || peek(1).isOp(";") || peek(1).isOp("=>"))) {
-            next();
-            if (!acceptOp("|") && !(peek().isOp("&") && peek(1).kind() == Kind.IDENT && next() != null)) {
-                break;
-            }
-            acceptOp("?");
+    /** Whether the current token can start a type declaration. */
+    private boolean isTypeStart() {
+        return peek().kind() == Kind.IDENT || peek().isOp("?") || peek().isOp("(");
+    }
+
+    /**
+     * Parses a type declaration such as {@code ?int}, {@code int|string}, {@code A&B}
+     * or {@code (A&B)|null}. Class names are resolved like any other class reference.
+     */
+    private PhpType parseType() {
+        if (acceptOp("?")) {
+            return PhpType.nullable(parseTypeName());
         }
+        PhpType first = parseTypeMember();
+        if (peek().isOp("&") && peek(1).kind() == Kind.IDENT) {
+            List<PhpType> members = new ArrayList<>();
+            members.add(first);
+            do {
+                next();
+                members.add(parseTypeName());
+            } while (peek().isOp("&") && peek(1).kind() == Kind.IDENT);
+            first = PhpType.intersection(members);
+        }
+        if (peek().isOp("|")) {
+            List<PhpType> members = new ArrayList<>();
+            members.add(first);
+            do {
+                next();
+                members.add(parseTypeMember());
+            } while (peek().isOp("|"));
+            return PhpType.union(members);
+        }
+        return first;
+    }
+
+    private PhpType parseTypeMember() {
+        if (acceptOp("(")) {
+            List<PhpType> members = new ArrayList<>();
+            members.add(parseTypeName());
+            while (acceptOp("&")) {
+                members.add(parseTypeName());
+            }
+            expectOp(")");
+            return PhpType.intersection(members);
+        }
+        return parseTypeName();
+    }
+
+    private PhpType parseTypeName() {
+        Token token = expectIdent();
+        String raw = token.text();
+        String lower = dev.phpruntime.runtime.PhpStrings.lower(raw);
+        if (raw.indexOf('\\') < 0 && PhpType.isBuiltinName(lower)) {
+            if (lower.equals("self") && currentClass != null && !currentIsTrait) {
+                return new PhpType.Named(currentClass);
+            }
+            if (lower.equals("parent") && currentClass != null && !currentIsTrait
+                    && currentParentClass != null) {
+                return new PhpType.Named(currentParentClass);
+            }
+            return new PhpType.Named(lower);
+        }
+        return new PhpType.Named(resolveClassName(raw));
     }
 
     // =================================================================== expressions
@@ -1521,6 +1686,21 @@ public final class Parser {
     private PhpNode unary() {
         Token t = peek();
         int line = t.line();
+        if (t.isOp("#[")) {
+            List<PhpAttribute> attributes = parseAttributes();
+            boolean isStatic = acceptKeyword("static");
+            if (peek().isKeyword("function")
+                    && (peek(1).isOp("(") || (peek(1).isOp("&") && peek(2).isOp("(")))) {
+                next();
+                return parseClosure(line, isStatic, attributes);
+            }
+            if (peek().isKeyword("fn")
+                    && (peek(1).isOp("(") || (peek(1).isOp("&") && peek(2).isOp("(")))) {
+                next();
+                return parseArrowFunction(line, isStatic, attributes);
+            }
+            throw error("syntax error, unexpected " + describe(peek()) + " after attribute");
+        }
         if (t.kind() == Kind.OP) {
             switch (t.text()) {
                 case "!" -> {
@@ -2010,7 +2190,7 @@ public final class Parser {
     }
 
     private PhpNode parseNew(int line) {
-        skipAttributes();
+        List<PhpAttribute> attributes = parseAttributes();
         boolean anonReadonly = false;
         if (peek().isKeyword("readonly") && peek(1).isKeyword("class")) {
             next();
@@ -2021,7 +2201,8 @@ public final class Parser {
                     : new ParsedCallArgs(new PhpNode[0], new LValueNode[0], null, null);
             long tid = language.nextTemplateId();
             String anonName = "class@anonymous\0" + magicFile() + ":" + line + "$" + tid;
-            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, false, anonReadonly, true);
+            PhpClassTemplate tpl = parseClassTemplate(tid, anonName, false, false, false, false, false,
+                    anonReadonly, true, attributes);
             ClassRefNode ref = ClassRefNode.anonymous(tpl, language.classId(anonName));
             return new NewNode(ref, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
         }
@@ -2093,21 +2274,21 @@ public final class Parser {
             return parseNew(line);
         }
         if (lower.equals("function") && (peek().isOp("(") || (peek().isOp("&") && peek(1).isOp("(")))) {
-            return parseClosure(line, false);
+            return parseClosure(line, false, List.of());
         }
         if (lower.equals("fn") && (peek().isOp("(") || (peek().isOp("&") && peek(1).isOp("(")))) {
-            return parseArrowFunction(line, false);
+            return parseArrowFunction(line, false, List.of());
         }
         if (lower.equals("static")) {
             if (peek().kind() == Kind.IDENT && peek().text().equalsIgnoreCase("function")
                     && (peek(1).isOp("(") || (peek(1).isOp("&") && peek(2).isOp("(")))) {
                 next();
-                return parseClosure(line, true);
+                return parseClosure(line, true, List.of());
             }
             if (peek().kind() == Kind.IDENT && peek().text().equalsIgnoreCase("fn")
                     && (peek(1).isOp("(") || (peek(1).isOp("&") && peek(2).isOp("(")))) {
                 next();
-                return parseArrowFunction(line, true);
+                return parseArrowFunction(line, true, List.of());
             }
         }
         if (peek().isOp("::")) {

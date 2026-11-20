@@ -47,6 +47,11 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     @Child private PhpNode generatorSource;
     @CompilationFinal private boolean generator;
     @CompilationFinal private boolean usesThis;
+    /**
+     * Declared parameters, return type and attributes for reflection. Set once at parse
+     * time before the root is shared, so it is read without a guard.
+     */
+    @CompilationFinal private dev.phpruntime.runtime.PhpSignature signature = dev.phpruntime.runtime.PhpSignature.EMPTY;
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
     private final int declaringClassId;
 
@@ -283,6 +288,28 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     public PhpFunctionRootNode withGeneratorSource(PhpNode source) {
         this.generatorSource = source;
         return this;
+    }
+
+    /** Attaches the declared signature; called by the parser before this root is shared. */
+    public PhpFunctionRootNode withSignature(dev.phpruntime.runtime.PhpSignature signature) {
+        this.signature = signature == null ? dev.phpruntime.runtime.PhpSignature.EMPTY : signature;
+        return this;
+    }
+
+    public dev.phpruntime.runtime.PhpSignature signature() {
+        return signature;
+    }
+
+    public java.util.List<dev.phpruntime.runtime.PhpParameter> parameters() {
+        return signature.parameters();
+    }
+
+    public java.util.List<dev.phpruntime.runtime.PhpAttribute> attributes() {
+        return signature.attributes();
+    }
+
+    public dev.phpruntime.runtime.PhpType returnType() {
+        return signature.returnType();
     }
 
     public PhpNode generatorSource() { return generatorSource; }

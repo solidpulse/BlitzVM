@@ -101,6 +101,16 @@ public final class PhpMainRootNode extends PhpRootNode {
         return body;
     }
 
+    /** The functions this script declares, for reflection over a parsed unit. */
+    public List<PhpFunction> functions() {
+        return functions;
+    }
+
+    /** The classes, interfaces, traits and enums this script declares at top level. */
+    public List<PhpClassTemplate> topLevelClasses() {
+        return topLevelClasses;
+    }
+
     public dev.phpruntime.runtime.PhpScopeLayout scopeLayout() {
         return scopeLayout;
     }

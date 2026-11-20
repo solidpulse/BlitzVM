@@ -46,20 +46,57 @@ public final class PhpClassTemplate {
     }
 
     public record PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
-                               Object constDefault, RootCallTarget defaultTarget) {
+                               Object constDefault, RootCallTarget defaultTarget,
+                               PhpType type, List<PhpAttribute> attributes) {
+        public PropertyDecl {
+            attributes = attributes == null ? List.of() : List.copyOf(attributes);
+        }
+
+        public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
+                            Object constDefault, RootCallTarget defaultTarget) {
+            this(name, visibility, isStatic, isReadonly, constDefault, defaultTarget, null, List.of());
+        }
+
         public PropertyDecl(String name, Visibility visibility, boolean isStatic,
                             Object constDefault, RootCallTarget defaultTarget) {
-            this(name, visibility, isStatic, false, constDefault, defaultTarget);
+            this(name, visibility, isStatic, false, constDefault, defaultTarget, null, List.of());
         }
     }
 
     public record ConstantDecl(String name, Visibility visibility, boolean isFinal,
-                               Object constValue, RootCallTarget valueTarget) {
+                               Object constValue, RootCallTarget valueTarget,
+                               PhpType type, List<PhpAttribute> attributes) {
+        public ConstantDecl {
+            attributes = attributes == null ? List.of() : List.copyOf(attributes);
+        }
+
+        public ConstantDecl(String name, Visibility visibility, boolean isFinal,
+                            Object constValue, RootCallTarget valueTarget) {
+            this(name, visibility, isFinal, constValue, valueTarget, null, List.of());
+        }
     }
 
     public record MethodDecl(String name, String lowerName, int methodId, Visibility visibility,
                              boolean isStatic, boolean isAbstract, boolean isFinal,
-                             RootCallTarget callTarget) {
+                             RootCallTarget callTarget, PhpSignature signature) {
+        public MethodDecl(String name, String lowerName, int methodId, Visibility visibility,
+                          boolean isStatic, boolean isAbstract, boolean isFinal,
+                          RootCallTarget callTarget) {
+            this(name, lowerName, methodId, visibility, isStatic, isAbstract, isFinal, callTarget, null);
+        }
+
+        /** The declared attributes, or an empty list for an internal method. */
+        public List<PhpAttribute> attributes() {
+            return signature == null ? List.of() : signature.attributes();
+        }
+    }
+
+    /** One {@code case} of an enum. */
+    public record EnumCaseDecl(String name, Object constValue, RootCallTarget valueTarget,
+                               List<PhpAttribute> attributes) {
+        public EnumCaseDecl {
+            attributes = attributes == null ? List.of() : List.copyOf(attributes);
+        }
     }
 
     /** Internal interface signature metadata; tentative PHP 8 return types are not enforced. */
@@ -95,6 +132,10 @@ public final class PhpClassTemplate {
     private final List<ConstantDecl> constants;
     private final Map<String, MethodDecl> methods;
     private final Map<String, MethodSignature> methodSignatures;
+    private final List<PhpAttribute> attributes;
+    private final boolean isEnum;
+    private final PhpType enumBackingType;
+    private final List<EnumCaseDecl> enumCases;
     private final Shape rootShape;
 
     public PhpClassTemplate(long id, String name, boolean isInterface, boolean isAbstract, boolean isFinal,
@@ -119,6 +160,17 @@ public final class PhpClassTemplate {
                             String parentName, List<String> interfaceNames, List<TraitUse> traitUses,
                             List<PropertyDecl> properties, List<ConstantDecl> constants,
                             Map<String, MethodDecl> methods, Map<String, MethodSignature> methodSignatures) {
+        this(id, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous, parentName, interfaceNames,
+                traitUses, properties, constants, methods, methodSignatures, List.of(), false, null, List.of());
+    }
+
+    public PhpClassTemplate(long id, String name, boolean isInterface, boolean isTrait,
+                            boolean isAbstract, boolean isFinal, boolean isAnonymous,
+                            String parentName, List<String> interfaceNames, List<TraitUse> traitUses,
+                            List<PropertyDecl> properties, List<ConstantDecl> constants,
+                            Map<String, MethodDecl> methods, Map<String, MethodSignature> methodSignatures,
+                            List<PhpAttribute> attributes, boolean isEnum, PhpType enumBackingType,
+                            List<EnumCaseDecl> enumCases) {
         this.id = id;
         this.name = name;
         this.lowerName = PhpStrings.lower(name);
@@ -135,6 +187,10 @@ public final class PhpClassTemplate {
         // Declaration order matters for get_class_methods.
         this.methods = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(methods));
         this.methodSignatures = Map.copyOf(methodSignatures);
+        this.attributes = List.copyOf(attributes);
+        this.isEnum = isEnum;
+        this.enumBackingType = enumBackingType;
+        this.enumCases = List.copyOf(enumCases);
         this.rootShape = Shape.newBuilder()
                 .layout(PhpObject.class, PhpObject.LOOKUP)
                 .dynamicType(this)
@@ -199,6 +255,33 @@ public final class PhpClassTemplate {
 
     public Map<String, MethodSignature> methodSignatures() {
         return methodSignatures;
+    }
+
+    public List<PhpAttribute> attributes() {
+        return attributes;
+    }
+
+    public boolean isEnum() {
+        return isEnum;
+    }
+
+    /** The backing type of a backed enum, or null for a unit enum. */
+    public PhpType enumBackingType() {
+        return enumBackingType;
+    }
+
+    public List<EnumCaseDecl> enumCases() {
+        return enumCases;
+    }
+
+    /** The enum case declared as {@code name}, or null. */
+    public EnumCaseDecl enumCase(String name) {
+        for (EnumCaseDecl c : enumCases) {
+            if (c.name().equals(name)) {
+                return c;
+            }
+        }
+        return null;
     }
 
     public Shape rootShape() {
