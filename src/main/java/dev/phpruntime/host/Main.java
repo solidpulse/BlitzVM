@@ -4,6 +4,7 @@ import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.sched.Scheduler;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -18,6 +19,8 @@ import java.nio.file.Path;
  *     --quantum-ms N   time slice before a busy request is preempted (default 10)
  *     --max-exec-ms N  per-request CPU budget, 0 = unlimited (default 30000)
  *     --http netty|jdk HTTP front end (default netty: native epoll on Linux)
+ *     --profile <name|file>  serve eligible requests from boot snapshots (wordpress, or a
+ *                       properties file); off without it
  * </pre>
  */
 public final class Main {
@@ -97,6 +100,7 @@ public final class Main {
         long maxExec = 30_000;
         Path docRoot = Path.of(".");
         String http = "netty";
+        String profileName = null;
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
                 case "--port" -> port = Integer.parseInt(args[++i]);
@@ -104,12 +108,22 @@ public final class Main {
                 case "--quantum-ms" -> quantum = Long.parseLong(args[++i]);
                 case "--max-exec-ms" -> maxExec = Long.parseLong(args[++i]);
                 case "--http" -> http = args[++i];
+                case "--profile" -> profileName = args[++i];
                 default -> docRoot = Path.of(args[i]);
+            }
+        }
+        SnapshotProfile profile = null;
+        if (profileName != null) {
+            try {
+                profile = SnapshotProfile.load(profileName);
+            } catch (RuntimeException | IOException e) {
+                System.err.println("php-truffle: " + e.getMessage());
+                System.exit(64);
             }
         }
         Scheduler scheduler = new Scheduler(cpus, quantum, maxExec);
         PhpEngine engine = new PhpEngine(scheduler);
-        PhpDispatcher dispatcher = new PhpDispatcher(docRoot, engine);
+        PhpDispatcher dispatcher = new PhpDispatcher(docRoot, engine, profile);
         PhpServer server = http.equals("jdk")
                 ? new PhpHttpServer(dispatcher, port, 256)
                 : new NettyPhpServer(dispatcher, port, 256);
@@ -117,8 +131,12 @@ public final class Main {
         server.start();
         System.out.printf("php-truffle serving %s on http://localhost:%d (%s, cpus=%d, quantum=%dms, max-exec=%dms)%n",
                 docRoot.toAbsolutePath().normalize(), server.port(), transport, cpus, quantum, maxExec);
+        if (profile != null) {
+            System.out.println("blitz snapshot: profile " + profile.name() + " " + profile.describe());
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.close();
+            dispatcher.close();
             engine.close();
             scheduler.close();
         }));
@@ -126,7 +144,7 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [docroot]");
+        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file>] [docroot]");
         System.err.println("       php-truffle --snapshot-check <boot.php> <entry.php>   capture, restore twice and compare");
         System.err.println("       php-truffle --engine-options   list runtime and engine option descriptors");
     }

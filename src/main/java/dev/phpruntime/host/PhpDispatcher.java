@@ -3,6 +3,7 @@ package dev.phpruntime.host;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpQuery;
 import dev.phpruntime.runtime.PhpStrings;
+import dev.phpruntime.snapshot.SnapshotRun;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +17,7 @@ import java.util.Map;
  * root, runs .php files through the engine with superglobals filled in, and serves
  * other files as static content. HTTP servers (Netty, JDK) only adapt to this.
  */
-public final class PhpDispatcher {
+public final class PhpDispatcher implements AutoCloseable {
 
     /** What a transport hands in. Header names keep their original case. */
     public record Request(String method, String rawPath, String rawQuery, String protocol,
@@ -49,14 +50,36 @@ public final class PhpDispatcher {
 
     private final Path docRoot;
     private final PhpEngine engine;
+    private final SnapshotServer snapshots;
 
     public PhpDispatcher(Path docRoot, PhpEngine engine) {
+        this(docRoot, engine, null);
+    }
+
+    /** With a profile, eligible requests are served from boot snapshots; without, nothing changes. */
+    public PhpDispatcher(Path docRoot, PhpEngine engine, SnapshotProfile profile) {
         this.docRoot = docRoot.toAbsolutePath().normalize();
         this.engine = engine;
+        try {
+            this.snapshots = profile == null ? null : new SnapshotServer(this.docRoot, engine, profile);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("snapshot profile: " + e.getMessage(), e);
+        }
     }
 
     public Path docRoot() {
         return docRoot;
+    }
+
+    public SnapshotServer snapshots() {
+        return snapshots;
+    }
+
+    @Override
+    public void close() {
+        if (snapshots != null) {
+            snapshots.close();
+        }
     }
 
     /** Blocking: runs PHP. Transports must call this off their I/O threads. */
@@ -106,9 +129,27 @@ public final class PhpDispatcher {
                 return new Response(200, h, "HEAD".equals(req.method()) ? new byte[0] : Files.readAllBytes(file));
             }
             PhpRequest request = buildRequest(req, file, pathInfo);
-            PhpEngine.Result result = engine.execute(file, request);
+            SnapshotServer.Plan plan = null;
+            if (snapshots != null) {
+                try {
+                    plan = snapshots.plan(req, request, file);
+                } catch (RuntimeException e) {
+                    // A snapshot problem must never fail a request: run it as today.
+                    System.err.println("blitz snapshot: " + e);
+                }
+            }
+            SnapshotRun run = plan == null ? null : plan.run();
+            PhpEngine.Result result = engine.execute(file, request, run);
             if (!result.errors().isEmpty()) {
                 System.err.print(result.errors());
+            }
+            if (plan != null) {
+                if (snapshots.reportEnabled()) {
+                    request.setHeader("X-Blitz-Snapshot", plan.outcome().label(), true);
+                }
+                if (run != null && snapshots.verifyEnabled()) {
+                    snapshots.verify(request, file, result, run);
+                }
             }
             List<String[]> headers = new ArrayList<>(request.responseHeaders);
             if (headers.stream().noneMatch(h -> h[0].equalsIgnoreCase("Content-Type"))) {
