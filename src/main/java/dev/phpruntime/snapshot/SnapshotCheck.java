@@ -114,6 +114,32 @@ public final class SnapshotCheck {
                 second.snapshotRun.fingerprint(), null);
     }
 
+    /** Captures one snapshot for tests that need to restore it themselves. */
+    static Snapshot captureSnapshot(Engine engine, Path bootFile, Path entryFile) throws IOException {
+        Path boot = bootFile.toRealPath();
+        Path entry = entryFile.toRealPath();
+        Run template = run(engine, entry, SnapshotRun.template(boot.toString()));
+        if (!template.snapshotRun.bootReached()) {
+            throw new IllegalStateException("boot include was never reached: " + boot);
+        }
+        if (template.snapshotRun.refusal() != null) {
+            throw new IllegalStateException("capture refused: " + template.snapshotRun.refusal());
+        }
+        return template.snapshotRun.snapshot();
+    }
+
+    /** Runs one restore and returns its stdout, for concurrency tests. */
+    static String restoredOutput(Engine engine, Path bootFile, Path entryFile, Snapshot snapshot)
+            throws IOException {
+        Path boot = bootFile.toRealPath();
+        Path entry = entryFile.toRealPath();
+        Run restored = run(engine, entry, SnapshotRun.restored(boot.toString(), snapshot));
+        if (restored.failure() != null) {
+            throw new IllegalStateException(restored.failure());
+        }
+        return restored.output();
+    }
+
     private static void compareFingerprints(String label, Map<String, String> expected,
                                             Map<String, String> actual, List<String> differences) {
         if (expected == null || actual == null) {

@@ -5,12 +5,17 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,6 +48,27 @@ class SnapshotCheckTest {
                     .map(dir -> DynamicTest.dynamicTest(dir.getFileName().toString(), () -> check(dir)))
                     .toList()
                     .stream();
+        }
+    }
+
+    /** Two threads restore the same snapshot at once; neither may see the other's copies. */
+    @Test
+    void concurrentRestoresShareTheSnapshotSafely() throws Exception {
+        Path dir = CASES.resolve("objects");
+        Snapshot snapshot = SnapshotCheck.captureSnapshot(engine,
+                dir.resolve("boot.php"), dir.resolve("entry.php"));
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<String> first = pool.submit(() -> SnapshotCheck.restoredOutput(engine,
+                    dir.resolve("boot.php"), dir.resolve("entry.php"), snapshot));
+            Future<String> second = pool.submit(() -> SnapshotCheck.restoredOutput(engine,
+                    dir.resolve("boot.php"), dir.resolve("entry.php"), snapshot));
+            String a = first.get(30, TimeUnit.SECONDS);
+            String b = second.get(30, TimeUnit.SECONDS);
+            assertEquals(a, b, "two concurrent restores must produce the same output");
+            assertTrue(a.contains("cycle=yes"), a);
+        } finally {
+            pool.shutdownNow();
         }
     }
 
