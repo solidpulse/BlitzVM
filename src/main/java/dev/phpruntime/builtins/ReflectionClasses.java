@@ -730,7 +730,7 @@ public final class ReflectionClasses {
         List<MethodState> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         collectClassMethods(cls, true, out, seen);
-        for (PhpClass iface : cls.interfaces()) {
+        for (PhpClass iface : collectInterfaces(cls)) {
             collectInterfaceMethods(iface, out, seen);
         }
         return out;
