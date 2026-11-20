@@ -43,3 +43,10 @@ class Typed
 $typed = new Typed();
 $typed->name = 'typed';
 $typedRef = &$typed->name;
+
+class StaticTyped
+{
+    public static string $label = 'label';
+}
+
+$staticLabel = StaticTyped::$label;

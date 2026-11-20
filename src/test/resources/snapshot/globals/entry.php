@@ -13,6 +13,7 @@ echo "constant=", Config::VALUE, "\n";
 echo "constant from boot=", $configValue, "\n";
 echo "typed=", $typed->name, "\n";
 echo "typed unset=", var_export(isset($typed->unset), true), "\n";
+echo "static typed label=", StaticTyped::$label, " ", $staticLabel, "\n";
 echo "global in function=", read_global(), "\n";
 $shared = 'changed';
 echo "reference=", $copy, "\n";

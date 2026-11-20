@@ -84,6 +84,10 @@ final class StateFingerprint {
             mix('N');
             return;
         }
+        if (v == PhpClass.UNINITIALIZED) {
+            mix('U');
+            return;
+        }
         if (v instanceof PhpStringBuffer buffer) {
             value(buffer.asString());
             return;

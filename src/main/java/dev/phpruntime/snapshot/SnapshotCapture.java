@@ -217,7 +217,8 @@ final class SnapshotCapture {
         }
 
         void value(Object v) {
-            if (v == null || v == PhpNull.INSTANCE || v instanceof String || v instanceof Long
+            if (v == null || v == PhpNull.INSTANCE || v == PhpClass.UNINITIALIZED
+                    || v instanceof String || v instanceof Long
                     || v instanceof Integer || v instanceof Double || v instanceof Boolean
                     || v instanceof PhpClass || v instanceof PhpFunction
                     || v instanceof dev.phpruntime.nodes.PhpFunctionRootNode) {
@@ -482,7 +483,8 @@ final class SnapshotCapture {
         }
 
         private Object value(Object v) {
-            if (v == null || v == PhpNull.INSTANCE || v instanceof String || v instanceof Long
+            if (v == null || v == PhpNull.INSTANCE || v == PhpClass.UNINITIALIZED
+                    || v instanceof String || v instanceof Long
                     || v instanceof Integer || v instanceof Double || v instanceof Boolean
                     || v instanceof PhpClass || v instanceof PhpFunction
                     || v instanceof dev.phpruntime.nodes.PhpFunctionRootNode) {
