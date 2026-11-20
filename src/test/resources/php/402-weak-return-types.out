@@ -1,0 +1,27 @@
+7
+float(3)
+12
+bool(false)
+DEPRECATED: Implicit conversion from float 4.5 to int loses precision
+4
+returnsNone(): Return value must be of type int, none returned
+NULL
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+NULL
+Child
+returnsWrongClass(): Return value must be of type Base, stdClass returned
+SubFactory
+SubFactory
+int(9)
+int(9)
+12
+13
+NULL
+neverReturns(): never-returning function must not implicitly return
+Generator
+1

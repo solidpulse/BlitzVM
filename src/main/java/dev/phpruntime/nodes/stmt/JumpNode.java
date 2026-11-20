@@ -46,7 +46,13 @@ public final class JumpNode extends PhpNode {
         b.endStoreLocal();
         e.emitFinallies();
         b.beginReturn();
-        b.emitLoadLocal(result);
+        if (e.returnCheck() != null) {
+            b.beginCheckReturn(e.returnCheck(), false);
+            b.emitLoadLocal(result);
+            b.endCheckReturn();
+        } else {
+            b.emitLoadLocal(result);
+        }
         b.endReturn();
     }
 
@@ -64,11 +70,24 @@ public final class JumpNode extends PhpNode {
                 if (value == null) {
                     e.emitFinallies();
                     b.beginReturn();
-                    b.emitLoadConstant(PhpNull.INSTANCE);
+                    if (e.returnCheck() != null) {
+                        b.beginCheckReturn(e.returnCheck(), false);
+                        b.emitLoadConstant(PhpNull.INSTANCE);
+                        b.endCheckReturn();
+                    } else {
+                        b.emitLoadConstant(PhpNull.INSTANCE);
+                    }
                     b.endReturn();
                 } else if (!e.hasFinallies()) {
                     b.beginReturn();
+                    boolean check = e.returnCheck() != null;
+                    if (check) {
+                        b.beginCheckReturn(e.returnCheck(), false);
+                    }
                     e.expr(value);
+                    if (check) {
+                        b.endCheckReturn();
+                    }
                     b.endReturn();
                 } else {
                     // PHP evaluates the return value before finally runs.
@@ -78,7 +97,13 @@ public final class JumpNode extends PhpNode {
                     b.endStoreLocal();
                     e.emitFinallies();
                     b.beginReturn();
-                    b.emitLoadLocal(result);
+                    if (e.returnCheck() != null) {
+                        b.beginCheckReturn(e.returnCheck(), false);
+                        b.emitLoadLocal(result);
+                        b.endCheckReturn();
+                    } else {
+                        b.emitLoadLocal(result);
+                    }
                     b.endReturn();
                 }
             }
