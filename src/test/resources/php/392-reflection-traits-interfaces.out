@@ -10,3 +10,5 @@ overridden property value=override declaring=TraitChild
 interface methods=childMethod@ChildInterface,rootMethod@RootInterface,
 interface constants={"CHILD_CONST":"child","ROOT_CONST":"root"}
 root filter=7
+partial method=rootMethod declaring=RootInterface abstract=1
+Error: Cannot instantiate abstract class PartialImplementation

@@ -60,3 +60,14 @@ foreach ((new ReflectionClass('ChildInterface'))->getMethods() as $method) {
 echo "\n";
 echo 'interface constants=', json_encode((new ReflectionClass('ChildInterface'))->getConstants()), "\n";
 echo 'root filter=', count($r->getMethods(ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_PRIVATE)), "\n";
+
+abstract class PartialImplementation implements ChildInterface {}
+$partial = new ReflectionClass('PartialImplementation');
+$fromInterface = $partial->getMethod('rootMethod');
+echo 'partial method=', $fromInterface->getName(), ' declaring=', $fromInterface->getDeclaringClass()->getName(),
+    ' abstract=', (int)$fromInterface->isAbstract(), "\n";
+try {
+    $fromInterface->invoke(new PartialImplementation());
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}

@@ -471,13 +471,13 @@ public final class ReflectionClasses {
         });
         addMethod(language, methods, "hasMethod", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionClass::hasMethod", args, 1, 1);
-            return classState(self).cls().lookupMethod(PhpOps.toStr(args[0])) != null;
+            return findMethod(classState(self).cls(), PhpOps.toStr(args[0])) != null;
         });
         addMethod(language, methods, "getMethod", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionClass::getMethod", args, 1, 1);
             PhpClass cls = classState(self).cls();
             String name = PhpOps.toStr(args[0]);
-            PhpClass.MethodEntry entry = cls.lookupMethod(name);
+            PhpClass.MethodEntry entry = findMethod(cls, name);
             if (entry == null) {
                 throw reflectionError("Method " + cls.name() + "::" + name + "() does not exist");
             }
@@ -812,8 +812,21 @@ public final class ReflectionClasses {
         }
     }
 
-    private static MethodState methodState(PhpClass reflected, PhpClass.MethodEntry entry) {
-        PhpClass declaring = entry.declaringClass();
+    private static PhpClass.MethodEntry findMethod(PhpClass cls, String name) {
+        PhpClass.MethodEntry entry = cls.lookupMethod(name);
+        if (entry != null) {
+            return entry;
+        }
+        for (PhpClass iface : collectInterfaces(cls)) {
+            entry = iface.lookupMethod(name);
+            if (entry != null) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static MethodState methodState(PhpClass reflected, PhpClass.MethodEntry entry) {        PhpClass declaring = entry.declaringClass();
         PhpFunctionRootNode root = entry.callTarget() == null ? null
                 : PhpFunctionRootNode.of(entry.callTarget().getRootNode());
         PhpSignature signature = root != null && root.signature() != PhpSignature.EMPTY ? root.signature() : null;
@@ -1313,7 +1326,7 @@ public final class ReflectionClasses {
                 }
                 methodName = PhpOps.toStr(args[1]);
             }
-            PhpClass.MethodEntry entry = cls.lookupMethod(methodName);
+            PhpClass.MethodEntry entry = findMethod(cls, methodName);
             if (entry == null) {
                 throw reflectionError("Method " + cls.name() + "::" + methodName + "() does not exist");
             }
@@ -2311,7 +2324,7 @@ public final class ReflectionClasses {
             }
         }
         if (entry.callTarget() == null) {
-            throw new PhpError("Cannot call abstract method " + entry.declaringClass().name()
+            throw reflectionError("Trying to invoke abstract method " + entry.declaringClass().name()
                     + "::" + entry.name() + "()");
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : object;
