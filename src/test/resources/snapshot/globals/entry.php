@@ -9,6 +9,8 @@ echo "shared=", $shared, "\n";
 echo "copy=", $copy, "\n";
 echo "counter=", next_counter(), " ", next_counter(), "\n";
 echo "static=", Counter::$count, "\n";
+Counter::$count++;
+echo "static after increment=", Counter::$count, "\n";
 echo "constant=", Config::VALUE, "\n";
 echo "constant from boot=", $configValue, "\n";
 echo "typed=", $typed->name, "\n";
