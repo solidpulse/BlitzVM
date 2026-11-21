@@ -97,14 +97,27 @@ abstract class PhpStream {
     }
 
     byte[] readAll() throws IOException {
-        java.io.ByteArrayOutputStream all = new java.io.ByteArrayOutputStream();
+        // A fresh allocation sized from the file, when the stream can tell, avoids the growth
+        // copies of a ByteArrayOutputStream for file_get_contents(/stream_get_contents()).
+        long remaining;
+        try {
+            remaining = Math.max(0, size() - tell());
+        } catch (IOException e) {
+            remaining = 0;
+        }
+        byte[] out = new byte[(int) Math.min(remaining, 8L << 20)];
+        int got = 0;
         byte[] buf = new byte[8192];
         int r;
         while ((r = read(buf, 0, buf.length)) >= 0) {
-            all.write(buf, 0, r);
+            if (got + r > out.length) {
+                out = Arrays.copyOf(out, Math.max(got + r, Math.max(256, out.length * 2)));
+            }
+            System.arraycopy(buf, 0, out, got, r);
+            got += r;
         }
         eof = true;
-        return all.toByteArray();
+        return got == out.length ? out : Arrays.copyOf(out, got);
     }
 
     // ------------------------------------------------------------------ files
@@ -117,6 +130,8 @@ abstract class PhpStream {
         private long bufferStart;
         private int bufferLength;
         private long position;
+        /** Where the channel itself points, so a sequential read does not lseek every buffer. */
+        private long channelPosition;
 
         FileStream(SeekableByteChannel channel, String mode, String uri) {
             super(mode, uri);
@@ -126,10 +141,13 @@ abstract class PhpStream {
         @Override
         int read(byte[] buf, int off, int len) throws IOException {
             if (position < bufferStart || position >= bufferStart + bufferLength) {
-                channel.position(position);
+                if (channelPosition != position) {
+                    channel.position(position);
+                }
                 bufferStart = position;
                 int n = channel.read(ByteBuffer.wrap(buffer));
                 bufferLength = Math.max(0, n);
+                channelPosition = position + bufferLength;
                 if (n <= 0) {
                     return -1;
                 }
@@ -150,6 +168,7 @@ abstract class PhpStream {
                 channel.write(bb);
             }
             position += data.length;
+            channelPosition = -1;
         }
 
         @Override
@@ -174,6 +193,7 @@ abstract class PhpStream {
         @Override
         void truncate(long size) throws IOException {
             bufferLength = 0;
+            channelPosition = -1;
             if (size < channel.size()) {
                 channel.truncate(size);
             } else if (size > channel.size()) {

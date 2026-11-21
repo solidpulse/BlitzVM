@@ -7,7 +7,9 @@ import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpStrings;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 
 /** Path and filesystem inspection builtins needed during boot. */
 final class FileFunctions {
@@ -172,8 +174,26 @@ final class FileFunctions {
                 return e.resolved();
             }
         }
+        String javaPath = PhpStrings.toJava(path);
+        File host = HostFiles.file(ctx, javaPath);
+        if (host != null) {
+            try {
+                // A trailing slash asks for a directory; File drops it before toRealPath sees it.
+                if (HostFiles.directoryOnly(javaPath) && !host.isDirectory()) {
+                    return false;
+                }
+                // realpath(3): resolves every symlink and every component, and fails on a missing
+                // component before a ".." exactly like php. One syscall, no prior stat.
+                String resolved = PhpStrings.fromJava(host.toPath().toRealPath().toString());
+                if (cacheable) {
+                    putRealpath(path, resolved);
+                }
+                return resolved;
+            } catch (IOException | SecurityException e) {
+                return false;
+            }
+        }
         try {
-            String javaPath = PhpStrings.toJava(path);
             TruffleFile f = path.isEmpty()
                     ? ctx.env().getCurrentWorkingDirectory()
                     : ctx.env().getPublicTruffleFile(javaPath);
@@ -183,15 +203,19 @@ final class FileFunctions {
             }
             String resolved = PhpStrings.fromJava(f.getCanonicalFile().getPath());
             if (cacheable) {
-                if (REALPATH_CACHE.size() >= REALPATH_CACHE_LIMIT) {
-                    REALPATH_CACHE.clear();
-                }
-                REALPATH_CACHE.put(path, new RealpathEntry(resolved, System.nanoTime()));
+                putRealpath(path, resolved);
             }
             return resolved;
         } catch (IOException | SecurityException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    private static void putRealpath(String path, String resolved) {
+        if (REALPATH_CACHE.size() >= REALPATH_CACHE_LIMIT) {
+            REALPATH_CACHE.clear();
+        }
+        REALPATH_CACHE.put(path, new RealpathEntry(resolved, System.nanoTime()));
     }
 
     /** pathinfo: all parts for PATHINFO_ALL (15), otherwise the first selected part or "". */
@@ -226,7 +250,7 @@ final class FileFunctions {
     private static void io() {
         Builtins.def("file_get_contents", 1, 5, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
-            if (PhpStrings.lower(path).startsWith("php://")) {
+            if (path.length() >= 6 && path.regionMatches(true, 0, "php://", 0, 6)) {
                 PhpStream stream = StreamFunctions.openStream(ctx, path, "rb", "file_get_contents");
                 if (stream == null) {
                     return false;
@@ -248,23 +272,26 @@ final class FileFunctions {
                     }
                 }
             }
+            String javaPath = PhpStrings.toJava(path);
+            File host = HostFiles.file(ctx, javaPath);
+            if (host != null) {
+                try {
+                    // One open/read/close; a separate is_file() would be a second syscall.
+                    byte[] data = Files.readAllBytes(host.toPath());
+                    StreamFunctions.consumeStreamId(ctx);
+                    return window(data, a);
+                } catch (IOException | SecurityException e) {
+                    return readFailure(ctx, "file_get_contents", path, host);
+                }
+            }
             TruffleFile f = file(ctx, path);
             try {
-                if (f == null || !isFile(ctx, PhpStrings.toJava(path), f)) {
+                if (f == null || !isFile(ctx, javaPath, f)) {
                     throw new IOException();
                 }
                 byte[] data = f.readAllBytes();
                 StreamFunctions.consumeStreamId(ctx);
-                long requestedOffset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
-                int offset = (int) Math.max(0, Math.min(data.length, requestedOffset < 0 ? data.length + requestedOffset : requestedOffset));
-                int end = data.length;
-                if (a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE) {
-                    end = (int) Math.min(data.length, offset + Math.max(0, PhpOps.toLong(a[4])));
-                }
-                if (offset >= end) {
-                    return "";
-                }
-                return PhpStrings.of(data, offset, end - offset);
+                return window(data, a);
             } catch (IOException | SecurityException e) {
                 ctx.warning("file_get_contents(" + path + "): Failed to open stream: No such file or directory", 0);
                 return false;
@@ -284,7 +311,7 @@ final class FileFunctions {
             }
             boolean append = a.length > 2 && (PhpOps.toLong(a[2]) & 8) != 0;
             byte[] bytes = PhpStrings.bytes(data);
-            if (PhpStrings.lower(path).startsWith("php://")) {
+            if (path.length() >= 6 && path.regionMatches(true, 0, "php://", 0, 6)) {
                 PhpStream stream = StreamFunctions.openStream(ctx, path, append ? "ab" : "wb", "file_put_contents");
                 if (stream == null || !stream.canWrite) {
                     return false;
@@ -320,8 +347,11 @@ final class FileFunctions {
                 return false;
             }
         });
-        Builtins.def("filesize", 1, 1, (ctx, a) -> stat(ctx, "filesize", PhpOps.toStr(a[0]), f -> f.size()));
-        Builtins.def("filemtime", 1, 1, (ctx, a) -> stat(ctx, "filemtime", PhpOps.toStr(a[0]), f -> f.getLastModifiedTime().toMillis() / 1000));
+        Builtins.def("filesize", 1, 1, (ctx, a) -> stat(ctx, "filesize", PhpOps.toStr(a[0]),
+                f -> f.size(), f -> Files.size(f.toPath())));
+        Builtins.def("filemtime", 1, 1, (ctx, a) -> stat(ctx, "filemtime", PhpOps.toStr(a[0]),
+                f -> f.getLastModifiedTime().toMillis() / 1000,
+                f -> Files.getLastModifiedTime(f.toPath()).toMillis() / 1000));
         Builtins.def("is_writable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.WRITABLE));
         Builtins.def("is_writeable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.WRITABLE));
         Builtins.def("is_executable", 1, 1, (ctx, a) -> check(ctx, PhpOps.toStr(a[0]), Check.EXECUTABLE));
@@ -341,7 +371,9 @@ final class FileFunctions {
                     ctx.warning("chdir(): No such file or directory (errno 2)", 0);
                     return false;
                 }
-                ctx.env().setCurrentWorkingDirectory(dir.getAbsoluteFile());
+                TruffleFile absolute = dir.getAbsoluteFile();
+                ctx.env().setCurrentWorkingDirectory(absolute);
+                ctx.setHostWorkingDirectory(absolute.getPath());
                 return true;
             } catch (SecurityException | IllegalArgumentException e) {
                 ctx.warning("chdir(): No such file or directory (errno 2)", 0);
@@ -356,16 +388,30 @@ final class FileFunctions {
         Builtins.def("scandir", 1, 3, (ctx, a) -> {
             String path = PhpOps.toStr(a[0]);
             long order = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
-            TruffleFile dir = file(ctx, path);
+            String javaPath = PhpStrings.toJava(path);
             try {
-                if (dir == null || !isDirectory(ctx, PhpStrings.toJava(path), dir)) {
-                    throw new IOException();
-                }
                 java.util.List<String> names = new java.util.ArrayList<>();
                 names.add(".");
                 names.add("..");
-                for (TruffleFile child : dir.list()) {
-                    names.add(PhpStrings.fromJava(child.getName()));
+                File host = HostFiles.file(ctx, javaPath);
+                if (host != null) {
+                    // File.list() opens, reads and closes the directory and returns null on
+                    // failure, so a directory check would only add a syscall.
+                    String[] entries = host.list();
+                    if (entries == null) {
+                        throw new IOException();
+                    }
+                    for (String name : entries) {
+                        names.add(PhpStrings.fromJava(name));
+                    }
+                } else {
+                    TruffleFile dir = file(ctx, path);
+                    if (dir == null || !isDirectory(ctx, javaPath, dir)) {
+                        throw new IOException();
+                    }
+                    for (TruffleFile child : dir.list()) {
+                        names.add(PhpStrings.fromJava(child.getName()));
+                    }
                 }
                 StreamFunctions.consumeStreamId(ctx);
                 if (order == 0) {
@@ -420,6 +466,37 @@ final class FileFunctions {
         });
     }
 
+    /**
+     * The byte window file_get_contents() returns for the whole file: a negative offset counts
+     * from the end of the data and an offset at or past the end gives "".
+     */
+    private static String window(byte[] data, Object[] a) {
+        long requestedOffset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
+        int offset = (int) Math.max(0, Math.min(data.length, requestedOffset < 0 ? data.length + requestedOffset : requestedOffset));
+        int end = data.length;
+        if (a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE) {
+            end = (int) Math.min(data.length, offset + Math.max(0, PhpOps.toLong(a[4])));
+        }
+        if (offset >= end) {
+            return "";
+        }
+        return PhpStrings.of(data, offset, end - offset);
+    }
+
+    /**
+     * A failed whole-file read for file_get_contents(). php's stream opens a directory and the
+     * read stops at EISDIR, so a directory yields "" rather than false; a missing or unreadable
+     * path warns and returns false.
+     */
+    private static Object readFailure(PhpContext ctx, String fn, String path, File host) {
+        if (host.isDirectory()) {
+            ctx.warning(fn + "(" + path + "): Failed to open stream: Is a directory", 0);
+            return "";
+        }
+        ctx.warning(fn + "(" + path + "): Failed to open stream: No such file or directory", 0);
+        return false;
+    }
+
     private static TruffleFile file(PhpContext ctx, String path) {
         if (path.isEmpty()) {
             return null;
@@ -454,10 +531,29 @@ final class FileFunctions {
         long get(TruffleFile file) throws IOException;
     }
 
-    private static Object stat(PhpContext ctx, String fn, String path, FileStat stat) {
+    @FunctionalInterface
+    private interface HostFileStat {
+        long get(File file) throws IOException;
+    }
+
+    private static Object stat(PhpContext ctx, String fn, String path, FileStat stat, HostFileStat hostStat) {
+        String javaPath = PhpStrings.toJava(path);
+        File host = HostFiles.file(ctx, javaPath);
+        if (host != null) {
+            try {
+                // File drops a trailing slash; php's stat(2) fails with ENOTDIR instead.
+                if (HostFiles.directoryOnly(javaPath) && !host.isDirectory()) {
+                    throw new IOException();
+                }
+                return hostStat.get(host);
+            } catch (IOException | SecurityException e) {
+                ctx.warning(fn + "(): stat failed for " + path, 0);
+                return false;
+            }
+        }
         TruffleFile f = file(ctx, path);
         try {
-            if (f == null || !exists(ctx, PhpStrings.toJava(path), f)) {
+            if (f == null || !exists(ctx, javaPath, f)) {
                 throw new IOException();
             }
             return stat.get(f);
