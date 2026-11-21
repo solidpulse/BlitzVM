@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Transport-independent request handling: maps a URL to a file under the document
@@ -48,9 +49,29 @@ public final class PhpDispatcher implements AutoCloseable {
             Map.entry("ogg", "audio/ogg"), Map.entry("wav", "audio/wav"), Map.entry("pdf", "application/pdf"),
             Map.entry("zip", "application/zip"), Map.entry("gz", "application/gzip"), Map.entry("wasm", "application/wasm"));
 
+    /** What a request path resolved to; immutable so it can be shared between worker threads. */
+    private enum RouteKind { SCRIPT, STATIC, REDIRECT, FORBIDDEN, NOT_FOUND }
+
+    private record Route(RouteKind kind, Path file, String pathInfo, long checkedAtNanos) {
+        static Route of(RouteKind kind, Path file, String pathInfo, long now) {
+            return new Route(kind, file, pathInfo, now);
+        }
+    }
+
+    /** Bounded like the route cache: sites send a small set of header names, not arbitrary ones. */
+    static final int CGI_NAME_CACHE_LIMIT = 256;
+    private static final int DEFAULT_ROUTE_CACHE_LIMIT = 10_000;
+    private static final long DEFAULT_ROUTE_REVALIDATE_NANOS = 2_000_000_000L;
+
     private final Path docRoot;
     private final PhpEngine engine;
     private final SnapshotServer snapshots;
+    /** Resolved request paths, revalidated on the file system at most every {@link #routeRevalidateNanos}. */
+    private final ConcurrentHashMap<String, Route> routes = new ConcurrentHashMap<>();
+    /** Original request header name to its CGI server name, e.g. User-Agent to HTTP_USER_AGENT. */
+    private final ConcurrentHashMap<String, String> cgiNames = new ConcurrentHashMap<>();
+    private volatile long routeRevalidateNanos = DEFAULT_ROUTE_REVALIDATE_NANOS;
+    private volatile int routeCacheLimit = DEFAULT_ROUTE_CACHE_LIMIT;
 
     public PhpDispatcher(Path docRoot, PhpEngine engine) {
         this(docRoot, engine, null);
@@ -90,44 +111,29 @@ public final class PhpDispatcher implements AutoCloseable {
                 String body = engine.scheduler() == null ? "no scheduler\n" : engine.scheduler().stats() + "\n";
                 return Response.text(200, body);
             }
-            Path file = docRoot.resolve(path.substring(1)).normalize();
-            if (!file.startsWith(docRoot)) {
-                return Response.text(403, "Forbidden\n");
-            }
-            // Routing as FrankenPHP's php_server (try_files {path} {path}/index.php index.php,
-            // split_path .php): no configuration needed for front controllers like WordPress.
-            String pathInfo = null;
-            if (Files.isDirectory(file)) {
-                Path index = file.resolve("index.php");
-                if (Files.isRegularFile(index) && !path.endsWith("/")) {
+            Route route = route(path);
+            switch (route.kind()) {
+                case FORBIDDEN -> {
+                    return Response.text(403, "Forbidden\n");
+                }
+                case NOT_FOUND -> {
+                    return Response.text(404, "Not Found: " + path + "\n");
+                }
+                case REDIRECT -> {
                     List<String[]> h = new ArrayList<>();
                     String q = req.rawQuery() == null || req.rawQuery().isEmpty() ? "" : "?" + req.rawQuery();
                     h.add(new String[]{"Location", req.rawPath() + "/" + q});
                     return new Response(308, h, new byte[0]);
                 }
-                file = Files.isRegularFile(index) ? index : docRoot.resolve("index.php");
-            } else if (!Files.isRegularFile(file)) {
-                int split = path.indexOf(".php/");
-                Path script = split < 0 ? null : docRoot.resolve(path.substring(1, split + 4)).normalize();
-                if (script != null && script.startsWith(docRoot) && Files.isRegularFile(script)) {
-                    file = script;
-                    pathInfo = path.substring(split + 4);
-                } else {
-                    file = docRoot.resolve("index.php");
+                case STATIC -> {
+                    return serveStatic(route.file(), req.method());
+                }
+                case SCRIPT -> {
+                    // runs PHP below
                 }
             }
-            if (!Files.isRegularFile(file)) {
-                return Response.text(404, "Not Found: " + path + "\n");
-            }
-            if (!isScript(file)) {
-                String name = file.getFileName().toString();
-                String ext = PhpStrings.lower(name.substring(name.lastIndexOf('.') + 1));
-                List<String[]> h = new ArrayList<>();
-                h.add(new String[]{"Content-Type", MIME.getOrDefault(ext, "application/octet-stream")});
-                h.add(new String[]{"Last-Modified", java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
-                        Files.getLastModifiedTime(file).toInstant().atZone(java.time.ZoneOffset.UTC))});
-                return new Response(200, h, "HEAD".equals(req.method()) ? new byte[0] : Files.readAllBytes(file));
-            }
+            Path file = route.file();
+            String pathInfo = route.pathInfo();
             PhpRequest request = buildRequest(req, file, pathInfo);
             SnapshotServer.Plan plan = null;
             if (snapshots != null) {
@@ -162,6 +168,90 @@ public final class PhpDispatcher implements AutoCloseable {
         }
     }
 
+    /**
+     * The cached resolution for a request path, revalidated against the file system at most
+     * every {@link #routeRevalidateNanos}. The cache is bounded so front-controller sites,
+     * where every distinct URL resolves to the same index.php, cannot grow it without limit.
+     */
+    private Route route(String path) {
+        Route cached = routes.get(path);
+        long now = System.nanoTime();
+        if (cached != null && now - cached.checkedAtNanos() < routeRevalidateNanos) {
+            return cached;
+        }
+        Route fresh = resolveRoute(path);
+        if (routes.size() >= routeCacheLimit) {
+            routes.clear();
+        }
+        routes.put(path, fresh);
+        return fresh;
+    }
+
+    /**
+     * Routing as FrankenPHP's php_server (try_files {path} {path}/index.php index.php,
+     * split_path .php): no configuration needed for front controllers like WordPress.
+     */
+    private Route resolveRoute(String path) {
+        long now = System.nanoTime();
+        Path file = docRoot.resolve(path.substring(1)).normalize();
+        if (!file.startsWith(docRoot)) {
+            return Route.of(RouteKind.FORBIDDEN, null, null, now);
+        }
+        String pathInfo = null;
+        if (Files.isDirectory(file)) {
+            Path index = file.resolve("index.php");
+            if (Files.isRegularFile(index) && !path.endsWith("/")) {
+                return Route.of(RouteKind.REDIRECT, file, null, now);
+            }
+            file = Files.isRegularFile(index) ? index : docRoot.resolve("index.php");
+        } else if (!Files.isRegularFile(file)) {
+            int split = path.indexOf(".php/");
+            Path script = split < 0 ? null : docRoot.resolve(path.substring(1, split + 4)).normalize();
+            if (script != null && script.startsWith(docRoot) && Files.isRegularFile(script)) {
+                file = script;
+                pathInfo = path.substring(split + 4);
+            } else {
+                file = docRoot.resolve("index.php");
+            }
+        }
+        if (!Files.isRegularFile(file)) {
+            return Route.of(RouteKind.NOT_FOUND, null, null, now);
+        }
+        return Route.of(isScript(file) ? RouteKind.SCRIPT : RouteKind.STATIC, file, pathInfo, now);
+    }
+
+    private static Response serveStatic(Path file, String method) throws IOException {
+        String name = file.getFileName().toString();
+        String ext = PhpStrings.lower(name.substring(name.lastIndexOf('.') + 1));
+        List<String[]> h = new ArrayList<>();
+        h.add(new String[]{"Content-Type", MIME.getOrDefault(ext, "application/octet-stream")});
+        h.add(new String[]{"Last-Modified", java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                Files.getLastModifiedTime(file).toInstant().atZone(java.time.ZoneOffset.UTC))});
+        return new Response(200, h, "HEAD".equals(method) ? new byte[0] : Files.readAllBytes(file));
+    }
+
+    /** Test hook: revalidate route entries this often instead of every two seconds. */
+    void setRouteRevalidateMillis(long millis) {
+        routeRevalidateNanos = millis * 1_000_000L;
+    }
+
+    int routeCacheSize() {
+        return routes.size();
+    }
+
+    /** Test hook: a smaller bound than the default 10,000, to exercise eviction cheaply. */
+    void setRouteCacheLimit(int limit) {
+        routeCacheLimit = limit;
+    }
+
+    int routeCacheLimit() {
+        return routeCacheLimit;
+    }
+
+    int cgiNameCacheSize() {
+        return cgiNames.size();
+    }
+
     /** .php files run as PHP; .js files are Node-style request handlers (module.exports = (req, res) => ...). */
     private static boolean isScript(Path file) {
         String name = file.toString();
@@ -179,14 +269,6 @@ public final class PhpDispatcher implements AutoCloseable {
         parseQuery(r.queryString, r.get);
         r.body = PhpStrings.of(req.body());
         String contentType = null;
-        for (Map.Entry<String, String> h : req.headers().entrySet()) {
-            if (h.getKey().equalsIgnoreCase("Content-Type")) {
-                contentType = h.getValue();
-            }
-        }
-        if ("POST".equals(r.method) && contentType != null && contentType.startsWith("application/x-www-form-urlencoded")) {
-            parseQuery(r.body, r.post);
-        }
         String script = "/" + docRoot.relativize(file).toString().replace('\\', '/');
         Map<String, String> s = r.server;
         s.put("REQUEST_METHOD", r.method);
@@ -209,13 +291,14 @@ public final class PhpDispatcher implements AutoCloseable {
         s.put("REMOTE_ADDR", r.remoteAddr);
         s.put("REQUEST_TIME", Long.toString(System.currentTimeMillis() / 1000));
         for (Map.Entry<String, String> h : req.headers().entrySet()) {
-            String upper = PhpStrings.upper(h.getKey()).replace('-', '_');
-            if (upper.equals("CONTENT_TYPE") || upper.equals("CONTENT_LENGTH")) {
-                s.put(upper, h.getValue()); // CGI names: php has no HTTP_CONTENT_TYPE
-            } else {
-                s.put("HTTP_" + upper, h.getValue());
+            if (h.getKey().equalsIgnoreCase("Content-Type")) {
+                contentType = h.getValue();
             }
+            s.put(cgiName(h.getKey()), h.getValue());
             r.headers.put(h.getKey(), h.getValue());
+        }
+        if ("POST".equals(r.method) && contentType != null && contentType.startsWith("application/x-www-form-urlencoded")) {
+            parseQuery(r.body, r.post);
         }
         // The shared host also serves JavaScript. Keep that language's existing text
         // request contract without changing its runtime/parser or PHP's byte fields.
@@ -225,6 +308,23 @@ public final class PhpDispatcher implements AutoCloseable {
             r.body = PhpStrings.toJava(r.body);
         }
         return r;
+    }
+
+    /**
+     * The CGI name for a request header ({@code HTTP_USER_AGENT}, or {@code CONTENT_TYPE} and
+     * {@code CONTENT_LENGTH} without the prefix), cached so a repeated name costs one lookup.
+     */
+    private String cgiName(String name) {
+        String cached = cgiNames.get(name);
+        if (cached != null) {
+            return cached;
+        }
+        String upper = PhpStrings.upper(name).replace('-', '_');
+        String cgi = upper.equals("CONTENT_TYPE") || upper.equals("CONTENT_LENGTH") ? upper : "HTTP_" + upper;
+        if (cgiNames.size() < CGI_NAME_CACHE_LIMIT) {
+            cgiNames.put(name, cgi);
+        }
+        return cgi;
     }
 
     static void parseQuery(String query, Map<String, String> into) {
