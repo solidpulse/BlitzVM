@@ -1,0 +1,57 @@
+anonymous closure=1 anonymous=1 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+  'local' => 3,
+)
+static anonymous closure=1 anonymous=1 static=1 this=null called=ClosureChild scope=ClosureParent used=array (
+  'local' => 4,
+)
+arrow closure=1 anonymous=1 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+)
+no use closure=1 anonymous=1 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+)
+first-class method closure=1 anonymous=0 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+)
+first-class static closure=1 anonymous=0 static=1 this=null called=ClosureParent scope=ClosureParent used=array (
+)
+named function closure closure=1 anonymous=0 static=0 this=null called=null scope=null used=array (
+)
+fromCallable closure=1 anonymous=0 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+)
+bound closure=1 anonymous=1 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+)
+by-ref closure=1 anonymous=1 static=0 this=null called=null scope=null used=array (
+  'counter' => 1,
+)
+global use closure=1 anonymous=1 static=0 this=null called=null scope=null used=array (
+  'parent' => 
+  \ClosureParent::__set_state(array(
+     'value' => 2,
+  )),
+)
+anonymous result=6
+static anonymous result=8
+arrow result=5
+first-class method result=6
+first-class static result=7
+named function result=4
+fromCallable result=8
+array (
+  'counter' => 1,
+)
+counter after array write=10
+counter after variable write=20
+array (
+  'counter' => 20,
+)
+bool(true)
+plain function closure=0 anonymous=0 static=0 this=null called=null scope=null used=array (
+)
+internal function closure=0 anonymous=0 static=0 this=null called=null scope=null used=array (
+)
+method static=0 called=null
+static method static=1 called=null
+array (
+)
+array (
+)
+method getClosure closure=1 anonymous=0 static=0 this=ClosureChild called=ClosureChild scope=ClosureParent used=array (
+)

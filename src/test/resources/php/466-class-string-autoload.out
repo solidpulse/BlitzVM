@@ -1,0 +1,43 @@
+bool(true)
+array(3) {
+  [0]=>
+  string(13) "AutoloadChild"
+  [1]=>
+  string(14) "AutoloadParent"
+  [2]=>
+  string(17) "AutoloadInterface"
+}
+bool(true)
+array(0) {
+}
+bool(true)
+array(0) {
+}
+bool(true)
+array(0) {
+}
+string(14) "AutoloadParent"
+array(0) {
+}
+bool(true)
+array(1) {
+  [0]=>
+  string(22) "AutoloadImplementation"
+}
+bool(false)
+array(1) {
+  [0]=>
+  string(15) "AutoloadMissing"
+}
+bool(false)
+array(0) {
+}
+warning:Calling is_subclass_of() with a string when $allow_string is false
+bool(false)
+array(0) {
+}
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+string(14) "AutoloadParent"

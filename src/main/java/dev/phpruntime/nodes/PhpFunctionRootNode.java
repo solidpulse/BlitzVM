@@ -33,6 +33,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     @CompilationFinal(dimensions = 1) private final int[] captureSlots;
     @CompilationFinal(dimensions = 1) private final VarKind[] captureKinds;
     @CompilationFinal(dimensions = 1) private final boolean[] captureByRef;
+    @CompilationFinal(dimensions = 1) private String[] captureNames = new String[0];
     @CompilationFinal(dimensions = 1) private final String[] paramNames;
     @CompilationFinal(dimensions = 1) private final int[] paramSlots;
     @CompilationFinal(dimensions = 1) private final VarKind[] paramKinds;
@@ -283,6 +284,13 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     public int[] captureSlots() { return captureSlots; }
     public VarKind[] captureKinds() { return captureKinds; }
     public boolean[] captureByRef() { return captureByRef; }
+    public String[] captureNames() { return captureNames; }
+
+    /** Attaches the captured variable names for reflection; called at parse time. */
+    public PhpFunctionRootNode withCaptureNames(String[] names) {
+        this.captureNames = names == null ? new String[0] : names;
+        return this;
+    }
     public boolean usesSymbolTable() { return scopeLayout != null; }
     public boolean isGenerator() { return generator; }
     public int line() { return getSourceSection() != null ? getSourceSection().getStartLine() : -1; }

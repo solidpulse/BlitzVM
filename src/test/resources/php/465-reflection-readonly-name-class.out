@@ -1,0 +1,33 @@
+ReflectionClass name ReflectionException: Cannot set read-only property ReflectionClass::$name
+ReflectionObject name ReflectionException: Cannot set read-only property ReflectionObject::$name
+ReflectionMethod name ReflectionException: Cannot set read-only property ReflectionMethod::$name
+ReflectionMethod class ReflectionException: Cannot set read-only property ReflectionMethod::$class
+ReflectionFunction name ReflectionException: Cannot set read-only property ReflectionFunction::$name
+ReflectionProperty name ReflectionException: Cannot set read-only property ReflectionProperty::$name
+ReflectionProperty class ReflectionException: Cannot set read-only property ReflectionProperty::$class
+ReflectionClassConstant name ReflectionException: Cannot set read-only property ReflectionClassConstant::$name
+ReflectionClassConstant class ReflectionException: Cannot set read-only property ReflectionClassConstant::$class
+ReflectionEnum name ReflectionException: Cannot set read-only property ReflectionEnum::$name
+ReflectionEnumUnitCase name ReflectionException: Cannot set read-only property ReflectionEnumUnitCase::$name
+ReflectionEnumUnitCase class ReflectionException: Cannot set read-only property ReflectionEnumUnitCase::$class
+ReflectionEnumBackedCase name ReflectionException: Cannot set read-only property ReflectionEnumBackedCase::$name
+ReflectionEnumBackedCase class ReflectionException: Cannot set read-only property ReflectionEnumBackedCase::$class
+string(15) "ReflectorTarget"
+bool(true)
+bool(true)
+array(1) {
+  ["name"]=>
+  string(15) "ReflectorTarget"
+}
+bool(true)
+bool(false)
+string(15) "ReflectorTarget"
+ReflectionException: Cannot set read-only property ReflectionClass::$name
+ReflectionException: Cannot set read-only property ReflectionClass::$name
+ReflectionException: Cannot use setRawValueWithoutLazyInitialization() on internal class ReflectionClass
+bool(false)
+ReflectionException: Cannot set read-only property ReflectionClass::$name
+Error: Typed property ReflectionClass::$name must not be accessed before initialization
+string(6) "method"
+string(15) "ReflectorTarget"
+ReflectionException: Cannot set read-only property ReflectionMethod::$class

@@ -1,0 +1,31 @@
+string(3) "raw"
+int(12)
+TypeError: Cannot assign array to property RawProperty::$typed of type int
+Error: Cannot modify readonly property RawProperty::$readonlySet
+bool(false)
+int(7)
+Error: Cannot modify readonly property RawProperty::$readonlyUnset
+int(3)
+int(40)
+Error: Cannot write to get-only virtual property RawProperty::$virtual
+int(99)
+ReflectionException: May not use setRawValue on static properties
+string(6) "static"
+string(7) "without"
+TypeError: ReflectionProperty::setRawValueWithoutLazyInitialization(): Argument #1 ($object) must be of type RawProperty, stdClass given
+ReflectionException: Cannot use setRawValueWithoutLazyInitialization() on static property RawProperty::$static
+string(11) "raw dynamic"
+ReflectionException: Cannot use setRawValueWithoutLazyInitialization() on dynamic property stdClass::$dynamic
+warning:Calling ReflectionProperty::setRawValue() with a given object that is not an instance of the class this property was declared in is deprecated
+string(11) "other value"
+TypeError: ReflectionProperty::setRawValueWithoutLazyInitialization(): Argument #1 ($object) must be of type RawProperty, stdClass given
+hooked abstract=0
+virtual abstract=0
+typed abstract=0
+dynamic abstract=0
+interface abstract=1
+abstract class abstract=1
+ArgumentCountError: ReflectionProperty::setRawValue() expects exactly 2 arguments, 1 given
+ArgumentCountError: ReflectionProperty::setRawValue() expects exactly 2 arguments, 0 given
+ArgumentCountError: ReflectionProperty::setRawValueWithoutLazyInitialization() expects exactly 2 arguments, 1 given
+ArgumentCountError: ReflectionProperty::setRawValueWithoutLazyInitialization() expects exactly 2 arguments, 0 given

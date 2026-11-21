@@ -260,7 +260,7 @@ public final class CallArgHelper {
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Unknown named parameter $" + e.getKey(), site);
             }
-            if (idx < slots.size() && slots.get(idx) != null) {
+            if (idx < pos.size()) {
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Named parameter $" + e.getKey() + " overwrites previous argument", site);
             }

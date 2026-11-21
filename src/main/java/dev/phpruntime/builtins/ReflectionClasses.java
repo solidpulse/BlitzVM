@@ -382,7 +382,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionClass(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("objectOrClass"), (ctx, self, args) -> {
             requireArgCount("ReflectionClass::__construct", args, 1, 1);
             PhpClass cls;
             if (args[0] instanceof PhpObject object) {
@@ -423,6 +424,18 @@ public final class ReflectionClasses {
                 (ctx, self, args) -> !isInternalClass(ctx, classState(self).cls()));
         addMethod(language, methods, "isAnonymous", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> classState(self).cls().template().isAnonymous());
+        addMethod(language, methods, "isCloneable", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> isCloneableClass(classState(self).cls()));
+        addMethod(language, methods, "isUninitializedLazyObject", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionClass::isUninitializedLazyObject", args, 1, 1);
+            ClassState state = classState(self);
+            if (!(args[0] instanceof PhpObject object) || !object.phpClass().isInstanceOf(state.cls())) {
+                throw new PhpError(PhpError.TYPE_ERROR,
+                        "ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type "
+                                + state.cls().name() + ", " + valueTypeName(args[0]) + " given", null);
+            }
+            return false;
+        });
         addMethod(language, methods, "getParentClass", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PhpClass parent = classState(self).cls().parent();
             return parent == null ? Boolean.FALSE : reflectionClassObject(ctx, parent, null);
@@ -707,7 +720,8 @@ public final class ReflectionClasses {
                 false, null, List.of("Stringable", "Reflector"), List.of(), nameProps(), constants, methods));
 
         Map<String, PhpClassTemplate.MethodDecl> objectMethods = new LinkedHashMap<>();
-        addMethod(language, objectMethods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, objectMethods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("object"), (ctx, self, args) -> {
             requireArgCount("ReflectionObject::__construct", args, 1, 1);
             if (!(args[0] instanceof PhpObject object)) {
                 throw new PhpError(PhpError.TYPE_ERROR,
@@ -735,6 +749,36 @@ public final class ReflectionClasses {
         }
         PhpClass.MethodEntry ctor = cls.constructMethod();
         return ctor == null || ctor.visibility() == Visibility.PUBLIC;
+    }
+
+    /**
+     * Internal classes whose engine clone handler is absent. A user subclass inherits that
+     * unless it declares a public {@code __clone}, which is how php reports it.
+     */
+    private static final Set<String> NON_CLONEABLE_INTERNAL = Set.of(
+            "generator", "fiber", "weakreference", "directory", "pdo", "pdostatement", "collator",
+            "random\\randomizer", "reflectionreference",
+            "reflectionclass", "reflectionobject", "reflectionfunctionabstract", "reflectionfunction",
+            "reflectionmethod", "reflectionparameter", "reflectionproperty", "reflectionclassconstant",
+            "reflectionenum", "reflectionenumunitcase", "reflectionenumbackedcase", "reflectionattribute",
+            "reflectiontype", "reflectionnamedtype", "reflectionuniontype", "reflectionintersectiontype",
+            "exception", "errorexception", "error", "typeerror", "valueerror", "argumentcounterror",
+            "arithmeticerror", "divisionbyzeroerror", "parseerror", "unhandledmatcherror", "compileerror");
+
+    private static boolean isCloneableClass(PhpClass cls) {
+        if (cls.isInterface() || cls.isTrait() || cls.isAbstract() || cls.template().isEnum()) {
+            return false;
+        }
+        PhpClass.MethodEntry clone = cls.lookupMethod("__clone");
+        if (clone != null) {
+            return clone.visibility() == Visibility.PUBLIC;
+        }
+        for (PhpClass c = cls; c != null; c = c.parent()) {
+            if (c.template().sourceFile() == null && NON_CLONEABLE_INTERNAL.contains(c.lowerName())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isInternalClass(PhpContext ctx, PhpClass cls) {
@@ -1198,7 +1242,7 @@ public final class ReflectionClasses {
     /** The public {@code string $name} (and {@code $class}) php declares on reflectors. */
     private static PhpClassTemplate.PropertyDecl stringProp(String name) {
         return new PhpClassTemplate.PropertyDecl(name, Visibility.PUBLIC, false, false, PhpNull.INSTANCE, null,
-                new PhpType.Named("string"), List.of(), false);
+                new PhpType.Named("string"), List.of(), false, null, false, null, null, true);
     }
 
     private static List<PhpClassTemplate.PropertyDecl> nameProps() {
@@ -1347,6 +1391,14 @@ public final class ReflectionClasses {
                 (ctx, self, args) -> Boolean.FALSE);
         addMethod(language, methods, "isClosure", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> self.nativeState() instanceof FunctionState state && state.closure);
+        addMethod(language, methods, "isStatic", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> functionIsStatic(self));
+        addMethod(language, methods, "getClosureCalledClass", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PhpClass cls = functionClosureCalledClass(self);
+            return cls == null ? PhpNull.INSTANCE : reflectionClassObject(ctx, cls, null);
+        });
+        addMethod(language, methods, "getClosureUsedVariables", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> closureUsedVariables(self));
         addMethod(language, methods, "getClosureThis", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             if (self.nativeState() instanceof FunctionState state && state.callable != null
                     && state.callable.boundThis() instanceof PhpObject object) {
@@ -1358,7 +1410,7 @@ public final class ReflectionClasses {
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getClosureScopeClass", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
-            PhpClass cls = functionScopeClass(self);
+            PhpClass cls = functionScopeClass(ctx, self);
             return cls == null ? PhpNull.INSTANCE : reflectionClassObject(ctx, cls, null);
         });
         addMethod(language, methods, "setAccessible", Visibility.PUBLIC, false, false,
@@ -1372,7 +1424,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionFunction(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("function"), (ctx, self, args) -> {
             requireArgCount("ReflectionFunction::__construct", args, 1, 1);
             FunctionState state = functionStateFor(ctx, args[0]);
             attach(self, state);
@@ -1398,13 +1451,16 @@ public final class ReflectionClasses {
             }
             return PhpCallable.toClosure(ctx, state.name, null, null);
         });
+        addMethod(language, methods, "isAnonymous", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> functionIsAnonymous(self));
         register(out, new PhpClassTemplate(language.nextTemplateId(), "ReflectionFunction", false, false, false,
                 false, false, "ReflectionFunctionAbstract", List.of(), List.of(), List.of(), List.of(), methods));
     }
 
     private static void buildReflectionMethod(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("objectOrMethod", "method"), (ctx, self, args) -> {
             requireArgCount("ReflectionMethod::__construct", args, 1, 2);
             PhpClass cls;
             String methodName;
@@ -1478,7 +1534,8 @@ public final class ReflectionClasses {
                 }
                 thisArg = instance;
             }
-            PhpClosure closure = PhpClosure.method(entry.callTarget(), thisArg, state.reflected(),
+            PhpClosure closure = PhpClosure.method(entry.callTarget(), thisArg,
+                    thisArg instanceof PhpObject instance ? instance.phpClass() : state.reflected(),
                     entry.fromTrait() ? entry.declaringClass() : null);
             return ctx.newClosure(closure);
         });
@@ -1670,11 +1727,76 @@ public final class ReflectionClasses {
         return functionSignature(self).startLine();
     }
 
-    private static PhpClass functionScopeClass(PhpObject self) {
+    private static PhpClass functionScopeClass(PhpContext ctx, PhpObject self) {
+        if (self.nativeState() instanceof MethodState state) {
+            return state.declaring();
+        }
         if (self.nativeState() instanceof FunctionState state && state.callable != null) {
+            if (state.callable.kind() == PhpCallable.Kind.CLOSURE) {
+                return state.callable.traitSelf() != null ? state.callable.traitSelf()
+                        : state.callable.calledClass();
+            }
+            if (state.callable.kind() == PhpCallable.Kind.METHOD) {
+                if (state.callable.traitSelf() != null) {
+                    return state.callable.traitSelf();
+                }
+                String declaring = state.root == null ? null : state.root.declaringClass();
+                PhpClass scope = declaring == null ? null : ctx.lookupClass(declaring);
+                return scope != null ? scope : state.callable.calledClass();
+            }
+            return null;
+        }
+        return null;
+    }
+
+    private static boolean functionIsStatic(PhpObject self) {
+        if (self.nativeState() instanceof FunctionState state) {
+            return state.root != null && state.root.isStaticMethod();
+        }
+        if (self.nativeState() instanceof MethodState state) {
+            return state.entry().isStatic();
+        }
+        return false;
+    }
+
+    private static PhpClass functionClosureCalledClass(PhpObject self) {
+        if (self.nativeState() instanceof FunctionState state && state.closure && state.callable != null) {
             return state.callable.calledClass();
         }
         return null;
+    }
+
+    private static boolean functionIsAnonymous(PhpObject self) {
+        if (self.nativeState() instanceof FunctionState state && state.closure) {
+            return state.root != null && state.root.isClosure();
+        }
+        return false;
+    }
+
+    private static PhpArray closureUsedVariables(PhpObject self) {
+        PhpArray out = new PhpArray();
+        if (!(self.nativeState() instanceof FunctionState state) || !state.closure
+                || state.closureObject == null || state.closureObject.closure() == null) {
+            return out;
+        }
+        PhpClosure closure = state.closureObject.closure();
+        if (closure.kind() != PhpClosure.Kind.CLOSURE) {
+            return out;
+        }
+        Object[] captures = closure.captures();
+        String[] names = state.root == null ? null : state.root.captureNames();
+        if (captures == null || names == null) {
+            return out;
+        }
+        for (int i = 0; i < captures.length && i < names.length; i++) {
+            if (names[i] == null) {
+                continue;
+            }
+            Object value = captures[i];
+            out.put(names[i], value instanceof PhpReference ? value
+                    : PhpOps.copyOnAssign(value == null ? PhpNull.INSTANCE : value));
+        }
+        return out;
     }
 
     private static PhpArray staticVariables(PhpContext ctx, PhpObject self) {
@@ -1883,7 +2005,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionProperty(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("class", "property"), (ctx, self, args) -> {
             requireArgCount("ReflectionProperty::__construct", args, 2, 2);
             ClassState clsState;
             PhpObject object = null;
@@ -1998,6 +2121,10 @@ public final class ReflectionClasses {
                         PhpOps.copyOnAssign(args[1]));
                 return PhpNull.INSTANCE;
             }
+            if (state.decl().writeBlocked()) {
+                throw reflectionError("Cannot set read-only property " + state.reflected().name()
+                        + "::$" + state.name());
+            }
             if (state.decl().isStatic()) {
                 Object value;
                 if (args.length == 1) {
@@ -2027,6 +2154,24 @@ public final class ReflectionClasses {
             }
             setInstanceProperty(ctx, object, state, args[1]);
             return PhpNull.INSTANCE;
+        });
+        addMethod(language, methods, "setRawValue", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> setRawPropertyValue(ctx, propertyState(self), args, false));
+        addMethod(language, methods, "setRawValueWithoutLazyInitialization", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> setRawPropertyValue(ctx, propertyState(self), args, true));
+        addMethod(language, methods, "isAbstract", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PropertyState state = propertyState(self);
+            if (state.dynamic()) {
+                return false;
+            }
+            PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+            if (prop != null) {
+                return (prop.getHook() != null && prop.getHook().isAbstract())
+                        || (prop.setHook() != null && prop.setHook().isAbstract());
+            }
+            PhpClassTemplate.PropertyDecl decl = state.decl();
+            return decl != null && ((decl.getHook() != null && decl.getHook().isAbstract())
+                    || (decl.setHook() != null && decl.setHook().isAbstract()));
         });
         addMethod(language, methods, "isInitialized", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PropertyState state = propertyState(self);
@@ -2178,6 +2323,82 @@ public final class ReflectionClasses {
         DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
     }
 
+    /**
+     * {@code setRawValue} writes the backing store without running a set hook but still
+     * enforces the declared type and the readonly initialization rule. The
+     * {@code WithoutLazyInitialization} variant additionally requires an instance of the
+     * reflected class and rejects static and dynamic properties, as php does.
+     */
+    private static Object setRawPropertyValue(PhpContext ctx, PropertyState state, Object[] args,
+                                              boolean withoutLazy) {
+        String function = withoutLazy ? "ReflectionProperty::setRawValueWithoutLazyInitialization"
+                : "ReflectionProperty::setRawValue";
+        requireArgCount(function, args, 2, 2);
+        Object objectArg = args[0];
+        if (!withoutLazy && !(objectArg instanceof PhpObject)) {
+            throw new PhpError(PhpError.TYPE_ERROR, function + "(): Argument #1 ($object) must be of type"
+                    + " object, " + PhpOps.typeName(objectArg) + " given", null);
+        }
+        if (withoutLazy && (!(objectArg instanceof PhpObject objectArgObj)
+                || !objectArgObj.phpClass().isInstanceOf(state.reflected()))) {
+            throw new PhpError(PhpError.TYPE_ERROR, function + "(): Argument #1 ($object) must be of type "
+                    + state.reflected().name() + ", " + valueTypeName(objectArg) + " given", null);
+        }
+        PhpObject object = (PhpObject) objectArg;
+        if (state.dynamic()) {
+            if (withoutLazy) {
+                throw reflectionError("Cannot use setRawValueWithoutLazyInitialization() on dynamic property "
+                        + state.reflected().name() + "::$" + state.dynamicName());
+            }
+            DynamicObject.PutNode.getUncached().execute(object, state.dynamicName(),
+                    PhpOps.copyOnAssign(args[1]));
+            return PhpNull.INSTANCE;
+        }
+        if (state.decl().isStatic()) {
+            if (withoutLazy) {
+                throw reflectionError("Cannot use setRawValueWithoutLazyInitialization() on static property "
+                        + state.declaring().name() + "::$" + state.name());
+            }
+            throw reflectionError("May not use setRawValue on static properties");
+        }
+        PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+        if (prop != null && prop.virtual()) {
+            if (prop.setHook() == null) {
+                throw new PhpError("Cannot write to get-only virtual property "
+                        + state.declaring().name() + "::$" + state.name());
+            }
+            throw new PhpError("Must not write to virtual property "
+                    + state.declaring().name() + "::$" + state.name());
+        }
+        if (state.decl().writeBlocked()) {
+            if (withoutLazy) {
+                throw reflectionError("Cannot use setRawValueWithoutLazyInitialization() on internal class "
+                        + state.declaring().name());
+            }
+            throw reflectionError("Cannot set read-only property " + object.phpClass().name()
+                    + "::$" + state.name());
+        }
+        if (!withoutLazy && !object.phpClass().isInstanceOf(state.declaring())) {
+            ctx.deprecated("Calling ReflectionProperty::setRawValue() with a given object that is not"
+                    + " an instance of the class this property was declared in is deprecated", 0);
+            DynamicObject.PutNode.getUncached().execute(object, state.name(), PhpOps.copyOnAssign(args[1]));
+            return PhpNull.INSTANCE;
+        }
+        Object current = rawInstanceProperty(ctx, object, state);
+        if (prop != null && prop.isReadonly() && current != PhpClass.UNINITIALIZED) {
+            throw new PhpError("Cannot modify readonly property "
+                    + state.declaring().name() + "::$" + state.name());
+        }
+        Object value = args[1];
+        if (prop != null && prop.declaredType() != null) {
+            value = prop.declaredType().checkProperty(value == null ? PhpNull.INSTANCE : value, ctx, null,
+                    false, object.phpClass(), state.declaring().name(), state.name());
+        }
+        String key = propertyStorageKey(ctx, state.declaring(), state.name());
+        DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
+        return PhpNull.INSTANCE;
+    }
+
     private static PhpClass.InstanceProp effectiveInstanceProp(PropertyState state) {
         if (state.decl() == null || state.decl().isStatic()) {
             return null;
@@ -2257,7 +2478,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionClassConstant(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("class", "constant"), (ctx, self, args) -> {
             requireArgCount("ReflectionClassConstant::__construct", args, 2, 2);
             PhpClass cls = ctx.lookupOrAutoloadClass(PhpOps.toStr(args[0]));
             if (cls == null) {
@@ -2316,7 +2538,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionEnum(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("objectOrClass"), (ctx, self, args) -> {
             requireArgCount("ReflectionEnum::__construct", args, 1, 1);
             PhpClass cls;
             if (args[0] instanceof PhpObject object) {
@@ -2371,7 +2594,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionEnumUnitCase(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("class", "constant"), (ctx, self, args) -> {
             requireArgCount("ReflectionEnumUnitCase::__construct", args, 2, 2);
             PhpClass cls = ctx.lookupOrAutoloadClass(PhpOps.toStr(args[0]));
             if (cls == null) {
@@ -2417,7 +2641,8 @@ public final class ReflectionClasses {
 
     private static void buildReflectionEnumBackedCase(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false,
+                List.of("class", "constant"), (ctx, self, args) -> {
             requireArgCount("ReflectionEnumBackedCase::__construct", args, 2, 2);
             PhpClass cls = ctx.lookupOrAutoloadClass(PhpOps.toStr(args[0]));
             if (cls == null) {
@@ -2998,6 +3223,11 @@ public final class ReflectionClasses {
         return slash < 0 ? "" : name.substring(0, slash);
     }
 
+    /** The name php uses for a value in an argument type error: an object shows its class. */
+    private static String valueTypeName(Object value) {
+        return value instanceof PhpObject object ? object.phpClass().name() : PhpOps.typeName(value);
+    }
+
     private static List<PhpClass> collectInterfaces(PhpClass cls) {
         List<PhpClass> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
@@ -3027,10 +3257,26 @@ public final class ReflectionClasses {
     private static void addMethod(PhpLanguage language, Map<String, PhpClassTemplate.MethodDecl> methods,
                                   String name, Visibility visibility, boolean isStatic, boolean isFinal,
                                   PhpExceptions.BuiltinMethod impl) {
+        addMethod(language, methods, name, visibility, isStatic, isFinal, List.of(), impl);
+    }
+
+    /** An internal method with parameter names, so named arguments bind as php's arginfo does. */
+    private static void addMethod(PhpLanguage language, Map<String, PhpClassTemplate.MethodDecl> methods,
+                                  String name, Visibility visibility, boolean isStatic, boolean isFinal,
+                                  List<String> parameterNames, PhpExceptions.BuiltinMethod impl) {
         String lower = PhpStrings.lower(name);
-        methods.put(lower, new PhpClassTemplate.MethodDecl(name, lower, language.methodId(name), visibility,
-                isStatic, false, isFinal,
-                new PhpExceptions.BuiltinMethodRootNode(language, name, impl).getCallTarget()));
+        PhpClassTemplate.MethodDecl decl = new PhpClassTemplate.MethodDecl(name, lower, language.methodId(name),
+                visibility, isStatic, false, isFinal,
+                new PhpExceptions.BuiltinMethodRootNode(language, name, impl).getCallTarget());
+        if (!parameterNames.isEmpty()) {
+            List<PhpParameter> parameters = new ArrayList<>();
+            for (String parameterName : parameterNames) {
+                parameters.add(new PhpParameter(parameterName, null, List.of(), false, false, false, null, null));
+            }
+            decl = new PhpClassTemplate.MethodDecl(name, lower, language.methodId(name), visibility, isStatic,
+                    false, isFinal, decl.callTarget(), new PhpSignature(parameters, null, List.of()));
+        }
+        methods.put(lower, decl);
     }
 
     private static void addAbstractMethod(PhpLanguage language, Map<String, PhpClassTemplate.MethodDecl> methods,
