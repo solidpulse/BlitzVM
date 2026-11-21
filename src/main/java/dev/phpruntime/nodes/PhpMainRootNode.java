@@ -238,4 +238,14 @@ public final class PhpMainRootNode extends PhpRootNode {
     public String getName() {
         return "{main}";
     }
+
+    /**
+     * The name tools show for a file's top-level code: {@code {main}} plus the file. Every
+     * included file has its own {@code {main}} root, so the file is what tells them apart.
+     */
+    public String qualifiedName() {
+        Source s = source();
+        String file = s == null ? null : s.getPath() != null && !s.getPath().isEmpty() ? s.getPath() : s.getName();
+        return file == null || file.isEmpty() ? getName() : getName() + " " + file;
+    }
 }

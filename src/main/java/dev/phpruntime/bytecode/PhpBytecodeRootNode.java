@@ -83,6 +83,10 @@ import java.util.Map;
  * calling convention is the AST root's, so call sites do not care which one they call.
  */
 @GenerateBytecode(languageClass = PhpLanguage.class, enableQuickening = true, enableYield = true,
+        // Every function, method, closure and file root is an implicit RootTag (and its body a
+        // RootBodyTag), so instruments such as the CPU sampler see each PHP invocation as a root
+        // with its own source section. Runs without an instrument carry no extra nodes.
+        enableTagInstrumentation = true, enableRootTagging = true, enableRootBodyTagging = true,
         boxingEliminationTypes = {long.class, double.class, boolean.class},
         enableBlockScoping = false,
         // exit/die skips finally blocks in PHP: it must pass through guest handlers. The
@@ -155,6 +159,23 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return main.getName();
         }
         return function != null ? function.getName() : "{member initializer}";
+    }
+
+    /**
+     * The name tools show for this root: {@code Class::method} for a method, the function's
+     * name, {@code {closure:file:line}} for a closure, and {@code {main} file} for a file's
+     * top-level code. Unlike {@link #getName()}, which PHP stack traces use, this carries the
+     * file and line that a profiler or debugger needs to tell two closures apart.
+     */
+    @Override
+    public String getQualifiedName() {
+        if (main != null) {
+            return main.qualifiedName();
+        }
+        if (function != null) {
+            return function.qualifiedCallableName();
+        }
+        return getName();
     }
 
     @Override

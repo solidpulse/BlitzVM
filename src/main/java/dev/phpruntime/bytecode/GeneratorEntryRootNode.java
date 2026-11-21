@@ -59,6 +59,17 @@ public final class GeneratorEntryRootNode extends RootNode {
     }
 
     @Override
+    public String getQualifiedName() {
+        return function.qualifiedCallableName();
+    }
+
+    /** The generator wrapper is not guest code; keep it out of instruments and guest stack traces. */
+    @Override
+    public boolean isInternal() {
+        return true;
+    }
+
+    @Override
     public SourceSection getSourceSection() {
         return function.getSourceSection();
     }

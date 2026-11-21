@@ -43,6 +43,17 @@ public final class EntryRootNode extends RootNode {
     }
 
     @Override
+    public String getQualifiedName() {
+        return main.qualifiedName();
+    }
+
+    /** The entry wrapper is not guest code; keep it out of instruments and guest stack traces. */
+    @Override
+    public boolean isInternal() {
+        return true;
+    }
+
+    @Override
     public SourceSection getSourceSection() {
         return main.getSourceSection();
     }

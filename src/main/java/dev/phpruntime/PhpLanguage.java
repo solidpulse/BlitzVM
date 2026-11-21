@@ -3,6 +3,8 @@ package dev.phpruntime;
 import com.oracle.truffle.api.CallTarget;
 import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
+import com.oracle.truffle.api.instrumentation.ProvidedTags;
+import com.oracle.truffle.api.instrumentation.StandardTags;
 import com.oracle.truffle.api.source.Source;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.nodes.call.ClosureInvokeRootNode;
@@ -32,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong;
         characterMimeTypes = PhpLanguage.MIME_TYPE,
         fileTypeDetectors = PhpFileDetector.class,
         contextPolicy = TruffleLanguage.ContextPolicy.SHARED)
+@ProvidedTags({StandardTags.RootTag.class, StandardTags.RootBodyTag.class})
 public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
 
     public static final String ID = "php";

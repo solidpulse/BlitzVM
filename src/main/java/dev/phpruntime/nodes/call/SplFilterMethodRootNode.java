@@ -70,6 +70,12 @@ public final class SplFilterMethodRootNode extends RootNode {
         return owner + "::" + name;
     }
 
+    /** A builtin method is not guest code: tools treat it as internal. */
+    @Override
+    public boolean isInternal() {
+        return true;
+    }
+
     @Override
     public Object execute(VirtualFrame frame) {
         return run(frame.getArguments());

@@ -56,4 +56,10 @@ public final class ClosureInvokeRootNode extends PhpRootNode {
             ctx.setPendingCallMode(previous);
         }
     }
+
+    /** A builtin method is not guest code: tools treat it as internal. */
+    @Override
+    public boolean isInternal() {
+        return true;
+    }
 }
