@@ -261,7 +261,7 @@ public final class Lexer {
             throw new PhpParseError("Unterminated string", startLine);
         }
         pos++;
-        out.add(new Token(Kind.STRING, sb.toString(), start, startLine));
+        out.add(new Token(Kind.STRING, PhpStrings.intern(sb.toString()), start, startLine));
     }
 
     private void lexDoubleQuoted() {
@@ -373,7 +373,7 @@ public final class Lexer {
         }
 
         if (quote == '\'') {
-            out.add(new Token(Kind.STRING, rawBody.toString(), start, startLine));
+            out.add(new Token(Kind.STRING, PhpStrings.intern(rawBody.toString()), start, startLine));
         } else {
             lexInterpolated(rawBody.toString(), 0, false, start, startLine);
         }
@@ -453,7 +453,7 @@ public final class Lexer {
         boolean literal = parts.stream().noneMatch(Part::isExpr);
         if (literal) {
             String s = parts.isEmpty() ? "" : parts.get(0).value();
-            out.add(new Token(Kind.STRING, s, start, startLine));
+            out.add(new Token(Kind.STRING, PhpStrings.intern(s), start, startLine));
         } else {
             out.add(new Token(Kind.TEMPLATE, "", start, startLine, parts));
         }

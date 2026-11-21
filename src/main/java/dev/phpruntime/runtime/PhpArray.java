@@ -1,5 +1,6 @@
 package dev.phpruntime.runtime;
 
+import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.interop.TruffleObject;
 
@@ -130,21 +131,44 @@ public final class PhpArray implements TruffleObject {
         return result;
     }
 
-    @TruffleBoundary
+    /**
+     * Normalises a key the way php does, inline for the common cases. A string can only become
+     * an integer when its first byte is a digit or {@code -} (php's ZEND_HANDLE_NUMERIC_STR
+     * check), so everything else stays a string without the canonical-int scan.
+     */
     public static Object normalizeKey(Object key) {
         if (key instanceof Long) {
             return key;
         }
         if (key instanceof String s) {
-            if (isCanonicalInt(s)) {
-                try {
-                    return Long.parseLong(s);
-                } catch (NumberFormatException ignored) {
-                    return s;
-                }
+            if (s.isEmpty()) {
+                return s;
+            }
+            char c = s.charAt(0);
+            if (CompilerDirectives.injectBranchProbability(CompilerDirectives.SLOWPATH_PROBABILITY,
+                    c == '-' || (c >= '0' && c <= '9'))) {
+                return normalizeNumericString(s);
             }
             return s;
         }
+        return normalizeOtherKey(key);
+    }
+
+    /** A string that may be a canonical integer: "5" becomes 5, "05" and "-0" stay strings. */
+    @TruffleBoundary
+    private static Object normalizeNumericString(String s) {
+        if (isCanonicalInt(s)) {
+            try {
+                return Long.parseLong(s);
+            } catch (NumberFormatException ignored) {
+                return s;
+            }
+        }
+        return s;
+    }
+
+    @TruffleBoundary
+    private static Object normalizeOtherKey(Object key) {
         if (key instanceof Boolean b) {
             return b ? 1L : 0L;
         }
@@ -194,6 +218,57 @@ public final class PhpArray implements TruffleObject {
         return pos < 0 ? null : values[pos];
     }
 
+    /**
+     * Read by any key, normalising inline. The packed hit and the hash probe stay in compiled
+     * code; only a possible numeric string goes through a boundary, in {@link #normalizeKey}.
+     */
+    public Object getFast(Object key) {
+        return valueAtPos(findFast(normalizeKey(key)));
+    }
+
+    /** {@link #get(Object)} for a key already normalised by the caller. */
+    public Object getNormalized(Object key) {
+        return valueAtPos(findFast(key));
+    }
+
+    /** {@link #get(Object)} for a key whose normalised form and hash are already known. */
+    public Object getKnown(KnownKey key) {
+        return valueAtPos(findKnown(key.key(), key.hash()));
+    }
+
+    /** Raw element (a {@link PhpReference} cell is not unwrapped) by any key. */
+    public Object getRawFast(Object key) {
+        return rawAtPos(findFast(normalizeKey(key)));
+    }
+
+    public Object getRawNormalized(Object key) {
+        return rawAtPos(findFast(key));
+    }
+
+    public Object getRawKnown(KnownKey key) {
+        return rawAtPos(findKnown(key.key(), key.hash()));
+    }
+
+    public boolean containsKeyFast(Object key) {
+        return findFast(normalizeKey(key)) >= 0;
+    }
+
+    public boolean containsKeyKnown(KnownKey key) {
+        return findKnown(key.key(), key.hash()) >= 0;
+    }
+
+    private Object valueAtPos(int pos) {
+        if (pos < 0) {
+            return null;
+        }
+        Object v = values[pos];
+        return v instanceof PhpReference ref ? ref.getValue() : v;
+    }
+
+    private Object rawAtPos(int pos) {
+        return pos < 0 ? null : values[pos];
+    }
+
     @TruffleBoundary
     public boolean containsKey(Object key) {
         return find(normalizeKey(key)) >= 0;
@@ -213,11 +288,8 @@ public final class PhpArray implements TruffleObject {
     }
 
     /** {@link #get} for a key from {@link #knownKey}. */
-    @TruffleBoundary
     public Object get(KnownKey key) {
-        int pos = find(key.key(), key.hash());
-        Object v = pos < 0 ? null : values[pos];
-        return v instanceof PhpReference ref ? ref.getValue() : v;
+        return getKnown(key);
     }
 
     @TruffleBoundary
@@ -229,6 +301,131 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public void putRef(Object key, PhpReference ref) {
         store(normalizeKey(key), ref, true);
+    }
+
+    /**
+     * A write of any key to an array the caller already made writable with {@link #forWrite()}.
+     * Replacing a slot, appending into packed spare capacity and inserting into a hash that has
+     * room stay inline; growing, conversion to a hash and unusual keys call {@link #store}.
+     */
+    public void putFast(Object key, Object value) {
+        putNormalized(normalizeKey(key), value);
+    }
+
+    /** {@link #putFast} for a key already normalised by the caller. */
+    public void putNormalized(Object key, Object value) {
+        if (keys == null) {
+            putPacked(key, value);
+        } else {
+            putHash(key, hash(key), value);
+        }
+    }
+
+    /** {@link #putFast} for a key whose normalised form and hash are already known. */
+    public void putKnown(KnownKey key, Object value) {
+        if (keys == null) {
+            putPacked(key.key(), value);
+        } else {
+            putHash(key.key(), key.hash(), value);
+        }
+    }
+
+    private void putPacked(Object key, Object value) {
+        assert !immutable && shared == 0 : "write to a shared array";
+        if (CompilerDirectives.injectBranchProbability(CompilerDirectives.SLOWPATH_PROBABILITY,
+                !(key instanceof Long l && l >= 0 && l <= size))) {
+            store(key, value, false);
+            return;
+        }
+        long k = ((Long) key).longValue();
+        int pos = (int) k;
+        if (pos == size) {
+            insertPackedInline(value);
+        } else {
+            replaceInline(pos, value, false);
+        }
+        updateNextIndex(k);
+    }
+
+    private void putHash(Object key, int hash, Object value) {
+        assert !immutable && shared == 0 : "write to a shared array";
+        int mask = index.length - 1;
+        int bucket = hash & mask;
+        int deletedBucket = -1;
+        while (index[bucket] != 0) {
+            int pos = index[bucket] - 1;
+            if (pos >= 0 && hashes[pos] == hash && keyMatches(key, keys[pos])) {
+                replaceInline(pos, value, false);
+                if (key instanceof Long l) {
+                    updateNextIndex(l);
+                }
+                return;
+            }
+            if (pos < 0 && deletedBucket < 0) {
+                deletedBucket = bucket;
+            }
+            bucket = (bucket + 1) & mask;
+        }
+        if (CompilerDirectives.injectBranchProbability(CompilerDirectives.SLOWPATH_PROBABILITY,
+                used == values.length || indexUsed >= index.length * 3 / 4)) {
+            store(key, value, false);
+            return;
+        }
+        if (deletedBucket >= 0) {
+            bucket = deletedBucket;
+        }
+        if (index[bucket] == 0) {
+            indexUsed++;
+        }
+        index[bucket] = used + 1;
+        keys[used] = key;
+        values[used] = value;
+        hashes[used] = hash;
+        if (pointer < 0) {
+            pointer = used;
+        }
+        used++;
+        size++;
+        if (key instanceof Long l) {
+            updateNextIndex(l);
+        }
+    }
+
+    private static boolean keyMatches(Object key, Object stored) {
+        if (stored == key) {
+            return true;
+        }
+        if (key instanceof Long a) {
+            return stored instanceof Long b && a.longValue() == b.longValue();
+        }
+        if (key instanceof String s) {
+            return stored instanceof String t && s.equals(t);
+        }
+        return false;
+    }
+
+    private void replaceInline(int pos, Object value, boolean replaceRef) {
+        assert !immutable && shared == 0 : "write to a shared array";
+        if (values[pos] instanceof PhpReference) {
+            // Assigning through a reference cell is the uncommon case; keep its rule in one place.
+            replace(pos, value, replaceRef);
+            return;
+        }
+        values[pos] = value;
+    }
+
+    private void insertPackedInline(Object value) {
+        assert !immutable && shared == 0 : "write to a shared array";
+        if (CompilerDirectives.injectBranchProbability(CompilerDirectives.SLOWPATH_PROBABILITY,
+                size == values.length)) {
+            insertPacked(value);
+            return;
+        }
+        values[size] = value;
+        if (pointer < 0) {
+            pointer = size;
+        }
+        used = ++size;
     }
 
     @TruffleBoundary
@@ -264,6 +461,19 @@ public final class PhpArray implements TruffleObject {
         }
     }
 
+    /**
+     * {@code $a[] = v} on an array the caller already made writable. Appending into packed spare
+     * capacity is inline; growing or a next index that is not the packed end uses {@link #append}.
+     */
+    public void appendWritable(Object value) {
+        if (keys == null && nextIndex == size) {
+            insertPackedInline(value);
+            updateNextIndex(size - 1L);
+            return;
+        }
+        append(value);
+    }
+
     @TruffleBoundary
     public void remove(Object key) {
         int pos = find(normalizeKey(key));
@@ -272,7 +482,26 @@ public final class PhpArray implements TruffleObject {
         }
     }
 
-    @TruffleBoundary
+    /** {@link #remove} for a key already normalised, on an array the caller made writable. */
+    public void removeNormalized(Object key) {
+        int pos = keys == null ? packedPos(key) : findKnown(key, hash(key));
+        if (pos >= 0) {
+            delete(pos);
+        }
+    }
+
+    public void removeKnown(KnownKey key) {
+        int pos = findKnown(key.key(), key.hash());
+        if (pos >= 0) {
+            delete(pos);
+        }
+    }
+
+    /** {@link #remove} for any key, normalising inline. */
+    public void removeFast(Object key) {
+        removeNormalized(normalizeKey(key));
+    }
+
     public int size() {
         return size;
     }
@@ -445,6 +674,42 @@ public final class PhpArray implements TruffleObject {
 
     // ---------------------------------------------------------------- storage
 
+    /** A read by a normalised key: the packed bounds check without hashing, else the probe. */
+    private int findFast(Object key) {
+        if (keys == null) {
+            return packedPos(key);
+        }
+        return findKnown(key, hash(key));
+    }
+
+    /**
+     * {@link #find(Object)} with the hash already computed, inline for compiled callers. The
+     * hash probe compares the stored hash first and identity before {@code equals} (literal
+     * keys are interned); deleted slots are skipped.
+     */
+    private int findKnown(Object key, int hash) {
+        if (keys == null) {
+            return packedPos(key);
+        }
+        int mask = index.length - 1;
+        int bucket = hash & mask;
+        while (index[bucket] != 0) {
+            int pos = index[bucket] - 1;
+            if (pos >= 0 && hashes[pos] == hash) {
+                Object stored = keys[pos];
+                if (keyMatches(key, stored)) {
+                    return pos;
+                }
+            }
+            bucket = (bucket + 1) & mask;
+        }
+        return -1;
+    }
+
+    private int packedPos(Object key) {
+        return key instanceof Long l && l >= 0 && l < size ? (int) l.longValue() : -1;
+    }
+
     @TruffleBoundary
     private int find(Object key) {
         if (keys == null) {
@@ -559,7 +824,6 @@ public final class PhpArray implements TruffleObject {
         used = ++size;
     }
 
-    @TruffleBoundary
     private void updateNextIndex(long key) {
         if (!nextIndexInitialized || key >= nextIndex) {
             nextIndex = key == Long.MAX_VALUE ? key : key + 1;
@@ -567,9 +831,14 @@ public final class PhpArray implements TruffleObject {
         }
     }
 
-    @TruffleBoundary
     private static int hash(Object key) {
-        int h = key.hashCode();
+        int h;
+        if (key instanceof Long l) {
+            long v = l.longValue();
+            h = (int) (v ^ (v >>> 32));
+        } else {
+            h = key.hashCode();
+        }
         h ^= h >>> 16;
         h *= 0x7feb352d;
         h ^= h >>> 15;
@@ -659,27 +928,27 @@ public final class PhpArray implements TruffleObject {
     // ---------------------------------------------------------------- cursor
 
     /** Cursor positions are valid while the array is held as a shared, by-value snapshot. */
-    @TruffleBoundary
     public int firstPos() {
         return nextPos(-1);
     }
 
-    @TruffleBoundary
     public int nextPos(int pos) {
-        for (int next = pos + 1; next < used; next++) {
-            if (keys == null || keys[next] != null) {
+        int next = pos + 1;
+        if (keys == null) {
+            return next < used ? next : -1;
+        }
+        for (; next < used; next++) {
+            if (keys[next] != null) {
                 return next;
             }
         }
         return -1;
     }
 
-    @TruffleBoundary
     public int lastPos() {
         return used - 1;
     }
 
-    @TruffleBoundary
     public int prevPos(int pos) {
         for (int prev = pos - 1; prev >= 0; prev--) {
             if (keys == null || keys[prev] != null) {
@@ -689,19 +958,16 @@ public final class PhpArray implements TruffleObject {
         return -1;
     }
 
-    @TruffleBoundary
     public Object keyAt(int pos) {
         return keys == null ? (long) pos : keys[pos];
     }
 
     /** Value at a cursor position, unwrapping a reference cell like {@link #entries()}. */
-    @TruffleBoundary
     public Object valueAt(int pos) {
         Object v = values[pos];
         return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
-    @TruffleBoundary
     public Object rawValueAt(int pos) {
         return values[pos];
     }

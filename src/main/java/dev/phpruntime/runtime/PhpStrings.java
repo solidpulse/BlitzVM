@@ -19,6 +19,23 @@ public final class PhpStrings {
     private PhpStrings() {
     }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> LITERALS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Interns a source literal so the same text is one instance across every file the language
+     * parses, as php interns its literal strings. Array keys then hit the identity check in the
+     * hash probe before falling back to {@code equals}. Not {@link String#intern()}: that uses
+     * the JVM-wide pool and is not part of the language.
+     */
+    public static String intern(String s) {
+        if (s.isEmpty()) {
+            return "";
+        }
+        String existing = LITERALS.putIfAbsent(s, s);
+        return existing == null ? s : existing;
+    }
+
     public static byte[] bytes(String php) {
         return php.getBytes(StandardCharsets.ISO_8859_1);
     }

@@ -1504,7 +1504,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Operation
     public static final class Index {
-        static PhpArray.KnownKey knownKey(String key) {
+        static PhpArray.KnownKey knownKey(Object key) {
+            return PhpArray.knownKey(key);
+        }
+
+        static PhpArray.KnownKey knownKeyLong(long key) {
             return PhpArray.knownKey(key);
         }
 
@@ -1517,7 +1521,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                         @Bind("$bytecodeIndex") int bci, @Bind Node node,
                                         @Cached("key") String cachedKey,
                                         @Cached("knownKey(key)") PhpArray.KnownKey known) {
-            Object v = array.get(known);
+            Object v = array.getKnown(known);
+            return v == null ? undefinedKey(key, bytecode, bci, node) : v;
+        }
+
+        /** An integer constant key, hashed once for the site. */
+        @Specialization(guards = "key == cachedKey", limit = "1")
+        static Object fromArrayConstLongKey(PhpArray array, long key, @Bind BytecodeNode bytecode,
+                                            @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                                            @Cached("key") long cachedKey,
+                                            @Cached("knownKeyLong(key)") PhpArray.KnownKey known) {
+            Object v = array.getKnown(known);
             return v == null ? undefinedKey(key, bytecode, bci, node) : v;
         }
 
@@ -1546,7 +1560,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** The element if it exists and is not null, else PHP null, with no warning. */
     @Operation
     public static final class IndexIfSet {
-        static PhpArray.KnownKey knownKey(String key) {
+        static PhpArray.KnownKey knownKey(Object key) {
+            return PhpArray.knownKey(key);
+        }
+
+        static PhpArray.KnownKey knownKeyLong(long key) {
             return PhpArray.knownKey(key);
         }
 
@@ -1554,7 +1572,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = "key == cachedKey", limit = "1")
         static Object fromArrayConstKey(PhpArray array, String key, @Cached("key") String cachedKey,
                                         @Cached("knownKey(key)") PhpArray.KnownKey known) {
-            Object v = array.get(known);
+            Object v = array.getKnown(known);
+            return v == null ? PhpNull.INSTANCE : v;
+        }
+
+        /** A constant integer key: see {@link Index#fromArrayConstLongKey}. */
+        @Specialization(guards = "key == cachedKey", limit = "1")
+        static Object fromArrayConstLongKey(PhpArray array, long key, @Cached("key") long cachedKey,
+                                            @Cached("knownKeyLong(key)") PhpArray.KnownKey known) {
+            Object v = array.getKnown(known);
             return v == null ? PhpNull.INSTANCE : v;
         }
 
@@ -1583,7 +1609,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Operation
     public static final class IssetIndex {
-        static PhpArray.KnownKey knownKey(String key) {
+        static PhpArray.KnownKey knownKey(Object key) {
+            return PhpArray.knownKey(key);
+        }
+
+        static PhpArray.KnownKey knownKeyLong(long key) {
             return PhpArray.knownKey(key);
         }
 
@@ -1591,7 +1621,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = "key == cachedKey", limit = "1")
         static boolean fromArrayConstKey(PhpArray array, String key, @Cached("key") String cachedKey,
                                          @Cached("knownKey(key)") PhpArray.KnownKey known) {
-            Object v = array.get(known);
+            Object v = array.getKnown(known);
+            return v != null && v != PhpNull.INSTANCE;
+        }
+
+        /** A constant integer key: see {@link Index#fromArrayConstLongKey}. */
+        @Specialization(guards = "key == cachedKey", limit = "1")
+        static boolean fromArrayConstLongKey(PhpArray array, long key, @Cached("key") long cachedKey,
+                                             @Cached("knownKeyLong(key)") PhpArray.KnownKey known) {
+            Object v = array.getKnown(known);
             return v != null && v != PhpNull.INSTANCE;
         }
 
@@ -1684,6 +1722,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         final PhpArray array;
         final PhpObject iterator;
         final List<Map.Entry<Object, Object>> entries;
+        /** Snapshot size, kept off the interface call in the compiled loop. */
+        final int entryCount;
         int pos = -1;
         boolean started;
 
@@ -1691,6 +1731,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             this.array = array;
             this.iterator = iterator;
             this.entries = entries;
+            this.entryCount = entries == null ? 0 : entries.size();
         }
 
         @TruffleBoundary
@@ -1758,7 +1799,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return iterator.valid(c.iterator);
             }
             c.pos++;
-            return c.pos < c.entries.size();
+            return c.pos < c.entryCount;
         }
     }
 
@@ -3087,14 +3128,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return increment ? PhpArith.add(old, 1L) : PhpArith.sub(old, 1L);
         }
 
-        @TruffleBoundary
         static void arrayPut(PhpArray a, Object key, Object value) {
-            a.put(key, value);
+            a.putFast(key, value);
         }
 
-        @TruffleBoundary
         static void arrayAppend(PhpArray a, Object value) {
-            a.append(value);
+            a.appendWritable(value);
         }
 
         /** The {@code ...$value} of an array literal: see {@code ArrayLiteralNode.unpackInto}. */
@@ -3139,14 +3178,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
         }
 
-        @TruffleBoundary
         static Object arrayGet(PhpArray a, Object key) {
-            return a.get(key);
+            return a.getFast(key);
         }
 
-        @TruffleBoundary
         static boolean arrayHas(PhpArray a, Object key) {
-            return a.containsKey(key);
+            return a.containsKeyFast(key);
         }
 
         static Object index(Object container, Object key) {
