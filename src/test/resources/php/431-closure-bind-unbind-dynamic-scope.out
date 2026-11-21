@@ -1,0 +1,10 @@
+bool(true)
+string(4) "ok:a"
+bool(true)
+string(6) "inst:b"
+c1: bound
+c2: bound
+c3: bound
+c4: bound
+warning:Cannot unbind $this of closure using $this, this will be an error in PHP 9
+NULL

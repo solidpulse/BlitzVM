@@ -1210,7 +1210,7 @@ public final class Parser {
                 scope.closureObjSlot(), scope.traitSelfSlot(),
                 captureSlots, captureKinds, byRef,
                 params.names(), params.slots(), params.kinds(), params.byRef(),
-                params.defaults(), params.variadic(), body).closureMetadata(scope.usesThis())
+                params.defaults(), params.variadic(), body).closureMetadata(bindThis && scope.usesThis())
                 .withSignature(signature));
         root.setStrictTypes(strictTypes);
         if (scope.isGenerator()) {

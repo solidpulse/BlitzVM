@@ -93,7 +93,6 @@ final class Scope {
 
     int dynamicSlot() {
         if (global) { return -1; }
-        if (closureObjSlot >= 0) { usesThis = true; }
         if (tableSlot < 0) { tableSlot = slot("@symbols"); }
         return tableSlot;
     }
