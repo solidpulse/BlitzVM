@@ -25,7 +25,7 @@ var_dump($rc->getMethods()[0]->name, $rc->getMethods()[0]->class);
 var_dump($rc->getReflectionConstant('C')->class, $rc->getParentClass()->name);
 var_dump(isset($rc->name), property_exists($rc, 'name'), get_object_vars($rc));
 var_dump((array) new ReflectionMethod('A', 'm'));
-var_dump((new ReflectionFunction(function () {}))->name);
+var_dump(preg_replace('/^\\{closure:.*:(\\d+)\\}$/', '{closure:$1}', (new ReflectionFunction(function () {}))->name));
 $o = new stdClass; $o->dyn = 1;
 print_r(new ReflectionProperty($o, 'dyn'));
 echo "\n";

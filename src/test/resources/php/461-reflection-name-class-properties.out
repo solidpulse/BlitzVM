@@ -68,7 +68,7 @@ array(2) {
   ["class"]=>
   string(1) "A"
 }
-string(110) "{closure:/home/silva/code/java/php-runtime/src/test/resources/php/461-reflection-name-class-properties.php:28}"
+string(12) "{closure:28}"
 ReflectionProperty Object
 (
     [name] => dyn
