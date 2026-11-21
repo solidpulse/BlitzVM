@@ -3277,6 +3277,22 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static Object callBuiltinValue(Builtins.Def def, Object[] args, SiteNode site) {
             boolean refs = def.refMask() != 0;
+            if (refs) {
+                // Most calls to a builtin with an optional by-reference parameter do not pass
+                // it (str_replace without $count, preg_replace without $count). When no cell
+                // is present the arguments are already plain values: call the builtin directly
+                // instead of copying the argument array and sharing every array argument.
+                boolean anyCell = false;
+                for (Object a : args) {
+                    if (a instanceof PhpReference) {
+                        anyCell = true;
+                        break;
+                    }
+                }
+                if (!anyCell) {
+                    return callBuiltin(def, args, site);
+                }
+            }
             Object[] values = new Object[args.length];
             for (int i = 0; i < args.length; i++) {
                 Object a = args[i];
