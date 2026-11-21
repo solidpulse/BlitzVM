@@ -39,13 +39,14 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Per-execution state: the global symbol table, the function table and the output
- * buffer. One polyglot Context (and therefore one PhpContext) is created per HTTP
- * request, which gives PHP's shared-nothing request model for free.
+ * Per-request state: the global symbol table, the function table and the output
+ * buffer. A reused polyglot context gets a new instance through
+ * {@link PhpContextHolder#install()} at the start of every request, which keeps PHP's
+ * shared-nothing request model even though the host context is pooled.
  */
 public final class PhpContext {
 
-    private static final ContextReference<PhpContext> REFERENCE = ContextReference.create(PhpLanguage.class);
+    private static final ContextReference<PhpContextHolder> REFERENCE = ContextReference.create(PhpLanguage.class);
     private static final int FLUSH_THRESHOLD = 8192;
 
     private final PhpLanguage language;
@@ -91,6 +92,8 @@ public final class PhpContext {
     private dev.phpruntime.snapshot.SnapshotRun snapshotRun;
     /** True when a template run was aborted at the boot-include boundary. */
     private boolean snapshotAborted;
+    /** True when exit() or an uncaught error ended the request; the host discards the context. */
+    private boolean endedAbnormally;
 
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
@@ -114,7 +117,7 @@ public final class PhpContext {
     }
 
     public static PhpContext get(Node node) {
-        return REFERENCE.get(node);
+        return REFERENCE.get(node).current();
     }
 
     public TruffleLanguage.Env env() {
@@ -145,6 +148,11 @@ public final class PhpContext {
             request = PhpRequest.current();
         }
         return request;
+    }
+
+    /** Binds the host request to this fresh context before its first line runs. */
+    public void bindRequest(PhpRequest request) {
+        this.request = request;
     }
 
     public Object builtinState() {
@@ -845,6 +853,15 @@ public final class PhpContext {
         return snapshotAborted;
     }
 
+    /** Marks a request the host must not reuse its polyglot context for. */
+    public void markEndedAbnormally() {
+        endedAbnormally = true;
+    }
+
+    public boolean endedAbnormally() {
+        return endedAbnormally;
+    }
+
     /** One global symbol as the snapshot layer sees it: a name, its id (or -1) and its cell. */
     public record SnapshotGlobal(String name, int id, boolean dynamic, PhpReference cell) {
     }
@@ -1268,6 +1285,7 @@ public final class PhpContext {
                 try {
                     cb.call(this, null, null, entry.args());
                 } catch (ControlFlow.Exit e) {
+                    endedAbnormally = true;
                     break;
                 }
             }

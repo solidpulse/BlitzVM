@@ -87,6 +87,11 @@ public final class Scheduler implements AutoCloseable {
         return maxCpuNanos == Long.MAX_VALUE ? 0 : TimeUnit.NANOSECONDS.toMillis(maxCpuNanos);
     }
 
+    /** Execution slots; the host sizes its polyglot context pool from this. */
+    public int cpus() {
+        return cpus;
+    }
+
     public long preemptions() {
         return preemptions.get();
     }
@@ -107,6 +112,8 @@ public final class Scheduler implements AutoCloseable {
         private long usedNanos;
         private final AtomicBoolean preemptPending = new AtomicBoolean();
         private volatile boolean timedOut;
+        /** Set by release(): the ticker must not start a close for a request that has finished. */
+        private boolean finished;
 
         private Task(String name) {
             this.name = name;
@@ -122,6 +129,11 @@ public final class Scheduler implements AutoCloseable {
 
         /** Host side: give the slot back after guest code finished. */
         public void release() {
+            // Once this returns, the ticker can no longer decide to close this task's context,
+            // so the host may safely return the polyglot context to its pool.
+            synchronized (this) {
+                finished = true;
+            }
             onSlotReleased();
             completed.incrementAndGet();
         }
@@ -180,6 +192,13 @@ public final class Scheduler implements AutoCloseable {
         /** Runs on the guest thread at a safepoint: go to the back of the run queue. */
         private void yieldSlot(Node location) {
             preemptPending.set(false);
+            synchronized (this) {
+                if (finished) {
+                    // The request finished before this action arrived; the next guest entry on
+                    // this thread belongs to another task and must keep its own slot.
+                    return;
+                }
+            }
             if (!slots.hasQueuedThreads()) {
                 sliceStart = System.nanoTime(); // nobody waiting: keep running, fresh slice
                 return;
@@ -204,10 +223,12 @@ public final class Scheduler implements AutoCloseable {
         }
 
         private void timeOut() {
-            if (timedOut) {
-                return;
+            synchronized (this) {
+                if (timedOut || finished) {
+                    return;
+                }
+                timedOut = true;
             }
-            timedOut = true;
             timeouts.incrementAndGet();
             Context c = context;
             if (c != null) {

@@ -66,13 +66,17 @@ public final class PhpMainRootNode extends PhpRootNode {
             ctx.reserveGlobals(globalNames);
             body.get();
         } catch (ControlFlow.Exit e) {
-            // exit() ends the entry script normally.
+            // exit() ends the entry script normally, but a pooled context is replaced after
+            // an exit so the host never has to reason about the state it left behind.
+            ctx.markEndedAbnormally();
         } catch (dev.phpruntime.snapshot.SnapshotAbort e) {
             // The template run ends at the boot-include boundary; skip shutdown functions and
             // output, which belong to the request the snapshot will serve.
             ctx.markSnapshotAborted();
+            ctx.markEndedAbnormally();
         } catch (dev.phpruntime.runtime.PhpException ex) {
             if (ctx.handleUncaughtException(ex.exceptionObject())) {
+                ctx.markEndedAbnormally();
                 return PhpNull.INSTANCE;
             }
             ex.formattedUncaught();
@@ -81,6 +85,7 @@ public final class PhpMainRootNode extends PhpRootNode {
             if (err.isCatchable()) {
                 dev.phpruntime.runtime.PhpObject errObj = err.toPhpObject(ctx, this);
                 if (ctx.handleUncaughtException(errObj)) {
+                    ctx.markEndedAbnormally();
                     return PhpNull.INSTANCE;
                 }
                 dev.phpruntime.runtime.PhpException wrapped =
