@@ -133,10 +133,45 @@ class SnapshotServerTest {
             assertEquals("stale", snap.get("/").snapshot());
             assertEquals("hit", waitForHit(snap, "/").snapshot());
 
-            Thread.sleep(1_100); // past ttl_ms=1000
+            Thread.sleep(2_100); // past twice ttl_ms=1000: too old to serve while refreshing
             assertEquals("stale", snap.get("/").snapshot());
             assertEquals("hit", waitForHit(snap, "/").snapshot());
         }
+    }
+
+    @Test
+    void ttlExpiryKeepsServingWhileARefreshRuns() throws Exception {
+        Path app = copyApp("snapshot-app", temp.resolve("app"));
+        try (Fixture snap = Fixture.start(app, app.resolve("profile.properties"), null)) {
+            waitForHit(snap, "/");
+            long rebuilds = snap.snapshots().rebuildCount();
+
+            Thread.sleep(1_100); // past ttl_ms=1000, within twice that
+            Response refreshed = snap.get("/");
+            assertEquals("hit", refreshed.snapshot());
+            assertEquals(APP_BODY, refreshed.body());
+            assertEquals(rebuilds + 1, snap.snapshots().rebuildCount());
+            waitForRebuildToLand(snap);
+
+            // A write still stops the old snapshot at once, refresh or not.
+            Thread.sleep(1_100);
+            SnapshotGeneration.bump();
+            assertEquals("stale", snap.get("/").snapshot());
+        }
+    }
+
+    /** Waits until the refreshed snapshot is in place: a request soon after it is a plain hit. */
+    private static void waitForRebuildToLand(Fixture snap) throws Exception {
+        long deadline = System.currentTimeMillis() + 20_000;
+        long before = snap.snapshots().rebuildCount();
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+            if ("hit".equals(snap.get("/").snapshot()) && snap.snapshots().rebuildCount() == before) {
+                return;
+            }
+            before = snap.snapshots().rebuildCount();
+        }
+        throw new AssertionError("refresh did not land");
     }
 
     @Test
@@ -165,12 +200,12 @@ class SnapshotServerTest {
         Path app = copyApp("snapshot-app", temp.resolve("app"));
         Path profile = app.resolve("profile-short-ttl.properties");
         Files.writeString(profile, Files.readString(app.resolve("profile.properties"))
-                .replace("ttl_ms=1000", "ttl_ms=300"));
+                .replace("ttl_ms=1000", "ttl_ms=150"));
         List<String> log = Collections.synchronizedList(new ArrayList<>());
         try (Fixture snap = Fixture.start(app, profile, log::add)) {
             waitForHit(snap, "/");
             for (int i = 1; i <= 35; i++) {
-                Thread.sleep(350); // past ttl_ms=300
+                Thread.sleep(350); // past twice ttl_ms=150, so the TTL forces a normal run
                 assertEquals("stale", snap.get("/").snapshot());
                 waitForHit(snap, "/");
             }

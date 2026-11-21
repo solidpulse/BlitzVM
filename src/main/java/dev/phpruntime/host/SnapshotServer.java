@@ -246,6 +246,16 @@ public final class SnapshotServer implements AutoCloseable {
                 return Plan.of(Outcome.MISS);
             }
             String stale = staleReason(store, now);
+            if ("ttl".equals(stale) && now - store.capturedAt <= 2 * ttlNanos) {
+                // Only the TTL expired: keep serving this snapshot while a background build
+                // refreshes it, so requests do not fall back to a full boot. Writes and file
+                // changes are checked first and still stop it at once; past twice the TTL (an
+                // idle server) the request runs normally.
+                if (startRefresh(store, transport.serverPort())) {
+                    counters.stale(stale);
+                }
+                stale = null;
+            }
             if (stale == null) {
                 counters.hits.increment();
                 SnapshotRun run = SnapshotRun.restored(bootPath, snapshot,
@@ -357,10 +367,33 @@ public final class SnapshotServer implements AutoCloseable {
         }
     }
 
+    /** Starts a build that leaves the current snapshot in service; false when one is running. */
+    private boolean startRefresh(StoreEntry store, int port) {
+        synchronized (store) {
+            if (store.building) {
+                return false;
+            }
+            store.building = true;
+        }
+        counters.rebuilds.increment();
+        try {
+            builds.execute(() -> build(store, port));
+        } catch (RejectedExecutionException e) {
+            synchronized (store) {
+                store.building = false;
+            }
+        }
+        return true;
+    }
+
     /** A background template run of the entry for the synthetic request, holding a CPU slot. */
     private void build(StoreEntry store, int port) {
         Path entry = docRoot.resolve(store.key.entry()).normalize();
         SnapshotRun run = SnapshotRun.template(bootPath);
+        // Read before the template run: a write that lands while it runs may or may not be in
+        // the captured state, so the snapshot must already count as stale for it.
+        long generation = SnapshotGeneration.current();
+        long started = System.nanoTime();
         try {
             engine.execute(entry, templateRequest(entry, port), run);
         } catch (Throwable t) {
@@ -377,8 +410,8 @@ public final class SnapshotServer implements AutoCloseable {
             } else {
                 Snapshot captured = run.snapshot();
                 store.snapshot = captured;
-                store.generation = SnapshotGeneration.current();
-                store.capturedAt = now;
+                store.generation = generation;
+                store.capturedAt = started; // the age of the data, not of the copy
                 store.fileTimes = modificationTimes(captured.includedFiles());
                 store.lastFileCheck = now;
                 // A concurrent request may have disabled the key while this build ran; the
@@ -394,7 +427,8 @@ public final class SnapshotServer implements AutoCloseable {
 
     private void refuse(StoreEntry store, List<String> reasons, long now, SnapshotRun run, Path entry) {
         store.snapshot = null;
-        if (store.state == State.BUILDING) {
+        // BUILDING after a miss, READY after a refresh that kept the old snapshot in service.
+        if (store.state == State.BUILDING || store.state == State.READY) {
             store.state = State.REFUSED;
         }
         store.refusedAt = now;
@@ -432,10 +466,8 @@ public final class SnapshotServer implements AutoCloseable {
         if (SnapshotGeneration.current() != store.generation) {
             return "generation";
         }
-        if (ttlNanos > 0 && now - store.capturedAt > ttlNanos) {
-            return "ttl";
-        }
-        // Like opcache.revalidate_freq: stat the included files at most this often.
+        // Like opcache.revalidate_freq: stat the included files at most this often. Checked
+        // before the TTL so that "ttl" always means nothing but the age changed.
         if (now - store.lastFileCheck >= revalidateNanos) {
             store.lastFileCheck = now;
             for (Map.Entry<String, Long> file : store.fileTimes.entrySet()) {
@@ -443,6 +475,9 @@ public final class SnapshotServer implements AutoCloseable {
                     return "file";
                 }
             }
+        }
+        if (ttlNanos > 0 && now - store.capturedAt > ttlNanos) {
+            return "ttl";
         }
         return null;
     }
