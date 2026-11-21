@@ -1,0 +1,11 @@
+string(11) "Hello World"
+string(11) "Hello-World"
+string(11) "Élan Vital"
+string(11) "hello world"
+string(11) "HELLO WORLD"
+string(11) "hello world"
+mb_convert_case(): Argument #2 ($mode) must be one of the MB_CASE_* constants
+int(0)
+int(1)
+int(2)
+int(3)

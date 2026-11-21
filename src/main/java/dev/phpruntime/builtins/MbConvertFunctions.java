@@ -267,6 +267,38 @@ final class MbConvertFunctions {
             String text = decode(ctx, PhpOps.toStr(a[0]), e);
             return encode(ctx, cpSubstr(text, PhpOps.toLong(a[1]), a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : null), e);
         });
+        Builtins.def("mb_convert_case", 2, 3, (ctx, a) -> {
+            Encoding e = argumentEncoding(ctx, a, 2, "mb_convert_case");
+            String text = decode(ctx, PhpOps.toStr(a[0]), e);
+            long mode = PhpOps.toLong(a[1]);
+            if (mode < 0 || mode > 7) {
+                throw new PhpError(PhpError.VALUE_ERROR,
+                        "mb_convert_case(): Argument #2 ($mode) must be one of the MB_CASE_* constants", null);
+            }
+            String converted = switch ((int) (mode & 3)) {
+                case 0 -> text.toUpperCase(Locale.ROOT);
+                case 1, 3 -> text.toLowerCase(Locale.ROOT);
+                case 2 -> {
+                    StringBuilder out = new StringBuilder(text.length());
+                    boolean start = true;
+                    for (int i = 0; i < text.length(); ) {
+                        int cp = text.codePointAt(i);
+                        int len = Character.charCount(cp);
+                        if (Character.isLetter(cp)) {
+                            out.appendCodePoint(start ? Character.toTitleCase(cp) : Character.toLowerCase(cp));
+                            start = false;
+                        } else {
+                            out.appendCodePoint(cp);
+                            start = true;
+                        }
+                        i += len;
+                    }
+                    yield out.toString();
+                }
+                default -> text;
+            };
+            return encode(ctx, converted, e);
+        });
         Builtins.def("mb_strtoupper", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_strtoupper");
             return encode(ctx, decode(ctx, PhpOps.toStr(a[0]), e).toUpperCase(Locale.ROOT), e);
