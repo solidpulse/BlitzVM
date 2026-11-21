@@ -1,0 +1,31 @@
+objects=4
+DeepProfile cloneable=1
+DeepMethod cloneable=1
+DeepMoney cloneable=1
+DeepAddress cloneable=1
+bool(true)
+string(3) "Ada"
+int(1250)
+string(3) "EUR"
+DeepAddress Object
+(
+    [street] => Main Street 1
+    [city] => Utrecht
+)
+bool(true)
+int(10)
+int(6)
+string(6) "hidden"
+string(14) "protected note"
+string(6) "secret"
+bool(true)
+bool(false)
+string(11) "DeepProfile"
+string(11) "DeepProfile"
+bool(true)
+array(1) {
+  ["factor"]=>
+  int(3)
+}
+int(15)
+int(5)
