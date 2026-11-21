@@ -1,0 +1,64 @@
+blocks: 9
+block names: array (
+  0 => 'group',
+  1 => 'heading',
+  2 => 'heading',
+  3 => 'paragraph',
+  4 => 'paragraph',
+  5 => 'image',
+  6 => 'image',
+  7 => 'code',
+  8 => 'code',
+)
+block closers: array (
+  0 => '',
+  1 => '',
+  2 => '/',
+  3 => '',
+  4 => '/',
+  5 => '',
+  6 => '/',
+  7 => '',
+  8 => '/',
+)
+block offsets: 350
+path /var/www//wp-content///themes/./twentytwentyfive: '/var/www/wp-content/themes/./twentytwentyfive'
+path http://example.com//a///b: 'http:/example.com/a/b'
+path ///: '//'
+selector: '.a, .b, .c'
+selector: '.single, .double'
+selector: 'no-comma'
+amp: '<!DOCTYPE html><html lang="en-US"><head><meta charset="UTF-8"><style id="global-styles-inline-css">body{background-color:#f9f9f9;color:#333}.wp-block-group{padding:var(--wp--preset--spacing--40)}.wp-block-image img{margin:0 auto;width:calc(100% - 2rem)}.hero{background-image:url("https://example.com/a b.png")}</style></head><body class="home blog"><!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var:preset|spacing|50"}}}} --><main class="wp-block-group"><!-- wp:heading {"level":1} --><h1 class="wp-block-heading">Hello &amp; welcome</h1><!-- /wp:heading --><!-- wp:paragraph --><p>Text with &amp; an &#038; and a &#038; character, plus <code>a &lt; b</code>.</p><!-- /wp:paragraph --><!-- wp:image {"id":7} --><figure><img src="/wp-content/uploads/2026/11/photo.jpg" alt=""/></figure><!-- /wp:image --><!-- wp:code --><pre><code>if (a &lt; b) { echo "x"; }</code></pre><!-- /wp:code --></main></body></html>'
+amp count: 1
+control: 'abcd\\0e\\\\0f'
+backslash zero: 'abcdef'
+style close: '<style>.a{background:url( "x.png" )}</style><STYLE>.b{background:URL(y.png)}</style>'
+css url: '<style>.a{background:url( "data:image/png;base64,AA" )}</style><STYLE>.b{background:URL(y.png)}</STYLE>'
+tag split: 69
+tag split first: array (
+  0 => '',
+  1 => '<p>',
+  2 => 'x',
+  3 => '</p>',
+  4 => '',
+)
+img tags: 1
+img tags value: array (
+  0 => '<img src="/wp-content/uploads/2026/11/photo.jpg" alt=""/>',
+)
+https: 0
+https no: 0
+css functions: 0
+css functions value: array (
+)
+custom property: 1
+sanitize_key: 'somekey'
+sanitize_title: 'hello world'
+title percent: 'ab%zz'
+serialized a: 1
+serialized O: 0
+serialized n: 0
+serialized s: 0
+serialized i: 0
+serialized token O: 1
+serialized token i: 1

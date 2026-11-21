@@ -132,7 +132,9 @@ final class PregFunctions {
             ContextState.of(ctx).pregLastError = 4;
             return null;
         }
-        return new Offsets(s, re.utf, text);
+        // toJavaUtf8OrNull returns the subject itself when it is ASCII, so an ASCII /u
+        // subject needs no char-to-byte table and no encoding of matches back to PHP.
+        return new Offsets(s, re.utf && text != s, text);
     }
 
     /** Java advances empty matches by UTF-16 units; PCRE /u advances by code points. */
@@ -146,11 +148,39 @@ final class PregFunctions {
         return false;
     }
 
+    /**
+     * Finds the next match at or after {@code from}. Patterns with a literal prefix jump
+     * straight to its next occurrence and test the pattern there; java.util.regex would
+     * try every index in the subject. A failed test resumes at the following occurrence.
+     */
+    private static boolean next(PcreTranslator.Compiled re, Matcher matcher, Offsets off, int from) {
+        if (re.prefix == null) {
+            // No prefix: the matcher keeps its own position between find() calls.
+            return find(matcher, off);
+        }
+        String text = off.text;
+        int at = text.indexOf(re.prefix, from);
+        if (at < 0) {
+            return false;
+        }
+        for (;;) {
+            matcher.region(at, text.length());
+            if (matcher.lookingAt()) {
+                return true;
+            }
+            at = text.indexOf(re.prefix, at + 1);
+            if (at < 0) {
+                return false;
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ preg_match(_all)
 
     private static Object match(PhpContext ctx, Object[] a, boolean all) {
         String fn = all ? "preg_match_all" : "preg_match";
-        PcreTranslator.Compiled re = compile(ctx, fn, PhpOps.toStr(a[0]));
+        String regex = PhpOps.toStr(a[0]);
+        PcreTranslator.Compiled re = compile(ctx, fn, regex);
         if (re == null) {
             return false;
         }
@@ -182,12 +212,18 @@ final class PregFunctions {
             }
             return false;
         }
-        Matcher m = re.pattern.matcher(subject);
-        m.useTransparentBounds(true).useAnchoringBounds(false).region(charOffset, subject.length());
+        Matcher m = null;
+        if (re.prefix == null || subject.indexOf(re.prefix) >= 0) {
+            m = re.pattern.matcher(subject);
+            m.useTransparentBounds(true).useAnchoringBounds(false);
+            if (re.prefix == null) {
+                m.region(charOffset, subject.length());
+            }
+        }
         boolean offsetCapture = (flags & OFFSET_CAPTURE) != 0;
         boolean unmatchedNull = (flags & UNMATCHED_AS_NULL) != 0;
         if (!all) {
-            boolean found = find(m, off);
+            boolean found = m != null && next(re, m, off, charOffset);
             if (a.length > 2) {
                 a[2] = found ? matchArray(re, m, subject, off, offsetCapture, unmatchedNull) : new PhpArray();
             }
@@ -198,17 +234,29 @@ final class PregFunctions {
             ctx.warning("preg_match_all(): Invalid flags specified", 0);
             return false;
         }
-        List<PhpArray> sets = new ArrayList<>();
-        PhpArray[] columns = new PhpArray[re.groupCount + 1];
-        for (int g = 0; g <= re.groupCount; g++) {
-            columns[g] = new PhpArray();
-        }
+        boolean wantMatches = a.length > 2;
+        List<PhpArray> sets = null;
+        PhpArray[] columns = null;
         long count = 0;
-        while (find(m, off)) {
+        int pos = charOffset;
+        while (m != null && next(re, m, off, pos)) {
             count++;
+            pos = m.end();
+            if (!wantMatches) {
+                continue;
+            }
             if (setOrder) {
+                if (sets == null) {
+                    sets = new ArrayList<>();
+                }
                 sets.add(matchArray(re, m, subject, off, offsetCapture, unmatchedNull));
             } else {
+                if (columns == null) {
+                    columns = new PhpArray[re.groupCount + 1];
+                    for (int g = 0; g <= re.groupCount; g++) {
+                        columns[g] = new PhpArray();
+                    }
+                }
                 for (int g = 0; g <= re.groupCount; g++) {
                     columns[g].append(groupValue(re, m, g, subject, off, offsetCapture, unmatchedNull));
                 }
@@ -217,8 +265,16 @@ final class PregFunctions {
         if (a.length > 2) {
             PhpArray result = new PhpArray();
             if (setOrder) {
-                sets.forEach(result::append);
+                if (sets != null) {
+                    sets.forEach(result::append);
+                }
             } else {
+                if (columns == null) {
+                    columns = new PhpArray[re.groupCount + 1];
+                    for (int g = 0; g <= re.groupCount; g++) {
+                        columns[g] = new PhpArray();
+                    }
+                }
                 for (int g = 0; g <= re.groupCount; g++) {
                     if (re.names[g] != null) {
                         result.put(re.names[g], columns[g].share());
@@ -317,19 +373,35 @@ final class PregFunctions {
         if (off == null) {
             return null;
         }
+        String original = subject;
         subject = off.text;
+        if (re.prefix != null && subject.indexOf(re.prefix) < 0) {
+            return original;
+        }
         Matcher m = re.pattern.matcher(subject);
-        StringBuilder sb = new StringBuilder();
+        m.useTransparentBounds(true).useAnchoringBounds(false);
+        if (re.prefix == null) {
+            m.region(0, subject.length());
+        }
+        StringBuilder sb = null;
         int last = 0;
         long done = 0;
-        while ((limit < 0 || done < limit) && find(m, off)) {
+        int pos = 0;
+        while ((limit < 0 || done < limit) && next(re, m, off, pos)) {
+            if (sb == null) {
+                sb = new StringBuilder(subject.length() + 16);
+            }
             sb.append(off.php(subject.substring(last, m.start())));
             expand(sb, replacement, re, m, subject, off);
             last = m.end();
+            pos = last;
             done++;
         }
-        sb.append(off.php(subject.substring(last)));
         count[0] += done;
+        if (sb == null) {
+            return original;
+        }
+        sb.append(off.php(subject.substring(last)));
         return sb.toString();
     }
 
@@ -432,20 +504,36 @@ final class PregFunctions {
         if (off == null) {
             return null;
         }
+        String original = subject;
         subject = off.text;
+        if (re.prefix != null && subject.indexOf(re.prefix) < 0) {
+            return original;
+        }
         Matcher m = re.pattern.matcher(subject);
-        StringBuilder sb = new StringBuilder();
+        m.useTransparentBounds(true).useAnchoringBounds(false);
+        if (re.prefix == null) {
+            m.region(0, subject.length());
+        }
+        StringBuilder sb = null;
         int last = 0;
         long done = 0;
-        while ((limit < 0 || done < limit) && find(m, off)) {
+        int pos = 0;
+        while ((limit < 0 || done < limit) && next(re, m, off, pos)) {
+            if (sb == null) {
+                sb = new StringBuilder(subject.length() + 16);
+            }
             sb.append(off.php(subject.substring(last, m.start())));
             PhpArray matches = matchArray(re, m, subject, off, offsetCapture, unmatchedNull);
             sb.append(PhpOps.toStr(cb.call(ctx, null, null, matches)));
             last = m.end();
+            pos = last;
             done++;
         }
-        sb.append(off.php(subject.substring(last)));
         count[0] += done;
+        if (sb == null) {
+            return original;
+        }
+        sb.append(off.php(subject.substring(last)));
         return sb.toString();
     }
 
@@ -497,7 +585,8 @@ final class PregFunctions {
     // ------------------------------------------------------------------ preg_split
 
     private static Object split(PhpContext ctx, Object[] a) {
-        PcreTranslator.Compiled re = compile(ctx, "preg_split", PhpOps.toStr(a[0]));
+        String regex = PhpOps.toStr(a[0]);
+        PcreTranslator.Compiled re = compile(ctx, "preg_split", regex);
         if (re == null) {
             return false;
         }
@@ -516,10 +605,23 @@ final class PregFunctions {
         }
         subject = off.text;
         PhpArray out = new PhpArray();
+        if (re.prefix != null && subject.indexOf(re.prefix) < 0) {
+            if (!noEmpty || subject.length() > 0) {
+                out.append(piece(subject, 0, subject.length(), off, offsets));
+            }
+            return out;
+        }
         int last = 0;
+        int splits = 0;
         if (limit != 1) {
             Matcher m = re.pattern.matcher(subject);
-            while ((limit == -1 || limit > 1) && find(m, off)) {
+            m.useTransparentBounds(true).useAnchoringBounds(false);
+            if (re.prefix == null) {
+                m.region(0, subject.length());
+            }
+            int pos = 0;
+            while ((limit == -1 || limit > 1) && next(re, m, off, pos)) {
+                splits++;
                 if (!noEmpty || m.start() != last) {
                     out.append(piece(subject, last, m.start(), off, offsets));
                     if (limit != -1) {
@@ -537,6 +639,7 @@ final class PregFunctions {
                     }
                 }
                 last = m.end();
+                pos = last;
             }
         }
         if (!noEmpty || last < subject.length()) {
@@ -579,7 +682,8 @@ final class PregFunctions {
     }
 
     private static Object grep(PhpContext ctx, Object[] a) {
-        PcreTranslator.Compiled re = compile(ctx, "preg_grep", PhpOps.toStr(a[0]));
+        String regex = PhpOps.toStr(a[0]);
+        PcreTranslator.Compiled re = compile(ctx, "preg_grep", regex);
         if (re == null) {
             return false;
         }
@@ -594,7 +698,14 @@ final class PregFunctions {
             if (off == null) {
                 return false;
             }
-            boolean found = re.pattern.matcher(off.text).find();
+            boolean found;
+            Matcher m = re.pattern.matcher(off.text).useTransparentBounds(true).useAnchoringBounds(false);
+            if (re.prefix == null) {
+                m.region(0, off.text.length());
+                found = find(m, off);
+            } else {
+                found = next(re, m, off, 0);
+            }
             if (found != invert) {
                 out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
             }

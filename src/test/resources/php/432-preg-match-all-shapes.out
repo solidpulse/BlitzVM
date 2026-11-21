@@ -1,0 +1,144 @@
+count only: 3
+count only nomatch: 0
+pattern order: 3
+pattern order explicit: 3
+pattern order offsets: 3
+set order: 3
+set order offsets: 3
+set order null groups: 3
+nomatch pattern order: 0
+nomatch pattern order value: array (
+  0 => 
+  array (
+  ),
+  1 => 
+  array (
+  ),
+  2 => 
+  array (
+  ),
+)
+nomatch set order: 0
+nomatch set order value: array (
+)
+nomatch offsets: 0
+nomatch offsets value: array (
+  0 => 
+  array (
+  ),
+  1 => 
+  array (
+  ),
+  2 => 
+  array (
+  ),
+)
+named pattern order: 3
+named pattern order value: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=',
+    2 => 'c=3',
+  ),
+  'key' => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  'val' => 
+  array (
+    0 => '1',
+    1 => '',
+    2 => '3',
+  ),
+  2 => 
+  array (
+    0 => '1',
+    1 => '',
+    2 => '3',
+  ),
+)
+named set order: 2
+named set order value: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    'key' => 'a',
+    1 => 'a',
+    'val' => '1',
+    2 => '1',
+  ),
+  1 => 
+  array (
+    0 => 'b=',
+    'key' => 'b',
+    1 => 'b',
+    'val' => '',
+    2 => '',
+  ),
+)
+empty matches: 4
+empty matches value: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'x',
+    2 => '',
+    3 => '',
+  ),
+)
+trailing groups: 1
+trailing groups value: array (
+  0 => 
+  array (
+    0 => 'ac',
+  ),
+  1 => 
+  array (
+    0 => 'a',
+  ),
+  2 => 
+  array (
+    0 => '',
+  ),
+  3 => 
+  array (
+    0 => 'c',
+  ),
+)
+trailing groups null: 1
+trailing groups null value: array (
+  0 => 
+  array (
+    0 => 'ac',
+  ),
+  1 => 
+  array (
+    0 => 'a',
+  ),
+  2 => 
+  array (
+    0 => NULL,
+  ),
+  3 => 
+  array (
+    0 => 'c',
+  ),
+)
+offset arg: 2
+offset arg value: array (
+  0 => 
+  array (
+    0 => '2',
+    1 => '3',
+  ),
+)
+negative offset: 2
