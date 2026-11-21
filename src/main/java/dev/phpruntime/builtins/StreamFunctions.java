@@ -745,7 +745,11 @@ final class StreamFunctions {
         Builtins.def("glob", 1, 2, (ctx, a) -> glob(ctx, PhpOps.toStr(a[0]), a.length > 1 ? PhpOps.toLong(a[1]) : 0));
     }
 
-    /** Reads a whole local file for file(), readfile() and friends; warns and returns null if missing. */
+    /**
+     * Reads a whole local file for file(), readfile() and friends. Returns null after a warning
+     * when the path cannot be opened, and {@link #READ_DIRECTORY} when it is a directory (php
+     * opens it and reads no bytes).
+     */
     static byte[] readFile(PhpContext ctx, String path, String fn) {
         String javaPath = PhpStrings.toJava(path);
         try {
