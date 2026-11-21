@@ -1,0 +1,55 @@
+bool(true)
+bool(true)
+int(3)
+int(3)
+string(1) "a"
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  NULL
+  [2]=>
+  string(1) "c"
+}
+bool(false)
+bool(true)
+array(2) {
+  [0]=>
+  NULL
+  [1]=>
+  NULL
+}
+array(2) {
+  [0]=>
+  string(1) "x"
+  [1]=>
+  string(1) "y"
+}
+string(9) "["x","y"]"
+Index invalid or out of range
+Index invalid or out of range
+int(2)
+string(1) "a"
+string(1) "b"
+string(1) "a"
+string(1) "b"
+bool(true)
+int(2)
+int(2)
+int(1)
+int(4)
+string(1) "z"
+string(1) "b"
+list z
+list m
+list a
+list b
+lifo b
+lifo a
+lifo m
+lifo z
+append 0=1
+append 1=2
+append a=x
+append b=y
+NULL
