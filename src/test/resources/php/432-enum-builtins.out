@@ -1,0 +1,35 @@
+Hearts,Spades
+Low,High
+A,B
+Hearts S
+Low High
+suit-try-h=Hearts
+suit-try-miss=null
+level-try-miss=null
+suit-miss!ValueError: "Z" is not a valid backing value for enum Suit
+level-miss!ValueError: 3 is not a valid backing value for enum Level
+level-string=High
+level-float=High
+level-bool=Low
+ERR[8192]: Level::from(): Passing null to parameter #1 ($value) of type string|int is deprecated
+level-null!ValueError: 0 is not a valid backing value for enum Level
+suit-int!ValueError: "72" is not a valid backing value for enum Suit
+ERR[8192]: Implicit conversion from float 1.9 to int loses precision
+suit-float!ValueError: "1" is not a valid backing value for enum Suit
+suit-stringable=Spades
+level-stringable!TypeError: Level::from(): Argument #1 ($value) must be of type int, Wrapped given
+level-bad-string!TypeError: Level::from(): Argument #1 ($value) must be of type int, string given
+level-array!TypeError: Level::from(): Argument #1 ($value) must be of type int, array given
+no-arg!ArgumentCountError: Suit::from() expects exactly 1 argument, 0 given
+too-many!ArgumentCountError: Level::tryFrom() expects exactly 1 argument, 2 given
+cases-arg!ArgumentCountError: Level::cases() expects exactly 0 arguments, 1 given
+pure-from!Error: Call to undefined method Pure::from()
+pure-tryfrom!Error: Call to undefined method Pure::tryFrom()
+E:11:"Suit:Hearts"; E:6:"Pure:B";
+enum(Suit::Hearts)
+enum(Level::High)
+name-set value-unset
+Hearts H 10
+bool(true)
+bool(false)
+bool(false)

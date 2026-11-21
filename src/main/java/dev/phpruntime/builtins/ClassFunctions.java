@@ -60,6 +60,13 @@ final class ClassFunctions {
             return cls != null && !cls.isInterface() && !cls.isTrait();
         });
 
+        Builtins.def("enum_exists", 1, 2, (ctx, a) -> {
+            boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
+            String name = PhpOps.toStr(a[0]);
+            PhpClass cls = autoload ? ctx.lookupOrAutoloadClass(name) : ctx.lookupClass(name);
+            return cls != null && cls.template().isEnum();
+        });
+
         Builtins.def("interface_exists", 1, 2, (ctx, a) -> {
             boolean autoload = a.length < 2 || PhpOps.toBool(a[1]);
             String name = PhpOps.toStr(a[0]);

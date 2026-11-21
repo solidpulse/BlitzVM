@@ -1,0 +1,47 @@
+hearts spades
+hearts high pure
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+Labelled,UnitEnum,BackedEnum
+Tagged h s
+Tagged s
+lt=false
+gt=false
+le=false
+ge-same=true
+spaceship=1
+spaceship-same=0
+eq=true
+eq-other=false
+eq-cross-enum=false
+new!Error: Cannot instantiate enum Suit
+clone!Error: Trying to clone an uncloneable object of class Suit
+write-name!Error: Cannot modify readonly property Suit::$name
+write-value!Error: Cannot modify readonly property Suit::$value
+write-dynamic!Error: Cannot create dynamic property Suit::$extra
+unset-name!Error: Cannot unset readonly property Suit::$name
+unset-dynamic=ok
+read-dynamic=
+array(2) {
+  ["name"]=>
+  string(6) "Hearts"
+  ["value"]=>
+  string(1) "H"
+}
+array(1) {
+  ["name"]=>
+  string(1) "A"
+}
