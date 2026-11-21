@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Compares php-truffle with php-fpm (behind nginx) and Swoole on the same scenarios.
-#   [SCENARIO=compute] bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit swoole swoole-preempt (default: all)
+#   [SCENARIO=compute] bench/run.sh [target...]   targets: truffle truffle-jdk fpm fpm-jit franken franken-worker swoole swoole-preempt (default: all)
 #   SCENARIO=wordpress WP_DIR=../blitz-wp/wordpress WP_HOST=localhost:8080 bench/run.sh truffle fpm-jit
-# Needs: php-fpm8.5 on the host, nginx on the host (else docker nginx:alpine), docker for phpswoole/swoole:latest.
+# Needs: php-fpm8.5 on the host, frankenphp on PATH (or FRANKENPHP=path) for franken, nginx on the host (else docker nginx:alpine), docker for phpswoole/swoole:latest.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN="${RUN_DIR:-$ROOT/target/bench}"
@@ -50,6 +50,12 @@ start_swoole() { # $1 workers, $2 preempt 0|1
     -v "$ROOT/bench/swoole/server.php:/app/server.php:ro" -v "$ROOT/www:/www:ro" phpswoole/swoole:latest php /app/server.php >/dev/null
   BASE=http://127.0.0.1:18403; wait_up "$BASE/hello.php"
 }
+start_franken() { # $1 PHP threads, $2 classic|worker (worker mode runs www/ routes through bench/franken/worker.php)
+  local tmpl="$ROOT/bench/franken/Caddyfile.tmpl"; [[ "${2:-classic}" == worker ]] && tmpl="$ROOT/bench/franken/Caddyfile-worker.tmpl"
+  sed -e "s|__PORT__|18406|g" -e "s|__WORKERS__|$1|g" -e "s|__THREADS__|$(( $1 + 1 ))|g" -e "s|__WWW__|$WWW|g" -e "s|__WORKER__|$ROOT/bench/franken/worker.php|g" "$tmpl" > "$RUN/Caddyfile"
+  PHP_INI_SCAN_DIR="$ROOT/bench/franken" "${FRANKENPHP:-frankenphp}" run --config "$RUN/Caddyfile" --adapter caddyfile > "$RUN/franken.log" 2>&1 &
+  PIDS=$!; BASE=http://127.0.0.1:18406; wait_up "$BASE/${PROBE:-hello.php}"
+}
 start_node() { # $1 workers (node:cluster when > 1)
   PORT=18404 WORKERS="$1" node "$ROOT/bench/node/server.js" > "$RUN/node.log" 2>&1 &
   PIDS=$!; BASE=http://127.0.0.1:18404; wait_up "$BASE/hello.js"
@@ -71,6 +77,8 @@ start() { # $1 target, $2 workers
     fpm-jit) start_fpm "$2" tracing ;;
     swoole) start_swoole "$2" 0 ;;
     swoole-preempt) start_swoole "$2" 1 ;;
+    franken) start_franken "$2" classic ;;
+    franken-worker) start_franken "$2" worker ;;
     node) start_node "$2" ;;
     bun) start_bun "$2" ;;
   esac
@@ -79,6 +87,7 @@ rss_mb() { # resident memory of the serving processes
   case "$1" in
     truffle*) ps -o rss= -p "$(pgrep -f 'host.Main serve --port 18401' | head -1)" | awk '{printf "%.0f", $1/1024}' ;;
     fpm|fpm-jit) ps -C php-fpm8.5 -o rss= | awk '{s+=$1} END {printf "%.0f", s/1024}' ;;
+    franken*) ps -C frankenphp -o rss= | awk '{s+=$1} END {printf "%.0f", s/1024}' ;;
     swoole*) docker stats --no-stream --format '{{.MemUsage}}' bench-swoole | cut -d/ -f1 | sed 's/MiB//; s/ //g' ;;
   esac
 }

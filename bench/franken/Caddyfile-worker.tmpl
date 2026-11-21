@@ -1,0 +1,20 @@
+# Rendered by bench/run.sh. FrankenPHP worker mode: every request goes to bench/franken/worker.php.
+{
+	auto_https off
+	admin off
+	frankenphp {
+		# Worker threads come on top of num_threads; one regular thread stays idle (match * sends every request to a worker).
+		num_threads __THREADS__
+	}
+}
+
+http://:__PORT__ {
+	root * __WWW__
+	php_server {
+		worker {
+			file __WORKER__
+			num __WORKERS__
+			match *
+		}
+	}
+}

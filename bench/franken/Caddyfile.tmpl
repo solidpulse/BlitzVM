@@ -1,0 +1,14 @@
+# Rendered by bench/run.sh. FrankenPHP (Caddy + embedded PHP), classic mode: one PHP thread per request.
+{
+	auto_https off
+	admin off
+	frankenphp {
+		num_threads __WORKERS__
+		max_threads __WORKERS__
+	}
+}
+
+http://:__PORT__ {
+	root * __WWW__
+	php_server
+}
