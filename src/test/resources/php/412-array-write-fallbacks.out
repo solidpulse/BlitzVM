@@ -1,0 +1,30 @@
+grow=[0,1,4,9,16,25,36,49,64,81,100,121,144,169,196,225,256,289,324,361]
+20 361
+replace=[0,1,4,9,16,25,36,49,64,81,"ten",121,144,169,196,225,256,289,324,361,"end"]
+hashapp={"0":1,"1":2,"2":3,"x":9,"3":10,"y":11,"4":12}
+neg={"-3":"neg","-2":"zero","-1":"one"}
+max={"9223372036854775806":"max-1","9223372036854775807":"max"}
+refreplace={"a":7,"b":7}
+refreplace2={"a":9,"b":9}
+refbind={"a":5,"b":5}
+unset-packed={"0":0,"1":1,"3":3,"4":4}
+0:0,1:1,3:3,4:4
+unset-append={"0":0,"1":1,"3":3,"4":4,"5":5}
+unset-append2={"1":1,"3":3,"4":4,"5":5,"6":6}
+unset-hash={"a":1,"c":3}
+a:1,c:3
+unset-hash-write={"a":10,"c":3,"d":4}
+cow-k=[1,2,3]
+cow-l=[1,2,3,4]
+cow-m=[100,2,3,9]
+byref=[1,2,8]
+cow-nested-o={"x":[1,2]}
+cow-nested-p={"x":[1,2,3]}
+literal={"0":9,"1":2,"2":3,"a":1}
+nested-literal=[{"a":5},{"b":2,"c":3}]
+9
+2
+append-into-hash={"0":1,"tail":2,"1":3,"2":4}
+Error: Cannot add element to the array as the next element is already occupied
+Error: Cannot use a scalar value as an array
+Error: [] operator not supported for strings

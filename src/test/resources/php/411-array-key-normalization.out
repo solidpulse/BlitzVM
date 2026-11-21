@@ -1,0 +1,24 @@
+zerotwo
+one
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+ints=-1:'minus one',-5:'minus five',9223372036854775807:'max literal',9223372036854775806:'max minus one'
+order=0:'a',2:'c',1:'b'
+strings=5:'five','05':'zero five','-0':'minus zero',-5:'minus five','9223372036854775808':'too big','':'empty'
+strings-variable=0:'five',1:'zero five',2:'minus zero',3:'minus five',4:'too big'
+fivezero fiveminus zerominus five
+other=1:'float',0:'false',-2:'negative float','':'null'
+floatfalsenullfloat
+123
+2
+bool(true)
+bool(false)
+bool(true)
+string(3) "two"
+string(3) "one"
+string(4) "zero"
