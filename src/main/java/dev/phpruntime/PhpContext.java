@@ -52,15 +52,18 @@ public final class PhpContext {
     private final PhpLanguage language;
     private final TruffleLanguage.Env env;
     private PhpReference[] globalsById;
-    private final Map<String, PhpReference> dynamicGlobals = new java.util.LinkedHashMap<>();
+    /** Null until the script uses $GLOBALS or extract(): most requests never allocate it. */
+    private Map<String, PhpReference> dynamicGlobals;
     private final Map<String, Integer> globalOrder = new java.util.LinkedHashMap<>();
-    private final Set<String> reservedGlobals = new java.util.HashSet<>();
+    /** Null until a declaration reserves a name; a plain request has no reserved globals. */
+    private Set<String> reservedGlobals;
     /** Script-declared functions in declaration order; lookups go through {@link #functionsById}. */
-    private final List<PhpFunction> declaredFunctions = new ArrayList<>();
-    private PhpFunction[] functionsById = new PhpFunction[256];
+    private List<PhpFunction> declaredFunctions;
+    private PhpFunction[] functionsById = new PhpFunction[16];
     private final Map<String, PhpClass> classes = new HashMap<>();
-    private PhpClass[] classesById = new PhpClass[128];
-    private final IdentityHashMap<PhpClass, PhpClass.RequestState> classStates = new IdentityHashMap<>();
+    private PhpClass[] classesById;
+    /** Null until a class's static properties or constants are used. */
+    private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
@@ -73,12 +76,13 @@ public final class PhpContext {
     public record ErrorHandlerEntry(Object callable, long errorLevels) {
     }
 
-    private final List<Object> autoloaders = new ArrayList<>();
-    private final Set<String> autoloadingInProgress = new HashSet<>();
-    private final List<ShutdownEntry> shutdownFunctions = new ArrayList<>();
-    private final Deque<ErrorHandlerEntry> errorHandlers = new ArrayDeque<>();
-    private final Deque<Object> exceptionHandlers = new ArrayDeque<>();
-    private final IdentityHashMap<Object, Map<String, PhpReference>> staticLocals = new IdentityHashMap<>();
+    /** Autoload registrations, allocated on the first spl_autoload_register(); null means empty. */
+    private List<Object> autoloaders;
+    private Set<String> autoloadingInProgress;
+    private List<ShutdownEntry> shutdownFunctions;
+    private Deque<ErrorHandlerEntry> errorHandlers;
+    private Deque<Object> exceptionHandlers;
+    private IdentityHashMap<Object, Map<String, PhpReference>> staticLocals;
     private boolean inErrorHandler;
     private final StringBuilder output = new StringBuilder();
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
@@ -99,9 +103,35 @@ public final class PhpContext {
     PhpContext(PhpLanguage language, TruffleLanguage.Env env) {
         this.language = language;
         this.env = env;
-        this.globalsById = new PhpReference[Math.max(32, language.globalIdCount() + 8)];
-        this.stdClass = declareClass(language.stdClassTemplate());
-        this.closureClass = declareClass(language.closureTemplate());
+        // Global ids below this are the language's fixed ones (superglobals, argv, argc); a
+        // request that touches a later name grows the table then, not in every constructor.
+        this.globalsById = new PhpReference[32];
+        // Both classes are linked once per engine; size the table for their ids so the two
+        // registrations below do not copy it, without reserving room for every builtin.
+        this.classesById = new PhpClass[Math.max(8, Math.max(
+                language.classId("stdclass"), language.classId("closure")) + 1)];
+        this.stdClass = registerPrelinked(language.stdClassTemplate());
+        this.closureClass = registerPrelinked(language.closureTemplate());
+    }
+
+    /**
+     * Registers stdClass and Closure without going through declaration linking. Their
+     * templates are linked the first time by the full path, which keeps the duplicate-name
+     * and interface checks; every later request reuses that linked class.
+     */
+    private PhpClass registerPrelinked(PhpClassTemplate template) {
+        PhpClassTemplate.Linked linked = template.linked();
+        if (linked != null && linked.matches(null, List.of(), List.of())) {
+            PhpClass cls = linked.cls();
+            classes.put(template.lowerName(), cls);
+            int id = cls.classId();
+            if (id >= classesById.length) {
+                classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
+            }
+            classesById[id] = cls;
+            return cls;
+        }
+        return declareClassInternal(template, false);
     }
 
     private PrintStream errStream() {
@@ -192,13 +222,32 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void reserveGlobals(String[] names) {
+        if (names.length == 0) {
+            return;
+        }
+        Set<String> reserved = reservedGlobals;
+        if (reserved == null) {
+            reserved = new HashSet<>();
+            reservedGlobals = reserved;
+        }
         for (String name : names) {
             globalOrder.putIfAbsent(name, language.globalId(name));
-            reservedGlobals.add(name);
+            reserved.add(name);
         }
     }
 
-    public boolean isReservedGlobal(String name) { return reservedGlobals.contains(name); }
+    public boolean isReservedGlobal(String name) {
+        return reservedGlobals != null && reservedGlobals.contains(name);
+    }
+
+    private Map<String, PhpReference> dynamicGlobals() {
+        Map<String, PhpReference> m = dynamicGlobals;
+        if (m == null) {
+            m = new java.util.LinkedHashMap<>();
+            dynamicGlobals = m;
+        }
+        return m;
+    }
 
     @TruffleBoundary
     public void initializeGlobalOrder() {
@@ -223,15 +272,15 @@ public final class PhpContext {
     /** extract can create an ordinary symbol called GLOBALS; literal $GLOBALS remains special. */
     @TruffleBoundary
     public void bindExtractedGlobal(String name, PhpReference cell) {
-        if (name.equals("GLOBALS")) { dynamicGlobals.put(name, cell.alias()); }
+        if (name.equals("GLOBALS")) { dynamicGlobals().put(name, cell.alias()); }
         else { bindGlobal(name, cell); }
     }
 
     @TruffleBoundary
     public void writeExtractedGlobal(String name, Object value) {
         if (name.equals("GLOBALS")) {
-            PhpReference cell = dynamicGlobals.get(name);
-            if (cell == null) { dynamicGlobals.put(name, PhpReference.local(value)); }
+            PhpReference cell = dynamicGlobals == null ? null : dynamicGlobals.get(name);
+            if (cell == null) { dynamicGlobals().put(name, PhpReference.local(value)); }
             else { cell.setValue(value); }
         } else { writeGlobal(name, value); }
     }
@@ -239,7 +288,7 @@ public final class PhpContext {
     @TruffleBoundary
     public Object readGlobalSymbol(String name) {
         if (name.equals("GLOBALS")) {
-            PhpReference cell = dynamicGlobals.get(name);
+            PhpReference cell = dynamicGlobals == null ? null : dynamicGlobals.get(name);
             return cell == null ? null : cell.getValue();
         }
         return readGlobal(name);
@@ -248,12 +297,12 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpReference globalSymbolRef(String name) {
         if (!name.equals("GLOBALS")) { return globalRef(name); }
-        return dynamicGlobals.computeIfAbsent(name, n -> new PhpReference(PhpNull.INSTANCE));
+        return dynamicGlobals().computeIfAbsent(name, n -> new PhpReference(PhpNull.INSTANCE));
     }
 
     @TruffleBoundary
     public void unsetGlobalSymbol(String name) {
-        if (name.equals("GLOBALS")) { dynamicGlobals.remove(name); }
+        if (name.equals("GLOBALS")) { if (dynamicGlobals != null) { dynamicGlobals.remove(name); } }
         else { unsetGlobal(name); }
     }
 
@@ -340,7 +389,7 @@ public final class PhpContext {
     @TruffleBoundary
     private void forgetGlobal(int id) {
         String name = language.globalName(id);
-        if (!reservedGlobals.contains(name)) { globalOrder.remove(name); }
+        if (reservedGlobals == null || !reservedGlobals.contains(name)) { globalOrder.remove(name); }
     }
 
     @TruffleBoundary
@@ -353,7 +402,7 @@ public final class PhpContext {
             exposeAutoGlobal(name);
             return readGlobalById(id);
         }
-        PhpReference cell = dynamicGlobals.get(name);
+        PhpReference cell = dynamicGlobals == null ? null : dynamicGlobals.get(name);
         return cell == null ? null : cell.getValue();
     }
 
@@ -381,7 +430,7 @@ public final class PhpContext {
             PhpReference[] table = globalsById;
             return id < table.length && table[id] != null && table[id].getValue() != null;
         }
-        PhpReference cell = dynamicGlobals.get(name);
+        PhpReference cell = dynamicGlobals == null ? null : dynamicGlobals.get(name);
         return cell != null && cell.getValue() != null;
     }
 
@@ -394,7 +443,7 @@ public final class PhpContext {
         if (id != null) {
             return globalRefById(id);
         }
-        PhpReference cell = dynamicGlobals.get(name);
+        PhpReference cell = dynamicGlobals == null ? null : dynamicGlobals.get(name);
         if (cell != null) {
             cell.ensureDefined();
             return cell;
@@ -424,11 +473,13 @@ public final class PhpContext {
                 }
             }
         }
-        for (Map.Entry<String, PhpReference> e : dynamicGlobals.entrySet()) {
-            PhpReference cell = e.getValue();
-            if (cell != null && cell.getValue() != null && !"GLOBALS".equals(e.getKey())) {
-                if (cell.isAliased()) { snap.putRef(e.getKey(), cell); }
-                else { snap.put(e.getKey(), PhpOps.copyOnAssign(cell.getValue())); }
+        if (dynamicGlobals != null) {
+            for (Map.Entry<String, PhpReference> e : dynamicGlobals.entrySet()) {
+                PhpReference cell = e.getValue();
+                if (cell != null && cell.getValue() != null && !"GLOBALS".equals(e.getKey())) {
+                    if (cell.isAliased()) { snap.putRef(e.getKey(), cell); }
+                    else { snap.put(e.getKey(), PhpOps.copyOnAssign(cell.getValue())); }
+                }
             }
         }
         return snap;
@@ -436,19 +487,28 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpReference getStaticLocal(Object ownerKey, String name) {
-        Map<String, PhpReference> map = staticLocals.get(ownerKey);
+        Map<String, PhpReference> map = staticLocals == null ? null : staticLocals.get(ownerKey);
         return map == null ? null : map.get(name);
     }
 
     /** The static-local cells belonging to a function root or closure object, for reflection. */
     @TruffleBoundary
     public Map<String, PhpReference> staticLocalsOf(Object ownerKey) {
-        return staticLocals.get(ownerKey);
+        return staticLocals == null ? null : staticLocals.get(ownerKey);
+    }
+
+    private IdentityHashMap<Object, Map<String, PhpReference>> staticLocals() {
+        IdentityHashMap<Object, Map<String, PhpReference>> map = staticLocals;
+        if (map == null) {
+            map = new IdentityHashMap<>();
+            staticLocals = map;
+        }
+        return map;
     }
 
     @TruffleBoundary
     public PhpReference initStaticLocal(Object ownerKey, String name, Object initialValue) {
-        Map<String, PhpReference> map = staticLocals.computeIfAbsent(ownerKey,
+        Map<String, PhpReference> map = staticLocals().computeIfAbsent(ownerKey,
                 k -> new java.util.LinkedHashMap<>());
         PhpReference ref = map.get(name);
         if (ref == null) {
@@ -460,16 +520,16 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void copyClosureStatics(PhpObject original, PhpObject copy, boolean share) {
-        Map<String, PhpReference> values = staticLocals.get(original);
+        Map<String, PhpReference> values = staticLocals == null ? null : staticLocals.get(original);
         if (values == null) { return; }
         if (share) {
-            staticLocals.put(copy, values);
+            staticLocals().put(copy, values);
         } else {
             Map<String, PhpReference> cloned = new java.util.LinkedHashMap<>();
             for (var entry : values.entrySet()) {
                 cloned.put(entry.getKey(), new PhpReference(PhpOps.copyOnAssign(entry.getValue().getValue())));
             }
-            staticLocals.put(copy, cloned);
+            staticLocals().put(copy, cloned);
         }
     }
 
@@ -481,7 +541,7 @@ public final class PhpContext {
         Integer id = language.lookupGlobalId(name);
         if (id != null) {
             unsetGlobalById(id);
-        } else {
+        } else if (dynamicGlobals != null) {
             dynamicGlobals.remove(name);
         }
     }
@@ -505,7 +565,7 @@ public final class PhpContext {
             functionsById = java.util.Arrays.copyOf(functionsById, Math.max(id + 1, functionsById.length * 2));
         }
         functionsById[id] = fn;
-        declaredFunctions.add(fn);
+        declaredFunctions().add(fn);
         dev.phpruntime.nodes.PhpFunctionRootNode root =
                 dev.phpruntime.nodes.PhpFunctionRootNode.of(fn.callTarget().getRootNode());
         if (root != null && root.implicitNullable().length > 0) {
@@ -522,11 +582,24 @@ public final class PhpContext {
         return id < table.length ? table[id] : null;
     }
 
+    private List<PhpFunction> declaredFunctions() {
+        List<PhpFunction> list = declaredFunctions;
+        if (list == null) {
+            list = new ArrayList<>();
+            declaredFunctions = list;
+        }
+        return list;
+    }
+
     /** Names of script-declared functions (lowercase), in declaration order, for get_defined_functions(). */
     @TruffleBoundary
     public List<String> definedFunctionNames() {
-        List<String> names = new ArrayList<>(declaredFunctions.size());
-        for (PhpFunction fn : declaredFunctions) {
+        List<PhpFunction> functions = declaredFunctions;
+        if (functions == null) {
+            return List.of();
+        }
+        List<String> names = new ArrayList<>(functions.size());
+        for (PhpFunction fn : functions) {
             names.add(fn.lowerName());
         }
         return names;
@@ -588,16 +661,35 @@ public final class PhpContext {
         return java.util.Collections.unmodifiableMap(constants);
     }
 
+    private List<Object> autoloaders() {
+        List<Object> list = autoloaders;
+        if (list == null) {
+            list = new ArrayList<>();
+            autoloaders = list;
+        }
+        return list;
+    }
+
+    private Set<String> autoloadingInProgress() {
+        Set<String> set = autoloadingInProgress;
+        if (set == null) {
+            set = new HashSet<>();
+            autoloadingInProgress = set;
+        }
+        return set;
+    }
+
     @TruffleBoundary
     public PhpClass lookupOrAutoloadClass(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
         PhpClass cls = lookupClass(n);
         String lower = PhpStrings.lower(n);
-        if (cls != null || autoloaders.isEmpty() || !autoloadingInProgress.add(lower)) {
+        List<Object> loaders = autoloaders;
+        if (cls != null || loaders == null || loaders.isEmpty() || !autoloadingInProgress().add(lower)) {
             return cls;
         }
         try {
-            for (Object cbVal : List.copyOf(autoloaders)) {
+            for (Object cbVal : List.copyOf(loaders)) {
                 PhpCallable cb = PhpCallable.resolveOrNull(this, cbVal);
                 if (cb != null) {
                     cb.call(this, null, null, n);
@@ -609,27 +701,31 @@ public final class PhpContext {
             }
             return null;
         } finally {
-            autoloadingInProgress.remove(lower);
+            autoloadingInProgress().remove(lower);
         }
     }
 
     @TruffleBoundary
     public boolean registerAutoload(Object callable, boolean prepend) {
-        for (Object existing : autoloaders) {
+        List<Object> loaders = autoloaders();
+        for (Object existing : loaders) {
             if (sameCallback(existing, callable)) {
                 return true;
             }
         }
         if (prepend) {
-            autoloaders.add(0, callable);
+            loaders.add(0, callable);
         } else {
-            autoloaders.add(callable);
+            loaders.add(callable);
         }
         return true;
     }
 
     @TruffleBoundary
     public boolean unregisterAutoload(Object callable) {
+        if (autoloaders == null) {
+            return false;
+        }
         for (int i = 0; i < autoloaders.size(); i++) {
             if (sameCallback(autoloaders.get(i), callable)) {
                 autoloaders.remove(i);
@@ -642,6 +738,9 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpArray autoloadFunctions() {
         PhpArray out = new PhpArray();
+        if (autoloaders == null) {
+            return out;
+        }
         for (Object cb : autoloaders) {
             out.append(PhpOps.copyOnAssign(cb));
         }
@@ -800,10 +899,15 @@ public final class PhpContext {
     /** This request's state of a shared class (static property values, evaluated constants). */
     @TruffleBoundary
     public PhpClass.RequestState classState(PhpClass cls) {
-        PhpClass.RequestState state = classStates.get(cls);
+        IdentityHashMap<PhpClass, PhpClass.RequestState> states = classStates;
+        if (states == null) {
+            states = new IdentityHashMap<>();
+            classStates = states;
+        }
+        PhpClass.RequestState state = states.get(cls);
         if (state == null) {
             state = new PhpClass.RequestState();
-            classStates.put(cls, state);
+            states.put(cls, state);
         }
         return state;
     }
@@ -878,7 +982,8 @@ public final class PhpContext {
     /** Every defined global in definition order, id-based first then dynamic, for capture. */
     @TruffleBoundary
     public List<SnapshotGlobal> snapshotGlobals() {
-        List<SnapshotGlobal> out = new ArrayList<>(globalOrder.size() + dynamicGlobals.size());
+        int dynamicCount = dynamicGlobals == null ? 0 : dynamicGlobals.size();
+        List<SnapshotGlobal> out = new ArrayList<>(globalOrder.size() + dynamicCount);
         for (Map.Entry<String, Integer> entry : globalOrder.entrySet()) {
             int id = entry.getValue();
             PhpReference cell = id < globalsById.length ? globalsById[id] : null;
@@ -886,10 +991,12 @@ public final class PhpContext {
                 out.add(new SnapshotGlobal(entry.getKey(), id, false, cell));
             }
         }
-        for (Map.Entry<String, PhpReference> entry : dynamicGlobals.entrySet()) {
-            PhpReference cell = entry.getValue();
-            if (cell != null && cell.getValue() != null && !"GLOBALS".equals(entry.getKey())) {
-                out.add(new SnapshotGlobal(entry.getKey(), -1, true, cell));
+        if (dynamicGlobals != null) {
+            for (Map.Entry<String, PhpReference> entry : dynamicGlobals.entrySet()) {
+                PhpReference cell = entry.getValue();
+                if (cell != null && cell.getValue() != null && !"GLOBALS".equals(entry.getKey())) {
+                    out.add(new SnapshotGlobal(entry.getKey(), -1, true, cell));
+                }
             }
         }
         return out;
@@ -907,7 +1014,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     public List<PhpFunction> snapshotDeclaredFunctions() {
-        return declaredFunctions;
+        return declaredFunctions == null ? List.of() : declaredFunctions;
     }
 
     @TruffleBoundary
@@ -917,34 +1024,34 @@ public final class PhpContext {
 
     @TruffleBoundary
     public Iterable<Map.Entry<PhpClass, PhpClass.RequestState>> snapshotClassStates() {
-        return classStates.entrySet();
+        return classStates == null ? List.of() : classStates.entrySet();
     }
 
     @TruffleBoundary
     public List<Object> snapshotAutoloaders() {
-        return autoloaders;
+        return autoloaders == null ? List.of() : autoloaders;
     }
 
     @TruffleBoundary
     public List<ShutdownEntry> snapshotShutdownFunctions() {
-        return shutdownFunctions;
+        return shutdownFunctions == null ? List.of() : shutdownFunctions;
     }
 
     /** The error handler stack, top first. */
     @TruffleBoundary
     public List<ErrorHandlerEntry> snapshotErrorHandlers() {
-        return new ArrayList<>(errorHandlers);
+        return errorHandlers == null ? List.of() : new ArrayList<>(errorHandlers);
     }
 
     /** The exception handler stack, top first. */
     @TruffleBoundary
     public List<Object> snapshotExceptionHandlers() {
-        return new ArrayList<>(exceptionHandlers);
+        return exceptionHandlers == null ? List.of() : new ArrayList<>(exceptionHandlers);
     }
 
     @TruffleBoundary
     public Iterable<Map.Entry<Object, Map<String, PhpReference>>> snapshotStaticLocals() {
-        return staticLocals.entrySet();
+        return staticLocals == null ? List.of() : staticLocals.entrySet();
     }
 
     @TruffleBoundary
@@ -975,7 +1082,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void restoreDynamicGlobal(String name, PhpReference cell) {
-        dynamicGlobals.put(name, cell);
+        dynamicGlobals().put(name, cell);
     }
 
     @TruffleBoundary
@@ -997,7 +1104,7 @@ public final class PhpContext {
                 functionsById[id] = table[id];
             }
         }
-        declaredFunctions.addAll(inOrder);
+        declaredFunctions().addAll(inOrder);
     }
 
     /** Registers a class (or class alias) captured in a snapshot; classes are engine-wide objects. */
@@ -1020,17 +1127,17 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void restoreAutoload(Object callable) {
-        autoloaders.add(callable);
+        autoloaders().add(callable);
     }
 
     @TruffleBoundary
     public void restoreStaticLocal(Object ownerKey, String name, PhpReference cell) {
-        staticLocals.computeIfAbsent(ownerKey, k -> new java.util.LinkedHashMap<>()).put(name, cell);
+        staticLocals().computeIfAbsent(ownerKey, k -> new java.util.LinkedHashMap<>()).put(name, cell);
     }
 
     @TruffleBoundary
     public PhpClass.RequestState classStateOrNull(PhpClass cls) {
-        return classStates.get(cls);
+        return classStates == null ? null : classStates.get(cls);
     }
 
     // ------------------------------------------------------------ callable cache
@@ -1060,16 +1167,20 @@ public final class PhpContext {
     private static final int METHOD_CACHE_SETS = 32;
     private static final int STATIC_METHOD_CACHE_SETS = 32;
 
-    private final CachedCallable[] functionCache = new CachedCallable[FUNCTION_CACHE_SETS * CACHE_WAYS];
-    private final CachedMethod[] methodCache = new CachedMethod[METHOD_CACHE_SETS * CACHE_WAYS];
-    private final StaticMethodLookup[] staticMethodCache =
-            new StaticMethodLookup[STATIC_METHOD_CACHE_SETS * CACHE_WAYS];
+    /** All three caches stay null until the request resolves a callback or a method by name. */
+    private CachedCallable[] functionCache;
+    private CachedMethod[] methodCache;
+    private StaticMethodLookup[] staticMethodCache;
 
     /** The immutable callable previously resolved for this exact String object, or null. */
     public PhpCallable cachedFunctionCallable(String name) {
+        CachedCallable[] cache = functionCache;
+        if (cache == null) {
+            return null;
+        }
         int base = (System.identityHashCode(name) & (FUNCTION_CACHE_SETS - 1)) * CACHE_WAYS;
         for (int i = 0; i < CACHE_WAYS; i++) {
-            CachedCallable e = functionCache[base + i];
+            CachedCallable e = cache[base + i];
             if (e != null && e.name == name) {
                 return e.callable;
             }
@@ -1078,22 +1189,32 @@ public final class PhpContext {
     }
 
     public void cacheFunctionCallable(String name, PhpCallable callable) {
+        CachedCallable[] cache = functionCache;
+        if (cache == null) {
+            cache = new CachedCallable[FUNCTION_CACHE_SETS * CACHE_WAYS];
+            functionCache = cache;
+        }
         int base = (System.identityHashCode(name) & (FUNCTION_CACHE_SETS - 1)) * CACHE_WAYS;
         for (int i = 0; i < CACHE_WAYS; i++) {
-            if (functionCache[base + i] == null) {
-                functionCache[base + i] = new CachedCallable(name, callable);
+            if (cache[base + i] == null) {
+                cache[base + i] = new CachedCallable(name, callable);
                 return;
             }
         }
-        functionCache[base + CACHE_WAYS - 1] = new CachedCallable(name, callable);
+        cache[base + CACHE_WAYS - 1] = new CachedCallable(name, callable);
     }
 
     /** The method entry for this class and method-name String object; the lookup itself is cached. */
     public PhpClass.MethodEntry cachedMethod(PhpClass cls, String name) {
+        CachedMethod[] cache = methodCache;
+        if (cache == null) {
+            cache = new CachedMethod[METHOD_CACHE_SETS * CACHE_WAYS];
+            methodCache = cache;
+        }
         int hash = System.identityHashCode(cls) * 31 + System.identityHashCode(name);
         int base = (hash & (METHOD_CACHE_SETS - 1)) * CACHE_WAYS;
         for (int i = 0; i < CACHE_WAYS; i++) {
-            CachedMethod e = methodCache[base + i];
+            CachedMethod e = cache[base + i];
             if (e != null && e.cls == cls && e.name == name) {
                 return e.entry;
             }
@@ -1101,12 +1222,12 @@ public final class PhpContext {
         PhpClass.MethodEntry entry = cls.lookupMethod(name);
         CachedMethod resolved = new CachedMethod(cls, name, entry);
         for (int i = 0; i < CACHE_WAYS; i++) {
-            if (methodCache[base + i] == null) {
-                methodCache[base + i] = resolved;
+            if (cache[base + i] == null) {
+                cache[base + i] = resolved;
                 return entry;
             }
         }
-        methodCache[base + CACHE_WAYS - 1] = resolved;
+        cache[base + CACHE_WAYS - 1] = resolved;
         return entry;
     }
 
@@ -1116,10 +1237,15 @@ public final class PhpContext {
      * autoloader may declare it later in the request.
      */
     public StaticMethodLookup lookupStaticMethod(String className, String methodName) {
+        StaticMethodLookup[] cache = staticMethodCache;
+        if (cache == null) {
+            cache = new StaticMethodLookup[STATIC_METHOD_CACHE_SETS * CACHE_WAYS];
+            staticMethodCache = cache;
+        }
         int hash = System.identityHashCode(className) * 31 + System.identityHashCode(methodName);
         int base = (hash & (STATIC_METHOD_CACHE_SETS - 1)) * CACHE_WAYS;
         for (int i = 0; i < CACHE_WAYS; i++) {
-            StaticMethodLookup e = staticMethodCache[base + i];
+            StaticMethodLookup e = cache[base + i];
             if (e != null && e.className == className && e.methodName == methodName) {
                 return e;
             }
@@ -1130,12 +1256,12 @@ public final class PhpContext {
         }
         StaticMethodLookup resolved = new StaticMethodLookup(className, methodName, cls, cls.lookupMethod(methodName));
         for (int i = 0; i < CACHE_WAYS; i++) {
-            if (staticMethodCache[base + i] == null) {
-                staticMethodCache[base + i] = resolved;
+            if (cache[base + i] == null) {
+                cache[base + i] = resolved;
                 return resolved;
             }
         }
-        staticMethodCache[base + CACHE_WAYS - 1] = resolved;
+        cache[base + CACHE_WAYS - 1] = resolved;
         return resolved;
     }
 
@@ -1209,12 +1335,15 @@ public final class PhpContext {
         public String handlerName = "default output handler";
     }
 
-    /** ob_start() levels, innermost last. Empty means echo goes straight to the response. */
-    private final java.util.ArrayList<OutputBuffer> outputBuffers = new java.util.ArrayList<>();
+    /** ob_start() levels, innermost last. Null means echo goes straight to the response. */
+    private java.util.ArrayList<OutputBuffer> buffers;
     private boolean outputStarted;
 
     public java.util.List<OutputBuffer> outputBuffers() {
-        return outputBuffers;
+        if (buffers == null) {
+            buffers = new java.util.ArrayList<>();
+        }
+        return buffers;
     }
 
     /** Appends to the innermost output buffer, or to the response when none is open. */
@@ -1223,8 +1352,8 @@ public final class PhpContext {
         if (PhpStrings.CHECK) {
             PhpStrings.check(s, byteStringOrigin == null ? "echo/output" : "echo/output in " + byteStringOrigin + "()");
         }
-        if (!outputBuffers.isEmpty()) {
-            outputBuffers.get(outputBuffers.size() - 1).text.append(s);
+        if (buffers != null && !buffers.isEmpty()) {
+            buffers.get(buffers.size() - 1).text.append(s);
             return;
         }
         if (!s.isEmpty()) {
@@ -1244,8 +1373,8 @@ public final class PhpContext {
     /** End of request: flushes any output buffers still open, innermost first, then the response. */
     @TruffleBoundary
     public void flush() {
-        while (!outputBuffers.isEmpty()) {
-            OutputBuffer top = outputBuffers.remove(outputBuffers.size() - 1);
+        while (buffers != null && !buffers.isEmpty()) {
+            OutputBuffer top = buffers.remove(buffers.size() - 1);
             echo(applyObHandler(top, top.text.toString(), 9L));
         }
         flushOutput();
@@ -1280,13 +1409,25 @@ public final class PhpContext {
         output.setLength(0);
     }
 
+    private List<ShutdownEntry> shutdownFunctions() {
+        List<ShutdownEntry> list = shutdownFunctions;
+        if (list == null) {
+            list = new ArrayList<>();
+            shutdownFunctions = list;
+        }
+        return list;
+    }
+
     @TruffleBoundary
     public void registerShutdownFunction(Object callable, Object[] args) {
-        shutdownFunctions.add(new ShutdownEntry(callable, args));
+        shutdownFunctions().add(new ShutdownEntry(callable, args));
     }
 
     @TruffleBoundary
     public void runShutdownFunctions() {
+        if (shutdownFunctions == null) {
+            return;
+        }
         for (int i = 0; i < shutdownFunctions.size(); i++) {
             ShutdownEntry entry = shutdownFunctions.get(i);
             PhpCallable cb = PhpCallable.resolveOrNull(this, entry.callable());
@@ -1301,16 +1442,34 @@ public final class PhpContext {
         }
     }
 
+    private Deque<ErrorHandlerEntry> errorHandlers() {
+        Deque<ErrorHandlerEntry> stack = errorHandlers;
+        if (stack == null) {
+            stack = new ArrayDeque<>();
+            errorHandlers = stack;
+        }
+        return stack;
+    }
+
+    private Deque<Object> exceptionHandlers() {
+        Deque<Object> stack = exceptionHandlers;
+        if (stack == null) {
+            stack = new ArrayDeque<>();
+            exceptionHandlers = stack;
+        }
+        return stack;
+    }
+
     @TruffleBoundary
     public Object setErrorHandler(Object callable, long errorLevels) {
-        ErrorHandlerEntry prev = errorHandlers.peek();
-        errorHandlers.push(new ErrorHandlerEntry(callable, errorLevels));
+        ErrorHandlerEntry prev = errorHandlers == null ? null : errorHandlers.peek();
+        errorHandlers().push(new ErrorHandlerEntry(callable, errorLevels));
         return prev == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(prev.callable());
     }
 
     @TruffleBoundary
     public boolean restoreErrorHandler() {
-        if (!errorHandlers.isEmpty()) {
+        if (errorHandlers != null && !errorHandlers.isEmpty()) {
             errorHandlers.pop();
         }
         return true;
@@ -1318,14 +1477,14 @@ public final class PhpContext {
 
     @TruffleBoundary
     public Object setExceptionHandler(Object callable) {
-        Object prev = exceptionHandlers.peek();
-        exceptionHandlers.push(callable);
+        Object prev = exceptionHandlers == null ? null : exceptionHandlers.peek();
+        exceptionHandlers().push(callable);
         return prev == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(prev);
     }
 
     @TruffleBoundary
     public boolean restoreExceptionHandler() {
-        if (!exceptionHandlers.isEmpty()) {
+        if (exceptionHandlers != null && !exceptionHandlers.isEmpty()) {
             exceptionHandlers.pop();
         }
         return true;
@@ -1333,7 +1492,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     public boolean handleUncaughtException(PhpObject exObj) {
-        Object handler = exceptionHandlers.peek();
+        Object handler = exceptionHandlers == null ? null : exceptionHandlers.peek();
         if (handler == null || handler == PhpNull.INSTANCE) {
             return false;
         }
@@ -1407,7 +1566,7 @@ public final class PhpContext {
     @TruffleBoundary
     private boolean emitDiagnostic(long errno, String label, String message, int line) {
         String file = PhpStrings.fromJava(currentGuestFile());
-        ErrorHandlerEntry handler = errorHandlers.peek();
+        ErrorHandlerEntry handler = errorHandlers == null ? null : errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
                 && (handler.errorLevels() & errno) != 0) {
             PhpCallable cb = PhpCallable.resolveOrNull(this, handler.callable());

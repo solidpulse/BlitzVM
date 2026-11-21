@@ -166,7 +166,10 @@ final class CoreFunctions {
 
     private static void http() {
         Builtins.def("header", 1, 3, (ctx, a) -> {
-            String line = PhpOps.toStr(a[0]);
+            String line = HttpFunctions.checkedHeaderLine(ctx, PhpOps.toStr(a[0]));
+            if (line == null) {
+                return PhpNull.INSTANCE;
+            }
             boolean replace = a.length < 2 || PhpOps.toBool(a[1]);
             PhpRequest req = ctx.request();
             if (a.length > 2) {

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Cookies, response headers and request superglobals. php-cli does not track headers, so the
@@ -85,6 +86,37 @@ class HttpFunctionsTest {
                 new PhpRequest());
         assertEquals("0", all.bodyText());
         assertEquals(0, all.request().responseHeaders.size());
+    }
+
+    @Test
+    void headerInjectionIsRejectedAndTheHeaderIsNotSet(@TempDir Path dir) throws Exception {
+        PhpEngine.Result res = run(dir, """
+                <?php
+                header('X-Good: ok');
+                header("X-Bad: a\\r\\nX-Injected: yes");
+                header("X-Nul: a\\0b");
+                header("X-Na\\0me: v");
+                header("X-Na\\rme: v");
+                $cookie = setcookie("bad\\0name", "v");
+                $raw = setrawcookie("raw", "a\\0b");
+                header('Content-Type: text/plain');
+                echo $cookie ? 'cookie-set' : 'cookie-rejected', "\\n";
+                echo $raw ? 'raw-set' : 'raw-rejected', "\\n";
+                echo 'body';
+                """, new PhpRequest());
+
+        assertEquals(200, res.status(), res.bodyText() + res.errors());
+        assertEquals("cookie-rejected\nraw-rejected\nbody", res.bodyText());
+        assertTrue(res.errors().contains("Header may not contain more than a single header, new line detected"),
+                res.errors());
+        assertTrue(res.errors().contains("Header may not contain NUL bytes"), res.errors());
+
+        List<String> names = res.request().responseHeaders.stream().map(h -> h[0]).collect(Collectors.toList());
+        assertEquals(List.of("X-Good", "Content-Type"), names,
+                "a rejected header reached the response");
+        assertEquals("ok", res.request().responseHeaders.get(0)[1]);
+        assertTrue(res.request().responseHeaders.stream().noneMatch(h -> h[0].equals("X-Injected")),
+                "a header was injected through a newline");
     }
 
     @Test
