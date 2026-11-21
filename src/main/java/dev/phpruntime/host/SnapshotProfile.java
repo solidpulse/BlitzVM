@@ -199,9 +199,11 @@ public final class SnapshotProfile {
     }
 
     /**
-     * Fingerprint components that verify must not report when they differ. Empty by default; the
-     * built-in WordPress profile lists two function-static memos that are request-dependent but
-     * cannot change a response (see {@link #WORDPRESS_VERIFY_IGNORE}).
+     * Fingerprint components that verify must not report when they differ, plus optional
+     * {@code response-body:<regex>} entries naming request-dependent spans of the body (a random
+     * id a page renders every request). Empty by default; the built-in WordPress profile lists
+     * two function-static memos that are request-dependent but cannot change a response (see
+     * {@link #WORDPRESS_VERIFY_IGNORE}).
      */
     public List<String> verifyIgnore() {
         return verifyIgnore;

@@ -63,6 +63,17 @@ public final class SnapshotCheck {
     }
 
     public static Result check(Engine engine, Path bootFile, Path entryFile) throws IOException {
+        return check(engine, bootFile, entryFile, Set.of(), null);
+    }
+
+    /**
+     * The check with expected request-dependent components and output spans ignored. A boot that
+     * records a start time, or an app that renders a random id, can never reproduce those in a
+     * restored request; the CLI reads them from {@code blitz.snapshot.check.ignore} and
+     * {@code blitz.snapshot.check.output} so the plain command can still pass on such an app.
+     */
+    public static Result check(Engine engine, Path bootFile, Path entryFile, Set<String> ignore,
+                               java.util.regex.Pattern outputIgnore) throws IOException {
         Path boot = bootFile.toRealPath();
         Path entry = entryFile.toRealPath();
         String bootPath = boot.toString();
@@ -96,22 +107,27 @@ public final class SnapshotCheck {
         if (second.failure() != null) {
             differences.add("second restore failed: " + second.failure());
         }
-        if (!full.output().equals(first.output())) {
+        String expectedOutput = normalize(full.output(), outputIgnore);
+        if (!expectedOutput.equals(normalize(first.output(), outputIgnore))) {
             differences.add("first restore output differs from the full run");
         }
-        if (!full.output().equals(second.output())) {
+        if (!expectedOutput.equals(normalize(second.output(), outputIgnore))) {
             differences.add("second restore output differs from the full run");
         }
         compareFingerprints("first restore", full.snapshotRun.fingerprint(),
-                first.snapshotRun.fingerprint(), differences);
+                first.snapshotRun.fingerprint(), differences, ignore);
         compareFingerprints("second restore", full.snapshotRun.fingerprint(),
-                second.snapshotRun.fingerprint(), differences);
+                second.snapshotRun.fingerprint(), differences, ignore);
 
         boolean ok = differences.isEmpty();
         return new Result(ok, false, null, List.of(), differences, full.output(),
                 first.output(), second.output(), template.output(),
                 full.snapshotRun.fingerprint(), first.snapshotRun.fingerprint(),
                 second.snapshotRun.fingerprint(), null);
+    }
+
+    private static String normalize(String text, java.util.regex.Pattern outputIgnore) {
+        return outputIgnore == null ? text : outputIgnore.matcher(text).replaceAll("");
     }
 
     /** Captures one snapshot for tests that need to restore it themselves. */
@@ -141,7 +157,8 @@ public final class SnapshotCheck {
     }
 
     private static void compareFingerprints(String label, Map<String, String> expected,
-                                            Map<String, String> actual, List<String> differences) {
+                                            Map<String, String> actual, List<String> differences,
+                                            Set<String> ignore) {
         if (expected == null || actual == null) {
             differences.add(label + " has no boundary fingerprint");
             return;
@@ -151,6 +168,9 @@ public final class SnapshotCheck {
         names.addAll(actual.keySet());
         List<String> different = new ArrayList<>();
         for (String name : names) {
+            if (ignore.contains(name)) {
+                continue;
+            }
             String a = expected.get(name);
             String b = actual.get(name);
             if (a == null) {
@@ -227,14 +247,32 @@ public final class SnapshotCheck {
 
     /** {@code php-truffle --snapshot-check <boot> <entry>}; returns a process exit code. */
     public static int runCli(Path bootFile, Path entryFile) {
+        Set<String> ignore = new LinkedHashSet<>();
+        String ignoreProperty = System.getProperty("blitz.snapshot.check.ignore", "");
+        for (String name : ignoreProperty.split(",")) {
+            if (!name.isBlank()) {
+                ignore.add(name.trim());
+            }
+        }
+        java.util.regex.Pattern outputIgnore = null;
+        String outputProperty = System.getProperty("blitz.snapshot.check.output", "");
+        if (!outputProperty.isBlank()) {
+            outputIgnore = java.util.regex.Pattern.compile(outputProperty.trim());
+        }
         Result result;
-        try {
-            result = check(bootFile, entryFile);
+        try (Engine engine = newEngine()) {
+            result = check(engine, bootFile, entryFile, ignore, outputIgnore);
         } catch (IOException e) {
             System.out.println("snapshot-check: " + e.getMessage());
             return 2;
         }
         System.out.println("snapshot-check: boot " + bootFile + ", entry " + entryFile);
+        if (!ignore.isEmpty()) {
+            System.out.println("ignored fingerprint components: " + String.join(", ", ignore));
+        }
+        if (outputIgnore != null) {
+            System.out.println("ignored output pattern: " + outputIgnore.pattern());
+        }
         if (result.error() != null) {
             System.out.println("run error: " + result.error());
         }
@@ -245,16 +283,19 @@ public final class SnapshotCheck {
             }
             return 1;
         }
+        String fullCompared = normalize(result.fullOutput(), outputIgnore);
+        String firstCompared = normalize(result.firstOutput(), outputIgnore);
+        String secondCompared = normalize(result.secondOutput(), outputIgnore);
         System.out.println("full run: " + result.fullOutput().length() + " output bytes, "
                 + componentCount(result.fullFingerprint()) + " fingerprint components");
         System.out.println("template run: aborted at the boot boundary, "
                 + result.templateOutput().length() + " output bytes before it");
-        System.out.println("first restore: " + (result.fullOutput().equals(result.firstOutput())
+        System.out.println("first restore: " + (fullCompared.equals(firstCompared)
                 ? "output same" : "OUTPUT DIFFERS") + ", "
-                + sameCount(result.fullFingerprint(), result.firstFingerprint()) + " components same");
-        System.out.println("second restore: " + (result.fullOutput().equals(result.secondOutput())
+                + sameCount(result.fullFingerprint(), result.firstFingerprint(), ignore) + " components same");
+        System.out.println("second restore: " + (fullCompared.equals(secondCompared)
                 ? "output same" : "OUTPUT DIFFERS") + ", "
-                + sameCount(result.fullFingerprint(), result.secondFingerprint()) + " components same");
+                + sameCount(result.fullFingerprint(), result.secondFingerprint(), ignore) + " components same");
         if (result.ok()) {
             System.out.println("RESULT: OK");
             return 0;
@@ -270,13 +311,13 @@ public final class SnapshotCheck {
         return fingerprint == null ? 0 : fingerprint.size();
     }
 
-    private static int sameCount(Map<String, String> a, Map<String, String> b) {
+    private static int sameCount(Map<String, String> a, Map<String, String> b, Set<String> ignore) {
         if (a == null || b == null) {
             return 0;
         }
         int same = 0;
         for (Map.Entry<String, String> entry : new TreeMap<>(a).entrySet()) {
-            if (entry.getValue().equals(b.get(entry.getKey()))) {
+            if (!ignore.contains(entry.getKey()) && entry.getValue().equals(b.get(entry.getKey()))) {
                 same++;
             }
         }
