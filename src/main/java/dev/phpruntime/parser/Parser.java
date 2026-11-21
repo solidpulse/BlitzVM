@@ -61,6 +61,9 @@ public final class Parser {
     private boolean strictTypes;
     /** The line of the closing token of the last blockUntil(), for getEndLine(). */
     private int lastBlockEndLine = -1;
+    /** The property whose hook is being parsed, for detecting its backing store reference. */
+    private String hookBackingProp;
+    private boolean hookBackingSeen;
 
     public Parser(PhpLanguage language, Source source) {
         this(language, source, lex(source), new Scope(language, true), new ArrayList<>(), new ArrayList<>(),
@@ -953,8 +956,11 @@ public final class Parser {
         return new DefineConstantNode(names.toArray(new String[0]), values.toArray(new PhpNode[0])).at(line);
     }
 
-    private record PromotedProp(String name, Visibility visibility, boolean isReadonly, boolean byRef,
-                                PhpType type, List<PhpAttribute> attributes, int line) {
+    private record PromotedProp(String name, Visibility visibility, Visibility setVisibility,
+                                boolean isReadonly, boolean byRef, PhpType type,
+                                List<PhpAttribute> attributes, int line,
+                                PhpClassTemplate.HookDecl getHook, PhpClassTemplate.HookDecl setHook,
+                                boolean virtual) {
     }
 
     private record ParsedParams(String[] names, int[] slots, VarKind[] kinds, boolean[] byRef,
@@ -995,9 +1001,15 @@ public final class Parser {
         while (!acceptOp(")")) {
             List<PhpAttribute> parameterAttributes = parseAttributes();
             Visibility promVis = null;
+            Visibility promSetVis = null;
             boolean promReadonly = false;
             boolean parsingMods = true;
             while (parsingMods && peek().kind() == Kind.IDENT) {
+                Visibility set = setVisibilityModifier();
+                if (set != null) {
+                    promSetVis = set;
+                    continue;
+                }
                 switch (dev.phpruntime.runtime.PhpStrings.lower(peek().text())) {
                     case "public" -> { next(); promVis = Visibility.PUBLIC; }
                     case "protected" -> { next(); promVis = Visibility.PROTECTED; }
@@ -1006,7 +1018,7 @@ public final class Parser {
                     default -> parsingMods = false;
                 }
             }
-            if (promVis == null && promReadonly) {
+            if (promVis == null && (promReadonly || promSetVis != null)) {
                 promVis = Visibility.PUBLIC;
             }
             if (promVis != null && !allowPromotion) {
@@ -1040,11 +1052,31 @@ public final class Parser {
             defaultValues.add(defaultValue);
             defaultTargets.add(defaultTarget);
             defaultConstantNames.add(defaultExpr == null ? null : defaultConstantName(defaultExpr));
+            PhpClassTemplate.HookDecl getHook = null;
+            PhpClassTemplate.HookDecl setHook = null;
+            boolean virtual = false;
+            if (peek().isOp("{")) {
+                if (promVis == null) {
+                    throw error("Cannot declare hooks for a non-promoted parameter");
+                }
+                ParsedHooks hooks = parsePropertyHooks(pName, type, false, false, v.line());
+                getHook = hooks.getHook();
+                setHook = hooks.setHook();
+                virtual = hooks.virtual();
+                if (promSetVis != null && virtual && setHook == null && getHook != null) {
+                    throw PhpError.fatal("get-only virtual property " + currentClass + "::$" + pName
+                            + " must not specify asymmetric visibility");
+                }
+            }
+            if (promSetVis != null) {
+                checkAsymmetricDeclaration(currentClass, pName, promVis, promSetVis, type);
+            }
             types.add(type);
             attributes.add(parameterAttributes);
             promotedFlags.add(promVis != null);
             if (promVis != null) {
-                promoted.add(new PromotedProp(pName, promVis, promReadonly, isRef, type, parameterAttributes, v.line()));
+                promoted.add(new PromotedProp(pName, promVis, promSetVis, promReadonly, isRef, type,
+                        parameterAttributes, v.line(), getHook, setHook, virtual));
             }
             if (!peek().isOp(")")) {
                 expectOp(",");
@@ -1320,6 +1352,7 @@ public final class Parser {
                     continue;
                 }
                 Visibility vis = Visibility.PUBLIC;
+                Visibility setVis = null;
                 boolean isStatic = false;
                 boolean mAbstract = false;
                 boolean mFinal = false;
@@ -1327,6 +1360,11 @@ public final class Parser {
                 boolean explicitReadonly = false;
                 boolean parsingMods = true;
                 while (parsingMods && peek().kind() == Kind.IDENT) {
+                    Visibility set = setVisibilityModifier();
+                    if (set != null) {
+                        setVis = set;
+                        continue;
+                    }
                     switch (dev.phpruntime.runtime.PhpStrings.lower(peek().text())) {
                         case "public", "var" -> { next(); vis = Visibility.PUBLIC; }
                         case "protected" -> { next(); vis = Visibility.PROTECTED; }
@@ -1339,6 +1377,9 @@ public final class Parser {
                     }
                 }
                 if (acceptKeyword("const")) {
+                    if (setVis != null) {
+                        throw PhpError.fatal("Cannot use the " + setLevel(setVis) + " modifier on a class constant");
+                    }
                     PhpType constType = peek().kind() == Kind.IDENT && peek(1).isOp("=")
                             ? null : parseType();
                     do {
@@ -1361,6 +1402,7 @@ public final class Parser {
                         throw error("Static property cannot be readonly");
                     }
                     PhpType propertyType = isTypeStart() ? parseType() : null;
+                    boolean hooked = false;
                     do {
                         Token propTok = next();
                         if (propTok.kind() != Kind.VARIABLE) {
@@ -1371,14 +1413,42 @@ public final class Parser {
                         if (pReadonly && expr != null) {
                             throw new PhpParseError("Readonly property " + name + "::$" + propTok.text() + " cannot have default value", propTok.line());
                         }
+                        ParsedHooks hooks = null;
+                        if (peek().isOp("{")) {
+                            hooked = true;
+                            if (isStatic) {
+                                throw PhpError.fatal("Cannot declare hooks for static property");
+                            }
+                            if (pReadonly) {
+                                throw PhpError.fatal("Hooked properties cannot be readonly");
+                            }
+                            hooks = parsePropertyHooks(propTok.text(), propertyType, isInterface,
+                                    isInterface || isAbstract, propTok.line());
+                            if (expr != null && hooks.virtual()) {
+                                throw PhpError.fatal("Cannot specify default value for virtual hooked property "
+                                        + name + "::$" + propTok.text());
+                            }
+                            if (setVis != null && hooks.virtual() && hooks.setHook() == null
+                                    && hooks.getHook() != null) {
+                                throw PhpError.fatal("get-only virtual property " + name + "::$" + propTok.text()
+                                        + " must not specify asymmetric visibility");
+                            }
+                        } else if (setVis != null) {
+                            checkAsymmetricDeclaration(name, propTok.text(), vis, setVis, propertyType);
+                        }
                         Object constVal = expr == null ? PhpNull.INSTANCE
                                 : literalValue(expr);
                         RootCallTarget valTarget = expr == null ? null : memberInitTarget(expr, exprScope[0]);
                         properties.add(new PhpClassTemplate.PropertyDecl(
                                 propTok.text(), vis, isStatic, pReadonly, constVal, valTarget,
-                                propertyType, memberAttributes, expr != null));
-                    } while (acceptOp(","));
-                    expectOp(";");
+                                propertyType, memberAttributes, expr != null, setVis,
+                                hooks != null && hooks.virtual(),
+                                hooks != null ? hooks.getHook() : null,
+                                hooks != null ? hooks.setHook() : null));
+                    } while (!hooked && acceptOp(","));
+                    if (!hooked) {
+                        expectOp(";");
+                    }
                 }
             }
         } finally {
@@ -1390,6 +1460,222 @@ public final class Parser {
                 templateId, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous,
                 parentName, interfaceNames, traitUses, properties, constants, methods, Map.of(),
                 classAttributes, isEnum, enumBackingType, enumCases);
+    }
+
+    private record ParsedHooks(PhpClassTemplate.HookDecl getHook, PhpClassTemplate.HookDecl setHook,
+                               boolean virtual) {
+    }
+
+    /** Consumes {@code private(set)}/ {@code protected(set)}/ {@code public(set)} when present. */
+    private Visibility setVisibilityModifier() {
+        if (peek().kind() != Kind.IDENT || !peek(1).isOp("(")
+                || peek(2).kind() != Kind.IDENT || !"set".equals(dev.phpruntime.runtime.PhpStrings.lower(peek(2).text()))
+                || !peek(3).isOp(")")) {
+            return null;
+        }
+        String word = dev.phpruntime.runtime.PhpStrings.lower(peek().text());
+        Visibility visibility = switch (word) {
+            case "public" -> Visibility.PUBLIC;
+            case "protected" -> Visibility.PROTECTED;
+            case "private" -> Visibility.PRIVATE;
+            default -> null;
+        };
+        if (visibility == null) {
+            return null;
+        }
+        next();
+        next();
+        next();
+        next();
+        return visibility;
+    }
+
+    private static String setLevel(Visibility visibility) {
+        return visibility == Visibility.PRIVATE ? "private(set)" : "protected(set)";
+    }
+
+    private void checkAsymmetricDeclaration(String className, String propName, Visibility read,
+                                            Visibility set, PhpType type) {
+        if (type == null) {
+            throw PhpError.fatal("Property with asymmetric visibility " + className + "::$" + propName
+                    + " must have type");
+        }
+        if (set.ordinal() < read.ordinal()) {
+            throw PhpError.fatal("Visibility of property " + className + "::$" + propName
+                    + " must not be weaker than set visibility");
+        }
+    }
+
+    /**
+     * Parses {@code { get ...; set ...; }} after a property name. Each hook becomes a function
+     * root shaped like a method, so the runtime calls it through an ordinary call target.
+     */
+    private ParsedHooks parsePropertyHooks(String propName, PhpType propType, boolean inInterface,
+                                           boolean inAbstract, int line) {
+        expectOp("{");
+        PhpClassTemplate.HookDecl getHook = null;
+        PhpClassTemplate.HookDecl setHook = null;
+        while (!acceptOp("}")) {
+            if (peek().kind() == Kind.EOF) {
+                throw error("syntax error, unexpected end of file in property hooks");
+            }
+            boolean isFinal = false;
+            while (peek().kind() == Kind.IDENT) {
+                String modifier = dev.phpruntime.runtime.PhpStrings.lower(peek().text());
+                if (modifier.equals("final")) {
+                    next();
+                    isFinal = true;
+                } else if (modifier.equals("abstract")) {
+                    throw PhpError.fatal("Cannot use the abstract modifier on a property hook");
+                } else {
+                    break;
+                }
+            }
+            boolean byRef = acceptOp("&");
+            Token hookTok = next();
+            if (hookTok.kind() != Kind.IDENT) {
+                throw new PhpParseError("syntax error, expected property hook name", hookTok.line());
+            }
+            String hookName = dev.phpruntime.runtime.PhpStrings.lower(hookTok.text());
+            if (!hookName.equals("get") && !hookName.equals("set")) {
+                throw new PhpParseError("syntax error, unexpected " + hookTok.text()
+                        + ", expecting get or set", hookTok.line());
+            }
+            PhpClassTemplate.HookDecl decl = parseHook(propName, propType, hookName, byRef, isFinal,
+                    inInterface, inAbstract, hookTok.line());
+            if (hookName.equals("get")) {
+                getHook = decl;
+            } else {
+                setHook = decl;
+            }
+        }
+        boolean virtual = (getHook != null || setHook != null)
+                && !(getHook != null && getHook.backs())
+                && !(setHook != null && setHook.backs());
+        return new ParsedHooks(getHook, setHook, virtual);
+    }
+
+    private PhpClassTemplate.HookDecl parseHook(String propName, PhpType propType, String hookName,
+                                                boolean byRef, boolean isFinal, boolean inInterface,
+                                                boolean inAbstract, int line) {
+        Scope outer = scope;
+        String outerFunction = currentFunction;
+        boolean outerReturnsRef = currentReturnsRef;
+        scope = currentIsTrait ? Scope.forTraitMethod(language) : Scope.forMethod(language);
+        currentFunction = "$" + propName + "::" + hookName;
+        currentReturnsRef = byRef;
+        try {
+            String paramName = hookName.equals("set") ? "value" : null;
+            PhpType paramType = hookName.equals("set") ? propType : null;
+            List<PhpParameter> parameters = new ArrayList<>();
+            int[] paramSlots = new int[0];
+            VarKind[] paramKinds = new VarKind[0];
+            boolean[] paramByRef = new boolean[0];
+            PhpNode[] defaults = new PhpNode[0];
+            if (hookName.equals("set") && acceptOp("(")) {
+                if (!acceptOp(")")) {
+                    paramType = isTypeStart() ? parseType() : null;
+                    boolean paramRef = acceptOp("&");
+                    Token v = next();
+                    if (v.kind() != Kind.VARIABLE) {
+                        throw new PhpParseError("syntax error, expected hook parameter variable", v.line());
+                    }
+                    paramName = v.text();
+                    if (paramType != null && propType != null
+                            && !paramType.toString().equals(propType.toString())) {
+                        throw PhpError.fatal("Type of parameter $" + paramName + " of hook "
+                                + currentClass + "::$" + propName + "::set must be compatible with property type");
+                    }
+                    paramByRef = new boolean[]{paramRef};
+                    expectOp(")");
+                }
+            } else if (hookName.equals("get") && peek().isOp("(")) {
+                throw error("get hook cannot declare parameters");
+            }
+            if (hookName.equals("set")) {
+                scope.declareParam(paramName, false);
+                int slot = scope.slot(paramName);
+                paramSlots = new int[]{slot};
+                paramKinds = new VarKind[]{scope.kind(slot)};
+                defaults = new PhpNode[]{null};
+                if (paramByRef.length == 0) {
+                    paramByRef = new boolean[]{false};
+                }
+                PhpParameter parameter = new PhpParameter(paramName, paramType, List.of(), false, false,
+                        paramByRef[0], null, null);
+                parameters.add(parameter);
+            }
+            PhpSignature signature = new PhpSignature(parameters,
+                    hookName.equals("get") ? propType : null, List.of())
+                    .withSource(source.getPath(), line);
+
+            PhpNode body;
+            boolean abstractHook = false;
+            String savedBacking = hookBackingProp;
+            boolean savedSeen = hookBackingSeen;
+            hookBackingProp = propName;
+            hookBackingSeen = false;
+            boolean shortSet = false;
+            try {
+                if (acceptOp("=>")) {
+                    if (inInterface) {
+                        throw PhpError.fatal("Abstract property hook cannot have body");
+                    }
+                    PhpNode expr = expression();
+                    if (hookName.equals("get")) {
+                        body = new JumpNode(JumpNode.Kind.RETURN, 0, expr, byRef).at(line);
+                    } else {
+                        LValueNode thisVar = scope.variable("this").at(line);
+                        LValueNode propLv = new PropertyLValueNode(thisVar, propName, null,
+                                currentClassLower(), scope.traitSelfSlot()).at(line);
+                        body = block(List.of(new AssignNode(propLv, expr).at(line)));
+                        shortSet = true;
+                    }
+                    expectOp(";");
+                } else if (acceptOp("{")) {
+                    body = blockUntil("}");
+                    scope.validateGotos();
+                    if (inInterface) {
+                        throw PhpError.fatal("Abstract property hook cannot have body");
+                    }
+                } else if (acceptOp(";")) {
+                    body = null;
+                    abstractHook = true;
+                } else {
+                    throw error("syntax error, expected hook body");
+                }
+            } finally {
+                hookBackingProp = savedBacking;
+            }
+            boolean backs = shortSet || hookBackingSeen;
+            hookBackingSeen = savedSeen;
+            if (abstractHook && !inAbstract) {
+                throw PhpError.fatal("Non-abstract property hook must have a body");
+            }
+            RootCallTarget target = null;
+            if (!abstractHook) {
+                PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
+                        new PhpFunctionRootNode(
+                        language, scope.build(), source, line,
+                        currentClass, "$" + propName + "::" + hookName, false, byRef,
+                        scope.thisSlot(), scope.calledClassSlot(), -1, scope.traitSelfSlot(),
+                        new int[0], new VarKind[0], new boolean[0],
+                        hookName.equals("set") ? new String[]{paramName} : new String[0],
+                        paramSlots, paramKinds, paramByRef, defaults, false, body)
+                        .withSignature(signature));
+                root.setStrictTypes(strictTypes);
+                if (scope.isGenerator()) {
+                    root.asGenerator();
+                }
+                target = dev.phpruntime.bytecode.BytecodeEmitter.target(language, root);
+            }
+            return new PhpClassTemplate.HookDecl(hookName, paramName, paramType, target, byRef, isFinal,
+                    backs, signature);
+        } finally {
+            scope = outer;
+            currentFunction = outerFunction;
+            currentReturnsRef = outerReturnsRef;
+        }
     }
 
     private PhpNode parseMemberInitializer(boolean isTrait, Scope[] outExprScope) {
@@ -1537,9 +1823,14 @@ public final class Parser {
                     List<PhpNode> initStmts = new ArrayList<>(params.promoted().size() + 1);
                     for (PromotedProp pp : params.promoted()) {
                         boolean propRo = pp.isReadonly() || classReadonly;
+                        if (pp.setVisibility() != null) {
+                            checkAsymmetricDeclaration(currentClass, pp.name(), pp.visibility(),
+                                    pp.setVisibility(), pp.type());
+                        }
                         classProps.add(new PhpClassTemplate.PropertyDecl(
                                 pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null,
-                                pp.type(), pp.attributes(), false));
+                                pp.type(), pp.attributes(), false, pp.setVisibility(), pp.virtual(),
+                                pp.getHook(), pp.setHook()));
                         LValueNode thisVar = scope.variable("this").at(pp.line());
                         LValueNode propLv = new PropertyLValueNode(thisVar, pp.name(), null, currentClassLower(),
                                 scope.traitSelfSlot()).at(pp.line());
@@ -2035,7 +2326,14 @@ public final class Parser {
             } else if (acceptOp("->")) {
                 e = parseMemberAccess(e, line, nullsafeChain);
             } else if (acceptOp("::")) {
-                e = parseStaticMember(ClassRefNode.dynamic(e), line);
+                if (e instanceof StaticPropertyLValueNode sp && peek().kind() == Kind.IDENT
+                        && peek(1).isOp("(")
+                        && ("get".equals(dev.phpruntime.runtime.PhpStrings.lower(peek().text()))
+                            || "set".equals(dev.phpruntime.runtime.PhpStrings.lower(peek().text())))) {
+                    e = parsePropertyHookCall(sp, line);
+                } else {
+                    e = parseStaticMember(ClassRefNode.dynamic(e), line);
+                }
             } else if (allowCall && acceptOp("(")) {
                 if (consumeFirstClassCallableEllipsis()) {
                     e = FirstClassCallableNode.forCallable(e, scope.thisSlot()).at(line);
@@ -2079,6 +2377,9 @@ public final class Parser {
             if (acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, member, language.methodId(member), null, line, nullsafe);
             } else {
+                if (hookBackingProp != null && member.equals(hookBackingProp)) {
+                    hookBackingSeen = true;
+                }
                 access = new PropertyLValueNode(nodeTarget, member, null, currentClassLower(), scope.traitSelfSlot()).at(line);
             }
         } else if (peek().kind() == Kind.VARIABLE) {
@@ -2120,6 +2421,26 @@ public final class Parser {
         }
         ParsedCallArgs pca = parseCallArgDetails();
         return new MethodCallNode(nodeTarget, member, methodId, nameExpr, pca.args(), pca.refs(), pca.names(), pca.spreads()).at(line);
+    }
+
+    private PhpNode parsePropertyHookCall(StaticPropertyLValueNode property, int line) {
+        String hookName = dev.phpruntime.runtime.PhpStrings.lower(next().text());
+        boolean get = hookName.equals("get");
+        if (hookBackingProp == null) {
+            throw PhpError.fatal("Must not use parent::$" + property.staticName() + "::" + hookName
+                    + "() outside a property hook");
+        }
+        expectOp("(");
+        PhpNode value = null;
+        if (!acceptOp(")")) {
+            if (get) {
+                throw error("get hook call takes no arguments");
+            }
+            value = expression();
+            expectOp(")");
+        }
+        return new PropertyHookCallNode(property.classRef(), property.staticName(), get, value,
+                scope.thisSlot(), scope.calledClassSlot()).at(line);
     }
 
     private PhpNode parseStaticMember(ClassRefNode classRef, int line) {
