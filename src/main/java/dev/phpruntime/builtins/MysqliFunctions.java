@@ -96,6 +96,9 @@ final class MysqliFunctions {
     /** Counts JDBC connections opened by this process, so a test can prove lazy restore. */
     private static final AtomicLong OPENED_CONNECTIONS = new AtomicLong();
 
+    /** At most this many distinct (URL, driver properties) configurations are kept. */
+    private static final int MAX_CONFIGURATIONS = 64;
+
     /**
      * Parsed Connector/J configurations, keyed by the URL and every driver property (so the
      * credentials and the per-link timeouts are part of the key). Parsing is a large part of a
@@ -103,7 +106,6 @@ final class MysqliFunctions {
      * loads the codecs through the service loader. A configuration is immutable once parsed,
      * so one instance can be shared by every connection with the same key.
      */
-    private static final int MAX_CONFIGURATIONS = 64;
     private static final Map<ConfigKey, Configuration> CONFIGURATIONS = Collections.synchronizedMap(
             new LinkedHashMap<>(16, 0.75f, true) {
                 @Override
@@ -670,7 +672,7 @@ final class MysqliFunctions {
         /**
          * Off unless -Dblitz.mysqli.pool=true. It gave no latency gain at steady state on the
          * WordPress front page, so it stays opt-in. A released connection has its session reset
-         * and its driver buffers dropped ({@link #shrinkRetainedBuffers}), so an idle one keeps
+         * and its driver buffers dropped ({@code shrinkRetainedBuffers}), so an idle one keeps
          * little memory.
          */
         static boolean enabled() {
