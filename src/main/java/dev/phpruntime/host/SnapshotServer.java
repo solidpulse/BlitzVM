@@ -124,6 +124,7 @@ public final class SnapshotServer implements AutoCloseable {
     private final long ttlNanos;
     private final long revalidateNanos;
     private final Set<String> verifyIgnore;
+    private final List<java.util.regex.Pattern> verifyBodyIgnore;
     private final Source afterRestoreSource;
     private volatile CallTarget afterRestoreTarget;
     private final ScheduledExecutorService reporter;
@@ -148,6 +149,13 @@ public final class SnapshotServer implements AutoCloseable {
         this.ttlNanos = TimeUnit.MILLISECONDS.toNanos(profile.ttlMs());
         this.revalidateNanos = Long.getLong("blitz.include.revalidateMs", 2000L) * 1_000_000L;
         this.verifyIgnore = Set.copyOf(profile.verifyIgnore());
+        List<java.util.regex.Pattern> bodyIgnore = new ArrayList<>();
+        for (String name : profile.verifyIgnore()) {
+            if (name.startsWith("response-body:")) {
+                bodyIgnore.add(java.util.regex.Pattern.compile(name.substring("response-body:".length())));
+            }
+        }
+        this.verifyBodyIgnore = List.copyOf(bodyIgnore);
         this.afterRestoreSource = afterRestoreSource(profile.afterRestoreProgram(this.docRoot));
         if (report) {
             reporter = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -321,7 +329,7 @@ public final class SnapshotServer implements AutoCloseable {
                 differences.add("fingerprint " + name + " (full " + a + ", restored " + b + ")");
             }
         }
-        if (!Arrays.equals(restored.body(), expected.body())) {
+        if (!bodyMatches(restored.body(), expected.body())) {
             differences.add("response body (" + restored.body().length + " bytes restored, "
                     + expected.body().length + " bytes full)");
         }
@@ -331,8 +339,32 @@ public final class SnapshotServer implements AutoCloseable {
         verifyDifferences.addAll(differences);
     }
 
-    private static Source afterRestoreSource(SnapshotProfile.Program program) throws IOException {
-        if (program == null) {
+    /**
+     * Whether two response bodies are equal once the profile's {@code response-body:} patterns
+     * are removed. A page that renders a random id per request cannot be byte-identical; the
+     * pattern names the request-dependent span so verify still catches every other difference.
+     */
+    private boolean bodyMatches(byte[] restored, byte[] expected) {
+        if (Arrays.equals(restored, expected)) {
+            return true;
+        }
+        if (verifyBodyIgnore.isEmpty()) {
+            return false;
+        }
+        String a = new String(restored, java.nio.charset.StandardCharsets.ISO_8859_1);
+        String b = new String(expected, java.nio.charset.StandardCharsets.ISO_8859_1);
+        for (java.util.regex.Pattern pattern : verifyBodyIgnore) {
+            a = pattern.matcher(a).replaceAll("");
+            b = pattern.matcher(b).replaceAll("");
+        }
+        if (a.equals(b)) {
+            counters.verifyIgnored("response-body");
+            return true;
+        }
+        return false;
+    }
+
+    private static Source afterRestoreSource(SnapshotProfile.Program program) throws IOException {        if (program == null) {
             return null;
         }
         if (program.file() == null) {

@@ -83,6 +83,25 @@ public final class Snapshot {
         String magicMethodName;
     }
 
+    /** A native state captured through {@link SnapshotNativeState}; the descriptor restores it. */
+    record NativeStateNode(Object state) {
+    }
+
+    /**
+     * What boot added to {@code $_SERVER} and {@code $_ENV} and the putenv() overrides it made.
+     * Replayed into each restored request on top of that request's own values; empty additions
+     * cost nothing. {@code environmentGlobal} records that boot accessed {@code $_ENV}, which
+     * puts it in the global order ({@code $GLOBALS}, the fingerprint) for the request.
+     */
+    record EnvAdditions(Map<Object, Object> server, Map<Object, Object> environment,
+                        Map<String, String> putenv, boolean environmentGlobal) {
+        static final EnvAdditions EMPTY = new EnvAdditions(Map.of(), Map.of(), Map.of(), false);
+
+        boolean isEmpty() {
+            return server.isEmpty() && environment.isEmpty() && putenv.isEmpty();
+        }
+    }
+
     /** A closed resource. Open resources refuse capture, so no handle is ever carried. */
     record ResourceNode(long id, String type, boolean closed) {
     }
@@ -122,16 +141,18 @@ public final class Snapshot {
     final List<ErrorHandlerEntry> errorHandlers;
     final List<Object> exceptionHandlers;
     final List<StaticEntry> staticLocals;
+    final EnvAdditions envAdditions;
     final ContextStateSnapshot contextState;
     final long nextObjectId;
+    final long nextEnumObjectId;
     final long nextAnonymousId;
 
     Snapshot(List<Global> globals, Map<String, Object> constants, List<PhpFunction> functions,
              PhpFunction[] functionTable, Map<String, PhpClass> classes, List<ClassStateNode> classStates, Set<String> includedFiles,
              List<Object> autoloaders, List<ShutdownEntry> shutdownFunctions,
              List<ErrorHandlerEntry> errorHandlers, List<Object> exceptionHandlers,
-             List<StaticEntry> staticLocals, ContextStateSnapshot contextState,
-             long nextObjectId, long nextAnonymousId) {
+             List<StaticEntry> staticLocals, EnvAdditions envAdditions, ContextStateSnapshot contextState,
+             long nextObjectId, long nextEnumObjectId, long nextAnonymousId) {
         this.globals = List.copyOf(globals);
         this.constants = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(constants));
         this.functions = List.copyOf(functions);
@@ -144,8 +165,10 @@ public final class Snapshot {
         this.errorHandlers = List.copyOf(errorHandlers);
         this.exceptionHandlers = List.copyOf(exceptionHandlers);
         this.staticLocals = List.copyOf(staticLocals);
+        this.envAdditions = envAdditions == null ? EnvAdditions.EMPTY : envAdditions;
         this.contextState = contextState;
         this.nextObjectId = nextObjectId;
+        this.nextEnumObjectId = nextEnumObjectId;
         this.nextAnonymousId = nextAnonymousId;
     }
 

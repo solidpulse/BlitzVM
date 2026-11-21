@@ -432,6 +432,22 @@ public final class PhpContext {
         return cell == null ? null : cell.getValue();
     }
 
+    /**
+     * The global's value without exposing an auto-global ({@code $_ENV}, {@code $_REQUEST}) in
+     * the global order. The snapshot layer needs to look at those without changing what the
+     * request reports, since {@code $GLOBALS} and the fingerprint see only the order.
+     */
+    @TruffleBoundary
+    public Object peekGlobal(String name) {
+        Integer id = language.lookupGlobalId(name);
+        if (id != null) {
+            PhpReference[] table = globalsById;
+            return id < table.length && table[id] != null ? table[id].getValue() : null;
+        }
+        PhpReference cell = dynamicGlobals == null ? null : dynamicGlobals.get(name);
+        return cell == null ? null : cell.getValue();
+    }
+
     @TruffleBoundary
     public void writeGlobal(String name, Object value) {
         if ("GLOBALS".equals(name)) {
@@ -858,7 +874,7 @@ public final class PhpContext {
                 throw PhpError.fatal("Class " + template.name() + " cannot extend final class " + parent.name());
             }
         }
-        List<PhpClass> ifaces = new ArrayList<>(template.interfaceNames().size());
+        List<PhpClass> ifaces = new ArrayList<>(template.interfaceNames().size() + 2);
         for (String ifaceName : template.interfaceNames()) {
             PhpClass iface = lookupOrAutoloadClass(ifaceName);
             if (iface == null) {
@@ -872,6 +888,20 @@ public final class PhpContext {
                 throw PhpError.fatal("Class " + template.name() + " cannot implement interface Throwable, extend Exception or Error instead");
             }
             ifaces.add(iface);
+        }
+        if (template.isEnum()) {
+            // Every enum implements UnitEnum, and a backed enum also implements BackedEnum;
+            // both come after the interfaces the declaration lists, as php reports them. They
+            // are part of what the linked class depends on, so the reuse check below must see
+            // them: a cached class built against another request's UnitEnum is a different type.
+            PhpClass unitEnum = lookupClass("UnitEnum");
+            if (unitEnum != null && !containsClass(ifaces, unitEnum)) {
+                ifaces.add(unitEnum);
+            }
+            PhpClass backedEnum = lookupClass("BackedEnum");
+            if (template.enumBackingType() != null && backedEnum != null && !containsClass(ifaces, backedEnum)) {
+                ifaces.add(backedEnum);
+            }
         }
         Map<String, PhpClass> resolvedTraits = template.traitUses().isEmpty() ? Map.of() : new HashMap<>();
         List<PhpClass> traitOrder = template.traitUses().isEmpty() ? List.of() : new ArrayList<>();
@@ -892,15 +922,26 @@ public final class PhpContext {
             }
         }
         // Linking depends only on the template and these resolved classes, so a request that
-        // resolves the same ones reuses the class another request built and validated.
+        // resolves the same ones reuses the class another request built and validated. Two
+        // requests can resolve the first one at the same time (a boot snapshot build runs next
+        // to live requests), so the check and the link are one step per template: otherwise
+        // both create a class and a later request can hold one class object while its
+        // interfaces point at the other request's copy, which makes instanceof and is_a lie.
         PhpClassTemplate.Linked linked = template.linked();
         PhpClass cls;
         if (linked != null && linked.matches(parent, ifaces, traitOrder)) {
             cls = linked.cls();
         } else {
-            cls = linkClass(template, isBuiltin, parent, ifaces, resolvedTraits);
-            template.setLinked(new PhpClassTemplate.Linked(cls, parent,
-                    ifaces.toArray(new PhpClass[0]), traitOrder.toArray(new PhpClass[0])));
+            synchronized (template) {
+                linked = template.linked();
+                if (linked != null && linked.matches(parent, ifaces, traitOrder)) {
+                    cls = linked.cls();
+                } else {
+                    cls = linkClass(template, isBuiltin, parent, ifaces, resolvedTraits);
+                    template.setLinked(new PhpClassTemplate.Linked(cls, parent,
+                            ifaces.toArray(new PhpClass[0]), traitOrder.toArray(new PhpClass[0])));
+                }
+            }
         }
         classes.put(lower, cls);
         int id = cls.classId();
@@ -939,20 +980,7 @@ public final class PhpContext {
 
     /** Builds and validates the class for one combination of parent, interfaces and traits. */
     private PhpClass linkClass(PhpClassTemplate template, boolean isBuiltin, PhpClass parent,
-                               List<PhpClass> declaredIfaces, Map<String, PhpClass> resolvedTraits) {
-        List<PhpClass> ifaces = new ArrayList<>(declaredIfaces);
-        if (template.isEnum()) {
-            // Every enum implements UnitEnum, and a backed enum also implements BackedEnum;
-            // both come after the interfaces the declaration lists, as php reports them.
-            PhpClass unitEnum = lookupClass("UnitEnum");
-            if (unitEnum != null && !containsClass(ifaces, unitEnum)) {
-                ifaces.add(unitEnum);
-            }
-            PhpClass backedEnum = lookupClass("BackedEnum");
-            if (template.enumBackingType() != null && backedEnum != null && !containsClass(ifaces, backedEnum)) {
-                ifaces.add(backedEnum);
-            }
-        }
+                               List<PhpClass> ifaces, Map<String, PhpClass> resolvedTraits) {
         if (!isBuiltin && parent != null) {
             for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
                 PhpClass.MethodEntry inherited = parent.lookupMethod(m.lowerName());
@@ -1159,6 +1187,11 @@ public final class PhpContext {
     }
 
     @TruffleBoundary
+    public long snapshotNextEnumObjectId() {
+        return nextEnumObjectId;
+    }
+
+    @TruffleBoundary
     public long snapshotNextAnonymousId() {
         return nextAnonymousId;
     }
@@ -1167,6 +1200,12 @@ public final class PhpContext {
     public void restoreObjectIds(long nextObject, long nextAnonymous) {
         nextObjectId = nextObject;
         nextAnonymousId = nextAnonymous;
+    }
+
+    /** Restores the enum-case id stream so cases created after a restore cannot collide. */
+    @TruffleBoundary
+    public void restoreEnumObjectId(long nextEnum) {
+        nextEnumObjectId = nextEnum;
     }
 
     /** Restores a global cell without changing its aliased flag (bindGlobalById would). */

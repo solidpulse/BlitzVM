@@ -230,9 +230,46 @@ class SnapshotServerTest {
         assertTrue(program.code().contains("wp_magic_quotes"), program.code());
     }
 
+    /**
+     * Item 4: a template run that ends in a refusal must not change what later requests compute.
+     * The boot declares many enums, so the template run and the live requests link the same
+     * class templates at the same time; before the linking invariant was fixed, one context
+     * could reuse a class built against another request's {@code UnitEnum}, and the enum then
+     * stopped being a {@code UnitEnum} for the rest of the process.
+     */
     @Test
-    void refusedBootIsLoggedOnceAndRequestsKeepWorking() throws Exception {
-        Path app = copyApp("snapshot-app-refused", temp.resolve("app"));
+    void aRefusedTemplateRunDoesNotChangeLaterRequests() throws Exception {
+        Path app = copyApp("snapshot-app-enum", temp.resolve("app"));
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        try (Fixture plain = Fixture.start(app, null, null);
+             Fixture snap = Fixture.start(app, app.resolve("profile.properties"), log::add)) {
+            String expected = plain.get("/").body();
+            assertTrue(expected.contains("unit=yes"), expected);
+            assertTrue(expected.contains("backed=yes"), expected);
+
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+            try {
+                List<java.util.concurrent.Future<Response>> inFlight = new ArrayList<>();
+                for (int i = 0; i < 8; i++) {
+                    inFlight.add(pool.submit(() -> snap.get("/")));
+                }
+                for (java.util.concurrent.Future<Response> future : inFlight) {
+                    assertEquals(expected, future.get(30, java.util.concurrent.TimeUnit.SECONDS).body());
+                }
+            } finally {
+                pool.shutdownNow();
+            }
+            assertTrue(waitForLog(log, "output was written during boot"), "refusal not logged: " + log);
+
+            for (int i = 0; i < 5; i++) {
+                Response response = snap.get("/");
+                assertEquals(expected, response.body());
+            }
+        }
+    }
+
+    @Test
+    void refusedBootIsLoggedOnceAndRequestsKeepWorking() throws Exception {        Path app = copyApp("snapshot-app-refused", temp.resolve("app"));
         List<String> log = Collections.synchronizedList(new ArrayList<>());
         try (Fixture snap = Fixture.start(app, app.resolve("profile.properties"), log::add)) {
             String expected = "boot output\nok\n";
