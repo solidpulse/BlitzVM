@@ -1,0 +1,15 @@
+string(9) "1,234.568"
+string(8) "-1,234.5"
+string(1) "0"
+string(2) "12"
+string(8) "1,234.57"
+int(2)
+string(7) "1,234.6"
+string(3) "2.0"
+string(3) "50%"
+string(3) "12%"
+string(9) "$1,234.50"
+U_ZERO_ERROR 0
+int(1)
+int(6)
+int(8)
