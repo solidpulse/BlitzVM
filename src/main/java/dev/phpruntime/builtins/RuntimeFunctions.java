@@ -83,7 +83,33 @@ final class RuntimeFunctions {
             out.put("user", userArr);
             return out;
         });
-        Builtins.def("gc_enabled", 0, 0, (ctx, a) -> true);
+        Builtins.def("gc_enabled", 0, 0, (ctx, a) -> ContextState.of(ctx).gcEnabled);
+        Builtins.def("gc_disable", 0, 0, (ctx, a) -> {
+            ContextState.of(ctx).gcEnabled = false;
+            return dev.phpruntime.runtime.PhpNull.INSTANCE;
+        });
+        Builtins.def("gc_enable", 0, 0, (ctx, a) -> {
+            ContextState.of(ctx).gcEnabled = true;
+            return dev.phpruntime.runtime.PhpNull.INSTANCE;
+        });
+        Builtins.def("gc_collect_cycles", 0, 0, (ctx, a) -> 0L);
+        Builtins.def("gc_mem_caches", 0, 0, (ctx, a) -> 0L);
+        Builtins.def("gc_status", 0, 0, (ctx, a) -> {
+            PhpArray out = new PhpArray();
+            out.put("running", false);
+            out.put("protected", false);
+            out.put("full", false);
+            out.put("runs", 0L);
+            out.put("collected", 0L);
+            out.put("threshold", 10001L);
+            out.put("buffer_size", 0L);
+            out.put("roots", 0L);
+            out.put("application_time", 0.0);
+            out.put("collector_time", 0.0);
+            out.put("destructor_time", 0.0);
+            out.put("free_time", 0.0);
+            return out;
+        });
         Builtins.def("zend_version", 0, 0, (ctx, a) -> "4.3.0");
         Builtins.def("php_uname", 0, 1, (ctx, a) -> {
             String mode = a.length > 0 ? PhpOps.toStr(a[0]) : "a";

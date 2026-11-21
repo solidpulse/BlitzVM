@@ -186,6 +186,7 @@ ftruncate	stream:0:!	size:0:!
 function_exists	function:0:!
 fwrite	stream:0:!	data:0:!	length:0:NULL
 gc_enabled
+get_cfg_var	option:0:!
 get_class	object:0:?
 get_class_methods	object_or_class:0:!
 get_class_vars	class:0:!
@@ -327,6 +328,7 @@ ltrim	string:0:!	characters:0:' \n\r\t' . "\\0" . ''
 max	value:0:!	values:1:?
 mb_check_encoding	value:0:NULL	encoding:0:NULL
 mb_chr	codepoint:0:!	encoding:0:NULL
+mb_convert_case	string:0:!	mode:0:!	encoding:0:NULL
 mb_convert_encoding	string:0:!	to_encoding:0:!	from_encoding:0:NULL
 mb_decode_mimeheader	string:0:!
 mb_detect_encoding	string:0:!	encodings:0:NULL	strict:0:false
@@ -425,6 +427,8 @@ ob_start	callback:0:NULL	chunk_size:0:0	flags:0:112
 octdec	octal_string:0:!
 opcache_get_status	include_scripts:0:true
 opendir	directory:0:!	context:0:NULL
+openssl_decrypt	data:0:!	cipher_algo:0:!	passphrase:0:!	options:0:0	iv:0:''	tag:0:NULL	aad:0:''
+openssl_encrypt	data:0:!	cipher_algo:0:!	passphrase:0:!	options:0:0	iv:0:''	tag:0:NULL	aad:0:''	tag_length:0:16
 ord	character:0:!
 pack	format:0:!	values:1:?
 parse_str	string:0:!	result:0:!
