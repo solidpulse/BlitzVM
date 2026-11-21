@@ -38,7 +38,7 @@ import java.util.concurrent.Semaphore;
 public final class PhpEngine implements AutoCloseable {
 
     /** A pooled context is replaced after this many requests, even when every one was clean. */
-    private static final int MAX_REQUESTS_PER_CONTEXT = 10_000;
+    private static final int DEFAULT_MAX_REQUESTS_PER_CONTEXT = 10_000;
 
     /** Result of one execution: the response body plus whatever the script set via header(). */
     public record Result(int status, byte[] body, PhpRequest request, String errors) {
@@ -50,6 +50,7 @@ public final class PhpEngine implements AutoCloseable {
     private final Engine engine;
     private final Scheduler scheduler;
     private final ContextPool pool;
+    private final int maxRequestsPerContext;
     private final ConcurrentHashMap<Path, CachedSource> sources = new ConcurrentHashMap<>();
 
     private record CachedSource(long modified, Source source) {
@@ -72,6 +73,8 @@ public final class PhpEngine implements AutoCloseable {
                 .option("engine.WarnInterpreterOnly", "false")
                 .build();
         this.pool = poolSize > 0 && scheduler != null ? new ContextPool(poolSize) : null;
+        this.maxRequestsPerContext = Math.max(1,
+                Integer.getInteger("blitz.pool.maxRequests", DEFAULT_MAX_REQUESTS_PER_CONTEXT));
     }
 
     public Scheduler scheduler() {
@@ -183,7 +186,7 @@ public final class PhpEngine implements AutoCloseable {
                 ctx.eval(source);
                 // A clean run may be pooled again; everything else closes the context below.
                 reusable = !task.timedOut() && !php.endedAbnormally()
-                        && borrowed.uses < MAX_REQUESTS_PER_CONTEXT;
+                        && borrowed.uses < maxRequestsPerContext;
                 return request.status;
             } catch (PolyglotException e) {
                 // Guest errors, internal errors and cancellation all leave the context's fate

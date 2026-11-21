@@ -242,6 +242,22 @@ class ContextReuseTest {
     }
 
     @Test
+    void aContextIsReplacedAfterTheRequestLimit() throws Exception {
+        Path clean = write("limit.php", "<?php echo 'ok';");
+        System.setProperty("blitz.pool.maxRequests", "2");
+        try (Scheduler scheduler = new Scheduler(1, 10, 0);
+             PhpEngine engine = new PhpEngine(scheduler, 1)) {
+            assertEquals("ok", run(engine, clean).bodyText());
+            assertEquals("ok", run(engine, clean).bodyText());
+            assertEquals(1, engine.contextsCreated(), "the context was replaced too early");
+            assertEquals("ok", run(engine, clean).bodyText());
+            assertEquals(2, engine.contextsCreated(), "the safety valve did not replace the context");
+        } finally {
+            System.clearProperty("blitz.pool.maxRequests");
+        }
+    }
+
+    @Test
     void javascriptRunsDoNotReuseThePhpPool() throws Exception {
         Path php = write("plain.php", "<?php echo 'php';");
         Path js = write("plain.js", "console.log('js');");
