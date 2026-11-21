@@ -709,9 +709,12 @@ public final class PhpContext {
     public PhpClass lookupOrAutoloadClass(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
         PhpClass cls = lookupClass(n);
+        if (cls != null || !isValidClassName(n)) {
+            return cls;
+        }
         String lower = PhpStrings.lower(n);
         List<Object> loaders = autoloaders;
-        if (cls != null || loaders == null || loaders.isEmpty() || !autoloadingInProgress().add(lower)) {
+        if (loaders == null || loaders.isEmpty() || !autoloadingInProgress().add(lower)) {
             return cls;
         }
         try {
@@ -729,6 +732,28 @@ public final class PhpContext {
         } finally {
             autoloadingInProgress().remove(lower);
         }
+    }
+
+    /**
+     * A class name php will hand to the autoloaders: identifier bytes separated by backslashes.
+     * Names with dots, dashes or other punctuation never trigger autoloading; ReflectionClass()
+     * and class_exists() report them as missing instead of including whatever file the loader
+     * maps them to.
+     */
+    private static boolean isValidClassName(String name) {
+        if (name.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            boolean valid = c == '_' || c == '\\'
+                    || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                    || c >= 0x80;
+            if (!valid) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @TruffleBoundary
