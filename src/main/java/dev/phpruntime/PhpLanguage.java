@@ -227,7 +227,13 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
         return null;
     }
 
-    private record CachedSource(long modified, Source source) {
+    /**
+     * A parsed file and the stat fields it was read under. The modification time alone is not
+     * enough: Symfony's PhpFilesAdapter backdates every cache file it writes to a fixed
+     * {@code startTime - 10}, so a rewritten file can keep its old mtime; size, inode (a rename
+     * over the file) and ctime (an in-place write) catch that.
+     */
+    private record CachedSource(long modified, long size, long inode, long ctime, Source source) {
     }
 
     public static PhpLanguage get(com.oracle.truffle.api.nodes.Node node) {
@@ -319,6 +325,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
         return null;
     }
 
+    /**
+     * opcache_invalidate: forget the parsed source of this canonical path and every include
+     * resolution that points at it, so the next include stats and reparses the file.
+     * Returns whether anything was cached.
+     */
+    public boolean invalidateInclude(String canonicalPath) {
+        boolean had = sources.remove(canonicalPath) != null;
+        had |= includes.values().removeIf(r -> r.canonicalPath().equals(canonicalPath));
+        return had;
+    }
+
+    /** opcache_is_script_cached: whether a parsed source for this canonical path is held. */
+    public boolean isIncludeCached(String canonicalPath) {
+        return sources.containsKey(canonicalPath);
+    }
+
     public ResolvedInclude cacheInclude(String key, String canonicalPath, CallTarget target) {
         ResolvedInclude r = new ResolvedInclude(canonicalPath, target, System.nanoTime());
         includes.put(key, r);
@@ -329,12 +351,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
     public Source loadSource(TruffleFile canonical) throws IOException {
         String key = canonical.getPath();
         long modified = canonical.getLastModifiedTime().toMillis();
+        long size = canonical.size();
+        long inode = -1;
+        long ctime = -1;
+        try {
+            inode = canonical.getAttribute(TruffleFile.UNIX_INODE);
+            ctime = canonical.getAttribute(TruffleFile.UNIX_CTIME).to(java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (UnsupportedOperationException e) {
+            // Not a POSIX file system: mtime and size only.
+        }
         CachedSource cached = sources.get(key);
-        if (cached != null && cached.modified() == modified) {
+        if (cached != null && cached.modified() == modified && cached.size() == size
+                && cached.inode() == inode && cached.ctime() == ctime) {
             return cached.source();
         }
         Source src = Source.newBuilder(ID, canonical).encoding(java.nio.charset.StandardCharsets.ISO_8859_1).cached(true).build();
-        sources.put(key, new CachedSource(modified, src));
+        sources.put(key, new CachedSource(modified, size, inode, ctime, src));
         return src;
     }
 
