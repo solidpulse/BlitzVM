@@ -61,7 +61,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
     public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
-        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
         PhpClass.StaticSlot slot = requireSlot(cls, name, caller);
         Object val = slot.get();
         if (val == PhpClass.UNINITIALIZED) {
@@ -99,7 +99,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
     public Object read(VirtualFrame frame, Object[] keys) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
-        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
         Resolution res = resolution(cls, name, caller);
         if (res.decl() == null || !res.accessible()) {
             return null;
@@ -115,7 +115,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
-        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
         Resolution res = resolution(cls, name, caller);
         if (res.decl() == null) {
             CompilerDirectives.transferToInterpreter();
@@ -124,6 +124,10 @@ public final class StaticPropertyLValueNode extends LValueNode {
         if (!res.accessible()) {
             CompilerDirectives.transferToInterpreter();
             throw inaccessible(res.decl(), name);
+        }
+        if (!setAccessible(res.decl(), caller)) {
+            CompilerDirectives.transferToInterpreter();
+            throw cannotModifySet(res.decl(), name, caller, "modify");
         }
         if (res.decl().declaredType() != null) {
             value = res.decl().declaredType().checkProperty(value, PhpContext.get(this), this,
@@ -132,9 +136,42 @@ public final class StaticPropertyLValueNode extends LValueNode {
         res.decl().slot(PhpContext.get(this)).set(value);
     }
 
+    private boolean setAccessible(PhpClass.StaticDecl decl, PhpClass traitCaller) {
+        Visibility set = decl.effectiveSetVisibility();
+        if (set == Visibility.PUBLIC) {
+            return true;
+        }
+        PhpClass caller = traitCaller;
+        if (caller == null && callingClassLower != null) {
+            caller = PhpContext.get(this).lookupClass(callingClassLower);
+        }
+        if (set == Visibility.PRIVATE) {
+            return caller != null && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(caller.name(),
+                    decl.declaringClass().name());
+        }
+        return caller != null && (decl.declaringClass().isInstanceOf(caller)
+                || caller.isInstanceOf(decl.declaringClass()));
+    }
+
+    @TruffleBoundary
+    private PhpError cannotModifySet(PhpClass.StaticDecl decl, String name, PhpClass traitCaller, String action) {
+        String level = decl.effectiveSetVisibility() == Visibility.PRIVATE ? "private(set)" : "protected(set)";
+        String scope;
+        if (traitCaller != null) {
+            scope = "scope " + traitCaller.name();
+        } else if (callingClassLower == null) {
+            scope = "global scope";
+        } else {
+            PhpClass caller = PhpContext.get(this).lookupClass(callingClassLower);
+            scope = caller == null ? "global scope" : "scope " + caller.name();
+        }
+        return new PhpError("Cannot " + action + " " + level + " property " + decl.declaringClass().name()
+                + "::$" + name + " from " + scope, this);
+    }
+
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
-        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         Resolution res = resolution(cls, name, caller);
@@ -143,6 +180,9 @@ public final class StaticPropertyLValueNode extends LValueNode {
         }
         if (!res.accessible()) {
             throw inaccessible(res.decl(), name);
+        }
+        if (!setAccessible(res.decl(), caller)) {
+            throw cannotModifySet(res.decl(), name, caller, "indirectly modify");
         }
         PhpClass.StaticSlot slot = res.decl().slot(PhpContext.get(this));
         if (slot.get() == PhpClass.UNINITIALIZED) {
@@ -163,7 +203,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
 
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
-        PhpClass caller = keys.length > 2 ? (PhpClass) keys[2] : null;
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         Resolution res = resolution(cls, name, caller);
@@ -172,6 +212,9 @@ public final class StaticPropertyLValueNode extends LValueNode {
         }
         if (!res.accessible()) {
             throw inaccessible(res.decl(), name);
+        }
+        if (!setAccessible(res.decl(), caller)) {
+            throw cannotModifySet(res.decl(), name, caller, "indirectly modify");
         }
         if (res.decl().declaredType() != null) {
             Object current = cell.getValue();

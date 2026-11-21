@@ -140,11 +140,22 @@ public final class PhpClass {
     /** A declared static property; its value lives in each request's {@link RequestState}. */
     public record StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
                              Object constDefault, RootCallTarget defaultTarget,
-                             PhpType type, DeclaredType declaredType, boolean hasDefault) {
+                             PhpType type, DeclaredType declaredType, boolean hasDefault,
+                             Visibility setVisibility) {
+
+        public StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
+                          Object constDefault, RootCallTarget defaultTarget,
+                          PhpType type, DeclaredType declaredType, boolean hasDefault) {
+            this(name, visibility, declaringClass, constDefault, defaultTarget, type, declaredType, hasDefault, null);
+        }
 
         public StaticDecl(String name, Visibility visibility, PhpClass declaringClass,
                           Object constDefault, RootCallTarget defaultTarget) {
             this(name, visibility, declaringClass, constDefault, defaultTarget, null, null, true);
+        }
+
+        public Visibility effectiveSetVisibility() {
+            return setVisibility == null ? visibility : setVisibility;
         }
 
         /** This request's slot for the property, created on first use. */
@@ -228,14 +239,57 @@ public final class PhpClass {
     /** Sentinel stored in {@link PhpObject} for an uninitialized {@code readonly} property. */
     public static final Object UNINITIALIZED = new Object();
 
-    public record InstanceProp(String name, String storageKey, Visibility visibility, boolean isReadonly,
-                               PhpClass declaringClass, Object constDefault, RootCallTarget defaultTarget,
-                               PhpType type, DeclaredType declaredType) {
+    /** One hook of an effective property: php's {@code $prop::get} or {@code $prop::set}. */
+    public record PropertyHook(String name, PhpClass declaringClass, RootCallTarget callTarget,
+                               boolean byRef, boolean isFinal, boolean fromTrait, boolean backs,
+                               PhpSignature signature) {
+        public boolean isAbstract() {
+            return callTarget == null;
+        }
+    }
+
+    public record InstanceProp(String name, String storageKey, Visibility visibility, Visibility setVisibility,
+                               boolean isReadonly, PhpClass declaringClass, Object constDefault,
+                               RootCallTarget defaultTarget, PhpType type, DeclaredType declaredType,
+                               PropertyHook getHook, PropertyHook setHook, boolean virtual, boolean isFinal) {
+
+        public InstanceProp(String name, String storageKey, Visibility visibility, boolean isReadonly,
+                            PhpClass declaringClass, Object constDefault, RootCallTarget defaultTarget,
+                            PhpType type, DeclaredType declaredType) {
+            this(name, storageKey, visibility, null, isReadonly, declaringClass, constDefault, defaultTarget,
+                    type, declaredType, null, null, false, false);
+        }
+
+        public Visibility effectiveSetVisibility() {
+            return setVisibility == null ? visibility : setVisibility;
+        }
+
+        public boolean hasHooks() {
+            return getHook != null || setHook != null;
+        }
     }
 
     public record PropertyResolution(String storageKey, boolean accessible, Visibility visibility,
                                      boolean isReadonly, boolean canInitReadonly, String declaringClass,
-                                     DeclaredType type) {
+                                     DeclaredType type, boolean setAccessible, Visibility setVisibility,
+                                     String setDeclaringClass, PropertyHook getHook, PropertyHook setHook,
+                                     boolean virtual, boolean hooked) {
+
+        /** A resolution without hooks or asymmetric visibility, for callers that have none. */
+        public PropertyResolution(String storageKey, boolean accessible, Visibility visibility,
+                                  boolean isReadonly, boolean canInitReadonly, String declaringClass,
+                                  DeclaredType type) {
+            this(storageKey, accessible, visibility, isReadonly, canInitReadonly, declaringClass, type,
+                    accessible, visibility, declaringClass, null, null, false, false);
+        }
+
+        public boolean writable() {
+            return setAccessible;
+        }
+
+        public boolean hasHooks() {
+            return hooked;
+        }
     }
 
     private final PhpClassTemplate template;
@@ -364,7 +418,7 @@ public final class PhpClass {
             for (PhpClassTemplate.PropertyDecl tp : tr.traitProperties) {
                 allTraitProps.add(tp);
                 if (!ownPropNames.contains(tp.name())) {
-                    applyPropertyDecl(tp);
+                    applyPropertyDecl(tp, true);
                 }
             }
         }
@@ -373,8 +427,10 @@ public final class PhpClass {
 
         // Apply own property declarations (overriding non-private properties in place).
         for (PhpClassTemplate.PropertyDecl p : template.properties()) {
-            applyPropertyDecl(p);
+            applyPropertyDecl(p, false);
         }
+
+        validateAbstractHooks();
 
         // Record trait & own constant declarations (evaluated lazily on first lookup).
         for (PhpClass tr : usedTraits) {
@@ -516,35 +572,233 @@ public final class PhpClass {
         return null;
     }
 
-    private void applyPropertyDecl(PhpClassTemplate.PropertyDecl p) {
+    private void applyPropertyDecl(PhpClassTemplate.PropertyDecl p, boolean fromTrait) {
         this.declaredPropNames.add(p.name());
         DeclaredType declaredType = DeclaredType.of(p.type(), template.name(), language);
         if (p.isStatic()) {
+            StaticDecl prev = this.staticDecls.get(p.name());
+            if (prev != null && prev.declaringClass() != this) {
+                checkSetVisibility(prev.effectiveSetVisibility(), p, prev.declaringClass(), true);
+            }
             this.staticDecls.put(p.name(), new StaticDecl(p.name(), p.visibility(), this, p.constDefault(),
-                    p.defaultTarget(), p.type(), declaredType, p.hasDefault()));
-        } else if (p.visibility() == Visibility.PRIVATE) {
+                    p.defaultTarget(), p.type(), declaredType, p.hasDefault(), p.setVisibility()));
+            return;
+        }
+        if (p.visibility() == Visibility.PRIVATE) {
             String storageKey = "\0" + template.name() + "\0" + p.name();
             Object defVal = defaultFor(p);
-            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, p.isReadonly(), this,
-                    defVal, p.defaultTarget(), p.type(), declaredType);
+            InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, p.setVisibility(),
+                    p.isReadonly(), this, defVal, p.defaultTarget(), p.type(), declaredType,
+                    hook(p.getHook(), fromTrait), hook(p.setHook(), fromTrait), p.virtual(),
+                    p.setVisibility() == Visibility.PRIVATE);
             this.instanceProps.add(ip);
             this.privateProps.put(template.lowerName() + "\0" + p.name(), ip);
+            return;
+        }
+
+        InstanceProp prev = this.visibleProps.get(p.name());
+        if (prev != null) {
+            checkPropertyOverride(prev, p);
+        }
+        // Hooks are inherited per hook: a child declaration overrides the hooks it declares
+        // and keeps the rest. A plain redeclaration keeps all of them but makes the property
+        // backed, as php 8.4 does.
+        PropertyHook getHook = p.getHook() != null ? hook(p.getHook(), fromTrait)
+                : (prev != null && prev.getHook() != null && !prev.getHook().isAbstract() ? prev.getHook() : null);
+        PropertyHook setHook = p.setHook() != null ? hook(p.setHook(), fromTrait)
+                : (prev != null && prev.setHook() != null && !prev.setHook().isAbstract() ? prev.setHook() : null);
+        boolean virtual;
+        if (prev != null && !p.hasHooks()) {
+            virtual = false;
         } else {
-            Object defVal = defaultFor(p);
-            InstanceProp ip = new InstanceProp(p.name(), p.name(), p.visibility(), p.isReadonly(), this,
-                    defVal, p.defaultTarget(), p.type(), declaredType);
-            InstanceProp prev = this.visibleProps.put(p.name(), ip);
-            if (prev != null) {
-                int idx = this.instanceProps.indexOf(prev);
-                if (idx >= 0) {
-                    this.instanceProps.set(idx, ip);
-                } else {
-                    this.instanceProps.add(ip);
-                }
+            virtual = (getHook != null || setHook != null)
+                    && !(getHook != null && getHook.backs())
+                    && !(setHook != null && setHook.backs());
+            if (prev != null && !prev.virtual()) {
+                // Backedness is inherited: a child's virtual-looking hooks still read the store.
+                virtual = false;
+            }
+        }
+        Object defVal = virtual ? PhpNull.INSTANCE : defaultFor(p);
+        String storageKey = prev != null ? prev.storageKey() : p.name();
+        // A redeclaration without a set modifier widens writes to its own read visibility;
+        // php does not inherit the parent's asymmetric set level (x6 in the task notes).
+        Visibility setVisibility = p.setVisibility();
+        InstanceProp ip = new InstanceProp(p.name(), storageKey, p.visibility(), setVisibility, p.isReadonly(),
+                this, defVal, p.defaultTarget(), p.type(), declaredType, getHook, setHook, virtual,
+                p.setVisibility() == Visibility.PRIVATE);
+        if (prev != null) {
+            int idx = this.instanceProps.indexOf(prev);
+            if (idx >= 0) {
+                this.instanceProps.set(idx, ip);
             } else {
                 this.instanceProps.add(ip);
             }
+        } else {
+            this.instanceProps.add(ip);
         }
+        this.visibleProps.put(p.name(), ip);
+    }
+
+    private PropertyHook hook(PhpClassTemplate.HookDecl decl, boolean fromTrait) {
+        if (decl == null) {
+            return null;
+        }
+        return new PropertyHook(decl.name(), this, decl.callTarget(), decl.byRef(), decl.isFinal(),
+                fromTrait, decl.backs(), decl.signature());
+    }
+
+    private void checkPropertyOverride(InstanceProp prev, PhpClassTemplate.PropertyDecl p) {
+        if (prev.isFinal()) {
+            throw PhpError.fatal("Cannot override final property " + prev.declaringClass().name() + "::$" + p.name());
+        }
+        if (p.visibility().ordinal() > prev.visibility().ordinal()) {
+            String level = prev.visibility() == Visibility.PUBLIC ? "public" : "protected";
+            throw PhpError.fatal("Access level to " + template.name() + "::$" + p.name()
+                    + " must be " + level + " (as in class " + prev.declaringClass().name() + ")");
+        }
+        checkSetVisibility(prev.effectiveSetVisibility(), p, prev.declaringClass(), prev.setVisibility() != null);
+        if (prev.getHook() != null && prev.getHook().isFinal() && p.getHook() != null) {
+            throw PhpError.fatal("Cannot override final property hook "
+                    + prev.getHook().declaringClass().name() + "::$" + p.name() + "::get()");
+        }
+        if (prev.setHook() != null && prev.setHook().isFinal() && p.setHook() != null) {
+            throw PhpError.fatal("Cannot override final property hook "
+                    + prev.setHook().declaringClass().name() + "::$" + p.name() + "::set()");
+        }
+        if (prev.type() != null && p.type() != null && !prev.type().toString().equals(p.type().toString())) {
+            if (prev.getHook() != null && p.getHook() != null) {
+                throw PhpError.fatal("Declaration of " + template.name() + "::$" + p.name()
+                        + "::get(): " + p.type() + " must be compatible with "
+                        + prev.declaringClass().name() + "::$" + p.name() + "::get(): " + prev.type());
+            }
+            throw PhpError.fatal("Type of " + template.name() + "::$" + p.name() + " must be "
+                    + prev.type() + " (as in class " + prev.declaringClass().name() + ")");
+        }
+    }
+
+    private void checkSetVisibility(Visibility parentSet, PhpClassTemplate.PropertyDecl p,
+                                    PhpClass parentDeclaring, boolean parentAsymmetric) {
+        Visibility childSet = p.setVisibility() != null ? p.setVisibility() : p.visibility();
+        if (parentSet == Visibility.PUBLIC && childSet != Visibility.PUBLIC) {
+            throw PhpError.fatal("Set access level of " + template.name() + "::$" + p.name()
+                    + " must be omitted (as in class " + parentDeclaring.name() + ")");
+        }
+        if (parentSet != Visibility.PUBLIC && childSet.ordinal() > parentSet.ordinal()) {
+            throw PhpError.fatal("Set access level of " + template.name() + "::$" + p.name()
+                    + " must be " + setLevel(parentSet) + " (as in class " + parentDeclaring.name()
+                    + ") or weaker");
+        }
+    }
+
+    private static String setLevel(Visibility visibility) {
+        return visibility == Visibility.PRIVATE ? "private(set)" : "protected(set)";
+    }
+
+    /** Concrete classes must implement every abstract hook they inherit or promise an interface. */
+    private void validateAbstractHooks() {
+        if (template.isInterface() || template.isTrait() || template.isAbstract()) {
+            return;
+        }
+        for (InstanceProp prop : instanceProps) {
+            if (prop.getHook() != null && prop.getHook().isAbstract()) {
+                throw abstractHook(prop.getHook().declaringClass(), prop.name(), "get", "method");
+            }
+            if (prop.setHook() != null && prop.setHook().isAbstract()) {
+                throw abstractHook(prop.setHook().declaringClass(), prop.name(), "set", "method");
+            }
+        }
+        validateInterfacePropertyContracts();
+    }
+
+    private void validateInterfacePropertyContracts() {
+        Set<PhpClass> seen = new HashSet<>();
+        List<PhpClass> todo = new ArrayList<>();
+        for (PhpClass c = this; c != null; c = c.parent) {
+            todo.addAll(c.interfaces);
+        }
+        while (!todo.isEmpty()) {
+            PhpClass iface = todo.remove(todo.size() - 1);
+            if (!seen.add(iface)) {
+                continue;
+            }
+            todo.addAll(iface.interfaces());
+            for (PhpClassTemplate.PropertyDecl decl : iface.template().properties()) {
+                InstanceProp prop = decl.visibility() == Visibility.PRIVATE
+                        ? privateProps.get(iface.lowerName() + "\0" + decl.name())
+                        : visibleProps.get(decl.name());
+                if (prop == null) {
+                    throw abstractHook(iface, decl.name(), decl.getHook() != null ? "get" : "set", "method");
+                }
+                if (prop.visibility() != Visibility.PUBLIC) {
+                    throw PhpError.fatal("Access level to " + template.name() + "::$" + decl.name()
+                            + " must be public (as in interface " + iface.name() + ")");
+                }
+                if (decl.type() != null && prop.type() != null
+                        && !interfaceTypeCompatible(prop.type(), decl.type())) {
+                    String hook = decl.getHook() != null ? "get" : "set";
+                    throw PhpError.fatal("Declaration of " + template.name() + "::$" + decl.name() + "::" + hook
+                            + "(): " + prop.type() + " must be compatible with "
+                            + iface.name() + "::$" + decl.name() + "::" + hook + "(): " + decl.type());
+                }
+                if (decl.getHook() != null) {
+                    if (prop.virtual() && prop.getHook() == null
+                            || prop.getHook() != null && prop.getHook().isAbstract()) {
+                        throw abstractHook(iface, decl.name(), "get", "method");
+                    }
+                }
+                if (decl.setHook() != null) {
+                    if (prop.setVisibility() != null) {
+                        throw PhpError.fatal("Set access level of " + template.name() + "::$" + decl.name()
+                                + " must be omitted (as in class " + iface.name() + ")");
+                    }
+                    if (prop.virtual() && prop.setHook() == null
+                            || prop.setHook() != null && prop.setHook().isAbstract()) {
+                        throw abstractHook(iface, decl.name(), "set", "method");
+                    }
+                }
+            }
+        }
+    }
+
+    /** Interface property get types are covariant; nullable widening is the common case. */
+    private static boolean interfaceTypeCompatible(PhpType child, PhpType parent) {
+        if (parent instanceof PhpType.Nullable nullable) {
+            if (child instanceof PhpType.Nullable childNullable) {
+                return interfaceTypeCompatible(childNullable.inner(), nullable.inner());
+            }
+            return interfaceTypeCompatible(child, nullable.inner());
+        }
+        if (child instanceof PhpType.Nullable) {
+            return false;
+        }
+        if (parent instanceof PhpType.Named named
+                && PhpStrings.equalsIgnoreCase(named.name(), "mixed")) {
+            return true;
+        }
+        if (parent instanceof PhpType.Union union) {
+            if (child instanceof PhpType.Union childUnion) {
+                for (PhpType member : childUnion.members()) {
+                    if (!interfaceTypeCompatible(member, union)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            for (PhpType member : union.members()) {
+                if (interfaceTypeCompatible(child, member)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return child.toString().equalsIgnoreCase(parent.toString());
+    }
+
+    private PhpError abstractHook(PhpClass owner, String prop, String hook, String noun) {
+        return PhpError.fatal("Class " + template.name() + " contains 1 abstract method and must therefore"
+                + " be declared abstract or implement the remaining " + noun + " ("
+                + owner.name() + "::$" + prop + "::" + hook + ")");
     }
 
     /** A typed property without an explicit default starts uninitialized, as php does. */
@@ -882,8 +1136,8 @@ public final class PhpClass {
         if (callingClassLower != null) {
             InstanceProp priv = privateProps.get(callingClassLower + "\0" + name);
             if (priv != null) {
-                return new PropertyResolution(priv.storageKey(), true, Visibility.PRIVATE,
-                        priv.isReadonly(), priv.isReadonly(), priv.declaringClass().name(), priv.declaredType());
+                return resolution(priv, true, priv.effectiveSetVisibility() == Visibility.PRIVATE
+                        || effectiveWriteAccess(priv, ctx, callingClassLower));
             }
         }
         InstanceProp vis = visibleProps.get(name);
@@ -891,15 +1145,38 @@ public final class PhpClass {
             boolean accessible = vis.visibility() == Visibility.PUBLIC
                     || isProtectedAccessible(ctx, vis.declaringClass(), callingClassLower);
             boolean canInit = vis.isReadonly() && isProtectedAccessible(ctx, vis.declaringClass(), callingClassLower);
-            return new PropertyResolution(vis.storageKey(), accessible, vis.visibility(),
-                    vis.isReadonly(), canInit, vis.declaringClass().name(), vis.declaredType());
+            return resolution(vis, accessible, effectiveWriteAccess(vis, ctx, callingClassLower), canInit);
         }
         InstanceProp ownPriv = privateProps.get(template.lowerName() + "\0" + name);
         if (ownPriv != null) {
-            return new PropertyResolution(ownPriv.storageKey(), false, Visibility.PRIVATE,
-                    ownPriv.isReadonly(), false, ownPriv.declaringClass().name(), ownPriv.declaredType());
+            return resolution(ownPriv, false, false);
         }
-        return new PropertyResolution(name, true, Visibility.PUBLIC, false, false, null, null);
+        return new PropertyResolution(name, true, Visibility.PUBLIC, false, false, null, null,
+                true, Visibility.PUBLIC, null, null, null, false, false);
+    }
+
+    private PropertyResolution resolution(InstanceProp prop, boolean accessible, boolean writable) {
+        return resolution(prop, accessible, writable, prop.isReadonly() && accessible);
+    }
+
+    private PropertyResolution resolution(InstanceProp prop, boolean accessible, boolean writable,
+                                          boolean canInitReadonly) {
+        return new PropertyResolution(prop.storageKey(), accessible, prop.visibility(), prop.isReadonly(),
+                canInitReadonly, prop.declaringClass().name(), prop.declaredType(), writable,
+                prop.effectiveSetVisibility(), prop.declaringClass().name(), prop.getHook(), prop.setHook(),
+                prop.virtual(), prop.hasHooks());
+    }
+
+    /** Whether a caller in {@code callingClassLower} may write the property's set visibility. */
+    private boolean effectiveWriteAccess(InstanceProp prop, PhpContext ctx, String callingClassLower) {
+        Visibility set = prop.effectiveSetVisibility();
+        return switch (set) {
+            case PUBLIC -> prop.visibility() == Visibility.PUBLIC
+                    || isProtectedAccessible(ctx, prop.declaringClass(), callingClassLower);
+            case PROTECTED -> isProtectedAccessible(ctx, prop.declaringClass(), callingClassLower);
+            case PRIVATE -> callingClassLower != null
+                    && PhpStrings.equalsIgnoreCase(prop.declaringClass().name(), callingClassLower);
+        };
     }
 
     private boolean isProtectedAccessible(PhpContext ctx, PhpClass declaring, String callingClassLower) {
@@ -908,6 +1185,19 @@ public final class PhpClass {
         }
         PhpClass caller = ctx.lookupClass(callingClassLower);
         return caller != null && (this.isInstanceOf(caller) || caller.isInstanceOf(declaring));
+    }
+
+    /** The class a private(set) or private write names in php's "from scope X" message. */
+    @TruffleBoundary
+    public static String scopeName(PhpContext ctx, String callingClassLower) {
+        if (callingClassLower == null || callingClassLower.isEmpty()) {
+            return "global scope";
+        }
+        PhpClass caller = ctx.lookupClass(callingClassLower);
+        if (caller == null) {
+            return "global scope";
+        }
+        return "scope " + caller.name();
     }
 
     @TruffleBoundary
@@ -964,9 +1254,10 @@ public final class PhpClass {
     private Object[] dynamicDefaultValues(Defaults d) {
         RequestState state = PhpContext.get(null).classState(this);
         if (state.defaultValues == null) {
+            List<InstanceProp> backed = storageProps();
             Object[] evaluated = d.values().clone();
             for (int i = 0; i < evaluated.length; i++) {
-                InstanceProp p = instanceProps.get(i);
+                InstanceProp p = backed.get(i);
                 if (p.defaultTarget() != null) {
                     evaluated[i] = evalExpr(p.constDefault(), p.defaultTarget(), this);
                 }
@@ -976,12 +1267,24 @@ public final class PhpClass {
         return state.defaultValues;
     }
 
+    /** The properties that have backing storage; virtual properties are not populated. */
+    private List<InstanceProp> storageProps() {
+        List<InstanceProp> out = new ArrayList<>(instanceProps.size());
+        for (InstanceProp p : instanceProps) {
+            if (!p.virtual()) {
+                out.add(p);
+            }
+        }
+        return out;
+    }
+
     private Defaults buildDefaults() {
-        String[] keys = new String[instanceProps.size()];
-        Object[] vals = new Object[instanceProps.size()];
+        List<InstanceProp> backed = storageProps();
+        String[] keys = new String[backed.size()];
+        Object[] vals = new Object[backed.size()];
         boolean dynamic = false;
-        for (int i = 0; i < instanceProps.size(); i++) {
-            InstanceProp p = instanceProps.get(i);
+        for (int i = 0; i < backed.size(); i++) {
+            InstanceProp p = backed.get(i);
             keys[i] = p.storageKey();
             if (p.defaultTarget() != null) {
                 dynamic = true;
@@ -1018,8 +1321,31 @@ public final class PhpClass {
         Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(obj);
         DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
         List<Map.Entry<Object, Object>> out = new ArrayList<>(keys.length);
+        Set<String> handled = new HashSet<>();
+        for (InstanceProp p : cls.instanceProps) {
+            boolean visible;
+            if (p.visibility() == Visibility.PUBLIC) {
+                visible = true;
+            } else if (p.visibility() == Visibility.PROTECTED) {
+                visible = caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()));
+            } else {
+                visible = callerLower != null && PhpStrings.equalsIgnoreCase(p.declaringClass().name(), callerLower);
+            }
+            if (!visible) {
+                handled.add(p.storageKey());
+                continue;
+            }
+            handled.add(p.storageKey());
+            Object value = readForEnumeration(obj, p, get);
+            if (value != NO_VALUE) {
+                out.add(Map.entry(p.name(), value));
+            }
+        }
         for (Object rawKey : keys) {
             String k = (String) rawKey;
+            if (handled.contains(k)) {
+                continue;
+            }
             Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
             if (rawVal == UNINITIALIZED) {
                 continue;
@@ -1033,16 +1359,76 @@ public final class PhpClass {
                 }
                 continue;
             }
-            InstanceProp p = cls.findVisibleProp(k);
-            if (p != null && p.visibility() == Visibility.PROTECTED) {
-                if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
-                    out.add(Map.entry(k, unwrapProp(rawVal)));
-                }
-                continue;
-            }
             out.add(Map.entry(k, unwrapProp(rawVal)));
         }
         return out;
+    }
+
+    private static final Object NO_VALUE = new Object();
+
+    private static Object readForEnumeration(PhpObject obj, InstanceProp prop, DynamicObject.GetNode get) {
+        if (prop.virtual()) {
+            if (prop.getHook() == null || prop.getHook().isAbstract()) {
+                return NO_VALUE;
+            }
+            return unwrapProp(callHook(obj, prop, prop.getHook(), null, PhpObject.GUARD_HOOK_GET));
+        }
+        Object rawVal = get.execute(obj, prop.storageKey(), PhpNull.INSTANCE);
+        if (rawVal == UNINITIALIZED) {
+            return NO_VALUE;
+        }
+        if (prop.getHook() != null && !prop.getHook().isAbstract()
+                && !obj.inMagic(prop.name(), PhpObject.GUARD_HOOK_ANY)) {
+            return unwrapProp(callHook(obj, prop, prop.getHook(), null, PhpObject.GUARD_HOOK_GET));
+        }
+        return unwrapProp(rawVal);
+    }
+
+    private static Object readForEnumeration(PhpObject obj, String name, Object rawVal) {
+        InstanceProp prop = obj.phpClass().findVisibleProp(name);
+        if (prop == null) {
+            prop = obj.phpClass().findPrivateProp(name);
+        }
+        if (prop != null && prop.getHook() != null && !prop.getHook().isAbstract()
+                && !obj.inMagic(name, PhpObject.GUARD_HOOK_ANY)) {
+            return unwrapProp(callHook(obj, prop, prop.getHook(), null, PhpObject.GUARD_HOOK_GET));
+        }
+        return unwrapProp(rawVal);
+    }
+
+    /** Calls a hook on {@code obj}; {@code value} is the set hook's argument. */
+    @TruffleBoundary
+    public static Object callHook(PhpObject obj, InstanceProp prop, PropertyHook hook, Object value, int kind) {
+        if (hook.callTarget() == null) {
+            throw new PhpError("Cannot call abstract method " + hook.declaringClass().name()
+                    + "::$" + prop.name() + "::" + hook.name() + "()");
+        }
+        // A nested hook call for the same property kind (parent::$x::set inside $x::set) must
+        // not clear the outer guard on its way out: that guard is what makes the rest of the
+        // outer hook body address the backing store.
+        boolean already = obj.inMagic(prop.name(), kind);
+        if (!already) {
+            obj.enterMagic(prop.name(), kind);
+        }
+        try {
+            Object[] args = new Object[hook.fromTrait() ? 4 : 3];
+            args[0] = obj;
+            args[1] = obj.phpClass();
+            int at = 2;
+            if (hook.fromTrait()) {
+                args[at++] = hook.declaringClass();
+            }
+            if (kind == PhpObject.GUARD_HOOK_SET) {
+                args[at] = value;
+            } else {
+                args = java.util.Arrays.copyOf(args, at);
+            }
+            return hook.callTarget().call(args);
+        } finally {
+            if (!already) {
+                obj.exitMagic(prop.name(), kind);
+            }
+        }
     }
 
     /** Collects visible property entries backed by {@link PhpReference} cells for {@code foreach ($obj as &$v)}. */
@@ -1055,21 +1441,45 @@ public final class PhpClass {
         DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         List<Map.Entry<Object, PhpReference>> out = new ArrayList<>(keys.length);
+        Set<String> handled = new HashSet<>();
+        for (InstanceProp p : cls.instanceProps) {
+            boolean visible;
+            if (p.visibility() == Visibility.PUBLIC) {
+                visible = true;
+            } else if (p.visibility() == Visibility.PROTECTED) {
+                visible = caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()));
+            } else {
+                visible = callerLower != null && PhpStrings.equalsIgnoreCase(p.declaringClass().name(), callerLower);
+            }
+            if (!visible) {
+                handled.add(p.storageKey());
+                continue;
+            }
+            if (p.hasHooks() || p.virtual()) {
+                throw new PhpError("Cannot create reference to property " + cls.name() + "::$" + p.name());
+            }
+            handled.add(p.storageKey());
+            Object raw = get.execute(obj, p.storageKey(), PhpNull.INSTANCE);
+            if (raw == UNINITIALIZED) {
+                continue;
+            }
+            out.add(Map.entry(p.name(), ensurePropRef(obj, p.storageKey(), get, put)));
+        }
         for (Object rawKey : keys) {
             String k = (String) rawKey;
+            if (handled.contains(k)) {
+                continue;
+            }
+            Object rawVal = get.execute(obj, k, PhpNull.INSTANCE);
+            if (rawVal == UNINITIALIZED || rawVal == null) {
+                continue;
+            }
             if (k.startsWith("\0")) {
                 int sep = k.indexOf('\0', 1);
                 String declaring = k.substring(1, sep);
                 String prop = k.substring(sep + 1);
                 if (callerLower != null && PhpStrings.equalsIgnoreCase(declaring, callerLower)) {
                     out.add(Map.entry(prop, ensurePropRef(obj, k, get, put)));
-                }
-                continue;
-            }
-            InstanceProp p = cls.findVisibleProp(k);
-            if (p != null && p.visibility() == Visibility.PROTECTED) {
-                if (caller != null && (cls.isInstanceOf(caller) || caller.isInstanceOf(p.declaringClass()))) {
-                    out.add(Map.entry(k, ensurePropRef(obj, k, get, put)));
                 }
                 continue;
             }

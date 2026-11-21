@@ -45,11 +45,44 @@ public final class PhpClassTemplate {
         linked = l;
     }
 
+    /**
+     * One {@code get} or {@code set} hook. {@code callTarget} is null for an abstract hook
+     * (an interface declaration or one a class must implement); {@code backs} records whether
+     * the hook body touches the property's own backing store, which decides virtualness.
+     */
+    public record HookDecl(String name, String paramName, PhpType paramType, RootCallTarget callTarget,
+                           boolean byRef, boolean isFinal, boolean backs, PhpSignature signature) {
+        public boolean isAbstract() {
+            return callTarget == null;
+        }
+
+        public HookDecl withSignature(PhpSignature signature) {
+            return new HookDecl(name, paramName, paramType, callTarget, byRef, isFinal, backs, signature);
+        }
+    }
+
     public record PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
                                Object constDefault, RootCallTarget defaultTarget,
-                               PhpType type, List<PhpAttribute> attributes, boolean hasDefault) {
+                               PhpType type, List<PhpAttribute> attributes, boolean hasDefault,
+                               Visibility setVisibility, boolean virtual, HookDecl getHook, HookDecl setHook) {
         public PropertyDecl {
             attributes = attributes == null ? List.of() : List.copyOf(attributes);
+        }
+
+        /** The set access level php checks on writes; null means the same as the read level. */
+        public Visibility effectiveSetVisibility() {
+            return setVisibility == null ? visibility : setVisibility;
+        }
+
+        public boolean hasHooks() {
+            return getHook != null || setHook != null;
+        }
+
+        public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
+                            Object constDefault, RootCallTarget defaultTarget,
+                            PhpType type, List<PhpAttribute> attributes, boolean hasDefault) {
+            this(name, visibility, isStatic, isReadonly, constDefault, defaultTarget, type, attributes,
+                    hasDefault, null, false, null, null);
         }
 
         public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,

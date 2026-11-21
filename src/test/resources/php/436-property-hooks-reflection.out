@@ -1,0 +1,43 @@
+plain: virtual=0 hooks=0 privateSet=0 protectedSet=0 mods=1 settable=string
+  getHook=null
+  setHook=null
+privateSet: virtual=0 hooks=0 privateSet=1 protectedSet=0 mods=4129 settable=string
+  getHook=null
+  setHook=null
+protectedSet: virtual=0 hooks=0 privateSet=0 protectedSet=1 mods=2049 settable=string
+  getHook=null
+  setHook=null
+readonly: virtual=0 hooks=0 privateSet=0 protectedSet=1 mods=2177 settable=string
+  getHook=null
+  setHook=null
+backed: virtual=0 hooks=1 privateSet=0 protectedSet=0 mods=1 settable=string
+  hook get: $backed::get params=0 required=0 mods=1 class=Sample
+  hook set: $backed::set params=1 required=1 mods=1 class=Sample
+    param=value
+  getHook=$backed::get
+  setHook=$backed::set
+virtual: virtual=1 hooks=1 privateSet=0 protectedSet=0 mods=513 settable=never
+  hook get: $virtual::get params=0 required=0 mods=1 class=Sample
+  getHook=$virtual::get
+  setHook=null
+writeOnly: virtual=0 hooks=1 privateSet=0 protectedSet=0 mods=1 settable=string
+  hook set: $writeOnly::set params=1 required=1 mods=1 class=Sample
+    param=value
+  getHook=null
+  setHook=$writeOnly::set
+typed: virtual=0 hooks=1 privateSet=0 protectedSet=0 mods=1 settable=string
+  hook get: $typed::get params=0 required=0 mods=1 class=Sample
+  hook set: $typed::set params=1 required=1 mods=1 class=Sample
+    param=value
+  getHook=$typed::get
+  setHook=$typed::set
+value=bob!
+initialized=1
+after=sue!
+virtual value=virtual initialized=1
+virtual set: Cannot write to get-only virtual property Sample::$virtual
+contract get: $required::get abstract=1 class=Contract
+contract set: $required::set abstract=1 class=Contract
+inherited get: $value::get class=ParentHooks
+inherited set: $value::set class=ChildHooks
+inherited virtual=0

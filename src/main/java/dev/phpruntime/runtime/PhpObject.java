@@ -30,6 +30,10 @@ public final class PhpObject extends DynamicObject {
     public static final int GUARD_SET = 2;
     public static final int GUARD_UNSET = 4;
     public static final int GUARD_ISSET = 8;
+    public static final int GUARD_HOOK_GET = 16;
+    public static final int GUARD_HOOK_SET = 32;
+    /** Either hook running for a property: its {@code $this->prop} accesses the backing store. */
+    public static final int GUARD_HOOK_ANY = GUARD_HOOK_GET | GUARD_HOOK_SET;
 
     /** True while the magic method {@code kind} runs for property {@code name} on this object. */
     public boolean inMagic(String name, int kind) {

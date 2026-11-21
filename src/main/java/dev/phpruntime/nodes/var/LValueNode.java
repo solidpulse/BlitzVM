@@ -57,6 +57,14 @@ public abstract class LValueNode extends PhpNode {
         throw referenceError(true);
     }
 
+    /**
+     * For an index path rooted in a by-reference hooked property: the cell the get hook returned,
+     * so an indirect write updates the referenced value instead of assigning the property.
+     */
+    public PhpReference indirectCell(VirtualFrame frame, Object[] keys) {
+        return null;
+    }
+
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private dev.phpruntime.runtime.PhpError referenceError(boolean assignment) {
         return new dev.phpruntime.runtime.PhpError(

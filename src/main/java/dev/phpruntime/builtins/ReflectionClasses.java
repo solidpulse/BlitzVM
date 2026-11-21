@@ -13,6 +13,7 @@ import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClassTemplate;
 import dev.phpruntime.runtime.PhpClosure;
+import dev.phpruntime.runtime.EnumCaseState;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpExceptions;
 import dev.phpruntime.runtime.PhpFunction;
@@ -170,6 +171,7 @@ public final class ReflectionClasses {
         buildReflectionEnumUnitCase(language, out);
         buildReflectionEnumBackedCase(language, out);
         buildReflectionAttribute(language, out);
+        buildPropertyHookType(language, out);
         buildAttributeMarker(language, out);
         buildReflectionException(language, out);
     }
@@ -532,7 +534,9 @@ public final class ReflectionClasses {
             Integer filter = args.length > 0 && args[0] != PhpNull.INSTANCE ? (int) toLong(args[0]) : null;
             PhpArray result = new PhpArray();
             for (PropertyInfo info : collectProperties(state.cls())) {
-                if (filter != null && (propertyModifiers(info.decl()) & filter) == 0) {
+                PhpClass.InstanceProp effective = info.declaring() == null ? null
+                        : info.declaring().findVisibleProp(info.decl().name());
+                if (filter != null && (propertyModifiers(info.decl(), effective) & filter) == 0) {
                     continue;
                 }
                 result.append(propertyObject(ctx, state.cls(), info));
@@ -965,6 +969,10 @@ public final class ReflectionClasses {
     }
 
     private static int propertyModifiers(PhpClassTemplate.PropertyDecl decl) {
+        return propertyModifiers(decl, null);
+    }
+
+    private static int propertyModifiers(PhpClassTemplate.PropertyDecl decl, PhpClass.InstanceProp prop) {
         int mods = switch (decl.visibility()) {
             case PUBLIC -> 1;
             case PROTECTED -> 2;
@@ -975,9 +983,17 @@ public final class ReflectionClasses {
         }
         if (decl.isReadonly()) {
             mods |= 128;
-            if (decl.visibility() == Visibility.PUBLIC) {
-                mods |= 2048;
-            }
+        }
+        Visibility set = prop != null ? prop.setVisibility() : decl.setVisibility();
+        if (set == Visibility.PRIVATE) {
+            mods |= 4096 | 32;
+        } else if (set == Visibility.PROTECTED
+                || (decl.isReadonly() && decl.visibility() == Visibility.PUBLIC)) {
+            mods |= 2048;
+        }
+        boolean virtual = prop != null ? prop.virtual() : decl.virtual();
+        if (virtual) {
+            mods |= 512;
         }
         return mods;
     }
@@ -989,6 +1005,13 @@ public final class ReflectionClasses {
         }
         if (decl.hasDefault()) {
             return true;
+        }
+        if (decl.hasHooks() || decl.virtual()) {
+            return false;
+        }
+        PhpClass.InstanceProp prop = info.declaring() == null ? null : info.declaring().findVisibleProp(decl.name());
+        if (prop != null && (prop.hasHooks() || prop.virtual())) {
+            return false;
         }
         return decl.type() == null && !isPromotedProperty(info);
     }
@@ -1854,6 +1877,61 @@ public final class ReflectionClasses {
             PhpObject object = requireInstanceObject(args, 0, "ReflectionProperty::getValue");
             return getInstanceProperty(ctx, object, state);
         });
+        addMethod(language, methods, "hasHooks", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PropertyState state = propertyState(self);
+            PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+            return prop != null && prop.hasHooks();
+        });
+        addMethod(language, methods, "getHooks", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PropertyState state = propertyState(self);
+            PhpArray hooks = new PhpArray();
+            PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+            if (prop != null) {
+                PhpClass.PropertyHook get = prop.getHook();
+                if (get != null) {
+                    hooks.put("get", reflectionMethodObject(ctx, state, prop, get));
+                }
+                PhpClass.PropertyHook set = prop.setHook();
+                if (set != null) {
+                    hooks.put("set", reflectionMethodObject(ctx, state, prop, set));
+                }
+            }
+            return hooks;
+        });
+        addMethod(language, methods, "getHook", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PropertyState state = propertyState(self);
+            if (args.length < 1 || !(args[0] instanceof PhpObject arg)
+                    || !(arg.nativeState() instanceof EnumCaseState enumCase)
+                    || !enumCase.enumName().equalsIgnoreCase("PropertyHookType")) {
+                throw new PhpError(PhpError.TYPE_ERROR, "ReflectionProperty::getHook(): Argument #1 ($type)"
+                        + " must be of type PropertyHookType, " + PhpOps.typeName(args.length == 0 ? null : args[0])
+                        + " given", null);
+            }
+            PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+            if (prop == null) {
+                return PhpNull.INSTANCE;
+            }
+            String want = enumCase.caseName().toLowerCase();
+            PhpClass.PropertyHook hook = want.equals("get") ? prop.getHook() : prop.setHook();
+            return hook == null ? PhpNull.INSTANCE : reflectionMethodObject(ctx, state, prop, hook);
+        });
+        addMethod(language, methods, "isVirtual", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PhpClass.InstanceProp prop = effectiveInstanceProp(propertyState(self));
+            return prop != null && prop.virtual();
+        });
+        addMethod(language, methods, "isPrivateSet", Visibility.PUBLIC, false, false, (ctx, self, args) ->
+                effectiveSetVisibility(propertyState(self)) == Visibility.PRIVATE);
+        addMethod(language, methods, "isProtectedSet", Visibility.PUBLIC, false, false, (ctx, self, args) ->
+                effectiveSetVisibility(propertyState(self)) == Visibility.PROTECTED);
+        addMethod(language, methods, "getSettableType", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PropertyState state = propertyState(self);
+            PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+            if (prop != null && prop.virtual() && prop.setHook() == null) {
+                return typeObject(ctx, new PhpType.Named("never"));
+            }
+            PhpType type = state.decl() == null ? null : state.decl().type();
+            return type == null ? PhpNull.INSTANCE : typeObject(ctx, type);
+        });
         addMethod(language, methods, "setValue", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PropertyState state = propertyState(self);
             if (state.dynamic()) {
@@ -1903,6 +1981,10 @@ public final class ReflectionClasses {
             PhpObject object = requireInstanceObject(args, 0, "ReflectionProperty::isInitialized");
             if (state.dynamic()) {
                 return DynamicObject.ContainsKeyNode.getUncached().execute(object, state.dynamicName());
+            }
+            PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+            if (prop != null && prop.virtual()) {
+                return true;
             }
             Object value = rawInstanceProperty(ctx, object, state);
             return value != PhpClass.UNINITIALIZED;
@@ -1955,7 +2037,8 @@ public final class ReflectionClasses {
                 (ctx, self, args) -> !propertyState(self).dynamic());
         addMethod(language, methods, "getModifiers", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PropertyState state = propertyState(self);
-            return state.dynamic() ? 1L : (long) propertyModifiers(state.decl());
+            return state.dynamic() ? 1L
+                    : (long) propertyModifiers(state.decl(), effectiveInstanceProp(state));
         });
         addMethod(language, methods, "getDeclaringClass", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PropertyState state = propertyState(self);
@@ -1993,6 +2076,18 @@ public final class ReflectionClasses {
     }
 
     private static Object getInstanceProperty(PhpContext ctx, PhpObject object, PropertyState state) {
+        PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+        if (prop != null) {
+            PhpClass.PropertyHook hook = prop.getHook();
+            if (hook != null && !hook.isAbstract()) {
+                Object value = PhpClass.callHook(object, prop, hook, null, dev.phpruntime.runtime.PhpObject.GUARD_HOOK_GET);
+                return PhpClass.unwrapProp(value);
+            }
+            if (prop.virtual()) {
+                throw new PhpError("Cannot read from set-only virtual property "
+                        + state.declaring().name() + "::$" + state.name());
+            }
+        }
         Object value = rawInstanceProperty(ctx, object, state);
         if (value == PhpClass.UNINITIALIZED) {
             throw new PhpError("Typed property " + state.declaring().name() + "::$" + state.name()
@@ -2008,8 +2103,67 @@ public final class ReflectionClasses {
     }
 
     private static void setInstanceProperty(PhpContext ctx, PhpObject object, PropertyState state, Object value) {
+        PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+        if (prop != null) {
+            PhpClass.PropertyHook hook = prop.setHook();
+            if (hook != null && !hook.isAbstract()) {
+                PhpClass.callHook(object, prop, hook, value, dev.phpruntime.runtime.PhpObject.GUARD_HOOK_SET);
+                return;
+            }
+            if (prop.virtual()) {
+                throw new PhpError("Cannot write to get-only virtual property "
+                        + state.declaring().name() + "::$" + state.name());
+            }
+        }
         String key = propertyStorageKey(ctx, state.declaring(), state.name());
         DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
+    }
+
+    private static PhpClass.InstanceProp effectiveInstanceProp(PropertyState state) {
+        if (state.decl() == null || state.decl().isStatic()) {
+            return null;
+        }
+        PhpClass.InstanceProp prop = state.declaring().findVisibleProp(state.name());
+        if (prop == null) {
+            prop = state.declaring().findPrivateProp(state.name());
+        }
+        return prop;
+    }
+
+    private static Visibility effectiveSetVisibility(PropertyState state) {
+        PhpClass.InstanceProp prop = effectiveInstanceProp(state);
+        if (prop != null) {
+            if (prop.setVisibility() != null) {
+                return prop.setVisibility();
+            }
+            if (prop.isReadonly() && prop.visibility() == Visibility.PUBLIC) {
+                return Visibility.PROTECTED;
+            }
+            return null;
+        }
+        PhpClassTemplate.PropertyDecl decl = state.decl();
+        if (decl == null) {
+            return null;
+        }
+        if (decl.setVisibility() != null) {
+            return decl.setVisibility();
+        }
+        if (decl.isReadonly() && decl.visibility() == Visibility.PUBLIC) {
+            return Visibility.PROTECTED;
+        }
+        return null;
+    }
+
+    private static PhpObject reflectionMethodObject(PhpContext ctx, PropertyState state,
+                                                    PhpClass.InstanceProp prop, PhpClass.PropertyHook hook) {
+        String hookName = "$" + prop.name() + "::" + hook.name();
+        Visibility hookVisibility = prop.visibility() == Visibility.PRIVATE ? Visibility.PRIVATE : Visibility.PUBLIC;
+        PhpClass.MethodEntry entry = new PhpClass.MethodEntry(hookName, hook.declaringClass(),
+                hookVisibility, false, hook.isFinal(), hook.fromTrait(), hook.callTarget());
+        PhpFunctionRootNode root = hook.callTarget() == null ? null
+                : PhpFunctionRootNode.of(hook.callTarget().getRootNode());
+        return newReflectionObject(ctx, "ReflectionMethod",
+                new MethodState(state.reflected(), entry, hook.declaringClass(), hook.signature(), root, false));
     }
 
     private static Object getObjectProperty(PhpObject object, String name) {
@@ -2030,6 +2184,17 @@ public final class ReflectionClasses {
     }
 
     // ---------------------------------------------------------------- ReflectionClassConstant
+
+    /** The PHP 8.4 {@code PropertyHookType} enum used by {@code ReflectionProperty::getHook()}. */
+    private static void buildPropertyHookType(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "PropertyHookType", false, false,
+                false, false, false, null, List.<String>of(),
+                List.<PhpClassTemplate.TraitUse>of(), List.<PhpClassTemplate.PropertyDecl>of(),
+                List.<PhpClassTemplate.ConstantDecl>of(), Map.<String, PhpClassTemplate.MethodDecl>of(),
+                Map.<String, PhpClassTemplate.MethodSignature>of(), List.<PhpAttribute>of(), true, null,
+                List.of(new PhpClassTemplate.EnumCaseDecl("Get", null, null, List.of()),
+                        new PhpClassTemplate.EnumCaseDecl("Set", null, null, List.of()))));
+    }
 
     private static void buildReflectionClassConstant(PhpLanguage language, Map<String, PhpClassTemplate> out) {
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
