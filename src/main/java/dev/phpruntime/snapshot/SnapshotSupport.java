@@ -16,7 +16,7 @@ public final class SnapshotSupport {
     private SnapshotSupport() {
     }
 
-    /** Attaches the run to the next {@link PhpContext} created on this thread. */
+    /** Attaches the run to the next {@link PhpContext} installed on this thread. */
     public static void setPending(SnapshotRun run) {
         PENDING.set(run);
     }
@@ -25,7 +25,7 @@ public final class SnapshotSupport {
         PENDING.remove();
     }
 
-    /** Called by the language when a context is created, once per request. */
+    /** Called when a request's {@link PhpContext} is installed in a pooled or fresh context. */
     public static void attachNewContext(PhpContext ctx) {
         SnapshotRun run = PENDING.get();
         if (run != null) {

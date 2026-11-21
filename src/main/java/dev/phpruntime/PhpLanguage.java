@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
         characterMimeTypes = PhpLanguage.MIME_TYPE,
         fileTypeDetectors = PhpFileDetector.class,
         contextPolicy = TruffleLanguage.ContextPolicy.SHARED)
-public final class PhpLanguage extends TruffleLanguage<PhpContext> {
+public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
 
     public static final String ID = "php";
     public static final String MIME_TYPE = "application/x-php";
@@ -321,11 +321,9 @@ public final class PhpLanguage extends TruffleLanguage<PhpContext> {
     }
 
     @Override
-    protected PhpContext createContext(Env env) {
+    protected PhpContextHolder createContext(Env env) {
         ensureBuiltinTemplates();
-        PhpContext ctx = new PhpContext(this, env);
-        dev.phpruntime.snapshot.SnapshotSupport.attachNewContext(ctx);
-        return ctx;
+        return PhpContextHolder.create(this, env);
     }
 
     @Override
