@@ -37,3 +37,7 @@ ERR[2]: unserialize(): Error at offset 0 of 18 bytes
 bool(false)
 Error: Cannot instantiate enum Suit
 Error: Cannot instantiate enum Status
+ERR[2]: Class Suit has no unserializer
+Error: Cannot instantiate enum Suit
+ERR[2]: Class Status has no unserializer
+Error: Cannot instantiate enum Status

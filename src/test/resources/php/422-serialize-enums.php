@@ -59,3 +59,13 @@ try {
 } catch (Throwable $e) {
     echo get_class($e), ': ', $e->getMessage(), "\n";
 }
+try {
+    var_dump(unserialize('C:4:"Suit":0:{}'));
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
+try {
+    var_dump(unserialize('C:6:"Status":0:{}'));
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
