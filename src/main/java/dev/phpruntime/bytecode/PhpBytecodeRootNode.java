@@ -1722,6 +1722,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         final PhpArray array;
         final PhpObject iterator;
         final List<Map.Entry<Object, Object>> entries;
+        /** Snapshot size, kept off the interface call in the compiled loop. */
+        final int entryCount;
         int pos = -1;
         boolean started;
 
@@ -1729,6 +1731,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             this.array = array;
             this.iterator = iterator;
             this.entries = entries;
+            this.entryCount = entries == null ? 0 : entries.size();
         }
 
         @TruffleBoundary
@@ -1796,7 +1799,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return iterator.valid(c.iterator);
             }
             c.pos++;
-            return c.pos < c.entries.size();
+            return c.pos < c.entryCount;
         }
     }
 
