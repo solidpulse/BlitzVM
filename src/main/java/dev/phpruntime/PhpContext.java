@@ -957,15 +957,21 @@ public final class PhpContext {
         constants.put(name, value);
     }
 
-    /** Declares a function captured in a snapshot, without the duplicate and deprecation checks. */
+    /**
+     * Declares every function captured in a snapshot: {@code table} holds them by id, so the
+     * lookup table grows once and the declared list takes them in one copy.
+     */
     @TruffleBoundary
-    public void restoreFunction(PhpFunction fn) {
-        int id = fn.id(language);
-        if (id >= functionsById.length) {
-            functionsById = Arrays.copyOf(functionsById, Math.max(id + 1, functionsById.length * 2));
+    public void restoreFunctions(PhpFunction[] table, List<PhpFunction> inOrder) {
+        if (table.length > functionsById.length) {
+            functionsById = Arrays.copyOf(functionsById, table.length);
         }
-        functionsById[id] = fn;
-        declaredFunctions.add(fn);
+        for (int id = 0; id < table.length; id++) {
+            if (table[id] != null) {
+                functionsById[id] = table[id];
+            }
+        }
+        declaredFunctions.addAll(inOrder);
     }
 
     /** Registers a class (or class alias) captured in a snapshot; classes are engine-wide objects. */

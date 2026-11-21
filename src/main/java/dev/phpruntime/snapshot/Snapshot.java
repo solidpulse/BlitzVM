@@ -97,6 +97,8 @@ public final class Snapshot {
     final List<Global> globals;
     final Map<String, Object> constants;
     final List<PhpFunction> functions;
+    /** {@link #functions} indexed by function id, so a restore installs them in one pass. */
+    final PhpFunction[] functionTable;
     final Map<String, PhpClass> classes;
     final List<ClassStateNode> classStates;
     final Set<String> includedFiles;
@@ -110,7 +112,7 @@ public final class Snapshot {
     final long nextAnonymousId;
 
     Snapshot(List<Global> globals, Map<String, Object> constants, List<PhpFunction> functions,
-             Map<String, PhpClass> classes, List<ClassStateNode> classStates, Set<String> includedFiles,
+             PhpFunction[] functionTable, Map<String, PhpClass> classes, List<ClassStateNode> classStates, Set<String> includedFiles,
              List<Object> autoloaders, List<ShutdownEntry> shutdownFunctions,
              List<ErrorHandlerEntry> errorHandlers, List<Object> exceptionHandlers,
              List<StaticEntry> staticLocals, ContextStateSnapshot contextState,
@@ -118,6 +120,7 @@ public final class Snapshot {
         this.globals = List.copyOf(globals);
         this.constants = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(constants));
         this.functions = List.copyOf(functions);
+        this.functionTable = functionTable;
         this.classes = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(classes));
         this.classStates = List.copyOf(classStates);
         this.includedFiles = Set.copyOf(includedFiles);

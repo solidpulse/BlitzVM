@@ -437,7 +437,15 @@ final class SnapshotCapture {
                 staticLocals.add(new Snapshot.StaticEntry(owner(entry.getKey()), cells));
             }
 
-            return new Snapshot(globals, constants, functions, classes, classStates, included,
+            int maxId = -1;
+            for (PhpFunction fn : functions) {
+                maxId = Math.max(maxId, fn.id(ctx.language()));
+            }
+            PhpFunction[] functionTable = new PhpFunction[maxId + 1];
+            for (PhpFunction fn : functions) {
+                functionTable[fn.id(ctx.language())] = fn;
+            }
+            return new Snapshot(globals, constants, functions, functionTable, classes, classStates, included,
                     autoloaders, shutdown, handlers, exceptionHandlers, staticLocals,
                     ContextState.snapshot(ctx), ctx.snapshotNextObjectId(), ctx.snapshotNextAnonymousId());
         }

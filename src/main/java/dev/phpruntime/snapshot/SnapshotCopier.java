@@ -41,9 +41,7 @@ final class SnapshotCopier {
         for (Map.Entry<String, PhpClass> entry : snapshot.classes.entrySet()) {
             ctx.restoreClass(entry.getKey(), entry.getValue());
         }
-        for (var fn : snapshot.functions) {
-            ctx.restoreFunction(fn);
-        }
+        ctx.restoreFunctions(snapshot.functionTable, snapshot.functions);
         for (String path : snapshot.includedFiles) {
             ctx.markIncluded(path);
         }
@@ -183,7 +181,9 @@ final class SnapshotCopier {
         if (existing != null) {
             return existing;
         }
-        PhpArray array = new PhpArray();
+        // Sized up front so filling it never grows or rehashes.
+        PhpArray array = PhpArray.withCapacity(node.keys.length,
+                node.keys.length > 0 && node.keys[0] instanceof String);
         copies.put(node, array);
         for (int i = 0; i < node.keys.length; i++) {
             array.put(node.keys[i], copyValue(node.values[i]));
