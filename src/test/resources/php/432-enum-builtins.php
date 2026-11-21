@@ -78,3 +78,4 @@ var_dump(Level::High);
 echo isset(Suit::Hearts->name) ? 'name-set' : 'name-unset', ' ',
      isset(Pure::A->value) ? 'value-set' : 'value-unset', "\n";
 echo Suit::Hearts->name, ' ', Suit::Hearts->value, ' ', Level::High->value, "\n";
+var_dump(enum_exists(Suit::class), enum_exists(Wrapped::class), enum_exists('Nope'));

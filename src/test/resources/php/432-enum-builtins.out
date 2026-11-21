@@ -30,3 +30,6 @@ enum(Suit::Hearts)
 enum(Level::High)
 name-set value-unset
 Hearts H 10
+bool(true)
+bool(false)
+bool(false)
