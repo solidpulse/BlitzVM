@@ -1,6 +1,7 @@
 package dev.phpruntime;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.nodes.Node;
@@ -93,6 +94,9 @@ public final class PhpContext {
     private Node currentBuiltinCallSite;
     private String byteStringOrigin;
     private Boolean hostFileSystem;
+    /** Absolute host path of the working directory, cached across the file builtins; chdir sets it. */
+    private String hostWorkingDirectory;
+    private boolean hostWorkingDirectoryKnown;
     /** Set only by the snapshot harness (task 37a); null in ordinary requests. */
     private dev.phpruntime.snapshot.SnapshotRun snapshotRun;
     /** True when a template run was aborted at the boot-include boundary. */
@@ -175,6 +179,27 @@ public final class PhpContext {
             hostFileSystem = cached;
         }
         return cached;
+    }
+
+    /**
+     * The host path that relative PHP paths resolve against, or null when the host file system
+     * has no working directory. Cached because every relative file check needs it and
+     * {@code env.getCurrentWorkingDirectory()} allocates a fresh path object each time; chdir
+     * replaces the value through {@link #setHostWorkingDirectory}.
+     */
+    public String hostWorkingDirectory() {
+        if (!hostWorkingDirectoryKnown) {
+            TruffleFile cwd = env.getCurrentWorkingDirectory();
+            hostWorkingDirectory = cwd == null ? null : cwd.getPath();
+            hostWorkingDirectoryKnown = true;
+        }
+        return hostWorkingDirectory;
+    }
+
+    /** Records the directory chdir just installed, so relative host paths follow it. */
+    public void setHostWorkingDirectory(String path) {
+        hostWorkingDirectory = path;
+        hostWorkingDirectoryKnown = path != null;
     }
 
     public PhpLanguage language() {
