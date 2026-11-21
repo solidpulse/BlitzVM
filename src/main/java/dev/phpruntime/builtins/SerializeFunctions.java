@@ -553,6 +553,7 @@ final class SerializeFunctions {
         private final byte[] in;
         private final Options options;
         private final List<Entry> entries = new ArrayList<>();
+        private IdentityHashMap<PhpObject, Boolean> inProgressObjects;
         private int pos;
 
         Unserializer(PhpContext ctx, byte[] in, Options options) {
@@ -841,33 +842,51 @@ final class SerializeFunctions {
             if (isIncomplete(cls)) {
                 putProperty(obj, "__PHP_Incomplete_Class_Name", className);
             }
-            PhpClass.MethodEntry unserializeMethod = cls.lookupMethod("__unserialize");
-            PhpArray data = unserializeMethod != null ? new PhpArray() : null;
-            int elements = custom ? 0 : boundedCount(countToken.value());
-            for (int i = 0; i < elements; i++) {
-                Object key = propertyKey();
+            markInProgress(obj);
+            try {
+                PhpClass.MethodEntry unserializeMethod = cls.lookupMethod("__unserialize");
+                PhpArray data = unserializeMethod != null ? new PhpArray() : null;
+                int elements = custom ? 0 : boundedCount(countToken.value());
+                for (int i = 0; i < elements; i++) {
+                    Object key = propertyKey();
+                    if (data != null) {
+                        int before = entries.size();
+                        Object item = value(depth + 1, true);
+                        data.put(key, item);
+                        setBinder(before, cell -> data.putRef(key, cell));
+                        continue;
+                    }
+                    assignProperty(obj, cls, key, depth);
+                }
+                if (pos >= in.length || in[pos] != '}') {
+                    throw new Malformed(pos);
+                }
+                pos++;
                 if (data != null) {
-                    int before = entries.size();
-                    Object item = value(depth + 1, true);
-                    data.put(key, item);
-                    setBinder(before, cell -> data.putRef(key, cell));
-                    continue;
+                    invokeOne(obj, unserializeMethod, new Object[]{data});
+                } else {
+                    PhpClass.MethodEntry wakeup = cls.lookupMethod("__wakeup");
+                    if (wakeup != null) {
+                        invokeOne(obj, wakeup, new Object[0]);
+                    }
                 }
-                assignProperty(obj, cls, key, depth);
-            }
-            if (pos >= in.length || in[pos] != '}') {
-                throw new Malformed(pos);
-            }
-            pos++;
-            if (data != null) {
-                invokeOne(obj, unserializeMethod, new Object[]{data});
-            } else {
-                PhpClass.MethodEntry wakeup = cls.lookupMethod("__wakeup");
-                if (wakeup != null) {
-                    invokeOne(obj, wakeup, new Object[0]);
-                }
+            } finally {
+                unmarkInProgress(obj);
             }
             return obj;
+        }
+
+        private void markInProgress(PhpObject obj) {
+            if (inProgressObjects == null) {
+                inProgressObjects = new IdentityHashMap<>();
+            }
+            inProgressObjects.put(obj, Boolean.TRUE);
+        }
+
+        private void unmarkInProgress(PhpObject obj) {
+            if (inProgressObjects != null) {
+                inProgressObjects.remove(obj);
+            }
         }
 
         private Object customObject(PhpClass cls, String className, int start, NumberToken lengthToken, int payloadStart) {
@@ -984,6 +1003,12 @@ final class SerializeFunctions {
                     throw new Malformed(pos);
                 }
                 return entry.value;
+            }
+            if (entry.value instanceof PhpObject object
+                    && inProgressObjects != null && inProgressObjects.containsKey(object)) {
+                // A reference back to an object still being parsed is just the object handle:
+                // php serializes it as r:N rather than R:N.
+                return object;
             }
             if (entry.cell == null) {
                 entry.cell = new PhpReference(entry.value);
