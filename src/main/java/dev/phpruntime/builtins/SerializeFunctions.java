@@ -922,6 +922,10 @@ final class SerializeFunctions {
             if (cls == null) {
                 cls = ctx.lookupClass("__PHP_Incomplete_Class");
             }
+            boolean serializable = !isIncomplete(cls) && implementsSerializable(cls);
+            if (!serializable && !isIncomplete(cls) && !internalUnserializationRefused(cls)) {
+                ctx.warning("Class " + cls.name() + " has no unserializer", 0);
+            }
             PhpObject obj = createObject(cls);
             register(obj, null);
             if (isIncomplete(cls)) {
@@ -929,8 +933,7 @@ final class SerializeFunctions {
                 ctx.warning("Class __PHP_Incomplete_Class has no unserializer", 0);
                 return obj;
             }
-            if (!implementsSerializable(cls)) {
-                ctx.warning("Class " + cls.name() + " has no unserializer", 0);
+            if (!serializable) {
                 return obj;
             }
             PhpClass.MethodEntry legacy = cls.lookupMethod("unserialize");
@@ -938,6 +941,14 @@ final class SerializeFunctions {
                 invokeOne(obj, legacy, new Object[]{payload});
             }
             return obj;
+        }
+
+        private static boolean internalUnserializationRefused(PhpClass cls) {
+            return NEVER_SERIALIZABLE.contains(cls.lowerName())
+                    || (cls.isBuiltin() && !cls.isThrowable() && !isIncomplete(cls)
+                    && !cls.name().equalsIgnoreCase("stdClass")
+                    && cls.lookupMethod("__unserialize") == null
+                    && !implementsSerializable(cls));
         }
 
         private Object enumValue(int start, boolean track) {
@@ -1188,11 +1199,7 @@ final class SerializeFunctions {
             if (cls == null) {
                 cls = ctx.lookupClass("__PHP_Incomplete_Class");
             }
-            if (NEVER_SERIALIZABLE.contains(cls.lowerName())
-                    || (cls.isBuiltin() && !cls.isThrowable() && !isIncomplete(cls)
-                    && !cls.name().equalsIgnoreCase("stdClass")
-                    && cls.lookupMethod("__unserialize") == null
-                    && !implementsSerializable(cls))) {
+            if (internalUnserializationRefused(cls)) {
                 throw new PhpError("Exception", "Unserialization of '" + displayName(cls) + "' is not allowed", null);
             }
             if (cls.isInterface()) {
