@@ -20,6 +20,8 @@ public final class SplClasses {
         iface(language, out, "Countable", List.of(), "count");
         iface(language, out, "JsonSerializable", List.of(), "jsonSerialize");
         iface(language, out, "Stringable", List.of(), "__toString");
+        iface(language, out, "UnitEnum", List.of(), "cases");
+        iface(language, out, "BackedEnum", List.of("UnitEnum"), "from", "tryFrom");
         iface(language, out, "Serializable", List.of(), "serialize", "unserialize");
         iface(language, out, "SeekableIterator", List.of("Iterator"), "seek");
         iface(language, out, "RecursiveIterator", List.of("Iterator"), "hasChildren", "getChildren");
@@ -51,10 +53,11 @@ public final class SplClasses {
                               String name, List<String> parents, String... methods) {
         Map<String, PhpClassTemplate.MethodDecl> declarations = new LinkedHashMap<>();
         Map<String, PhpClassTemplate.MethodSignature> signatures = new LinkedHashMap<>();
+        boolean enumInterface = name.equals("UnitEnum") || name.equals("BackedEnum");
         for (String method : methods) {
             String lower = method.toLowerCase();
             declarations.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
-                    Visibility.PUBLIC, false, true, false, null));
+                    Visibility.PUBLIC, enumInterface, true, false, null));
             List<String> params = switch (lower) {
                 case "offsetexists", "offsetget", "offsetunset" -> List.of("offset");
                 case "offsetset" -> List.of("offset", "value");
@@ -73,6 +76,9 @@ public final class SplClasses {
                 case "getinneriterator" -> "?Iterator";
                 case "__tostring" -> "string";
                 case "serialize", "unserialize" -> null;
+                case "cases" -> "array";
+                case "from" -> "static";
+                case "tryfrom" -> "?static";
                 default -> "void";
             };
             signatures.put(lower, new PhpClassTemplate.MethodSignature(params, types, returnType,

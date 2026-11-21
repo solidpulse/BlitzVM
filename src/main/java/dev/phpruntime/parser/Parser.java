@@ -1389,7 +1389,7 @@ public final class Parser {
         return new PhpClassTemplate(
                 templateId, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous,
                 parentName, interfaceNames, traitUses, properties, constants, methods, Map.of(),
-                classAttributes, isEnum, enumBackingType, enumCases);
+                classAttributes, isEnum, enumBackingType, enumCases, classReadonly);
     }
 
     private PhpNode parseMemberInitializer(boolean isTrait, Scope[] outExprScope) {

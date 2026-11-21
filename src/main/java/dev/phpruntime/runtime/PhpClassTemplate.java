@@ -143,6 +143,8 @@ public final class PhpClassTemplate {
     private final boolean isEnum;
     private final PhpType enumBackingType;
     private final List<EnumCaseDecl> enumCases;
+    /** A {@code readonly class}: no dynamic properties, all instance properties readonly. */
+    private final boolean isReadonly;
     private final Shape rootShape;
     /** Where the declaration starts, for ReflectionClass; null for built-in classes. */
     private volatile String sourceFile;
@@ -172,7 +174,8 @@ public final class PhpClassTemplate {
                             List<PropertyDecl> properties, List<ConstantDecl> constants,
                             Map<String, MethodDecl> methods, Map<String, MethodSignature> methodSignatures) {
         this(id, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous, parentName, interfaceNames,
-                traitUses, properties, constants, methods, methodSignatures, List.of(), false, null, List.of());
+                traitUses, properties, constants, methods, methodSignatures, List.of(), false, null, List.of(),
+                false);
     }
 
     public PhpClassTemplate(long id, String name, boolean isInterface, boolean isTrait,
@@ -182,6 +185,18 @@ public final class PhpClassTemplate {
                             Map<String, MethodDecl> methods, Map<String, MethodSignature> methodSignatures,
                             List<PhpAttribute> attributes, boolean isEnum, PhpType enumBackingType,
                             List<EnumCaseDecl> enumCases) {
+        this(id, name, isInterface, isTrait, isAbstract, isFinal, isAnonymous, parentName, interfaceNames,
+                traitUses, properties, constants, methods, methodSignatures, attributes, isEnum,
+                enumBackingType, enumCases, false);
+    }
+
+    public PhpClassTemplate(long id, String name, boolean isInterface, boolean isTrait,
+                            boolean isAbstract, boolean isFinal, boolean isAnonymous,
+                            String parentName, List<String> interfaceNames, List<TraitUse> traitUses,
+                            List<PropertyDecl> properties, List<ConstantDecl> constants,
+                            Map<String, MethodDecl> methods, Map<String, MethodSignature> methodSignatures,
+                            List<PhpAttribute> attributes, boolean isEnum, PhpType enumBackingType,
+                            List<EnumCaseDecl> enumCases, boolean isReadonly) {
         this.id = id;
         this.name = name;
         this.lowerName = PhpStrings.lower(name);
@@ -202,6 +217,7 @@ public final class PhpClassTemplate {
         this.isEnum = isEnum;
         this.enumBackingType = enumBackingType;
         this.enumCases = List.copyOf(enumCases);
+        this.isReadonly = isReadonly;
         this.rootShape = Shape.newBuilder()
                 .layout(PhpObject.class, PhpObject.LOOKUP)
                 .dynamicType(this)
@@ -274,6 +290,10 @@ public final class PhpClassTemplate {
 
     public boolean isEnum() {
         return isEnum;
+    }
+
+    public boolean isReadonly() {
+        return isReadonly;
     }
 
     /** The backing type of a backed enum, or null for a unit enum. */

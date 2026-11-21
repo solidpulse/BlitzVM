@@ -386,6 +386,32 @@ public final class PhpClass {
             this.constantDecls.put(c.name(), c);
         }
         this.traitConstants = ownIsTrait ? List.copyOf(this.constantDecls.values()) : List.of();
+
+        if (template.isEnum()) {
+            // Enum cases expose readonly name (and value, when backed) properties. Declaring
+            // them here gives property access, isset, unset and reflection the right answers,
+            // and keeps the case object from growing dynamic properties.
+            addEnumProperty("name");
+            if (template.enumBackingType() != null) {
+                addEnumProperty("value");
+            }
+            putMethod("cases", language.methodId("cases"), new MethodEntry("cases", this,
+                    Visibility.PUBLIC, true, false, false, EnumBuiltins.callTarget(language, this, "cases")));
+            if (template.enumBackingType() != null) {
+                putMethod("from", language.methodId("from"), new MethodEntry("from", this,
+                        Visibility.PUBLIC, true, false, false, EnumBuiltins.callTarget(language, this, "from")));
+                putMethod("tryfrom", language.methodId("tryFrom"), new MethodEntry("tryFrom", this,
+                        Visibility.PUBLIC, true, false, false, EnumBuiltins.callTarget(language, this, "tryFrom")));
+            }
+        }
+    }
+
+    private void addEnumProperty(String name) {
+        InstanceProp prop = new InstanceProp(name, name, Visibility.PUBLIC, true, this,
+                PhpNull.INSTANCE, null, null, null);
+        declaredPropNames.add(name);
+        visibleProps.put(name, prop);
+        instanceProps.add(prop);
     }
 
     private void putMethod(String lower, int methodId, MethodEntry entry) {
@@ -534,6 +560,11 @@ public final class PhpClass {
 
     public PhpClassTemplate template() {
         return template;
+    }
+
+    /** A readonly class cannot grow dynamic properties. */
+    public boolean isReadonlyClass() {
+        return template.isReadonly();
     }
 
     public long hierarchyId() {

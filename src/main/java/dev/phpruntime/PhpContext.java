@@ -893,6 +893,15 @@ public final class PhpContext {
         return cls;
     }
 
+    private static boolean containsClass(List<PhpClass> classes, PhpClass target) {
+        for (PhpClass cls : classes) {
+            if (cls == target) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean implementsInterfaceNamed(PhpClass cls, String name) {
         for (PhpClass iface : cls.interfaces()) {
             if (iface.name().equalsIgnoreCase(name) || implementsInterfaceNamed(iface, name)) {
@@ -907,6 +916,18 @@ public final class PhpContext {
     private PhpClass linkClass(PhpClassTemplate template, boolean isBuiltin, PhpClass parent,
                                List<PhpClass> declaredIfaces, Map<String, PhpClass> resolvedTraits) {
         List<PhpClass> ifaces = new ArrayList<>(declaredIfaces);
+        if (template.isEnum()) {
+            // Every enum implements UnitEnum, and a backed enum also implements BackedEnum;
+            // both come after the interfaces the declaration lists, as php reports them.
+            PhpClass unitEnum = lookupClass("UnitEnum");
+            if (unitEnum != null && !containsClass(ifaces, unitEnum)) {
+                ifaces.add(unitEnum);
+            }
+            PhpClass backedEnum = lookupClass("BackedEnum");
+            if (template.enumBackingType() != null && backedEnum != null && !containsClass(ifaces, backedEnum)) {
+                ifaces.add(backedEnum);
+            }
+        }
         if (!isBuiltin && parent != null) {
             for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
                 PhpClass.MethodEntry inherited = parent.lookupMethod(m.lowerName());
@@ -964,7 +985,9 @@ public final class PhpContext {
                     throw PhpError.fatal("Class " + cls.name() + " contains 1 abstract method and must therefore be declared abstract or implement the remaining methods ("
                             + iface.name() + "::" + iface.template().methods().get(entry.getKey()).name() + ")");
                 }
-                if (implementation.isStatic()) {
+                boolean enumInterface = iface.name().equalsIgnoreCase("UnitEnum")
+                        || iface.name().equalsIgnoreCase("BackedEnum");
+                if (implementation.isStatic() && !enumInterface) {
                     throw PhpError.fatal("Cannot make non static method " + iface.name() + "::" + implementation.name()
                             + "() static in class " + cls.name());
                 }

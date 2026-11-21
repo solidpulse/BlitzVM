@@ -153,6 +153,32 @@ public final class CallMode {
         return false;
     }
 
+    /**
+     * The strict_types setting of the PHP code that called internal code at {@code site}. The
+     * caller is the first guest frame above this one; internal roots are not guest frames.
+     */
+    @TruffleBoundary
+    public static boolean strictOfCaller(Node site) {
+        PhpContext ctx = PhpContext.get(site);
+        CallMode pending = ctx.pendingCallMode();
+        if (pending != null && pending.target() == null) {
+            return pending.strict();
+        }
+        boolean[] strict = {false};
+        Truffle.getRuntime().iterateFrames(fi -> {
+            if (!(fi.getCallTarget() instanceof RootCallTarget target)) {
+                return null;
+            }
+            RootNode frameRoot = target.getRootNode();
+            if (!PhpFunctionRootNode.isGuestFrame(frameRoot)) {
+                return null;
+            }
+            strict[0] = strictness(frameRoot);
+            return Boolean.TRUE;
+        });
+        return strict[0];
+    }
+
     /** The mode for a call made directly by the code at {@code site}. */
     public static boolean strictAt(Node site) {
         RootNode root = site.getRootNode();

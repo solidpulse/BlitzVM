@@ -1,0 +1,27 @@
+Suit 1 1 string
+ReflectionEnumBackedCase Hearts Hearts Suit 11 H
+ReflectionEnumBackedCase Spades Spades Suit 11 S
+Level 1 1 int
+ReflectionEnumBackedCase Low Low Level 11 1
+Pure 1 0 none
+ReflectionEnumUnitCase A A Pure 11
+ReflectionEnumUnitCase B B Pure 11
+Suit 1 0 0
+S
+missing-case!ReflectionException: Case Suit::Nope does not exist
+not-enum!ReflectionException: Class "stdClass" is not an enum
+missing-class!ReflectionException: Class "NoSuchClass" does not exist
+no-args!ArgumentCountError: ReflectionEnum::__construct() expects exactly 1 argument, 0 given
+cases-args!ArgumentCountError: ReflectionEnum::getCases() expects exactly 0 arguments, 1 given
+unit-backing!ReflectionException: Enum case Pure::A is not a backed case
+unit-case-missing!ReflectionException: Constant Suit::Nope does not exist
+backing-unit!Error: Call to undefined method ReflectionEnumUnitCase::getBackingValue()
+1 1 0
+UnitEnum,BackedEnum
+Hearts,Spades,Wild
+Hearts 1 Spades 1 Wild 0 
+Hearts Spades
+name 1 value 1 
+static from 1
+1 Low Level
+B B

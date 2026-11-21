@@ -128,9 +128,18 @@ public final class ReflectionClasses {
         }
     }
 
-    /** A declared class constant. */
+    /** An enum case behind a ReflectionEnumUnitCase or ReflectionEnumBackedCase. */
+    private record EnumCaseRefState(PhpClass enumClass, PhpClassTemplate.EnumCaseDecl decl)
+            implements PhpNativeState {
+        @Override
+        public PhpNativeState copy() {
+            return this;
+        }
+    }
+
+    /** A declared class constant, or an enum case seen as one. */
     private record ConstantState(PhpClass reflected, PhpClass declaring,
-                                 PhpClassTemplate.ConstantDecl decl) implements PhpNativeState {
+                                 PhpClassTemplate.ConstantDecl decl, boolean enumCase) implements PhpNativeState {
         @Override
         public PhpNativeState copy() {
             return this;
@@ -157,6 +166,9 @@ public final class ReflectionClasses {
         buildReflectionParameter(language, out);
         buildReflectionProperty(language, out);
         buildReflectionClassConstant(language, out);
+        buildReflectionEnum(language, out);
+        buildReflectionEnumUnitCase(language, out);
+        buildReflectionEnumBackedCase(language, out);
         buildReflectionAttribute(language, out);
         buildAttributeMarker(language, out);
         buildReflectionException(language, out);
@@ -892,6 +904,18 @@ public final class ReflectionClasses {
         if (cls == null) {
             return;
         }
+        if (own && cls.template().isEnum()) {
+            out.add(new PropertyInfo(null, cls, new PhpClassTemplate.PropertyDecl(
+                    "name", Visibility.PUBLIC, false, true, null, null, new PhpType.Named("string"),
+                    List.of(), false)));
+            if (cls.template().enumBackingType() != null) {
+                out.add(new PropertyInfo(null, cls, new PhpClassTemplate.PropertyDecl(
+                        "value", Visibility.PUBLIC, false, true, null, null,
+                        cls.template().enumBackingType(), List.of(), false)));
+            }
+            seen.add("name");
+            seen.add("value");
+        }
         for (PhpClassTemplate.PropertyDecl decl : cls.template().properties()) {
             if (!own && decl.visibility() == Visibility.PRIVATE) {
                 continue;
@@ -1005,6 +1029,16 @@ public final class ReflectionClasses {
     private static void collectClassConstants(PhpClass cls, boolean own, List<ConstantInfo> out, Set<String> seen) {
         if (cls == null) {
             return;
+        }
+        if (own && cls.template().isEnum()) {
+            // An enum's cases come before its declared constants, as in getConstants().
+            for (PhpClassTemplate.EnumCaseDecl enumCase : cls.template().enumCases()) {
+                if (seen.add(enumCase.name())) {
+                    out.add(new ConstantInfo(null, cls, new PhpClassTemplate.ConstantDecl(
+                            enumCase.name(), Visibility.PUBLIC, false, null, null, null,
+                            enumCase.attributes())));
+                }
+            }
         }
         for (PhpClassTemplate.ConstantDecl decl : cls.template().constants()) {
             if (!own && decl.visibility() == Visibility.PRIVATE) {
@@ -1164,8 +1198,10 @@ public final class ReflectionClasses {
     }
 
     private static PhpObject constantObject(PhpContext ctx, PhpClass reflected, ConstantInfo info) {
+        boolean enumCase = info.declaring().template().isEnum()
+                && info.declaring().template().enumCase(info.decl().name()) != null;
         return newReflectionObject(ctx, "ReflectionClassConstant",
-                new ConstantState(reflected, info.declaring(), info.decl()));
+                new ConstantState(reflected, info.declaring(), info.decl(), enumCase));
     }
 
     private static PhpObject functionObject(PhpContext ctx, FunctionState state) {
@@ -2008,7 +2044,9 @@ public final class ReflectionClasses {
             if (info == null) {
                 throw reflectionError("Constant " + cls.name() + "::" + name + " does not exist");
             }
-            self.setNativeState(new ConstantState(cls, info.declaring(), info.decl()));
+            boolean enumCase = info.declaring().template().isEnum()
+                    && info.declaring().template().enumCase(info.decl().name()) != null;
+            self.setNativeState(new ConstantState(cls, info.declaring(), info.decl(), enumCase));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
@@ -2025,6 +2063,8 @@ public final class ReflectionClasses {
                 (ctx, self, args) -> constantState(self).decl().visibility() == Visibility.PRIVATE);
         addMethod(language, methods, "isFinal", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> constantState(self).decl().isFinal());
+        addMethod(language, methods, "isEnumCase", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> constantState(self).enumCase());
         addMethod(language, methods, "getModifiers", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> (long) constantModifiers(constantState(self).decl()));
         addMethod(language, methods, "getAttributes", Visibility.PUBLIC, false, false,
@@ -2046,6 +2086,156 @@ public final class ReflectionClasses {
             return state;
         }
         throw new PhpError("ReflectionClassConstant object is not initialized");
+    }
+
+    // ---------------------------------------------------------------- ReflectionEnum
+
+    private static void buildReflectionEnum(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionEnum::__construct", args, 1, 1);
+            PhpClass cls;
+            if (args[0] instanceof PhpObject object) {
+                cls = object.phpClass();
+            } else {
+                String name = PhpOps.toStr(args[0]);
+                cls = ctx.lookupOrAutoloadClass(name);
+                if (cls == null) {
+                    throw reflectionError("Class \"" + name + "\" does not exist");
+                }
+            }
+            if (!cls.template().isEnum()) {
+                throw reflectionError("Class \"" + cls.name() + "\" is not an enum");
+            }
+            self.setNativeState(new ClassState(cls, args[0] instanceof PhpObject object ? object : null));
+            return PhpNull.INSTANCE;
+        });
+        addMethod(language, methods, "isBacked", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> classState(self).cls().template().enumBackingType() != null);
+        addMethod(language, methods, "getBackingType", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            PhpType backing = classState(self).cls().template().enumBackingType();
+            return backing == null ? PhpNull.INSTANCE
+                    : newReflectionObject(ctx, "ReflectionNamedType", new TypeState(backing));
+        });
+        addMethod(language, methods, "hasCase", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionEnum::hasCase", args, 1, 1);
+            String name = PhpOps.toStr(args[0]);
+            return classState(self).cls().template().enumCase(name) != null;
+        });
+        addMethod(language, methods, "getCase", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionEnum::getCase", args, 1, 1);
+            PhpClass cls = classState(self).cls();
+            String name = PhpOps.toStr(args[0]);
+            PhpClassTemplate.EnumCaseDecl decl = cls.template().enumCase(name);
+            if (decl == null) {
+                throw reflectionError("Case " + cls.name() + "::" + name + " does not exist");
+            }
+            return enumCaseObject(ctx, cls, decl);
+        });
+        addMethod(language, methods, "getCases", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionEnum::getCases", args, 0, 0);
+            PhpClass cls = classState(self).cls();
+            PhpArray result = new PhpArray();
+            for (PhpClassTemplate.EnumCaseDecl decl : cls.template().enumCases()) {
+                result.append(enumCaseObject(ctx, cls, decl));
+            }
+            return result;
+        });
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "ReflectionEnum", false, false, false,
+                false, false, "ReflectionClass", List.of(), List.of(), List.of(), List.of(), methods));
+    }
+
+    private static void buildReflectionEnumUnitCase(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionEnumUnitCase::__construct", args, 2, 2);
+            PhpClass cls = ctx.lookupOrAutoloadClass(PhpOps.toStr(args[0]));
+            if (cls == null) {
+                throw reflectionError("Class \"" + PhpOps.toStr(args[0]) + "\" does not exist");
+            }
+            String name = PhpOps.toStr(args[1]);
+            PhpClassTemplate.EnumCaseDecl decl = cls.template().isEnum() ? cls.template().enumCase(name) : null;
+            if (decl == null) {
+                throw reflectionError("Constant " + cls.name() + "::" + name + " does not exist");
+            }
+            self.setNativeState(new EnumCaseRefState(cls, decl));
+            return PhpNull.INSTANCE;
+        });
+        addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> enumCaseState(self).decl().name());
+        addMethod(language, methods, "getValue", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            EnumCaseRefState state = enumCaseState(self);
+            Object value = state.enumClass().enumCaseValue(ctx, state.decl().name());
+            return value == null ? PhpNull.INSTANCE : value;
+        });
+        addMethod(language, methods, "getDeclaringClass", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> reflectionClassObject(ctx, enumCaseState(self).enumClass(), null));
+        addMethod(language, methods, "getEnum", Visibility.PUBLIC, false, false, (ctx, self, args) ->
+                newReflectionObject(ctx, "ReflectionEnum",
+                        new ClassState(enumCaseState(self).enumClass(), null)));
+        addMethod(language, methods, "isPublic", Visibility.PUBLIC, false, false, (ctx, self, args) -> true);
+        addMethod(language, methods, "isProtected", Visibility.PUBLIC, false, false, (ctx, self, args) -> false);
+        addMethod(language, methods, "isPrivate", Visibility.PUBLIC, false, false, (ctx, self, args) -> false);
+        addMethod(language, methods, "isFinal", Visibility.PUBLIC, false, false, (ctx, self, args) -> false);
+        addMethod(language, methods, "isEnumCase", Visibility.PUBLIC, false, false, (ctx, self, args) -> true);
+        addMethod(language, methods, "getModifiers", Visibility.PUBLIC, false, false, (ctx, self, args) -> 1L);
+        addMethod(language, methods, "getAttributes", Visibility.PUBLIC, false, false, (ctx, self, args) ->
+                attributes(ctx, enumCaseState(self).decl().attributes(), args, TARGET_CLASS_CONSTANT));
+        addMethod(language, methods, "__toString", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            EnumCaseRefState state = enumCaseState(self);
+            return "Constant [ public " + state.enumClass().name() + " " + state.decl().name()
+                    + " ] { Object }\n";
+        });
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "ReflectionEnumUnitCase", false, false,
+                false, false, false, "ReflectionClassConstant", List.of(), List.of(), List.of(), List.of(),
+                methods));
+    }
+
+    private static void buildReflectionEnumBackedCase(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionEnumBackedCase::__construct", args, 2, 2);
+            PhpClass cls = ctx.lookupOrAutoloadClass(PhpOps.toStr(args[0]));
+            if (cls == null) {
+                throw reflectionError("Class \"" + PhpOps.toStr(args[0]) + "\" does not exist");
+            }
+            String name = PhpOps.toStr(args[1]);
+            PhpClassTemplate.EnumCaseDecl decl = cls.template().isEnum() ? cls.template().enumCase(name) : null;
+            if (decl == null) {
+                throw reflectionError("Constant " + cls.name() + "::" + name + " does not exist");
+            }
+            if (cls.template().enumBackingType() == null) {
+                throw reflectionError("Enum case " + cls.name() + "::" + name + " is not a backed case");
+            }
+            self.setNativeState(new EnumCaseRefState(cls, decl));
+            return PhpNull.INSTANCE;
+        });
+        addMethod(language, methods, "getBackingValue", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            EnumCaseRefState state = enumCaseState(self);
+            Object value = state.enumClass().enumCaseValue(ctx, state.decl().name());
+            if (value instanceof PhpObject obj && obj.nativeState() instanceof dev.phpruntime.runtime.EnumCaseState ec) {
+                Object backing = ec.value();
+                return backing == null ? PhpNull.INSTANCE : backing;
+            }
+            return PhpNull.INSTANCE;
+        });
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "ReflectionEnumBackedCase", false, false,
+                false, false, false, "ReflectionEnumUnitCase", List.of(), List.of(), List.of(), List.of(),
+                methods));
+    }
+
+    private static EnumCaseRefState enumCaseState(PhpObject self) {
+        if (self != null && self.nativeState() instanceof EnumCaseRefState state) {
+            return state;
+        }
+        throw new PhpError("ReflectionEnumUnitCase object is not initialized");
+    }
+
+    private static PhpObject enumCaseObject(PhpContext ctx, PhpClass cls,
+                                            PhpClassTemplate.EnumCaseDecl decl) {
+        String reflectionClass = cls.template().enumBackingType() == null
+                ? "ReflectionEnumUnitCase" : "ReflectionEnumBackedCase";
+        return newReflectionObject(ctx, reflectionClass, new EnumCaseRefState(cls, decl));
     }
 
     // ---------------------------------------------------------------- ReflectionAttribute

@@ -234,6 +234,7 @@ public final class PropertyLValueNode extends LValueNode {
             arrayAccess().set(obj, name, value);
             return;
         }
+        checkEnumDynamicProperty(obj, name);
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
             if (!fast.accessible()) {
@@ -283,6 +284,14 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         writeFallback(obj, name, value, false, callerLower);
+    }
+
+    /** Enum cases have no dynamic properties: a write to any name they do not declare fails. */
+    @TruffleBoundary
+    private void checkEnumDynamicProperty(PhpObject obj, String name) {
+        if (obj.phpClass().template().isEnum() && !obj.phpClass().hasDeclaredProperty(name)) {
+            throw new PhpError("Cannot create dynamic property " + obj.phpClass().name() + "::$" + name, this);
+        }
     }
 
     private void writeReadonly(PhpObject obj, String name, String storageKey, Object existing,
@@ -338,6 +347,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (arrayProperties(obj, name)) {
             return arrayAccess().cell(obj, name);
         }
+        checkEnumDynamicProperty(obj, name);
         checkNotReadonlyForIndirectWrite(frame, keys);
         PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
         if (!res.accessible()) {
@@ -389,6 +399,7 @@ public final class PropertyLValueNode extends LValueNode {
             arrayAccess().bindCell(obj, name, cell);
             return;
         }
+        checkEnumDynamicProperty(obj, name);
         checkNotReadonlyForIndirectWrite(frame, keys);
         PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
         if (!res.accessible()) {

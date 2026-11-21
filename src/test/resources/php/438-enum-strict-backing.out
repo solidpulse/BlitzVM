@@ -1,0 +1,8 @@
+int=Low
+string=Hearts
+string-in-numeric!TypeError: Level::from(): Argument #1 ($value) must be of type int, string given
+float!TypeError: Level::from(): Argument #1 ($value) must be of type int, float given
+bool!TypeError: Level::from(): Argument #1 ($value) must be of type int, true given
+null!TypeError: Level::from(): Argument #1 ($value) must be of type int, null given
+int-in-string!TypeError: Suit::from(): Argument #1 ($value) must be of type string, int given
+try-string-in-numeric!TypeError: Level::tryFrom(): Argument #1 ($value) must be of type int, string given

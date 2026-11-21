@@ -1344,6 +1344,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @Fallback
         static Object generic(CompareNode.Kind kind, Object a, Object b) {
+            if (a instanceof dev.phpruntime.runtime.PhpObject x
+                    && b instanceof dev.phpruntime.runtime.PhpObject y
+                    && x.nativeState() instanceof dev.phpruntime.runtime.EnumCaseState
+                    && y.nativeState() instanceof dev.phpruntime.runtime.EnumCaseState) {
+                // Enum cases are uncomparable except to themselves: relational operators are
+                // false for two different cases, and true for the same case.
+                boolean same = x == y;
+                return switch (kind) {
+                    case SPACESHIP -> same ? 0L : 1L;
+                    case LE, GE -> same;
+                    case LT, GT -> false;
+                };
+            }
             return result(kind, Ops.compare(a, b));
         }
 
@@ -4141,6 +4154,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Instantiation of Closure is not allowed");
             }
+            if (cls.template().isEnum()) {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Cannot instantiate enum " + cls.name());
+            }
             if (cls.isInterface() || cls.isTrait() || cls.isAbstract()) {
                 String kind = cls.isInterface() ? "interface " : (cls.isTrait() ? "trait " : "abstract class ");
                 CompilerDirectives.transferToInterpreter();
@@ -4229,6 +4246,60 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create()") DispatchCallNode dispatch) {
             return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch);
+        }
+    }
+
+    /** {@code clone($obj, $with)}: clone, run {@code __clone}, then assign the given properties. */
+    @Operation
+    @ConstantOperand(type = String.class, name = "callingClass")
+    @ConstantOperand(type = int.class, name = "traitSelfSlot")
+    public static final class CloneWith {
+        @Specialization
+        static Object clone(VirtualFrame frame, String callingClass, int traitSelfSlot, Object value, Object with,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                            @Cached("create()") DispatchCallNode dispatch) {
+            Object traitSelf = traitSelfSlot >= 0 ? frame.getObject(traitSelfSlot) : null;
+            return dev.phpruntime.nodes.expr.CloneNode.cloneValueWith(value, with, location, dispatch,
+                    callingClass.isEmpty() ? null : callingClass, traitSelf);
+        }
+    }
+
+    /**
+     * The piped value on its way into a callable. php always passes it as a plain value, so a
+     * first parameter declared by reference is an error rather than an implicit temporary.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class PipeArgument {
+        @Specialization
+        static Object check(VirtualFrame frame, LocalAccessor calleeLocal, Object value,
+                            @Bind BytecodeNode bytecode, @Bind Node node) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
+            if (takesRef(callee, 0)) {
+                throw pipeByRef(callee, node);
+            }
+            return value;
+        }
+
+        @TruffleBoundary
+        private static PhpError pipeByRef(Object callee, Node node) {
+            Builtins.Def builtin = builtinCallee(callee);
+            String function;
+            String param;
+            if (builtin != null) {
+                function = builtin.name();
+                dev.phpruntime.builtins.BuiltinParams.Param[] params =
+                        dev.phpruntime.builtins.BuiltinParams.forName(builtin.name());
+                param = params != null && params.length > 0 ? params[0].name() : null;
+            } else {
+                PhpFunctionRootNode fn = signature(callee);
+                function = fn != null ? fn.qualifiedCallableName() : "unknown";
+                param = fn != null ? fn.paramName(0) : null;
+            }
+            String suffix = param != null ? " ($" + param + ")" : "";
+            return new PhpError(function + "(): Argument #1" + suffix
+                    + " could not be passed by reference", node);
         }
     }
 
