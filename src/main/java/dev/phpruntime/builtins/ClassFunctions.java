@@ -159,6 +159,11 @@ final class ClassFunctions {
                     if (p.isStatic() || !seen.add(p.name()) || !visibleFrom(p.visibility(), c, caller)) {
                         continue;
                     }
+                    PhpClass.InstanceProp effective = p.visibility() == Visibility.PRIVATE
+                            ? c.findPrivateProp(p.name()) : c.findVisibleProp(p.name());
+                    if (effective != null && effective.virtual()) {
+                        continue;
+                    }
                     out.put(p.name(), c.evaluatePropertyDefault(p));
                 }
                 for (PhpClassTemplate.PropertyDecl p : tpl.properties()) {
