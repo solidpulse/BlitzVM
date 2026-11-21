@@ -32,7 +32,7 @@ public final class SplClasses {
         Map<String, PhpClassTemplate.MethodDecl> storageMethods = new LinkedHashMap<>();
         for (String method : List.of("__construct", "attach", "detach", "contains", "offsetExists", "offsetGet", "offsetSet", "offsetUnset",
                 "count", "rewind", "valid", "current", "key", "next", "getInfo", "setInfo", "getHash", "addAll", "removeAll", "removeAllExcept",
-                "serialize", "unserialize")) {
+                "serialize", "unserialize", "__serialize", "__unserialize")) {
             String lower = method.toLowerCase();
             storageMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method), Visibility.PUBLIC,
                     false, false, false, new dev.phpruntime.nodes.call.SplStorageMethodRootNode(language, method).getCallTarget()));
@@ -41,6 +41,9 @@ public final class SplClasses {
                 false, false, false, null, List.of("Countable", "Iterator", "Serializable", "ArrayAccess"),
                 List.of(), List.of(), storageMethods);
         out.put(storage.lowerName(), storage);
+        out.put("__php_incomplete_class", new PhpClassTemplate(language.nextTemplateId(),
+                "__PHP_Incomplete_Class", false, false, false, false, null, List.of(),
+                List.of(), List.of(), Map.of()));
         return out;
     }
 
@@ -89,6 +92,8 @@ public final class SplClasses {
             }
             method(language, methods, name, "serialize", 0, 0);
             method(language, methods, name, "unserialize", 1, 1);
+            method(language, methods, name, "__serialize", 0, 0);
+            method(language, methods, name, "__unserialize", 1, 1);
             for (String method : List.of("offsetExists", "offsetGet", "offsetUnset", "append", "setFlags", "uasort", "uksort")) {
                 method(language, methods, name, method, 1, 1);
             }
