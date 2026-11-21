@@ -68,6 +68,9 @@ public final class SplMethodRootNode extends RootNode {
             self.setNativeState(state);
             return PhpNull.INSTANCE;
         }
+        if (self.nativeState() == null && method.equals("__unserialize")) {
+            self.setNativeState(new SplArrayState(new PhpArray(), 0));
+        }
         if (!(self.nativeState() instanceof SplArrayState state)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("The parent constructor was not called: the object is in an invalid state", this);
@@ -101,6 +104,44 @@ public final class SplMethodRootNode extends RootNode {
                 yield PhpNull.INSTANCE;
             }
             case "getFlags" -> (long) state.flags;
+            case "__serialize" -> {
+                PhpArray out = new PhpArray();
+                out.put(0L, (long) state.flags);
+                out.put(1L, state.arrayCopy());
+                out.put(2L, dev.phpruntime.builtins.SplNativeSupport.properties(self));
+                out.put(3L, owner.equals("ArrayObject") && !state.iteratorClass.equals("ArrayIterator")
+                        ? state.iteratorClass : PhpNull.INSTANCE);
+                yield out;
+            }
+            case "__unserialize" -> {
+                if (!(a instanceof PhpArray data)) {
+                    throw new PhpError(PhpError.TYPE_ERROR, owner + "::__unserialize(): Argument #1 ($data) must be of type array, "
+                            + PhpOps.typeDescription(a) + " given", this);
+                }
+                Object source = data.get(0L);
+                Object storage = data.get(1L);
+                Object props = data.get(2L);
+                Object iteratorClass = data.get(3L);
+                int flags = source instanceof Long f ? (int) f.longValue() : 0;
+                if (!(storage instanceof PhpArray || storage instanceof PhpObject)) {
+                    throw new PhpError(PhpError.TYPE_ERROR, owner
+                            + "::__unserialize(): Argument #2 ($data) must be an array or object", this);
+                }
+                SplArrayState replacement = new SplArrayState(storage, flags);
+                if (iteratorClass instanceof String name && owner.equals("ArrayObject")) {
+                    replacement.iteratorClass = name;
+                }
+                replacement.position = 0;
+                self.setNativeState(replacement);
+                if (props instanceof PhpArray values) {
+                    com.oracle.truffle.api.object.DynamicObject.PutNode put =
+                            com.oracle.truffle.api.object.DynamicObject.PutNode.getUncached();
+                    for (var entry : values.entries()) {
+                        put.execute(self, PhpOps.toStr(entry.getKey()), PhpOps.copyOnAssign(entry.getValue()));
+                    }
+                }
+                yield PhpNull.INSTANCE;
+            }
             case "setFlags" -> { state.flags = (int) PhpOps.toLong(a); yield PhpNull.INSTANCE; }
             case "seek" -> {
                 long pos = PhpOps.toLong(a);

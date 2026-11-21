@@ -62,6 +62,43 @@ public final class SplStorageMethodRootNode extends RootNode {
                 yield "x:i:0;m:" + dev.phpruntime.builtins.Builtins.lookup("serialize").impl().call(
                         dev.phpruntime.PhpContext.get(this), new Object[]{dev.phpruntime.builtins.SplNativeSupport.properties(self)});
             }
+            case "__serialize" -> {
+                PhpArray pairs = new PhpArray();
+                for (var entry : state.objects.entrySet()) {
+                    pairs.append(entry.getKey());
+                    pairs.append(PhpOps.copyOnAssign(entry.getValue()));
+                }
+                PhpArray out = new PhpArray();
+                out.put(0L, pairs);
+                out.put(1L, dev.phpruntime.builtins.SplNativeSupport.properties(self));
+                yield out;
+            }
+            case "__unserialize" -> {
+                if (!(args[2] instanceof PhpArray data)) {
+                    throw new PhpError(PhpError.TYPE_ERROR, "SplObjectStorage::__unserialize(): Argument #1 ($data) must be of type array, "
+                            + PhpOps.typeDescription(args[2]) + " given", this);
+                }
+                state.clear();
+                Object pairs = data.get(0L);
+                if (pairs instanceof PhpArray list) {
+                    var values = list.values();
+                    for (int i = 0; i + 1 < values.size(); i += 2) {
+                        if (values.get(i) instanceof PhpObject key) {
+                            state.attach(key, values.get(i + 1));
+                        }
+                    }
+                }
+                Object props = data.get(1L);
+                if (props instanceof PhpArray values) {
+                    com.oracle.truffle.api.object.DynamicObject.PutNode put =
+                            com.oracle.truffle.api.object.DynamicObject.PutNode.getUncached();
+                    for (var entry : values.entries()) {
+                        put.execute(self, PhpOps.toStr(entry.getKey()), PhpOps.copyOnAssign(entry.getValue()));
+                    }
+                }
+                state.position = 0;
+                yield PhpNull.INSTANCE;
+            }
             case "unserialize" -> {
                 String data = PhpOps.toStr(args[2]);
                 if (!data.startsWith("x:i:0;m:")) {

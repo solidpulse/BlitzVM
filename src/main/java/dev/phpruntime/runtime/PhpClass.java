@@ -167,6 +167,8 @@ public final class PhpClass {
         private HashMap<String, Object> constants;
         private HashSet<String> evaluatingConstants;
         private Object[] defaultValues;
+        /** Canonical enum case objects for this request, so repeated lookups return one object. */
+        private HashMap<String, Object> enumCases;
 
         /** A captured static property: whether its initializer ran and the raw stored value. */
         public record StaticValue(boolean initialized, Object value) {
@@ -552,6 +554,12 @@ public final class PhpClass {
         return template.lowerName();
     }
 
+    /** Whether this class comes from the runtime's builtin template set rather than user code. */
+    @TruffleBoundary
+    public boolean isBuiltin() {
+        return language.builtinClassTemplate(template.lowerName()) != null;
+    }
+
     public PhpClass parent() {
         return parent;
     }
@@ -680,6 +688,74 @@ public final class PhpClass {
         return visibleProps.get(name);
     }
 
+    /** The private property named {@code name} declared closest to this class, or null. */
+    @TruffleBoundary
+    public InstanceProp findPrivateProp(String name) {
+        for (int i = instanceProps.size() - 1; i >= 0; i--) {
+            InstanceProp p = instanceProps.get(i);
+            if (p.visibility() == Visibility.PRIVATE && p.name().equals(name)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /** The private property {@code name} declared exactly in {@code declaringClass}, or null. */
+    @TruffleBoundary
+    public InstanceProp findPrivatePropDeclaredIn(String declaringClass, String name) {
+        for (int i = instanceProps.size() - 1; i >= 0; i--) {
+            InstanceProp p = instanceProps.get(i);
+            if (p.visibility() == Visibility.PRIVATE && p.name().equals(name)
+                    && PhpStrings.equalsIgnoreCase(p.declaringClass().name(), declaringClass)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /** The declared instance property stored under {@code storageKey}, or null. */
+    @TruffleBoundary
+    public InstanceProp findPropByStorageKey(String storageKey) {
+        for (int i = instanceProps.size() - 1; i >= 0; i--) {
+            InstanceProp p = instanceProps.get(i);
+            if (p.storageKey().equals(storageKey)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /** The canonical object for an enum case in this request, or null if the case is unknown. */
+    @TruffleBoundary
+    public Object enumCaseValue(PhpContext ctx, String caseName) {
+        PhpClassTemplate.EnumCaseDecl decl = template.enumCase(caseName);
+        if (decl == null) {
+            return null;
+        }
+        RequestState state = ctx.classState(this);
+        if (state.enumCases == null) {
+            state.enumCases = new HashMap<>();
+        }
+        Object existing = state.enumCases.get(caseName);
+        if (existing != null) {
+            return existing;
+        }
+        Object value = decl.constValue();
+        if (decl.valueTarget() != null) {
+            value = evalExpr(decl.constValue(), decl.valueTarget(), this);
+        }
+        PhpObject obj = new PhpObject(this, ctx.nextEnumObjectId());
+        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+        put.execute(obj, "name", caseName);
+        boolean backed = template.enumBackingType() != null;
+        if (backed) {
+            put.execute(obj, "value", value == null ? PhpNull.INSTANCE : value);
+        }
+        obj.setNativeState(new EnumCaseState(template.name(), caseName, backed, value));
+        state.enumCases.put(caseName, obj);
+        return obj;
+    }
+
     /**
      * The value of {@code Cls::NAME} when it is the same in every request, or null when the
      * constant needs the full lookup: an initializer to evaluate or an unresolved name. The walk
@@ -722,6 +798,12 @@ public final class PhpClass {
     public Object lookupConstant(PhpContext ctx, String name) {
         if (name.equalsIgnoreCase("class")) {
             return template.name();
+        }
+        if (template.isEnum()) {
+            Object caseValue = enumCaseValue(ctx, name);
+            if (caseValue != null) {
+                return caseValue;
+            }
         }
         PhpClassTemplate.ConstantDecl own = constantDecls.get(name);
         if (own != null) {

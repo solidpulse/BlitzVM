@@ -68,6 +68,7 @@ public final class PhpContext {
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
+    private long nextEnumObjectId = 1L << 32;
     private long nextAnonymousId = 1;
     private final PhpClass stdClass;
     private final PhpClass closureClass;
@@ -882,7 +883,24 @@ public final class PhpContext {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
         }
         classesById[id] = cls;
+        if (!isBuiltin && !cls.isInterface() && !cls.isTrait()
+                && implementsInterfaceNamed(cls, "Serializable")
+                && (cls.lookupMethod("__serialize") == null || cls.lookupMethod("__unserialize") == null)) {
+            deprecated(cls.name() + " implements the Serializable interface, which is deprecated."
+                    + " Implement __serialize() and __unserialize() instead (or in addition, if support for old PHP"
+                    + " versions is necessary)", Math.max(0, template.startLine()));
+        }
         return cls;
+    }
+
+    private static boolean implementsInterfaceNamed(PhpClass cls, String name) {
+        for (PhpClass iface : cls.interfaces()) {
+            if (iface.name().equalsIgnoreCase(name) || implementsInterfaceNamed(iface, name)) {
+                return true;
+            }
+        }
+        PhpClass parent = cls.parent();
+        return parent != null && implementsInterfaceNamed(parent, name);
     }
 
     /** Builds and validates the class for one combination of parent, interfaces and traits. */
@@ -967,6 +985,14 @@ public final class PhpContext {
 
     public long nextObjectId() {
         return nextObjectId++;
+    }
+
+    /**
+     * Ids for enum case objects. PHP's enum cases do not consume the ordinary object-id
+     * sequence, so the ids here start far above anything a request will print.
+     */
+    public long nextEnumObjectId() {
+        return nextEnumObjectId++;
     }
 
     public long nextAnonymousId() {

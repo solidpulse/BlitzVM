@@ -1,0 +1,42 @@
+O:11:"ArrayObject":4:{i:0;i:2;i:1;a:4:{i:0;i:1;i:1;i:2;i:2;i:3;s:5:"extra";s:5:"value";}i:2;a:0:{}i:3;N;}
+ArrayObject 4 value 2
+O:11:"ArrayObject":4:{i:0;i:2;i:1;a:4:{i:0;i:1;i:1;i:2;i:2;i:3;s:5:"extra";s:5:"value";}i:2;a:0:{}i:3;N;}
+array(4) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+  ["extra"]=>
+  string(5) "value"
+}
+O:13:"ArrayIterator":4:{i:0;i:0;i:1;a:2:{s:1:"a";i:1;s:1:"b";i:2;}i:2;a:0:{}i:3;N;}
+ArrayIterator 2
+a=1
+b=2
+O:13:"ArrayIterator":4:{i:0;i:0;i:1;a:2:{s:1:"a";i:1;s:1:"b";i:2;}i:2;a:0:{}i:3;N;}
+O:16:"SplObjectStorage":2:{i:0;a:2:{i:0;O:6:"Stored":1:{s:4:"name";s:6:"stored";}i:1;a:1:{s:4:"info";i:3;}}i:1;a:1:{s:5:"label";s:7:"storage";}}
+SplObjectStorage 1 storage
+Stored 3
+O:16:"SplObjectStorage":2:{i:0;a:2:{i:0;O:6:"Stored":1:{s:4:"name";s:6:"stored";}i:1;a:1:{s:4:"info";i:3;}}i:1;a:1:{s:5:"label";s:7:"storage";}}
+O:8:"DateTime":3:{s:4:"date";s:26:"2020-01-02 03:04:05.123456";s:13:"timezone_type";i:3;s:8:"timezone";s:13:"Europe/London";}
+DateTime 2020-01-02 03:04:05.123456 Europe/London
+O:8:"DateTime":3:{s:4:"date";s:26:"2020-01-02 03:04:05.123456";s:13:"timezone_type";i:3;s:8:"timezone";s:13:"Europe/London";}
+O:17:"DateTimeImmutable":3:{s:4:"date";s:26:"2021-02-03 04:05:06.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";}
+DateTimeImmutable 2021-02-03T04:05:06+00:00
+O:17:"DateTimeImmutable":3:{s:4:"date";s:26:"2021-02-03 04:05:06.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";}
+O:12:"DateTimeZone":2:{s:13:"timezone_type";i:3;s:8:"timezone";s:12:"Europe/Paris";}
+DateTimeZone Europe/Paris
+O:12:"DateTimeZone":2:{s:13:"timezone_type";i:3;s:8:"timezone";s:12:"Europe/Paris";}
+O:12:"DateInterval":10:{s:1:"y";i:1;s:1:"m";i:2;s:1:"d";i:3;s:1:"h";i:4;s:1:"i";i:5;s:1:"s";i:6;s:1:"f";d:0;s:6:"invert";i:0;s:4:"days";b:0;s:11:"from_string";b:0;}
+DateInterval 1-2-3 4:5:6
+O:12:"DateInterval":10:{s:1:"y";i:1;s:1:"m";i:2;s:1:"d";i:3;s:1:"h";i:4;s:1:"i";i:5;s:1:"s";i:6;s:1:"f";d:0;s:6:"invert";i:0;s:4:"days";b:0;s:11:"from_string";b:0;}
+O:12:"DateTimeZone":2:{s:13:"timezone_type";i:1;s:8:"timezone";s:6:"+02:00";}
+O:12:"DateTimeZone":2:{s:13:"timezone_type";i:1;s:8:"timezone";s:6:"+02:00";}
+O:8:"DateTime":4:{s:4:"date";s:26:"2022-01-01 00:00:00.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";s:3:"tag";s:5:"extra";}
+extra 2022-01-01
+O:8:"DateTime":4:{s:4:"date";s:26:"2022-01-01 00:00:00.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";s:3:"tag";s:5:"extra";}
+O:12:"DateInterval":3:{s:11:"from_string";b:1;s:11:"date_string";s:6:"2 days";s:3:"tag";s:8:"interval";}
+interval 2
+O:12:"DateInterval":3:{s:11:"from_string";b:1;s:11:"date_string";s:6:"2 days";s:3:"tag";s:8:"interval";}

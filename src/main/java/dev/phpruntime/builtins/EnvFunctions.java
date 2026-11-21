@@ -53,7 +53,11 @@ final class EnvFunctions {
             return v == null ? false : PhpStrings.fromJava(v);
         });
         Builtins.def("ini_get", 1, 1, (ctx, a) -> {
-            String v = INI.get(PhpOps.toStr(a[0]));
+            String name = PhpOps.toStr(a[0]);
+            if (PhpStrings.lower(name).equals("unserialize_callback_func")) {
+                return ContextState.of(ctx).unserializeCallbackFunc;
+            }
+            String v = INI.get(name);
             return v == null ? false : v;
         });
         Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> PhpStrings.fromJava(tempDir()));

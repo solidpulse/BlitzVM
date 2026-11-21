@@ -2,6 +2,7 @@ package dev.phpruntime.builtins;
 
 import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.runtime.EnumCaseState;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpNull;
@@ -110,12 +111,18 @@ final class OutputFunctions {
                     sb.append(e.getKey());
                 }
                 sb.append("]=>\n");
-                varDump(sb, e.getValue(), indent + 2, seen, false);
+                Object rawItem = e.getValue();
+                varDump(sb, rawItem, indent + 2, seen, rawItem instanceof dev.phpruntime.runtime.PhpReference);
             }
             sb.append(" ".repeat(indent)).append("}\n");
         } else if (v instanceof PhpObject obj) {
             if (seen.containsKey(obj)) {
                 sb.append("*RECURSION*\n");
+                return;
+            }
+            if (obj.nativeState() instanceof EnumCaseState enumCase) {
+                sb.append("enum(").append(enumCase.enumName()).append("::").append(enumCase.caseName())
+                        .append(")\n");
                 return;
             }
             seen.put(obj, Boolean.TRUE);
@@ -134,6 +141,15 @@ final class OutputFunctions {
                 String k = (String) rawKey;
                 Object propVal = get.execute(obj, k, PhpNull.INSTANCE);
                 if (propVal == PhpClass.UNINITIALIZED) {
+                    sb.append(" ".repeat(indent + 2));
+                    appendVarDumpObjectKey(sb, obj.phpClass(), k);
+                    sb.append("=>").append((char) 10);
+                    PhpClass.InstanceProp prop = obj.phpClass().findPropByStorageKey(k);
+                    sb.append(" ".repeat(indent + 2)).append("uninitialized");
+                    if (prop != null && prop.declaredType() != null) {
+                        sb.append('(').append(prop.declaredType().display()).append(')');
+                    }
+                    sb.append((char) 10);
                     continue;
                 }
                 sb.append(" ".repeat(indent + 2));
@@ -142,7 +158,7 @@ final class OutputFunctions {
                 if (propVal instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
                     propVal = lt.toPhpArray();
                 }
-                varDump(sb, propVal, indent + 2, seen, false);
+                varDump(sb, propVal, indent + 2, seen, propVal instanceof dev.phpruntime.runtime.PhpReference);
             }
             if (extra != null) {
                 for (Map.Entry<String, Object> e : extra.entrySet()) {
@@ -294,7 +310,11 @@ final class OutputFunctions {
             int sep = key.indexOf('\0', 1);
             String declaring = key.substring(1, sep);
             String prop = key.substring(sep + 1);
-            sb.append("[\"").append(prop).append("\":\"").append(declaring).append("\":private]");
+            if (declaring.equals("*")) {
+                sb.append("[\"").append(prop).append("\":protected]");
+            } else {
+                sb.append("[\"").append(prop).append("\":\"").append(declaring).append("\":private]");
+            }
             return;
         }
         PhpClass.InstanceProp p = cls.findVisibleProp(key);
