@@ -38,7 +38,15 @@ final class CoreFunctions {
         Builtins.def("memory_get_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
         Builtins.def("memory_get_peak_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory());
         Builtins.def("error_reporting", 0, 1, (ctx, a) -> 32767L);
-        Builtins.def("ini_set", 2, 2, (ctx, a) -> false);
+        Builtins.def("ini_set", 2, 2, (ctx, a) -> {
+            if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("unserialize_callback_func")) {
+                ContextState state = ContextState.of(ctx);
+                String previous = state.unserializeCallbackFunc;
+                state.unserializeCallbackFunc = a[1] == PhpNull.INSTANCE ? "" : PhpOps.toStr(a[1]);
+                return previous;
+            }
+            return false;
+        });
         Builtins.def("set_time_limit", 1, 1, (ctx, a) -> true);
         Builtins.def("gethostname", 0, 0, (ctx, a) -> {
             try {

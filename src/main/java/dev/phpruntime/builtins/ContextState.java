@@ -29,6 +29,8 @@ public final class ContextState {
     java.util.List<String> mbDetectOrder = java.util.List.of("ASCII", "UTF-8");
     int pregLastError;
     final java.util.Map<Long, HashFunctions.HashContext> hashContexts = new java.util.HashMap<>();
+    /** unserialize_callback_func: name of the function called when a serialized class is missing. */
+    String unserializeCallbackFunc = "";
 
     /** mysqli: per-object state keyed by object id, the last connect error and the report mode. */
     MysqliFunctions.State mysqli;
