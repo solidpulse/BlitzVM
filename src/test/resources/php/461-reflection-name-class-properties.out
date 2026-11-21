@@ -1,0 +1,93 @@
+ReflectionClass Object
+(
+    [name] => A
+)
+ReflectionObject Object
+(
+    [name] => B
+)
+ReflectionEnum Object
+(
+    [name] => E
+)
+ReflectionMethod Object
+(
+    [name] => m
+    [class] => A
+)
+ReflectionProperty Object
+(
+    [name] => p
+    [class] => A
+)
+ReflectionProperty Object
+(
+    [name] => q
+    [class] => B
+)
+ReflectionClassConstant Object
+(
+    [name] => C
+    [class] => A
+)
+ReflectionFunction Object
+(
+    [name] => strlen
+)
+ReflectionParameter Object
+(
+    [name] => x
+)
+ReflectionEnumUnitCase Object
+(
+    [name] => X
+    [class] => E
+)
+ReflectionEnumBackedCase Object
+(
+    [name] => Y
+    [class] => F
+)
+
+string(1) "B"
+string(1) "A"
+string(1) "p"
+string(1) "m"
+string(1) "A"
+string(1) "A"
+string(1) "A"
+bool(true)
+bool(true)
+array(1) {
+  ["name"]=>
+  string(1) "B"
+}
+array(2) {
+  ["name"]=>
+  string(1) "m"
+  ["class"]=>
+  string(1) "A"
+}
+string(110) "{closure:/home/silva/code/java/php-runtime/src/test/resources/php/461-reflection-name-class-properties.php:28}"
+ReflectionProperty Object
+(
+    [name] => dyn
+    [class] => stdClass
+)
+
+bool(true)
+bool(false)
+string(6) "string"
+int(1)
+array(2) {
+  [0]=>
+  string(32) "ReflectionFunctionAbstract::name"
+  [1]=>
+  string(23) "ReflectionMethod::class"
+}
+array(2) {
+  [0]=>
+  string(4) "B::q"
+  [1]=>
+  string(4) "A::p"
+}
