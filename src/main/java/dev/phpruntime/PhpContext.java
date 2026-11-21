@@ -81,7 +81,8 @@ public final class PhpContext {
     private final IdentityHashMap<Object, Map<String, PhpReference>> staticLocals = new IdentityHashMap<>();
     private boolean inErrorHandler;
     private final StringBuilder output = new StringBuilder();
-    private final PrintStream err;
+    /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
+    private PrintStream err;
     private PhpRequest request;
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
@@ -99,9 +100,17 @@ public final class PhpContext {
         this.language = language;
         this.env = env;
         this.globalsById = new PhpReference[Math.max(32, language.globalIdCount() + 8)];
-        this.err = new PrintStream(env.err(), true, StandardCharsets.ISO_8859_1);
         this.stdClass = declareClass(language.stdClassTemplate());
         this.closureClass = declareClass(language.closureTemplate());
+    }
+
+    private PrintStream errStream() {
+        PrintStream e = err;
+        if (e == null) {
+            e = new PrintStream(env.err(), true, StandardCharsets.ISO_8859_1);
+            err = e;
+        }
+        return e;
     }
 
     public PhpClass stdClass() {
@@ -1414,7 +1423,7 @@ public final class PhpContext {
                 }
             }
         }
-        err.println("PHP " + label + ":  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
+        errStream().println("PHP " + label + ":  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
         return false;
     }
 }
