@@ -136,10 +136,23 @@ public final class PhpExceptions {
     private static void addMethod(PhpLanguage language,
                                   Map<String, PhpClassTemplate.MethodDecl> map,
                                   String name, Visibility vis, boolean isFinal, BuiltinMethod impl) {
+        addMethod(language, map, name, vis, isFinal, List.of(), impl);
+    }
+
+    private static void addMethod(PhpLanguage language,
+                                  Map<String, PhpClassTemplate.MethodDecl> map,
+                                  String name, Visibility vis, boolean isFinal, List<String> parameterNames,
+                                  BuiltinMethod impl) {
         String lower = PhpStrings.lower(name);
         RootNode root = new BuiltinMethodRootNode(language, name, impl);
+        java.util.List<PhpParameter> parameters = new java.util.ArrayList<>();
+        for (String parameterName : parameterNames) {
+            parameters.add(new PhpParameter(parameterName, null, List.of(), false, false, false, null, null));
+        }
         map.put(lower, new PhpClassTemplate.MethodDecl(
-                name, lower, language.methodId(name), vis, false, false, isFinal, root.getCallTarget()));
+                name, lower, language.methodId(name), vis, false, false, isFinal, root.getCallTarget(),
+                parameterNames.isEmpty() ? null
+                        : new PhpSignature(parameters, null, List.of())));
     }
 
     private static PhpClassTemplate buildBaseThrowableClass(PhpLanguage language, String className, boolean isError) {
@@ -157,14 +170,18 @@ public final class PhpExceptions {
 
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
 
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false,
+                List.of("message", "code", "previous"), (ctx, self, args) -> {
             if (args.length > 3) {
                 throw new PhpError(PhpError.ARGUMENT_COUNT,
                         className + "::__construct() expects at most 3 arguments, " + args.length + " given", null);
             }
-            String msg = args.length >= 1 ? coerceStringArg(className + "::__construct", 1, "$message", args[0]) : "";
-            long code = args.length >= 2 ? coerceIntArg(className + "::__construct", 2, "$code", args[1]) : 0L;
-            Object prev = args.length >= 3 ? validatePrevious(ctx, className + "::__construct", 3, args[2]) : PhpNull.INSTANCE;
+            String msg = args.length >= 1 && args[0] != PhpNull.INSTANCE
+                    ? coerceStringArg(className + "::__construct", 1, "$message", args[0]) : "";
+            long code = args.length >= 2 && args[1] != PhpNull.INSTANCE
+                    ? coerceIntArg(className + "::__construct", 2, "$code", args[1]) : 0L;
+            Object prev = args.length >= 3 && args[2] != PhpNull.INSTANCE
+                    ? validatePrevious(ctx, className + "::__construct", 3, args[2]) : PhpNull.INSTANCE;
 
             DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
             put.execute(self, "message", msg);
@@ -232,19 +249,24 @@ public final class PhpExceptions {
 
         Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
 
-        addMethod(language, methods, "__construct", Visibility.PUBLIC, false, (ctx, self, args) -> {
+        addMethod(language, methods, "__construct", Visibility.PUBLIC, false,
+                List.of("message", "code", "severity", "filename", "line", "previous"), (ctx, self, args) -> {
             if (args.length > 6) {
                 throw new PhpError(PhpError.ARGUMENT_COUNT,
                         "ErrorException::__construct() expects at most 6 arguments, " + args.length + " given", null);
             }
-            String msg = args.length >= 1 ? coerceStringArg("ErrorException::__construct", 1, "$message", args[0]) : "";
-            long code = args.length >= 2 ? coerceIntArg("ErrorException::__construct", 2, "$code", args[1]) : 0L;
-            long severity = args.length >= 3 ? coerceIntArg("ErrorException::__construct", 3, "$severity", args[2]) : 1L;
+            String msg = args.length >= 1 && args[0] != PhpNull.INSTANCE
+                    ? coerceStringArg("ErrorException::__construct", 1, "$message", args[0]) : "";
+            long code = args.length >= 2 && args[1] != PhpNull.INSTANCE
+                    ? coerceIntArg("ErrorException::__construct", 2, "$code", args[1]) : 0L;
+            long severity = args.length >= 3 && args[2] != PhpNull.INSTANCE
+                    ? coerceIntArg("ErrorException::__construct", 3, "$severity", args[2]) : 1L;
             String file = args.length >= 4 && args[3] != PhpNull.INSTANCE
                     ? coerceStringArg("ErrorException::__construct", 4, "$filename", args[3]) : null;
             Long line = args.length >= 5 && args[4] != PhpNull.INSTANCE
                     ? coerceIntArg("ErrorException::__construct", 5, "$line", args[4]) : null;
-            Object prev = args.length >= 6 ? validatePrevious(ctx, "ErrorException::__construct", 6, args[5]) : PhpNull.INSTANCE;
+            Object prev = args.length >= 6 && args[5] != PhpNull.INSTANCE
+                    ? validatePrevious(ctx, "ErrorException::__construct", 6, args[5]) : PhpNull.INSTANCE;
 
             DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
             put.execute(self, "message", msg);

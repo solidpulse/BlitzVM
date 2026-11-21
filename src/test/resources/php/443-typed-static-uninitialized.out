@@ -1,0 +1,8 @@
+bool(false)
+string(7) "default"
+bool(true)
+int(42)
+bool(false)
+string(5) "unset"
+Typed static property TypedStatic::$number must not be accessed before initialization
+int(7)

@@ -12,7 +12,7 @@ import java.util.Map;
 final class EnvFunctions {
 
     /** Extensions whose functions this runtime provides (at least the parts WordPress checks for). */
-    private static final List<String> EXTENSIONS = List.of("Core", "date", "standard", "ctype", "hash", "json", "mbstring");
+    private static final List<String> EXTENSIONS = List.of("Core", "date", "standard", "ctype", "hash", "json", "mbstring", "intl");
 
     /** ini values reported by ini_get; ini_set does not change them yet. */
     private static final Map<String, String> INI = Map.ofEntries(
@@ -34,23 +34,64 @@ final class EnvFunctions {
             Map.entry("serialize_precision", "-1"),
             Map.entry("arg_separator.output", "&"),
             Map.entry("date.timezone", ""),
+            Map.entry("intl.default_locale", ""),
             Map.entry("open_basedir", ""),
             Map.entry("disable_functions", ""),
             Map.entry("zlib.output_compression", "0"),
             Map.entry("mbstring.func_overload", "0"));
+
+    /**
+     * Values get_cfg_var() reports. Unlike ini_get() these are the values from the
+     * configuration file and do not change when a script calls ini_set().
+     */
+    private static final Map<String, String> CFG = Map.ofEntries(
+            Map.entry("precision", "14"),
+            Map.entry("serialize_precision", "-1"),
+            Map.entry("upload_max_filesize", "2M"),
+            Map.entry("post_max_size", "8M"),
+            Map.entry("max_execution_time", "0"),
+            Map.entry("max_input_time", "-1"),
+            Map.entry("memory_limit", "-1"),
+            Map.entry("default_charset", "UTF-8"),
+            Map.entry("short_open_tag", ""),
+            Map.entry("display_errors", ""),
+            Map.entry("log_errors", "1"),
+            Map.entry("error_reporting", "22527"),
+            Map.entry("allow_url_fopen", "1"),
+            Map.entry("file_uploads", "1"));
 
     private EnvFunctions() {
     }
 
     static void register() {
         Builtins.def("getenv", 0, 2, (ctx, a) -> {
+            ContextState state = ContextState.of(ctx);
             if (a.length == 0 || a[0] == PhpNull.INSTANCE) {
                 PhpArray out = new PhpArray();
                 System.getenv().forEach((k, v) -> out.put(PhpStrings.fromJava(k), PhpStrings.fromJava(v)));
+                state.envOverrides.forEach((k, v) -> {
+                    if (v == null) {
+                        out.remove(PhpStrings.fromJava(k));
+                    } else {
+                        out.put(PhpStrings.fromJava(k), PhpStrings.fromJava(v));
+                    }
+                });
                 return out;
             }
-            String v = System.getenv(PhpStrings.toJava(PhpOps.toStr(a[0])));
+            String name = PhpStrings.toJava(PhpOps.toStr(a[0]));
+            String v = state.envOverrides.containsKey(name) ? state.envOverrides.get(name) : System.getenv(name);
             return v == null ? false : PhpStrings.fromJava(v);
+        });
+        Builtins.def("putenv", 1, 1, (ctx, a) -> {
+            String setting = PhpOps.toStr(a[0]);
+            int eq = setting.indexOf('=');
+            ContextState state = ContextState.of(ctx);
+            if (eq < 0) {
+                state.envOverrides.put(setting, null);
+            } else {
+                state.envOverrides.put(setting.substring(0, eq), setting.substring(eq + 1));
+            }
+            return true;
         });
         Builtins.def("ini_get", 1, 1, (ctx, a) -> {
             String name = PhpOps.toStr(a[0]);
@@ -59,6 +100,11 @@ final class EnvFunctions {
             }
             String v = INI.get(name);
             return v == null ? false : v;
+        });
+        Builtins.def("get_cfg_var", 1, 1, (ctx, a) -> {
+            String name = PhpOps.toStr(a[0]);
+            String v = CFG.get(name);
+            return v == null ? false : PhpStrings.fromJava(v);
         });
         Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> PhpStrings.fromJava(tempDir()));
         Builtins.def("extension_loaded", 1, 1, (ctx, a) -> {

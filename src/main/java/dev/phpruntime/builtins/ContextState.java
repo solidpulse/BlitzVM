@@ -23,6 +23,14 @@ public final class ContextState {
     dev.phpruntime.timelib.TimelibErrorContainer lastDateErrors;
     /** ignore_user_abort(): 0 or 1; PHP starts at 0. */
     long ignoreUserAbort;
+    /** gc_enabled(); the runtime has no collector but scripts still observe the toggle. */
+    boolean gcEnabled = true;
+    /** Locale::setDefault(); null means the ICU default (en_US_POSIX). */
+    String intlDefaultLocale;
+    /** The next openssl_error_string() message, or null when the queue is empty. */
+    String opensslError;
+    /** putenv() changes for this request; null values mean the variable was unset. */
+    java.util.Map<String, String> envOverrides = new java.util.HashMap<>();
     /** mbstring settings are request-local, never cached on AST nodes. */
     String mbEncoding = "UTF-8";
     Object mbSubstitute = 63L;

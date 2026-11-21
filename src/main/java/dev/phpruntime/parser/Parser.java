@@ -2557,6 +2557,46 @@ public final class Parser {
     private record ParsedCallArgs(PhpNode[] args, LValueNode[] refs, String[] names, boolean[] spreads) {
     }
 
+    /** Places named arguments for a specially handled builtin, or null when a name is unknown. */
+    private ParsedCallArgs reorderNamed(ParsedCallArgs pca, List<String> parameters) {
+        int count = parameters.size();
+        PhpNode[] args = new PhpNode[count];
+        LValueNode[] refs = new LValueNode[count];
+        int nextPositional = 0;
+        for (int i = 0; i < pca.args().length; i++) {
+            String name = pca.names()[i];
+            int index;
+            if (name == null) {
+                while (nextPositional < count && args[nextPositional] != null) {
+                    nextPositional++;
+                }
+                if (nextPositional >= count) {
+                    return null;
+                }
+                index = nextPositional++;
+            } else {
+                index = -1;
+                for (int p = 0; p < count; p++) {
+                    if (parameters.get(p).equalsIgnoreCase(name)) {
+                        index = p;
+                        break;
+                    }
+                }
+                if (index < 0 || args[index] != null) {
+                    return null;
+                }
+            }
+            args[index] = pca.args()[i];
+            refs[index] = pca.refs()[i];
+        }
+        int length = count;
+        while (length > 0 && args[length - 1] == null) {
+            length--;
+        }
+        return new ParsedCallArgs(java.util.Arrays.copyOf(args, length),
+                java.util.Arrays.copyOf(refs, length), null, null);
+    }
+
     private ParsedCallArgs parseCallArgDetails() {
         List<PhpNode> args = new ArrayList<>();
         List<LValueNode> refs = new ArrayList<>();
@@ -2921,10 +2961,18 @@ public final class Parser {
                 }
                 return scopeBuiltinFallback(rn, pca, compact, line);
             }
-            if (builtinName.equalsIgnoreCase("extract") && pca.names() == null && pca.spreads() == null) {
-                if (pca.args().length < 1 || pca.args().length > 3) { throw error("extract() expects 1 to 3 arguments"); }
-                PhpNode[] args = pca.args();
-                return scopeBuiltinFallback(rn, pca, new ExtractNode(args[0], pca.refs()[0], args.length > 1 ? args[1] : null,
+            if (builtinName.equalsIgnoreCase("extract") && pca.spreads() == null) {
+                ParsedCallArgs positional = pca;
+                if (pca.names() != null) {
+                    positional = reorderNamed(pca, List.of("array", "flags", "prefix"));
+                    if (positional == null) {
+                        throw error("extract() expects 1 to 3 arguments");
+                    }
+                }
+                if (positional.args().length < 1 || positional.args().length > 3) { throw error("extract() expects 1 to 3 arguments"); }
+                PhpNode[] args = positional.args();
+                return scopeBuiltinFallback(rn, positional, new ExtractNode(args[0], positional.refs()[0],
+                        args.length > 1 ? args[1] : null,
                         args.length > 2 ? args[2] : null, scope.dynamicSlot()), line);
             }
             if (rn.fallback() == null) {

@@ -1,0 +1,23 @@
+int(12)
+int(32)
+int(16)
+int(32)
+WARN openssl_cipher_iv_length(): Unknown cipher algorithm
+WARN openssl_cipher_key_length(): Unknown cipher algorithm
+bool(false)
+bool(false)
+int(11)
+int(16)
+string(22) "01a9a5d3a4c51abc117096"
+string(32) "8f7242b13f90282c7c6f9780dba3c9e9"
+string(11) "hello world"
+bool(false)
+bool(true)
+string(32) "6f225bde9c766cd28b5bacceeaaa00da"
+string(11) "hello world"
+string(24) "byJb3px2bNKLW6zO6qoA2g=="
+string(11) "hello world"
+WARN openssl_encrypt(): Unknown cipher algorithm
+bool(false)
+int(1)
+int(2)

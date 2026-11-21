@@ -593,6 +593,8 @@ final class StringFunctions {
     // ------------------------------------------------------------------ more
 
     private static void more() {
+        Builtins.def("str_increment", 1, 1, (ctx, a) -> alnumAdvance(s(a, 0), true));
+        Builtins.def("str_decrement", 1, 1, (ctx, a) -> alnumAdvance(s(a, 0), false));
         Builtins.def("strspn", 2, 4, (ctx, a) -> (long) span(segment(a), s(a, 1), true));
         Builtins.def("strcspn", 2, 4, (ctx, a) -> (long) span(segment(a), s(a, 1), false));
         Builtins.def("substr_compare", 3, 5, (ctx, a) -> substrCompare(a));
@@ -1234,6 +1236,92 @@ final class StringFunctions {
         }
         return max + (pa > 0 && pb > 0 ? similar(a.substring(0, pa), b.substring(0, pb)) : 0)
                 + (pa + max < a.length() && pb + max < b.length() ? similar(a.substring(pa + max), b.substring(pb + max)) : 0);
+    }
+
+    /** str_increment()/str_decrement(): advance one base-10/base-26 position with carry. */
+    private static String alnumAdvance(String value, boolean increment) {
+        String name = increment ? "str_increment" : "str_decrement";
+        if (value.isEmpty()) {
+            throw new PhpError(PhpError.VALUE_ERROR, name + "(): Argument #1 ($string) must not be empty", null);
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+                throw new PhpError(PhpError.VALUE_ERROR, name
+                        + "(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters", null);
+            }
+        }
+        if (!increment && value.charAt(0) == '0') {
+            throw decrementRange(value);
+        }
+        char[] chars = value.toCharArray();
+        boolean carry = true;
+        int i = chars.length - 1;
+        while (i >= 0 && carry) {
+            char c = chars[i];
+            char low;
+            char high;
+            if (c >= '0' && c <= '9') {
+                low = '0';
+                high = '9';
+            } else if (c >= 'a' && c <= 'z') {
+                low = 'a';
+                high = 'z';
+            } else {
+                low = 'A';
+                high = 'Z';
+            }
+            if (increment) {
+                if (c == high) {
+                    chars[i] = low;
+                    i--;
+                } else {
+                    chars[i] = (char) (c + 1);
+                    carry = false;
+                }
+            } else {
+                if (c == low) {
+                    if (i == 0) {
+                        // The leftmost position has nothing to borrow from: it disappears.
+                        if (chars.length == 1) {
+                            throw decrementRange(value);
+                        }
+                        return trimLeadingZeros(new String(chars, 1, chars.length - 1));
+                    }
+                    chars[i] = high;
+                    i--;
+                } else {
+                    chars[i] = (char) (c - 1);
+                    carry = false;
+                }
+            }
+        }
+        if (carry) {
+            if (increment) {
+                char first = value.charAt(0);
+                char prefix = first >= '0' && first <= '9' ? '1' : first >= 'a' && first <= 'z' ? 'a' : 'A';
+                return prefix + new String(chars);
+            }
+            if (chars.length == 1) {
+                throw decrementRange(value);
+            }
+            String result = new String(chars, 1, chars.length - 1);
+            return trimLeadingZeros(result);
+        }
+        return increment ? new String(chars) : trimLeadingZeros(new String(chars));
+    }
+
+    private static String trimLeadingZeros(String value) {
+        int i = 0;
+        while (i < value.length() - 1 && value.charAt(i) == '0') {
+            i++;
+        }
+        return value.substring(i);
+    }
+
+    private static PhpError decrementRange(String value) {
+        return new PhpError(PhpError.VALUE_ERROR, "str_decrement(): Argument #1 ($string) \"" + value
+                + "\" is out of decrement range", null);
     }
 
     private static int levenshtein(String a, String b, int insert, int replace, int delete) {

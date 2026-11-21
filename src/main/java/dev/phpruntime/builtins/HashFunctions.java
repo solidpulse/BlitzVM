@@ -40,6 +40,8 @@ final class HashFunctions {
         // Non-cryptographic checksums: hash() only, not hash_hmac().
         ALGOS.put("crc32b", new Algo(null, 0));
         ALGOS.put("crc32c", new Algo(null, 0));
+        ALGOS.put("xxh128", new Algo(null, 0));
+        ALGOS.put("xxh64", new Algo(null, 0));
     }
 
     private HashFunctions() {
@@ -306,6 +308,19 @@ final class HashFunctions {
             throw new PhpError(PhpError.VALUE_ERROR, fn + "(): Argument #1 ($algo) must be a valid hashing algorithm", null);
         }
         if (spec.javaName() == null) {
+            if (algo.equals("xxh64")) {
+                long h = XxHash64.hash(data);
+                return new byte[]{(byte) (h >>> 56), (byte) (h >>> 48), (byte) (h >>> 40), (byte) (h >>> 32),
+                        (byte) (h >>> 24), (byte) (h >>> 16), (byte) (h >>> 8), (byte) h};
+            }
+            if (algo.equals("xxh128")) {
+                long[] h = XxHash3.hash128(data);
+                return new byte[]{
+                        (byte) (h[1] >>> 56), (byte) (h[1] >>> 48), (byte) (h[1] >>> 40), (byte) (h[1] >>> 32),
+                        (byte) (h[1] >>> 24), (byte) (h[1] >>> 16), (byte) (h[1] >>> 8), (byte) h[1],
+                        (byte) (h[0] >>> 56), (byte) (h[0] >>> 48), (byte) (h[0] >>> 40), (byte) (h[0] >>> 32),
+                        (byte) (h[0] >>> 24), (byte) (h[0] >>> 16), (byte) (h[0] >>> 8), (byte) h[0]};
+            }
             Checksum c = algo.equals("crc32b") ? new CRC32() : new CRC32C();
             c.update(data, 0, data.length);
             long v = c.getValue();

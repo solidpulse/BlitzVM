@@ -46,6 +46,7 @@ final class JsonFunctions {
     static void register() {
         Builtins.def("json_encode", 1, 3, JsonFunctions::encode);
         Builtins.def("json_decode", 1, 4, JsonFunctions::decode);
+        Builtins.def("json_validate", 1, 3, JsonFunctions::validate);
         Builtins.def("json_last_error", 0, 0, (ctx, a) -> (long) ctx.request().jsonLastError);
         Builtins.def("json_last_error_msg", 0, 0, (ctx, a) -> message(ctx.request().jsonLastError));
     }
@@ -325,6 +326,36 @@ final class JsonFunctions {
             ctx.request().jsonLastError = ERROR_NONE;
         }
         return result;
+    }
+
+    private static Object validate(PhpContext ctx, Object[] a) {
+        String json = PhpOps.toStr(a[0]);
+        long depth = a.length > 1 ? PhpOps.toLong(a[1]) : 512;
+        long flags = a.length > 2 ? PhpOps.toLong(a[2]) : 0;
+        if (depth <= 0) {
+            throw new PhpError("ValueError", "json_validate(): Argument #2 ($depth) must be greater than 0", null);
+        }
+        if ((flags & ~INVALID_UTF8_IGNORE) != 0) {
+            throw new PhpError("ValueError", "json_validate(): Argument #3 ($flags) must be a valid flag"
+                    + " (allowed flags: JSON_INVALID_UTF8_IGNORE)", null);
+        }
+        if (!PhpStrings.isUtf8(json)) {
+            if ((flags & INVALID_UTF8_IGNORE) == 0) {
+                return false;
+            }
+            json = PhpStrings.decodeUtf8Json(json, true);
+        } else {
+            json = PhpStrings.toJava(json);
+        }
+        Decoder d = new Decoder(json, depth, false, null);
+        try {
+            d.skipSpace();
+            d.value(0);
+            d.skipSpace();
+            return d.pos == json.length();
+        } catch (Fail f) {
+            return false;
+        }
     }
 
     private static dev.phpruntime.runtime.PhpException jsonException(PhpContext ctx, String fn, int code) {

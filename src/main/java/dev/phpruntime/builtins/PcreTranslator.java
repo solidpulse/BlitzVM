@@ -50,9 +50,11 @@ final class PcreTranslator {
         final String decodedPattern;
         /** A literal string every match must start with, or null. Used to skip start positions. */
         final String prefix;
+        /** PCRE (*MARK:name) verbs, as the Java group that marks their position. */
+        final java.util.LinkedHashMap<Integer, String> marks;
 
         Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names, boolean utf, String decodedPattern,
-                 String prefix) {
+                 String prefix, java.util.LinkedHashMap<Integer, String> marks) {
             this.pattern = pattern;
             this.groupCount = groupCount;
             this.javaGroups = javaGroups;
@@ -60,6 +62,21 @@ final class PcreTranslator {
             this.utf = utf;
             this.decodedPattern = decodedPattern;
             this.prefix = prefix;
+            this.marks = marks;
+        }
+
+        /** The MARK value PCRE reports for this match, or null. */
+        String mark(Matcher m) {
+            String best = null;
+            int bestStart = -1;
+            for (var entry : marks.entrySet()) {
+                int start = m.start(entry.getKey());
+                if (start >= 0 && start >= bestStart) {
+                    best = entry.getValue();
+                    bestStart = start;
+                }
+            }
+            return best;
         }
 
         int start(Matcher m, int g) {
@@ -229,6 +246,8 @@ final class PcreTranslator {
     private final Set<Integer> markedNumbers = new HashSet<>();
     private final Set<String> markedNames = new HashSet<>();
     private final Map<Integer, List<Integer>> markers = new HashMap<>();
+    /** Java group -> (*MARK:name) value. */
+    private final java.util.LinkedHashMap<Integer, String> marks = new java.util.LinkedHashMap<>();
     /** Backreferences resolved after the whole pattern is read (they may point forward). */
     private final List<Object> backrefs = new ArrayList<>();
 
@@ -329,7 +348,7 @@ final class PcreTranslator {
             map[g] = userToJava.get(g).stream().mapToInt(Integer::intValue).toArray();
             names[g] = userNames.get(g);
         }
-        return new Compiled(pattern, userGroups, map, names, utf, src, prefix);
+        return new Compiled(pattern, userGroups, map, names, utf, src, prefix, marks);
     }
 
     // ------------------------------------------------------------------ structure
@@ -687,6 +706,14 @@ final class PcreTranslator {
         pos = close + 1;
         if (verb.equals("FAIL") || verb.equals("F")) {
             out.append("(?!)");
+            return;
+        }
+        if (verb.startsWith("MARK:") || verb.equals("MARK")) {
+            // Java has no MARK verb; an empty named group marks the position and, being set
+            // only on the branch that matched, tells preg_match which mark won.
+            int group = ++javaGroups;
+            marks.put(group, verb.length() > 5 ? verb.substring(5) : "");
+            out.append("(?<MARK").append(group).append(">)");
             return;
         }
         throw new Unsupported("(*" + verb + ")");

@@ -167,6 +167,7 @@ public final class ReflectionClasses {
         buildReflectionParameter(language, out);
         buildReflectionProperty(language, out);
         buildReflectionClassConstant(language, out);
+        buildReflectionReference(language, out);
         buildReflectionEnum(language, out);
         buildReflectionEnumUnitCase(language, out);
         buildReflectionEnumBackedCase(language, out);
@@ -2022,6 +2023,8 @@ public final class ReflectionClasses {
         addMethod(language, methods, "isPrivate", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> !propertyState(self).dynamic()
                         && propertyState(self).decl().visibility() == Visibility.PRIVATE);
+        addMethod(language, methods, "getDocComment", Visibility.PUBLIC, false, false,
+                (ctx, self, args) -> false);
         addMethod(language, methods, "isStatic", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> !propertyState(self).dynamic() && propertyState(self).decl().isStatic());
         addMethod(language, methods, "isReadOnly", Visibility.PUBLIC, false, false,
@@ -2588,6 +2591,48 @@ public final class ReflectionClasses {
         }
         PhpClass actual = ctx.lookupOrAutoloadClass(name);
         return filterClass != null && actual != null && actual.isInstanceOf(filterClass);
+    }
+
+    private record ReferenceState(PhpReference reference, String id) implements PhpNativeState {
+        @Override
+        public PhpNativeState copy() {
+            return this;
+        }
+    }
+
+    private static void buildReflectionReference(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        addMethod(language, methods, "__construct", Visibility.PRIVATE, false, false, (ctx, self, args) -> {
+            throw new PhpError("Call to private ReflectionReference::__construct() from global scope");
+        });
+        addMethod(language, methods, "fromArrayElement", Visibility.PUBLIC, true, false, (ctx, self, args) -> {
+            requireArgCount("ReflectionReference::fromArrayElement", args, 2, 2);
+            if (!(args[0] instanceof PhpArray array)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "ReflectionReference::fromArrayElement(): Argument #1 ($array)"
+                        + " must be of type array, " + PhpOps.typeDescription(args[0]) + " given", null);
+            }
+            Object key = args[1];
+            if (!(key instanceof String || key instanceof Long)) {
+                throw new PhpError(PhpError.TYPE_ERROR, "ReflectionReference::fromArrayElement(): Argument #2 ($key)"
+                        + " must be of type string|int, " + PhpOps.typeDescription(key) + " given", null);
+            }
+            if (!array.containsKey(key)) {
+                throw reflectionError("Array key not found");
+            }
+            if (array.getRaw(key) instanceof PhpReference reference) {
+                String id = String.format("%020x", System.identityHashCode(reference));
+                return newReflectionObject(ctx, "ReflectionReference", new ReferenceState(reference, id));
+            }
+            return PhpNull.INSTANCE;
+        });
+        addMethod(language, methods, "getId", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
+            if (self.nativeState() instanceof ReferenceState state) {
+                return state.id();
+            }
+            throw new PhpError("ReflectionReference object is not initialized");
+        });
+        register(out, new PhpClassTemplate(language.nextTemplateId(), "ReflectionReference", false, false,
+                true, false, null, List.of(), List.of(), List.of(), methods));
     }
 
     // ---------------------------------------------------------------- instantiation and invocation

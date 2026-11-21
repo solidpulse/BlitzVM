@@ -1,0 +1,14 @@
+/foo => 1 {"0":"\/foo","MARK":"foo"}
+/bar/12 => 1 {"0":"\/bar\/12","1":"12","MARK":"bar"}
+/baz => 1 {"0":"\/baz","MARK":"baz"}
+/nope => 0 []
+array(4) {
+  [0]=>
+  string(1) "a"
+  ["first"]=>
+  string(1) "a"
+  [1]=>
+  string(1) "a"
+  ["MARK"]=>
+  string(5) "first"
+}

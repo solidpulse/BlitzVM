@@ -1,0 +1,12 @@
+bool(true)
+bool(false)
+Accessing the value of an EmptyIterator
+Accessing the key of an EmptyIterator
+NULL
+NULL
+array(0) {
+}
+int(0)
+EmptyIterator::valid() expects exactly 0 arguments, 1 given
+string(13) "EmptyIterator"
+bool(false)

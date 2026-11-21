@@ -80,6 +80,7 @@ public final class Builtins {
         RuntimeFunctions.register();
         TextFunctions.register();
         CryptFunctions.register();
+        OpensslFunctions.register();
         FilterFunctions.register();
         GzipFunctions.register();
         DirClasses.register();

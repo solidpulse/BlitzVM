@@ -3261,6 +3261,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         static Object builtinValueToRefParam(Builtins.Def def, int param, int kind, Object value, Node node, int line) {
+            // array_multisort accepts literals and constants in every position: php sorts a
+            // temporary copy instead of demanding a variable for each array.
+            if (def.name().equalsIgnoreCase("array_multisort")) {
+                return new PhpReference(PhpOps.copyOnAssign(value));
+            }
             // CallNode.callBuiltin: a call result may be passed with a notice; anything else
             // (a plain expression or a new object) is an error for a builtin.
             if (kind != 1) {
@@ -4825,7 +4830,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         m.obj(), m.cls(), m.name(), CallArgHelper.magicArray(raw)}));
             }
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-            Object[] args = CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location);
+            Object[] args = fnRoot != null
+                    ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
+                    : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
+                            m.entry().parameterNames(), location);
             return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
         }
     }
@@ -4842,7 +4850,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
             if (callee instanceof MethodCallee m) {
                 PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-                Object[] args = CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location);
+                Object[] args = fnRoot != null
+                        ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
+                        : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
+                                m.entry().parameterNames(), location);
                 dispatch.callMethod(m.entry(), args);
             } else if (raw.named() != null && !raw.named().isEmpty()) {
                 CompilerDirectives.transferToInterpreter();

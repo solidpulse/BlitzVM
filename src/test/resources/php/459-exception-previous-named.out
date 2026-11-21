@@ -1,0 +1,15 @@
+string(5) "outer"
+bool(true)
+string(5) "inner"
+string(7) "wrapped"
+bool(true)
+bool(true)
+string(7) "warning"
+int(2)
+int(2)
+string(8) "file.php"
+int(7)
+bool(true)
+string(12) "only message"
+int(0)
+NULL

@@ -299,6 +299,10 @@ final class PregFunctions {
             }
             arr.put((long) g, v);
         }
+        String mark = re.mark(m);
+        if (mark != null) {
+            arr.put("MARK", mark);
+        }
         return arr;
     }
 

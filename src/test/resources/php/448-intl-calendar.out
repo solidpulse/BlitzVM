@@ -1,0 +1,19 @@
+string(15) "Europe/Brussels"
+int(3600000)
+string(11) "Etc/Unknown"
+int(0)
+string(11) "Etc/Unknown"
+1=2023
+2=10
+5=14
+11=22
+12=13
+13=20
+7=3
+6=318
+gregorian Europe/Brussels en_US_POSIX
+int(1)
+int(1)
+bool(true)
+2024-2-9
+IntlCalendar::get(): Argument #1 ($field) must be a valid field

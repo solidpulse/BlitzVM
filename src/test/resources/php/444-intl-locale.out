@@ -1,0 +1,24 @@
+string(2) "en"
+string(4) "Hant"
+string(2) "TW"
+string(2) "sr"
+array(1) {
+  [0]=>
+  string(4) "1996"
+}
+array(3) {
+  ["language"]=>
+  string(2) "zh"
+  ["script"]=>
+  string(4) "Hant"
+  ["region"]=>
+  string(2) "TW"
+}
+string(10) "zh_Hant_TW"
+string(5) "en_US"
+string(2) "en"
+bool(true)
+string(5) "fr_FR"
+string(2) "fr"
+language script region
+NULL

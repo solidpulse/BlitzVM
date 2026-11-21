@@ -20,6 +20,8 @@ final class CallableFunctions {
     static void register() {
         def("call_user_func", 1, -1, CallableFunctions::callUserFunc);
         def("call_user_func_array", 2, 2, CallableFunctions::callUserFuncArray);
+        def("forward_static_call", 1, -1, CallableFunctions::callUserFunc);
+        def("forward_static_call_array", 2, 2, CallableFunctions::callUserFuncArray);
         def("is_callable", 1, 3, (ctx, a) -> PhpCallable.resolveOrNull(ctx, a[0]) != null);
 
         def("spl_autoload_register", 0, 3, CallableFunctions::splAutoloadRegister);

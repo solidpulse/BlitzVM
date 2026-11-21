@@ -1,0 +1,9 @@
+bool(true)
+int(20)
+bool(true)
+bool(true)
+bool(false)
+NULL
+Array key not found
+ReflectionReference::fromArrayElement(): Argument #1 ($array) must be of type array, string given
+Call to private ReflectionReference::__construct() from global scope

@@ -28,6 +28,8 @@ public final class SplClasses {
         iface(language, out, "OuterIterator", List.of("Iterator"), "getInnerIterator");
         out.put("generator", GeneratorClasses.buildTemplate(language));
         arrayClasses(language, out);
+        emptyIterator(language, out);
+        collectionClasses(language, out);
         iteratorClasses(language, out);
         filterClasses(language, out);
         fileClasses(language, out);
@@ -132,6 +134,79 @@ public final class SplClasses {
                 false, false, false, "ArrayIterator", List.of("RecursiveIterator"), List.of(),
                 List.of(constant("CHILD_ARRAYS_ONLY", 4)), recursiveMethods);
         out.put(recursive.lowerName(), recursive);
+    }
+
+    private static void emptyIterator(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        for (String method : List.of("rewind", "valid", "current", "key", "next")) {
+            String lower = method.toLowerCase();
+            methods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, false, false, false,
+                    new dev.phpruntime.nodes.call.SplEmptyMethodRootNode(language, method).getCallTarget()));
+        }
+        PhpClassTemplate template = new PhpClassTemplate(language.nextTemplateId(), "EmptyIterator", false,
+                false, false, false, null, List.of("Iterator"), List.of(), List.of(), methods);
+        out.put(template.lowerName(), template);
+    }
+
+    private static void collectionClasses(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> fixedMethods = new LinkedHashMap<>();
+        for (String method : List.of("__construct", "count", "toArray", "fromArray", "getSize", "setSize",
+                "offsetExists", "offsetGet", "offsetSet", "offsetUnset", "getIterator", "jsonSerialize")) {
+            String lower = method.toLowerCase();
+            fixedMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, method.equals("fromArray"), false, false,
+                    new dev.phpruntime.nodes.call.SplCollectionMethodRootNode(language, "SplFixedArray", method)
+                            .getCallTarget()));
+        }
+        out.put("splfixedarray", new PhpClassTemplate(language.nextTemplateId(), "SplFixedArray", false,
+                false, false, false, null,
+                List.of("IteratorAggregate", "ArrayAccess", "Countable", "JsonSerializable"),
+                List.of(), List.of(), fixedMethods));
+
+        List<PhpClassTemplate.ConstantDecl> linkedConstants = List.of(
+                constant("IT_MODE_LIFO", 2), constant("IT_MODE_FIFO", 0),
+                constant("IT_MODE_DELETE", 1), constant("IT_MODE_KEEP", 0));
+        Map<String, PhpClassTemplate.MethodDecl> linkedMethods = new LinkedHashMap<>();
+        for (String method : List.of("__construct", "add", "pop", "shift", "push", "unshift", "top", "bottom",
+                "count", "isEmpty", "setIteratorMode", "getIteratorMode", "offsetExists", "offsetGet",
+                "offsetSet", "offsetUnset", "rewind", "current", "key", "prev", "next", "valid",
+                "serialize", "unserialize", "__serialize", "__unserialize")) {
+            String lower = method.toLowerCase();
+            linkedMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, false, false, false,
+                    new dev.phpruntime.nodes.call.SplCollectionMethodRootNode(language, "SplDoublyLinkedList", method)
+                            .getCallTarget()));
+        }
+        out.put("spldoublylinkedlist", new PhpClassTemplate(language.nextTemplateId(), "SplDoublyLinkedList",
+                false, false, false, false, null,
+                List.of("Iterator", "ArrayAccess", "Countable", "Serializable"),
+                List.of(), linkedConstants, linkedMethods));
+
+        Map<String, PhpClassTemplate.MethodDecl> queueMethods = new LinkedHashMap<>();
+        for (String method : List.of("enqueue", "dequeue")) {
+            String lower = method.toLowerCase();
+            queueMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, false, false, false,
+                    new dev.phpruntime.nodes.call.SplCollectionMethodRootNode(language, "SplQueue", method)
+                            .getCallTarget()));
+        }
+        out.put("splqueue", new PhpClassTemplate(language.nextTemplateId(), "SplQueue", false, false,
+                false, false, "SplDoublyLinkedList", List.of(), List.of(), List.of(), queueMethods));
+        out.put("splstack", new PhpClassTemplate(language.nextTemplateId(), "SplStack", false, false,
+                false, false, "SplDoublyLinkedList", List.of(), List.of(), List.of(), Map.of()));
+
+        Map<String, PhpClassTemplate.MethodDecl> appendMethods = new LinkedHashMap<>();
+        for (String method : List.of("__construct", "append", "rewind", "valid", "current", "next",
+                "getIteratorIndex", "getArrayIterator", "getInnerIterator", "key")) {
+            String lower = method.toLowerCase();
+            appendMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, false, false, false,
+                    new dev.phpruntime.nodes.call.SplCollectionMethodRootNode(language, "AppendIterator", method)
+                            .getCallTarget()));
+        }
+        out.put("appenditerator", new PhpClassTemplate(language.nextTemplateId(), "AppendIterator", false,
+                false, false, false, null, List.of("Iterator"), List.of(), List.of(), appendMethods));
     }
 
     private static void iteratorClasses(PhpLanguage language, Map<String, PhpClassTemplate> out) {

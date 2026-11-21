@@ -1,0 +1,10 @@
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+int(0)
+bool(false)
+bool(true)
+int(0)
+json_validate(): Argument #2 ($depth) must be greater than 0
+json_validate(): Argument #3 ($flags) must be a valid flag (allowed flags: JSON_INVALID_UTF8_IGNORE)
