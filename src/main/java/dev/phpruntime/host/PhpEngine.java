@@ -412,6 +412,7 @@ public final class PhpEngine implements AutoCloseable {
         private final ArrayDeque<PooledContext> idle = new ArrayDeque<>();
         private boolean closed;
         private int created;
+        private final ThreadLocal<PooledContext> lastUsed = new ThreadLocal<>();
 
         ContextPool(int max) {
             this.permits = new Semaphore(max, true);
@@ -422,7 +423,10 @@ public final class PhpEngine implements AutoCloseable {
             PooledContext idleContext;
             boolean wasClosed;
             synchronized (lock) {
-                idleContext = idle.pollFirst();
+                // Prefer the context this thread used last: Truffle tracks every thread that has
+                // entered a context, and entering one from a new thread walks that list.
+                PooledContext mine = lastUsed.get();
+                idleContext = mine != null && idle.remove(mine) ? mine : idle.pollFirst();
                 wasClosed = closed;
             }
             if (wasClosed) {
@@ -479,6 +483,7 @@ public final class PhpEngine implements AutoCloseable {
         }
 
         void release(PooledContext context, boolean reusable) {
+            lastUsed.set(reusable ? context : null);
             boolean kept = false;
             if (reusable && !closed) {
                 synchronized (lock) {
