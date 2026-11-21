@@ -709,7 +709,7 @@ public final class PhpClass {
                             + " must be public (as in interface " + iface.name() + ")");
                 }
                 if (decl.type() != null && prop.type() != null
-                        && !decl.type().toString().equals(prop.type().toString())) {
+                        && !interfaceTypeCompatible(prop.type(), decl.type())) {
                     String hook = decl.getHook() != null ? "get" : "set";
                     throw PhpError.fatal("Declaration of " + template.name() + "::$" + decl.name() + "::" + hook
                             + "(): " + prop.type() + " must be compatible with "
@@ -733,6 +733,40 @@ public final class PhpClass {
                 }
             }
         }
+    }
+
+    /** Interface property get types are covariant; nullable widening is the common case. */
+    private static boolean interfaceTypeCompatible(PhpType child, PhpType parent) {
+        if (parent instanceof PhpType.Nullable nullable) {
+            if (child instanceof PhpType.Nullable childNullable) {
+                return interfaceTypeCompatible(childNullable.inner(), nullable.inner());
+            }
+            return interfaceTypeCompatible(child, nullable.inner());
+        }
+        if (child instanceof PhpType.Nullable) {
+            return false;
+        }
+        if (parent instanceof PhpType.Named named
+                && PhpStrings.equalsIgnoreCase(named.name(), "mixed")) {
+            return true;
+        }
+        if (parent instanceof PhpType.Union union) {
+            if (child instanceof PhpType.Union childUnion) {
+                for (PhpType member : childUnion.members()) {
+                    if (!interfaceTypeCompatible(member, union)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            for (PhpType member : union.members()) {
+                if (interfaceTypeCompatible(child, member)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return child.toString().equalsIgnoreCase(parent.toString());
     }
 
     private PhpError abstractHook(PhpClass owner, String prop, String hook, String noun) {
