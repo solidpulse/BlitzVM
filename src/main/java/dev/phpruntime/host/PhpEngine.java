@@ -56,6 +56,20 @@ public final class PhpEngine implements AutoCloseable {
     private record CachedSource(long modified, Source source) {
     }
 
+    /**
+     * Compiler threads for a server: the cores the scheduler leaves free (it runs PHP on
+     * {@code cpus} slots), at least 2. WordPress reaches peak speed when its Tier 2 compile
+     * backlog drains, which took about 4 minutes with Truffle's default on 12 cores with 4 slots
+     * and about 2 with 8 threads. An explicit {@code -Dpolyglot.engine.CompilerThreads} wins;
+     * CLI runs (no scheduler) keep Truffle's default.
+     */
+    private static int defaultCompilerThreads(Scheduler scheduler) {
+        if (scheduler == null || System.getProperty("polyglot.engine.CompilerThreads") != null) {
+            return 0;
+        }
+        return Math.max(2, Runtime.getRuntime().availableProcessors() - scheduler.cpus());
+    }
+
     public PhpEngine(Scheduler scheduler) {
         this(scheduler, scheduler == null ? 0 : Math.max(16, scheduler.cpus() * 8));
     }
@@ -68,10 +82,14 @@ public final class PhpEngine implements AutoCloseable {
         this.scheduler = scheduler;
         // Experimental engine options (compilation thresholds and the like) can then be set
         // with -Dpolyglot.engine.<Option>=... for tuning runs.
-        this.engine = Engine.newBuilder("php", JsLanguage.ID)
+        Engine.Builder builder = Engine.newBuilder("php", JsLanguage.ID)
                 .allowExperimentalOptions(true)
-                .option("engine.WarnInterpreterOnly", "false")
-                .build();
+                .option("engine.WarnInterpreterOnly", "false");
+        int compilerThreads = defaultCompilerThreads(scheduler);
+        if (compilerThreads > 0) {
+            builder.option("engine.CompilerThreads", Integer.toString(compilerThreads));
+        }
+        this.engine = builder.build();
         this.pool = poolSize > 0 && scheduler != null ? new ContextPool(poolSize) : null;
         this.maxRequestsPerContext = Math.max(1,
                 Integer.getInteger("blitz.pool.maxRequests", DEFAULT_MAX_REQUESTS_PER_CONTEXT));
