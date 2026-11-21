@@ -1,0 +1,28 @@
+string(5) "HELLO"
+int(10)
+int(8)
+int(6)
+int(3)
+int(20)
+string(6) "5:tail"
+int(3)
+int(0)
+bool(true)
+bool(true)
+int(1)
+int(2)
+int(0)
+int(6)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+int(2)
+int(4)
+left-right-called-int(8)
+int(7)
+missing-function!Error: Call to undefined function no_such_function()
+not-callable!Error: Value of type int is not callable
+byref-builtin!Error: sort(): Argument #1 ($array) could not be passed by reference
+byref-user!Error: byRef(): Argument #1 ($value) could not be passed by reference
+int(1)

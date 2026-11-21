@@ -4321,6 +4321,44 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /**
+     * Resolves the right-hand side of {@code |>}. php's message for a value that is not
+     * callable names its type, unlike the older "not of type callable" paths.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    public static final class ResolvePipeCallable {
+        @Specialization
+        static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, Object targetValue, Object callerThis,
+                            @Bind BytecodeNode bytecode, @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            dev.phpruntime.runtime.PhpCallable callable =
+                    dev.phpruntime.runtime.PhpCallable.resolveOrNull(ctx, targetValue, callerThis);
+            if (callable == null) {
+                throw notCallable(targetValue, node);
+            }
+            PhpFunctionRootNode sig = callable.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL
+                    || callable.callTarget() == null ? null
+                    : PhpFunctionRootNode.of(callable.callTarget().getRootNode());
+            calleeLocal.setObject(bytecode, frame, new ValueCallee(callable, sig));
+        }
+
+        @TruffleBoundary
+        private static PhpError notCallable(Object value, Node node) {
+            if (value instanceof String s) {
+                String name = s.startsWith("\\") ? s.substring(1) : s;
+                if (name.indexOf("::") > 0) {
+                    return new PhpError("Call to undefined method " + name + "()", node);
+                }
+                return new PhpError("Call to undefined function " + name + "()", node);
+            }
+            if (value instanceof PhpArray) {
+                return new PhpError("Array callback must have exactly two elements", node);
+            }
+            return new PhpError("Value of type " + PhpOps.typeName(value) + " is not callable", node);
+        }
+    }
+
     /** Calls the {@link ValueCallee} written by {@link ResolveCallable}, laying out its frame. */
     @Operation
     @ConstantOperand(type = boolean.class, name = "keepRef")

@@ -1679,10 +1679,11 @@ public final class Parser {
             case "&" -> 12;
             case "==", "!=", "<>", "===", "!==", "<=>" -> 13;
             case "<", "<=", ">", ">=" -> 14;
-            case "." -> 15;
-            case "<<", ">>" -> 16;
-            case "+", "-" -> 17;
-            case "*", "/", "%" -> 18;
+            case "|>" -> 15;
+            case "." -> 16;
+            case "<<", ">>" -> 17;
+            case "+", "-" -> 18;
+            case "*", "/", "%" -> 19;
             case "**" -> 21;
             default -> 0;
         };
@@ -1711,6 +1712,23 @@ public final class Parser {
                 expectOp(":");
                 PhpNode whenFalse = binary(power);
                 left = new TernaryNode(left, whenTrue, whenFalse).at(line);
+                continue;
+            }
+            if (text.equals("|>")) {
+                // php rejects an unparenthesized arrow function here: its body would swallow
+                // everything after the pipe on the right.
+                if (peek().kind() == Kind.IDENT
+                        && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(peek().text(), "fn")) {
+                    throw error("Arrow functions on the right hand side of |> must be parenthesized");
+                }
+                if (peek().kind() == Kind.IDENT
+                        && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(peek().text(), "static")
+                        && peek(1).kind() == Kind.IDENT
+                        && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(peek(1).text(), "fn")) {
+                    throw error("Arrow functions on the right hand side of |> must be parenthesized");
+                }
+                PhpNode right = binary(power);
+                left = new PipeNode(left, right, scope.thisSlot()).at(line);
                 continue;
             }
             // ** and ?? are right-associative: parse the right side at one power lower.
@@ -1847,7 +1865,15 @@ public final class Parser {
             }
             if (kw.equals("clone")) {
                 next();
-                return new CloneNode(binary(UNARY_POWER)).at(line);
+                if (cloneHasWithArgument()) {
+                    expectOp("(");
+                    PhpNode object = expression();
+                    expectOp(",");
+                    PhpNode with = peek().isOp(")") ? emptyArray() : expression();
+                    expectOp(")");
+                    return new CloneNode(object, with, currentClass, scope.traitSelfSlot()).at(line);
+                }
+                return new CloneNode(binary(UNARY_POWER), null, currentClass, scope.traitSelfSlot()).at(line);
             }
             if (kw.equals("throw")) {
                 next();
@@ -1861,6 +1887,35 @@ public final class Parser {
             }
         }
         return postfix();
+    }
+
+    /**
+     * Whether a {@code clone} is followed by the two-argument call form, {@code clone($obj, [...])}.
+     * A plain parenthesized expression has no top-level comma, so it keeps the old grammar.
+     */
+    private boolean cloneHasWithArgument() {
+        if (!peek().isOp("(")) {
+            return false;
+        }
+        int depth = 0;
+        for (int i = pos; i < tokens.size(); i++) {
+            Token token = tokens.get(i);
+            if (token.isOp("(")) {
+                depth++;
+            } else if (token.isOp(")")) {
+                depth--;
+                if (depth == 0) {
+                    return false;
+                }
+            } else if (token.isOp(",") && depth == 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static PhpNode emptyArray() {
+        return new ArrayLiteralNode(new PhpNode[0], new PhpNode[0], new boolean[0], new boolean[0]);
     }
 
     private static IncludeNode.Kind includeKind(String kw) {

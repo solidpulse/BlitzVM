@@ -1,0 +1,30 @@
+clone:1,a
+1 a 3
+clone:1,a
+10 b 3
+clone:1,a
+7 a
+clone:1,a
+1 a
+clone:1,a
+30
+1 two
+dto-global!Error: Cannot modify protected(set) readonly property Dto::$name from global scope
+clone:1,a
+protected-global!Error: Cannot access protected property Point::$hidden
+clone:1,a
+private-global!Error: Cannot access private property Point::$secret
+clone:1,a
+typed-bad!TypeError: Cannot assign string to property Point::$x of type int
+non-array-string!TypeError: clone(): Argument #2 ($withProperties) must be of type array, string given
+non-array-null!TypeError: clone(): Argument #2 ($withProperties) must be of type array, null given
+readonly-class-known!Error: Cannot modify protected(set) readonly property Frozen::$value from global scope
+readonly-class-unknown!Error: Cannot create dynamic property Frozen::$extra
+dynamic=1
+clone:1,a
+42 zero
+clone:1,a
+Hearts H
+by-reference!Error: Cannot assign by reference when cloning with updated properties
+target,values
+clone:1,a
