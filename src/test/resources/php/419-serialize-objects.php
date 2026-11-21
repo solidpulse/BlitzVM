@@ -44,7 +44,8 @@ $self->me = $self;
 $self->data = 'x';
 echo serialize($self), "\n";
 
-$array = unserialize('a:1:{i:0;a:1:{i:0;R:2;}}');
+$array = [];
+$array[0] = &$array;
 echo serialize($array), "\n";
 
 $scalar = 5;

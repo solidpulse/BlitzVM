@@ -65,6 +65,8 @@ final class SerializeFunctions {
         private IdentityHashMap<PhpObject, Integer> objectIds;
         private IdentityHashMap<PhpReference, Integer> refIds;
         private IdentityHashMap<PhpArray, Integer> arrayPositions;
+        /** Positions of expanded root-array references, php's two-level form for &$array. */
+        private IdentityHashMap<PhpArray, Integer> expandedRoots;
         private int count;
 
         Serializer(PhpContext ctx) {
@@ -115,9 +117,38 @@ final class SerializeFunctions {
                 value(obj);
                 return;
             }
+            if (inner instanceof PhpArray arr && expandedRoots != null) {
+                Integer expanded = expandedRoots.get(arr);
+                if (expanded != null) {
+                    if (refIds == null) {
+                        refIds = new IdentityHashMap<>();
+                    }
+                    refIds.put(ref, expanded);
+                    sb.append("R:").append(expanded).append(';');
+                    return;
+                }
+            }
             if (inner instanceof PhpArray arr && arrayPositions != null) {
                 Integer arrayId = arrayPositions.get(arr);
                 if (arrayId != null) {
+                    if (arrayId == 1) {
+                        // php keeps a reference to the root array as a fresh value and then
+                        // points the inner copy at it: a:1:{i:0;a:1:{i:0;R:2;}}.
+                        if (refIds == null) {
+                            refIds = new IdentityHashMap<>();
+                        }
+                        if (expandedRoots == null) {
+                            expandedRoots = new IdentityHashMap<>();
+                        }
+                        count++;
+                        int expandedId = count;
+                        expandedRoots.put(arr, expandedId);
+                        refIds.put(ref, expandedId);
+                        arrayPositions.remove(arr);
+                        writePlain(arr);
+                        arrayPositions.put(arr, 1);
+                        return;
+                    }
                     if (refIds == null) {
                         refIds = new IdentityHashMap<>();
                     }
