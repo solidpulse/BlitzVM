@@ -101,8 +101,14 @@ public final class Main {
         Path docRoot = Path.of(".");
         String http = "netty";
         String profileName = null;
+        long warmupSeconds = 0;
+        java.util.List<String> warmupPaths = new java.util.ArrayList<>();
+        String warmupHost = null;
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
+                case "--warmup-seconds" -> warmupSeconds = Long.parseLong(args[++i]);
+                case "--warmup-path" -> warmupPaths.add(args[++i]);
+                case "--warmup-host" -> warmupHost = args[++i];
                 case "--port" -> port = Integer.parseInt(args[++i]);
                 case "--cpus" -> cpus = Integer.parseInt(args[++i]);
                 case "--quantum-ms" -> quantum = Long.parseLong(args[++i]);
@@ -135,6 +141,14 @@ public final class Main {
                 ? new PhpHttpServer(dispatcher, port, 256)
                 : new NettyPhpServer(dispatcher, port, 256);
         String transport = server instanceof NettyPhpServer n ? n.transport() : "jdk-httpserver";
+        if (warmupSeconds > 0) {
+            // Before the port opens: clients never see the interpreter-speed first minutes.
+            java.util.List<String> paths = warmupPaths.isEmpty() ? java.util.List.of("/") : warmupPaths;
+            String host = warmupHost != null ? warmupHost : "localhost:" + port;
+            System.out.println("php-truffle warming up " + paths + " as " + host + " for " + warmupSeconds + " s");
+            System.out.println("php-truffle warm-up: "
+                    + Warmup.run(dispatcher, paths, host, port, cpus, warmupSeconds));
+        }
         server.start();
         System.out.printf("php-truffle serving %s on http://localhost:%d (%s, cpus=%d, quantum=%dms, max-exec=%dms)%n",
                 docRoot.toAbsolutePath().normalize(), server.port(), transport, cpus, quantum, maxExec);
@@ -151,7 +165,8 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file>] [docroot]");
+        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file>]\n"
+                + "         [--warmup-seconds N [--warmup-path /p ...] [--warmup-host host:port]] [docroot]");
         System.err.println("       php-truffle --snapshot-check <boot.php> <entry.php>   capture, restore twice and compare");
         System.err.println("       php-truffle --engine-options   list runtime and engine option descriptors");
     }
