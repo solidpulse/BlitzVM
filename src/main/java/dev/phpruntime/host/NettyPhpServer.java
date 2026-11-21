@@ -20,10 +20,12 @@ import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpHeadersFactory;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpHeadersFactory;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -48,6 +50,17 @@ import java.util.concurrent.Executors;
 public final class NettyPhpServer implements PhpServer {
 
     private static final int MAX_BODY = 8 * 1024 * 1024;
+
+    /**
+     * Response headers are built without Netty's name and value validation. PHP's header()
+     * and setcookie() reject CR, LF and NUL themselves (see HttpFunctions.checkedHeaderLine),
+     * and php allows other control bytes (tab, 0x01, DEL) in a value, which Netty would reject.
+     * Both factories are immutable and shareable between event loops.
+     */
+    private static final HttpHeadersFactory RESPONSE_HEADERS =
+            DefaultHttpHeadersFactory.headersFactory().withValidation(false);
+    private static final HttpHeadersFactory RESPONSE_TRAILERS =
+            DefaultHttpHeadersFactory.trailersFactory().withValidation(false);
 
     private final PhpDispatcher dispatcher;
     private final int requestedPort;
@@ -148,7 +161,8 @@ public final class NettyPhpServer implements PhpServer {
             workers.execute(() -> {
                 PhpDispatcher.Response res = dispatcher.handle(p.request());
                 FullHttpResponse out = new DefaultFullHttpResponse(p.version(),
-                        HttpResponseStatus.valueOf(res.status()), Unpooled.wrappedBuffer(res.body()));
+                        HttpResponseStatus.valueOf(res.status()), Unpooled.wrappedBuffer(res.body()),
+                        RESPONSE_HEADERS, RESPONSE_TRAILERS);
                 for (String[] h : res.headers()) {
                     out.headers().add(h[0], h[1]);
                 }

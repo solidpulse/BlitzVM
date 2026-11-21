@@ -49,6 +49,37 @@ final class HttpFunctions {
         });
     }
 
+    /**
+     * The header line trimmed as php trims it (trailing spaces, tabs, CR, LF, vertical tab and
+     * form feed), or null after php's warning when the line must not be sent. NUL is checked
+     * first, then a CR or LF that is not trailing whitespace.
+     */
+    static String checkedHeaderLine(PhpContext ctx, String line) {
+        if (line.indexOf('\0') >= 0) {
+            ctx.warning("Header may not contain NUL bytes", headerWarningLine(ctx));
+            return null;
+        }
+        int end = line.length();
+        while (end > 0) {
+            char c = line.charAt(end - 1);
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\u000b' || c == '\f') {
+                end--;
+            } else {
+                break;
+            }
+        }
+        String trimmed = end == line.length() ? line : line.substring(0, end);
+        if (trimmed.indexOf('\r') >= 0 || trimmed.indexOf('\n') >= 0) {
+            ctx.warning("Header may not contain more than a single header, new line detected", headerWarningLine(ctx));
+            return null;
+        }
+        return trimmed;
+    }
+
+    private static int headerWarningLine(PhpContext ctx) {
+        return dev.phpruntime.runtime.PhpBacktrace.callSiteLine(ctx.currentBuiltinCallSite());
+    }
+
     private static Object setcookie(PhpContext ctx, Object[] a, boolean encode, String fn) {
         String name = PhpOps.toStr(a[0]);
         String value = a.length > 1 ? PhpOps.toStr(a[1]) : "";
@@ -91,6 +122,8 @@ final class HttpFunctions {
         if (!encode && value.chars().anyMatch(c -> ",; \t\r\n\u000b\f".indexOf(c) >= 0)) {
             throw new PhpError("ValueError", fn + "(): Argument #2 ($value) cannot contain \",\", \";\", \" \", \"\\t\", \"\\r\", \"\\n\", \"\\013\", or \"\\014\"", null);
         }
+        checkCookieAttribute(fn, "path", path);
+        checkCookieAttribute(fn, "domain", domain);
         StringBuilder h = new StringBuilder(name).append('=');
         if (value.isEmpty()) {
             // An empty value deletes the cookie.
@@ -118,7 +151,19 @@ final class HttpFunctions {
         if (!sameSite.isEmpty()) {
             h.append("; SameSite=").append(sameSite);
         }
-        ctx.request().setHeader("Set-Cookie", h.toString(), false);
+        String checked = checkedHeaderLine(ctx, h.toString());
+        if (checked == null) {
+            return false;
+        }
+        ctx.request().setHeader("Set-Cookie", checked, false);
         return true;
+    }
+
+    /** Path and domain are attribute values php rejects before the header is built. */
+    private static void checkCookieAttribute(String fn, String option, String value) {
+        if (value.chars().anyMatch(c -> ",; \t\r\n\u000b\f".indexOf(c) >= 0)) {
+            throw new PhpError("ValueError", fn + "(): \"" + option
+                    + "\" option cannot contain \",\", \";\", \" \", \"\\t\", \"\\r\", \"\\n\", \"\\013\", or \"\\014\"", null);
+        }
     }
 }

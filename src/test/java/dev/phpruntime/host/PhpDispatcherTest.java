@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -273,6 +275,24 @@ class PhpDispatcherTest {
         assertEquals(200, head.status());
         assertEquals(0, head.body().length);
         assertNotNull(header(head, "Last-Modified"));
+    }
+
+    @Test
+    void responseHeadersBypassNettyValidation() throws Exception {
+        // php permits control bytes other than CR, LF and NUL in a header value.
+        write("weird.php", "<?php header(\"X-Weird: a\\x01b\"); header(\"X-Tab: a\\tb\"); echo 'body';");
+        try (NettyPhpServer server = new NettyPhpServer(dispatcher, 0, 2)) {
+            server.start();
+            try (Socket socket = new Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(10_000);
+                socket.getOutputStream().write(("GET /weird.php HTTP/1.1\r\nHost: localhost\r\n"
+                        + "Connection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                String raw = new String(socket.getInputStream().readAllBytes(), StandardCharsets.ISO_8859_1);
+                assertTrue(raw.contains("X-Weird: a\u0001b"), raw);
+                assertTrue(raw.contains("X-Tab: a\tb"), raw);
+                assertTrue(raw.endsWith("body"), raw);
+            }
+        }
     }
 
     @Test

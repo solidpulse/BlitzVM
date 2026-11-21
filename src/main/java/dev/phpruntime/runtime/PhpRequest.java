@@ -70,10 +70,28 @@ public final class PhpRequest {
         CURRENT.remove();
     }
 
+    /**
+     * Adds a response header. PHP's header() and setcookie() do their own checks and warn
+     * first; this is the last guard for every language (JavaScript handlers included), so a
+     * guest can never split a response even though the server writes headers unvalidated.
+     */
     public void setHeader(String name, String value, boolean replace) {
+        if (hasLineBreakOrNul(name) || hasLineBreakOrNul(value)) {
+            throw new IllegalArgumentException("header name and value may not contain CR, LF or NUL");
+        }
         if (replace) {
             responseHeaders.removeIf(h -> h[0].equalsIgnoreCase(name));
         }
         responseHeaders.add(new String[]{name, value});
+    }
+
+    private static boolean hasLineBreakOrNul(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\r' || c == '\n' || c == '\0') {
+                return true;
+            }
+        }
+        return false;
     }
 }
