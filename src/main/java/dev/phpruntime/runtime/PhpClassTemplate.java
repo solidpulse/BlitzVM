@@ -64,9 +64,22 @@ public final class PhpClassTemplate {
     public record PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
                                Object constDefault, RootCallTarget defaultTarget,
                                PhpType type, List<PhpAttribute> attributes, boolean hasDefault,
-                               Visibility setVisibility, boolean virtual, HookDecl getHook, HookDecl setHook) {
+                               Visibility setVisibility, boolean virtual, HookDecl getHook, HookDecl setHook,
+                               boolean writeBlocked) {
         public PropertyDecl {
             attributes = attributes == null ? List.of() : List.copyOf(attributes);
+        }
+
+        /**
+         * An internal property php exposes as ordinary and non-readonly but refuses to write
+         * ({@code ReflectionClass::$name} and friends): writes throw a ReflectionException.
+         */
+        public PropertyDecl(String name, Visibility visibility, boolean isStatic, boolean isReadonly,
+                            Object constDefault, RootCallTarget defaultTarget,
+                            PhpType type, List<PhpAttribute> attributes, boolean hasDefault,
+                            Visibility setVisibility, boolean virtual, HookDecl getHook, HookDecl setHook) {
+            this(name, visibility, isStatic, isReadonly, constDefault, defaultTarget, type, attributes,
+                    hasDefault, setVisibility, virtual, getHook, setHook, false);
         }
 
         /** The set access level php checks on writes; null means the same as the read level. */

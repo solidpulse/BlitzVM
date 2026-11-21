@@ -256,13 +256,14 @@ public final class PhpClass {
     public record InstanceProp(String name, String storageKey, Visibility visibility, Visibility setVisibility,
                                boolean isReadonly, PhpClass declaringClass, Object constDefault,
                                RootCallTarget defaultTarget, PhpType type, DeclaredType declaredType,
-                               PropertyHook getHook, PropertyHook setHook, boolean virtual, boolean isFinal) {
+                               PropertyHook getHook, PropertyHook setHook, boolean virtual, boolean isFinal,
+                               boolean writeBlocked) {
 
         public InstanceProp(String name, String storageKey, Visibility visibility, boolean isReadonly,
                             PhpClass declaringClass, Object constDefault, RootCallTarget defaultTarget,
                             PhpType type, DeclaredType declaredType) {
             this(name, storageKey, visibility, null, isReadonly, declaringClass, constDefault, defaultTarget,
-                    type, declaredType, null, null, false, false);
+                    type, declaredType, null, null, false, false, false);
         }
 
         public Visibility effectiveSetVisibility() {
@@ -278,14 +279,14 @@ public final class PhpClass {
                                      boolean isReadonly, boolean canInitReadonly, String declaringClass,
                                      DeclaredType type, boolean setAccessible, Visibility setVisibility,
                                      String setDeclaringClass, PropertyHook getHook, PropertyHook setHook,
-                                     boolean virtual, boolean hooked) {
+                                     boolean virtual, boolean hooked, boolean writeBlocked) {
 
         /** A resolution without hooks or asymmetric visibility, for callers that have none. */
         public PropertyResolution(String storageKey, boolean accessible, Visibility visibility,
                                   boolean isReadonly, boolean canInitReadonly, String declaringClass,
                                   DeclaredType type) {
             this(storageKey, accessible, visibility, isReadonly, canInitReadonly, declaringClass, type,
-                    accessible, visibility, declaringClass, null, null, false, false);
+                    accessible, visibility, declaringClass, null, null, false, false, false);
         }
 
         public boolean writable() {
@@ -597,7 +598,7 @@ public final class PhpClass {
             InstanceProp ip = new InstanceProp(p.name(), storageKey, Visibility.PRIVATE, p.setVisibility(),
                     p.isReadonly(), this, defVal, p.defaultTarget(), p.type(), declaredType,
                     hook(p.getHook(), fromTrait), hook(p.setHook(), fromTrait), p.virtual(),
-                    p.setVisibility() == Visibility.PRIVATE);
+                    p.setVisibility() == Visibility.PRIVATE, p.writeBlocked());
             this.instanceProps.add(ip);
             this.privateProps.put(template.lowerName() + "\0" + p.name(), ip);
             return;
@@ -633,7 +634,7 @@ public final class PhpClass {
         Visibility setVisibility = p.setVisibility();
         InstanceProp ip = new InstanceProp(p.name(), storageKey, p.visibility(), setVisibility, p.isReadonly(),
                 this, defVal, p.defaultTarget(), p.type(), declaredType, getHook, setHook, virtual,
-                p.setVisibility() == Visibility.PRIVATE);
+                p.setVisibility() == Visibility.PRIVATE, p.writeBlocked());
         if (prev != null) {
             int idx = this.instanceProps.indexOf(prev);
             if (idx >= 0) {
@@ -1159,7 +1160,7 @@ public final class PhpClass {
             return resolution(ownPriv, false, false);
         }
         return new PropertyResolution(name, true, Visibility.PUBLIC, false, false, null, null,
-                true, Visibility.PUBLIC, null, null, null, false, false);
+                true, Visibility.PUBLIC, null, null, null, false, false, false);
     }
 
     private PropertyResolution resolution(InstanceProp prop, boolean accessible, boolean writable) {
@@ -1171,7 +1172,7 @@ public final class PhpClass {
         return new PropertyResolution(prop.storageKey(), accessible, prop.visibility(), prop.isReadonly(),
                 canInitReadonly, prop.declaringClass().name(), prop.declaredType(), writable,
                 prop.effectiveSetVisibility(), prop.declaringClass().name(), prop.getHook(), prop.setHook(),
-                prop.virtual(), prop.hasHooks());
+                prop.virtual(), prop.hasHooks(), prop.writeBlocked());
     }
 
     /** Whether a caller in {@code callingClassLower} may write the property's set visibility. */

@@ -1235,6 +1235,7 @@ public final class Parser {
         LValueNode[] outerReads = new LValueNode[caps.size()];
         boolean[] warn = new boolean[caps.size()];
         boolean[] byRef = new boolean[caps.size()];
+        String[] captureNames = new String[caps.size()];
         for (int i = 0; i < caps.size(); i++) {
             Scope.Capture c = caps.get(i);
             captureSlots[i] = c.targetSlot();
@@ -1242,6 +1243,7 @@ public final class Parser {
             outerReads[i] = c.outerRead();
             warn[i] = c.warnIfUndefined();
             byRef[i] = c.byRef();
+            captureNames[i] = c.name();
         }
         PhpFunctionRootNode root = DynamicScopeLowering.finish(scope.isGenerator() ? body : null,
                 new PhpFunctionRootNode(
@@ -1252,6 +1254,7 @@ public final class Parser {
                 params.names(), params.slots(), params.kinds(), params.byRef(),
                 params.defaults(), params.variadic(), body).closureMetadata(bindThis && scope.usesThis())
                 .withSignature(signature));
+        root.withCaptureNames(captureNames);
         root.setStrictTypes(strictTypes);
         if (scope.isGenerator()) {
             root.asGenerator();
@@ -1452,7 +1455,7 @@ public final class Parser {
                                 propertyType, memberAttributes, expr != null, setVis,
                                 hooks != null && hooks.virtual(),
                                 hooks != null ? hooks.getHook() : null,
-                                hooks != null ? hooks.setHook() : null));
+                                hooks != null ? hooks.setHook() : null, false));
                     } while (!hooked && acceptOp(","));
                     if (!hooked) {
                         expectOp(";");
@@ -1838,7 +1841,7 @@ public final class Parser {
                         classProps.add(new PhpClassTemplate.PropertyDecl(
                                 pp.name(), pp.visibility(), false, propRo, PhpNull.INSTANCE, null,
                                 pp.type(), pp.attributes(), false, pp.setVisibility(), pp.virtual(),
-                                pp.getHook(), pp.setHook()));
+                                pp.getHook(), pp.setHook(), false));
                         LValueNode thisVar = scope.variable("this").at(pp.line());
                         LValueNode propLv = new PropertyLValueNode(thisVar, pp.name(), null, currentClassLower(),
                                 scope.traitSelfSlot()).at(pp.line());

@@ -1,0 +1,38 @@
+AbstractThing cloneable=0
+ThingInterface cloneable=0
+ThingTrait cloneable=0
+UnitThing cloneable=0
+BackedThing cloneable=0
+PlainThing cloneable=1
+PrivateClone cloneable=0
+ProtectedClone cloneable=0
+PublicClone cloneable=1
+ReadonlyThing cloneable=1
+FinalThing cloneable=1
+anonymous cloneable=1
+internal stdClass cloneable=1
+internal Closure cloneable=1
+internal DateTime cloneable=1
+internal ArrayObject cloneable=1
+internal ReflectionClass cloneable=0
+internal ReflectionFunction cloneable=0
+internal Exception cloneable=0
+internal Generator cloneable=0
+CloneChildWithPrivateClone cloneable=0
+CloneChildWithPublicClone cloneable=1
+ExceptionChild cloneable=0
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, null given
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, int given
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, float given
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, string given
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, array given
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, stdClass given
+ArgumentCountError: ReflectionClass::isUninitializedLazyObject() expects exactly 1 argument, 0 given
+ArgumentCountError: ReflectionClass::isUninitializedLazyObject() expects exactly 1 argument, 2 given
+bool(false)
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type PlainThing, stdClass given
+TypeError: ReflectionClass::isUninitializedLazyObject(): Argument #1 ($object) must be of type ThingInterface, PlainThing given

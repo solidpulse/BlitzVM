@@ -1,0 +1,16 @@
+class=NamedTarget
+object=NamedTarget
+method=method declaring=NamedTarget
+method two=method
+method reversed=method
+function=strlen
+property=property declaring=NamedTarget
+property reversed=property
+constant=CONSTANT value=1
+enum=NamedEnum backed=1
+unit case=A enum=NamedEnum
+backed case=A value=a
+closure anonymous=1
+Error: Unknown named parameter $unknown
+Error: Named parameter $objectOrMethod overwrites previous argument
+ReflectionException: Property NamedTarget::$missing does not exist

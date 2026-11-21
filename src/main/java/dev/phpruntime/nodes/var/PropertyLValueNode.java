@@ -348,6 +348,11 @@ public final class PropertyLValueNode extends LValueNode {
             writeFallback(obj, name, value, true, callerLower);
             return;
         }
+        if (res.writeBlocked()) {
+            CompilerDirectives.transferToInterpreter();
+            throw new PhpError("ReflectionException", "Cannot set read-only property "
+                    + obj.phpClass().name() + "::$" + name, this);
+        }
         if (res.isReadonly()) {
             String storageKey = res.storageKey();
             Object existing = getNode.execute(obj, storageKey, null);
