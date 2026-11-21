@@ -1,0 +1,147 @@
+ascii match: 1 err=0
+ascii value: array (
+  0 => 'bc',
+  'letter' => 'b',
+  1 => 'b',
+  2 => 'c',
+) err=0
+ascii offsets: 1 err=0
+ascii offsets value: array (
+  0 => 
+  array (
+    0 => 'bc',
+    1 => 1,
+  ),
+  1 => 
+  array (
+    0 => 'b',
+    1 => 1,
+  ),
+  2 => 
+  array (
+    0 => 'c',
+    1 => 2,
+  ),
+) err=0
+utf8 match: 1 err=0
+utf8 value: array (
+  0 => 
+  array (
+    0 => 'éx',
+    1 => 1,
+  ),
+  1 => 
+  array (
+    0 => 'é',
+    1 => 1,
+  ),
+  2 => 
+  array (
+    0 => 'x',
+    1 => 3,
+  ),
+) err=0
+utf8 all: 3 err=0
+utf8 all value: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 1,
+    ),
+    2 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+) err=0
+utf8 empty matches: 3 err=0
+utf8 empty value: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => 5,
+    ),
+  ),
+) err=0
+utf8 offset inside char: false err=5
+utf8 offset at char: 1 err=0
+w eacute: 1 err=0
+w cyrillic: 1 err=0
+w ascii: 1 err=0
+d arabic: 1 err=0
+d ascii: 1 err=0
+s nbsp: 1 err=0
+s ascii: 1 err=0
+b eacute: 2 err=0
+b value: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+) err=0
+b words: 3 err=0
+b words value: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'un',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'café',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'noir',
+      1 => 9,
+    ),
+  ),
+) err=0
+alpha: 1 err=0
+alpha ascii: 1 err=0
+alnum: 1 err=0
+space: 1 err=0
+word: 1 err=0
+punct: 1 err=0
+digit: 1 err=0
+ci eacute: 1 err=0
+ci eacute upper: 1 err=0
+ci greek: 1 err=0
+ci cyrillic: 1 err=0
+ci class: 1 err=0
+ci property: 1 err=0
+property L: 1 err=0
+property N: 1 err=0
+property Lu: 1 err=0
+invalid match: false err=4
+invalid all: false err=4
+invalid replace: NULL err=4
+invalid split: false err=4
+invalid no match first: false err=4
+msg=Malformed UTF-8 characters, possibly incorrectly encoded
+recovered: 1 err=0
+recovered err: 0 err=0

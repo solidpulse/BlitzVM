@@ -1,0 +1,72 @@
+start: 1 [[["abc",0]]]
+middle: 1 [[["abc",2]]]
+end: 1 [[["abc",2]]]
+none: 0 [[]]
+twice: 2 [[["abc",0],["abc",4]]]
+overlap aa: 2 [[["aa",0],["aa",2]]]
+overlap aba: 1 [[["aba",0]]]
+escaped dot: 2 [[["a.b",1],["a.b",6]]]
+hex literal: 1 [[["Abc",1]]]
+quoted: 2 [[["a.b",1],["a.b",6]]]
+slash: 1 [[["a\/b",1]]]
+optional b: 2 [[["ac",0],["abc",3]]]
+star b: 3 [[["ac",0],["abc",3],["abbc",7]]]
+plus b: 2 [[["abc",3],["abbc",7]]]
+range b: 3 [[["ac",0],["abc",3],["abbc",7]]]
+exact b: 1 [[["abbc",4]]]
+group quantified: 2 [[["abc",0],["ababc",4]]]
+group plain: 1 [[["abc",1]],[["ab",1]]]
+branch: 2 [[["abd",1],["abc",5]]]
+branch inside group: 2 [[["abd",1],["abc",5]]]
+word boundary: 2 [[["foo",0],["foo",9]]]
+non boundary: 1 [[["foo",5]]]
+lookahead: 2 [[["abc",1],["abc",5]]]
+negative lookahead: 2 [[["abc",1],["abc",5]]]
+lookbehind: 1 [[["abc",1]]]
+negative lookbehind: 1 [[["abc",5]]]
+lookbehind slash: 3 [[["\/\/",1],["\/\/\/",4],["\/",9]]]
+caret: 1 [[["abc",0]]]
+caret multiline: 2 [[["abc",2],["abc",6]]]
+dollar multiline: 2 [[["abc",0],["abc",4]]]
+anchored A: 0 [[]]
+anchored offset: 1
+G: 2 [[["abc",0],["abc",3]]]
+G offset: 1
+match offset 1: 1
+match offset 4: 1
+match offset past: 0
+replace: '----xx-'
+replace limit: '--abc'
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 0,
+  ),
+  1 => 
+  array (
+    0 => 'x',
+    1 => 3,
+  ),
+  2 => 
+  array (
+    0 => 'y',
+    1 => 7,
+  ),
+  3 => 
+  array (
+    0 => '',
+    1 => 11,
+  ),
+)
+split capture: array (
+  0 => 'x',
+  1 => 'abc',
+  2 => 'y',
+)
+optional first: 3 [[["abcd",0],["bcd",5],["bcd",10]]]
+star first: 2 [[["aaabcd",0],["bcd",7]]]
+class first: 2 [[["ac",1],["bc",5]]]
+dot first: 2 [[["xabc",0],[" abc",4]]]
+long sparse: 1 [[["<!-- wp:paragraph -->",2700]],[["paragraph",2708]]]
+long replace: 'tetur  consectetur  '

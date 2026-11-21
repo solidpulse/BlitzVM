@@ -1,0 +1,55 @@
+no match: 'The quick brown fox jumps over the lazy dog.
+'
+no match count: 'The quick brown fox jumps over the lazy dog.
+'
+count after no match: 0
+replaced: 'The quick br0wn f0x jumps 0ver the lazy d0g.
+'
+count after replace: 4
+limit 0: array (
+  0 => 'The quick brown fox jumps over the lazy dog.
+',
+  1 => 0,
+)
+limit 1: array (
+  0 => 'The quick br0wn fox jumps over the lazy dog.
+',
+  1 => 1,
+)
+limit 2: array (
+  0 => 'The quick br0wn f0x jumps over the lazy dog.
+',
+  1 => 2,
+)
+limit -1: array (
+  0 => 'The quick br0wn f0x jumps 0ver the lazy d0g.
+',
+  1 => 4,
+)
+arrays no match: array (
+  'alpha' => 'one',
+  'beta' => 'two',
+)
+arrays mixed: 'onE two thrEE'
+arrays mixed count: 3
+subject array: array (
+  'no' => 'f00',
+  'empty' => '',
+  7 => 'bar',
+)
+callback no match: 'The quick brown fox jumps over the lazy dog.
+'
+callback calls: 0
+callback count: 0
+callback limit 1: 'TWO ONE three four'
+callback limit calls: 1
+callback limit count: 1
+callback array no match: 'The quick brown fox jumps over the lazy dog.
+'
+callback array calls: 0
+callback array count: 0
+str_replace no count: 'The quick brown cat jumps over the lazy dog.
+'
+str_replace count: 'The quick br0wn f0x jumps 0ver the lazy d0g.
+'
+str_replace count value: 4
