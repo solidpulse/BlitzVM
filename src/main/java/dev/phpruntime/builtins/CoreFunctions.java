@@ -1,9 +1,12 @@
 package dev.phpruntime.builtins;
 
 import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 
@@ -48,6 +51,31 @@ final class CoreFunctions {
             return false;
         });
         Builtins.def("set_time_limit", 1, 1, (ctx, a) -> true);
+        Builtins.def("__php_hook_call", 5, 5, (ctx, a) -> {
+            if (!(a[0] instanceof PhpObject obj) || !(a[1] instanceof PhpClass cls)) {
+                throw new PhpError("Cannot call property hook outside an object context");
+            }
+            String name = PhpOps.toStr(a[2]);
+            boolean get = PhpOps.toLong(a[3]) == 0;
+            PhpClass.InstanceProp prop = cls.findVisibleProp(name);
+            if (prop == null) {
+                prop = cls.findPrivateProp(name);
+            }
+            if (prop == null) {
+                throw new PhpError("Undefined property " + cls.name() + "::$" + name);
+            }
+            PhpClass.PropertyHook hook = get ? prop.getHook() : prop.setHook();
+            if (hook == null || hook.callTarget() == null) {
+                throw new PhpError("Cannot call abstract method " + cls.name() + "::$" + name + "::"
+                        + (get ? "get" : "set") + "()");
+            }
+            Object result = PhpClass.callHook(obj, prop, hook, get ? null : a[4],
+                    get ? PhpObject.GUARD_HOOK_GET : PhpObject.GUARD_HOOK_SET);
+            if (get && result instanceof PhpReference ref) {
+                return ref.getValue();
+            }
+            return get ? (result == null ? PhpNull.INSTANCE : result) : PhpNull.INSTANCE;
+        });
         Builtins.def("gethostname", 0, 0, (ctx, a) -> {
             try {
                 return dev.phpruntime.runtime.PhpStrings.fromJava(java.net.InetAddress.getLocalHost().getHostName());

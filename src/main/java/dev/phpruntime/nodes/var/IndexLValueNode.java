@@ -173,13 +173,19 @@ public final class IndexLValueNode extends LValueNode {
         if (base instanceof PropertyLValueNode plv) {
             plv.checkNotReadonlyForIndirectWrite(frame, bk);
         }
-        Object root = base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
         try {
             if (root instanceof PhpObject) {
                 writeMixed(root, arrayKeys(keys), 0, value);
                 return;
             }
-            base.write(frame, bk, writeMixed(root, arrayKeys(keys), 0, value));
+            Object updated = writeMixed(root, arrayKeys(keys), 0, value);
+            if (indirect != null) {
+                indirect.setValue(updated);
+            } else {
+                base.write(frame, bk, updated);
+            }
         } catch (PhpError e) {
             throw e.at(this);
         }
@@ -191,7 +197,8 @@ public final class IndexLValueNode extends LValueNode {
         if (base instanceof PropertyLValueNode plv) {
             plv.checkNotReadonlyForIndirectWrite(frame, bk);
         }
-        Object root = base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
         try {
             Object[] ak = arrayKeys(keys);
             if (root instanceof PhpObject obj) {
@@ -199,7 +206,11 @@ public final class IndexLValueNode extends LValueNode {
             }
             PhpReference[] outRef = new PhpReference[1];
             Object updatedRoot = obtainPathCell(root, arrayKeys(keys), null, outRef);
-            base.write(frame, bk, updatedRoot);
+            if (indirect != null) {
+                indirect.setValue(updatedRoot);
+            } else {
+                base.write(frame, bk, updatedRoot);
+            }
             return outRef[0];
         } catch (PhpError e) {
             throw e.at(this);
@@ -212,7 +223,8 @@ public final class IndexLValueNode extends LValueNode {
         if (base instanceof PropertyLValueNode plv) {
             plv.checkNotReadonlyForIndirectWrite(frame, bk);
         }
-        Object root = base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
         try {
             if (root instanceof PhpObject obj && keyNodes.length == 1) {
                 access.bindCell(obj, arrayKeys(keys)[0] == APPEND ? PhpNull.INSTANCE : arrayKeys(keys)[0], cell);
@@ -224,7 +236,11 @@ public final class IndexLValueNode extends LValueNode {
             }
             PhpReference[] outRef = new PhpReference[1];
             Object updatedRoot = obtainPathCell(root, arrayKeys(keys), cell, outRef);
-            base.write(frame, bk, updatedRoot);
+            if (indirect != null) {
+                indirect.setValue(updatedRoot);
+            } else {
+                base.write(frame, bk, updatedRoot);
+            }
         } catch (PhpError e) {
             throw e.at(this);
         }
@@ -457,7 +473,8 @@ public final class IndexLValueNode extends LValueNode {
         if (base instanceof PropertyLValueNode plv) {
             plv.checkNotReadonlyForIndirectWrite(frame, bk);
         }
-        Object root = base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
         if (root instanceof PhpObject obj) {
             Object[] ak = arrayKeys(keys);
             if (ak.length == 1) {
@@ -472,7 +489,11 @@ public final class IndexLValueNode extends LValueNode {
         }
         try {
             Object result = unsetPath((PhpArray) root, arrayKeys(keys));
-            base.write(frame, bk, result);
+            if (indirect != null) {
+                indirect.setValue(result);
+            } else {
+                base.write(frame, bk, result);
+            }
         } catch (PhpError e) {
             throw e.at(this);
         }
