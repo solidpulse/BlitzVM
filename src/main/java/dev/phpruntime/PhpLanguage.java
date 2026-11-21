@@ -86,6 +86,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
                 if (m == null) {
                     Map<String, PhpClassTemplate> all = new java.util.LinkedHashMap<>(PhpExceptions.buildTemplates(this));
                     dev.phpruntime.builtins.DateTimeClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.IntlClasses.buildTemplates(this, all);
                     all.putAll(SplClasses.buildTemplates(this));
                     dev.phpruntime.builtins.DirClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.PdoClasses.buildTemplates(this, all);
@@ -182,9 +183,23 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
                     methods.put("__invoke", invokeDecl);
                     for (String name : List.of("bind", "bindTo", "call", "fromCallable")) {
                         String lower = name.toLowerCase();
+                        List<String> parameterNames = switch (name) {
+                            case "bind" -> List.of("closure", "newThis", "newScope");
+                            case "bindTo" -> List.of("newThis", "newScope");
+                            case "call" -> List.of("newThis", "args");
+                            default -> List.of("callback");
+                        };
+                        List<dev.phpruntime.runtime.PhpParameter> parameters = new java.util.ArrayList<>();
+                        for (String parameterName : parameterNames) {
+                            parameters.add(new dev.phpruntime.runtime.PhpParameter(parameterName, null, List.of(),
+                                    false, parameterName.equals("args"), false, null, null));
+                        }
+                        dev.phpruntime.runtime.PhpSignature signature =
+                                new dev.phpruntime.runtime.PhpSignature(parameters, null, List.of());
                         methods.put(lower, new PhpClassTemplate.MethodDecl(name, lower, methodId(name), Visibility.PUBLIC,
                                 name.equals("bind") || name.equals("fromCallable"), false, false,
-                                new dev.phpruntime.nodes.call.ClosureMethodRootNode(this, name).getCallTarget()));
+                                new dev.phpruntime.nodes.call.ClosureMethodRootNode(this, name).getCallTarget(),
+                                signature));
                     }
                     tpl = new PhpClassTemplate(
                             1L, "Closure", false, false, true, false, null,

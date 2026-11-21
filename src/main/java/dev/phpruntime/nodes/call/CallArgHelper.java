@@ -232,6 +232,51 @@ public final class CallArgHelper {
         return out;
     }
 
+    /**
+     * Named arguments for an internal method: the parameter names come from the class
+     * template signature, since there is no guest function frame to read them from.
+     */
+    public static Object[] bindToInternal(Object[] prefix, RawCallArgs raw, List<String> paramNames, Node site) {
+        List<Object> pos = raw.positional();
+        Map<String, Object> named = raw.named();
+        if (named == null || named.isEmpty() || paramNames.isEmpty()) {
+            Object[] out = new Object[prefix.length + pos.size()];
+            System.arraycopy(prefix, 0, out, 0, prefix.length);
+            for (int i = 0; i < pos.size(); i++) {
+                out[prefix.length + i] = pos.get(i);
+            }
+            return out;
+        }
+        List<Object> slots = new ArrayList<>(pos);
+        for (Map.Entry<String, Object> e : named.entrySet()) {
+            int idx = -1;
+            for (int i = 0; i < paramNames.size(); i++) {
+                if (paramNames.get(i).equalsIgnoreCase(e.getKey())) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Unknown named parameter $" + e.getKey(), site);
+            }
+            if (idx < slots.size() && slots.get(idx) != null) {
+                com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+                throw new PhpError("Named parameter $" + e.getKey() + " overwrites previous argument", site);
+            }
+            while (slots.size() <= idx) {
+                slots.add(dev.phpruntime.runtime.PhpNull.INSTANCE);
+            }
+            slots.set(idx, e.getValue());
+        }
+        Object[] out = new Object[prefix.length + slots.size()];
+        System.arraycopy(prefix, 0, out, 0, prefix.length);
+        for (int i = 0; i < slots.size(); i++) {
+            out[prefix.length + i] = slots.get(i);
+        }
+        return out;
+    }
+
     /** Evaluates spread/named arguments for a builtin function, handling by-reference writeback. */
     /** Binds and calls a builtin on already-evaluated raw arguments. */
     public static Object callComplexBuiltinRaw(VirtualFrame frame, Builtins.Def def, RawCallArgs raw, Node site) {

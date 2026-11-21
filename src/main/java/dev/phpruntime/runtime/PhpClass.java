@@ -26,7 +26,12 @@ public final class PhpClass {
 
     public record MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
                               boolean isStatic, boolean isFinal, boolean fromTrait,
-                              RootCallTarget callTarget) {
+                              RootCallTarget callTarget, List<String> parameterNames) {
+        public MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
+                           boolean isStatic, boolean isFinal, boolean fromTrait,
+                           RootCallTarget callTarget) {
+            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, List.of());
+        }
     }
 
     public static final class StaticSlot {
@@ -384,7 +389,9 @@ public final class PhpClass {
 
         boolean ownIsTrait = template.isTrait();
         for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
-            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(), ownIsTrait, m.callTarget());
+            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(),
+                    ownIsTrait, m.callTarget(), m.signature() == null ? List.of() : m.signature().parameters().stream()
+                            .map(PhpParameter::name).toList());
             putMethod(m.lowerName(), m.methodId(), entry);
         }
 
