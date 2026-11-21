@@ -878,11 +878,27 @@ final class PcreTranslator {
      * candidate start positions instead of trying every index in the subject.
      */
     private static String literalPrefix(String body, boolean caseless) {
+        Prefix prefix = scanPrefix(body, caseless);
+        return prefix == null ? null : prefix.text();
+    }
+
+    /** The literal prefix of a sequence, and whether it consumed the whole sequence. */
+    private record Prefix(String text, boolean complete) {
+    }
+
+    /**
+     * The literal string every match must start with, or null. Leading zero-width assertions
+     * and a leading mandatory group are looked through; collection stops at the first class,
+     * alternation or quantified atom. {@code complete} says the prefix reaches the end of the
+     * sequence, which lets a caller append literals that follow the group.
+     */
+    private static Prefix scanPrefix(String body, boolean caseless) {
         if (body.indexOf("\\G") >= 0) {
             return null; // \G depends on where the previous match ended
         }
         int n = body.length();
         StringBuilder p = new StringBuilder();
+        boolean complete = true;
         int i = 0;
         while (i < n) {
             char c = body.charAt(i);
@@ -897,6 +913,7 @@ final class PcreTranslator {
                 }
                 Literal lit = literal(body, i);
                 if (lit == null) {
+                    complete = false;
                     break;
                 }
                 p.append(lit.text());
@@ -904,6 +921,7 @@ final class PcreTranslator {
                 i = quantifierEnd(body, before, p);
                 if (i < 0) {
                     i = before;
+                    complete = false;
                     break;
                 }
                 continue;
@@ -912,6 +930,7 @@ final class PcreTranslator {
                 if (p.length() == 0) {
                     return null; // only at the start of a line, no skipping needed
                 }
+                complete = false;
                 break;
             }
             if (c == '(') {
@@ -927,11 +946,11 @@ final class PcreTranslator {
                     if (close < 0) {
                         return null;
                     }
-                    String inner = literalPrefix(body.substring(nonCapturing ? i + 3 : i + 1, close), caseless);
+                    Prefix inner = scanPrefix(body.substring(nonCapturing ? i + 3 : i + 1, close), caseless);
                     if (inner == null) {
                         return null;
                     }
-                    p.append(inner);
+                    p.append(inner.text());
                     int after = close + 1;
                     if (after < n) {
                         char q = body.charAt(after);
@@ -940,27 +959,35 @@ final class PcreTranslator {
                         }
                         if (q == '+') {
                             i = after + 1;
+                            complete = false;
                             break;
                         }
                         if (q == '{') {
                             Matcher quantifier = QUANTIFIER.matcher(body).region(after, n);
-                            if (!quantifier.lookingAt()) {
-                                i = after;
-                                continue;
+                            if (quantifier.lookingAt()) {
+                                int comma = quantifier.group().indexOf(',');
+                                int min = Integer.parseInt(quantifier.group().substring(1,
+                                        comma < 0 ? quantifier.group().length() - 1 : comma));
+                                if (min == 0) {
+                                    return null;
+                                }
+                                i = quantifier.end();
+                                complete = false;
+                                break;
                             }
-                            int comma = quantifier.group().indexOf(',');
-                            int min = Integer.parseInt(quantifier.group().substring(1,
-                                    comma < 0 ? quantifier.group().length() - 1 : comma));
-                            if (min == 0) {
-                                return null;
-                            }
-                            i = quantifier.end();
-                            break;
                         }
+                    }
+                    if (!inner.complete()) {
+                        // The group may use part of the subject after the prefix before it
+                        // ends, so following literals are not adjacent to the prefix.
+                        i = after;
+                        complete = false;
+                        break;
                     }
                     i = after;
                     continue;
                 }
+                complete = false;
                 break;
             }
             if (c == '|') {
@@ -968,6 +995,7 @@ final class PcreTranslator {
             }
             if (c == '[' || c == '.' || c == '$' || c == '?' || c == '*' || c == '+'
                     || c == '{' || c == '}' || c == ')') {
+                complete = false;
                 break;
             }
             p.append(c);
@@ -975,6 +1003,7 @@ final class PcreTranslator {
             i = quantifierEnd(body, before, p);
             if (i < 0) {
                 i = before;
+                complete = false;
                 break;
             }
         }
@@ -1011,7 +1040,7 @@ final class PcreTranslator {
             }
             i++;
         }
-        return p.toString();
+        return new Prefix(p.toString(), complete && i >= n);
     }
 
     /**

@@ -36,6 +36,11 @@ all('range b', '/ab{0,2}c/', 'ac abc abbc');
 all('exact b', '/ab{2}c/', 'abc abbc');
 all('group quantified', '/(?:ab)+c/', 'abc ababc');
 all('group plain', '/(ab)c/', 'xabc');
+all('group plus then literal', '/(a+)bc/', 'aabc abc');
+all('group range then literal', '/(a{2,})bc/', 'aaabc aabc');
+all('group star then literal', '/(a*)bc/', 'aabc bc');
+all('group digits then literal', '/(\d+)x/', '11x 1x');
+all('group complete then literal', '/(ab)cd/', 'xabcd abcd');
 all('branch', '/abc|abd/', 'xabd abc');
 all('branch inside group', '/ab(?:c|d)/', 'xabd abc');
 
