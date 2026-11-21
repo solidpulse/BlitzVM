@@ -95,6 +95,8 @@ class HttpFunctionsTest {
                 header('X-Good: ok');
                 header("X-Bad: a\\r\\nX-Injected: yes");
                 header("X-Nul: a\\0b");
+                header("X-Na\\0me: v");
+                header("X-Na\\rme: v");
                 $cookie = setcookie("bad\\0name", "v");
                 $raw = setrawcookie("raw", "a\\0b");
                 header('Content-Type: text/plain');
