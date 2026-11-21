@@ -48,14 +48,18 @@ final class PcreTranslator {
         final String[] names;
         final boolean utf;
         final String decodedPattern;
+        /** A literal string every match must start with, or null. Used to skip start positions. */
+        final String prefix;
 
-        Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names, boolean utf, String decodedPattern) {
+        Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names, boolean utf, String decodedPattern,
+                 String prefix) {
             this.pattern = pattern;
             this.groupCount = groupCount;
             this.javaGroups = javaGroups;
             this.names = names;
             this.utf = utf;
             this.decodedPattern = decodedPattern;
+            this.prefix = prefix;
         }
 
         int start(Matcher m, int g) {
@@ -295,6 +299,7 @@ final class PcreTranslator {
             throw new PatternError("Compilation failed: " + e.getMessage() + " is not supported by this runtime");
         }
         String body = resolveBackrefs(out.toString());
+        String prefix = anchored ? null : literalPrefix(body, caseless);
         if (anchored) {
             body = "\\G(?:" + body + ")";
         }
@@ -324,7 +329,7 @@ final class PcreTranslator {
             map[g] = userToJava.get(g).stream().mapToInt(Integer::intValue).toArray();
             names[g] = userNames.get(g);
         }
-        return new Compiled(pattern, userGroups, map, names, utf, src);
+        return new Compiled(pattern, userGroups, map, names, utf, src, prefix);
     }
 
     // ------------------------------------------------------------------ structure
@@ -862,6 +867,340 @@ final class PcreTranslator {
             sb.append(')');
         }
         return sb.toString();
+    }
+
+    // ------------------------------------------------------------------ literal prefix
+
+    /**
+     * The literal string every match must start with, or null. Only leading zero-width
+     * assertions are looked through; the prefix ends at the first class, group, alternation
+     * or quantified character that makes the literal optional. Used to jump between
+     * candidate start positions instead of trying every index in the subject.
+     */
+    private static String literalPrefix(String body, boolean caseless) {
+        if (body.indexOf("\\G") >= 0) {
+            return null; // \G depends on where the previous match ended
+        }
+        int n = body.length();
+        StringBuilder p = new StringBuilder();
+        int i = 0;
+        while (i < n) {
+            char c = body.charAt(i);
+            if (c == '\\') {
+                char e = i + 1 < n ? body.charAt(i + 1) : 0;
+                if (e == 'A' || e == 'G') {
+                    return null; // anchored at the start of the search
+                }
+                if (e == 'b' || e == 'B') {
+                    i += 2;
+                    continue;
+                }
+                Literal lit = literal(body, i);
+                if (lit == null) {
+                    break;
+                }
+                p.append(lit.text());
+                int before = lit.end();
+                i = quantifierEnd(body, before, p);
+                if (i < 0) {
+                    i = before;
+                    break;
+                }
+                continue;
+            }
+            if (c == '^') {
+                if (p.length() == 0) {
+                    return null; // only at the start of a line, no skipping needed
+                }
+                break;
+            }
+            if (c == '(') {
+                if (isLookaround(body, i)) {
+                    i = skipBalanced(body, i);
+                    continue;
+                }
+                boolean nonCapturing = body.startsWith("(?:", i);
+                if ((nonCapturing || (i + 1 < n && body.charAt(i + 1) != '?')) && p.length() == 0) {
+                    // A leading group is mandatory when it has no top-level alternation: use
+                    // the literal prefix of its contents (e.g. (url...), (<[^>]*>)).
+                    int close = groupClose(body, i);
+                    if (close < 0) {
+                        return null;
+                    }
+                    String inner = literalPrefix(body.substring(nonCapturing ? i + 3 : i + 1, close), caseless);
+                    if (inner == null) {
+                        return null;
+                    }
+                    p.append(inner);
+                    int after = close + 1;
+                    if (after < n) {
+                        char q = body.charAt(after);
+                        if (q == '?' || q == '*') {
+                            return null;
+                        }
+                        if (q == '+') {
+                            i = after + 1;
+                            break;
+                        }
+                        if (q == '{') {
+                            Matcher quantifier = QUANTIFIER.matcher(body).region(after, n);
+                            if (!quantifier.lookingAt()) {
+                                i = after;
+                                continue;
+                            }
+                            int comma = quantifier.group().indexOf(',');
+                            int min = Integer.parseInt(quantifier.group().substring(1,
+                                    comma < 0 ? quantifier.group().length() - 1 : comma));
+                            if (min == 0) {
+                                return null;
+                            }
+                            i = quantifier.end();
+                            break;
+                        }
+                    }
+                    i = after;
+                    continue;
+                }
+                break;
+            }
+            if (c == '|') {
+                return null;
+            }
+            if (c == '[' || c == '.' || c == '$' || c == '?' || c == '*' || c == '+'
+                    || c == '{' || c == '}' || c == ')') {
+                break;
+            }
+            p.append(c);
+            int before = i + 1;
+            i = quantifierEnd(body, before, p);
+            if (i < 0) {
+                i = before;
+                break;
+            }
+        }
+        if (p.length() == 0) {
+            return null;
+        }
+        if (caseless) {
+            for (int k = 0; k < p.length(); k++) {
+                if (Character.isLetter(p.charAt(k))) {
+                    return null; // an exact indexOf would miss a case variant
+                }
+            }
+        }
+        // A later top-level alternation means the match need not start with this text.
+        int depth = 0;
+        while (i < n) {
+            char c = body.charAt(i);
+            if (c == '\\') {
+                i += 2;
+                continue;
+            }
+            if (c == '[') {
+                i = skipClass(body, i);
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (c == '|' && depth == 0) {
+                return null;
+            }
+            i++;
+        }
+        return p.toString();
+    }
+
+    /**
+     * Consumes the quantifier after the literal just added. Returns the index to keep
+     * collecting from, or -1 when the literal became (partly) optional and the caller
+     * must stop collecting. An optional atom drops its last collected character.
+     */
+    private static int quantifierEnd(String body, int i, StringBuilder p) {
+        int n = body.length();
+        if (i >= n) {
+            return i;
+        }
+        char c = body.charAt(i);
+        if (c == '?' || c == '*') {
+            if (p.length() > 0) {
+                p.setLength(p.length() - 1);
+            }
+            return -1;
+        }
+        if (c == '+') {
+            return -1;
+        }
+        if (c == '{') {
+            Matcher q = QUANTIFIER.matcher(body).region(i, n);
+            if (!q.lookingAt()) {
+                return i;
+            }
+            String quantifier = q.group();
+            int comma = quantifier.indexOf(',');
+            int min = Integer.parseInt(quantifier.substring(1, comma < 0 ? quantifier.length() - 1 : comma));
+            if (min == 0 && p.length() > 0) {
+                p.setLength(p.length() - 1);
+            }
+            return -1;
+        }
+        return i; // no quantifier: keep collecting
+    }
+
+    /** Never returns -1: -1 is the "keep collecting" signal. */
+    private static boolean isLookaround(String s, int i) {
+        if (!s.startsWith("(?", i) || i + 2 >= s.length()) {
+            return false;
+        }
+        char c = s.charAt(i + 2);
+        if (c == '=' || c == '!') {
+            return true;
+        }
+        return c == '<' && i + 3 < s.length() && (s.charAt(i + 3) == '=' || s.charAt(i + 3) == '!');
+    }
+
+    private static int skipBalanced(String s, int i) {
+        int depth = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                i += 2;
+                continue;
+            }
+            if (c == '[') {
+                i = skipClass(s, i);
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return i + 1;
+                }
+            }
+            i++;
+        }
+        return i;
+    }
+
+    /** The index of the ')' matching the '(' at {@code i}, or -1 when it is unbalanced. */
+    private static int groupClose(String s, int i) {
+        int depth = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                i += 2;
+                continue;
+            }
+            if (c == '[') {
+                i = skipClass(s, i);
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+            i++;
+        }
+        return -1;
+    }
+
+    private static int skipClass(String s, int i) {
+        i++; // '['
+        if (i < s.length() && s.charAt(i) == '^') {
+            i++;
+        }
+        if (i < s.length() && s.charAt(i) == ']') {
+            i++;
+        }
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                i += 2;
+                continue;
+            }
+            if (c == ']') {
+                return i + 1;
+            }
+            i++;
+        }
+        return i;
+    }
+
+    private record Literal(int end, String text) {
+    }
+
+    /** Decodes the escape at {@code i} as a literal, or null when it denotes a class or assertion. */
+    private static Literal literal(String s, int i) {
+        if (i + 1 >= s.length()) {
+            return null;
+        }
+        char e = s.charAt(i + 1);
+        switch (e) {
+            case 't' -> {
+                return new Literal(i + 2, "\t");
+            }
+            case 'n' -> {
+                return new Literal(i + 2, "\n");
+            }
+            case 'r' -> {
+                return new Literal(i + 2, "\r");
+            }
+            case 'f' -> {
+                return new Literal(i + 2, "\f");
+            }
+            case 'a' -> {
+                return new Literal(i + 2, "\u0007");
+            }
+            case 'e' -> {
+                return new Literal(i + 2, "\u001B");
+            }
+            case 'x' -> {
+                if (i + 2 < s.length() && s.charAt(i + 2) == '{') {
+                    int close = s.indexOf('}', i + 3);
+                    if (close < 0 || close - (i + 3) > 2) {
+                        return null;
+                    }
+                    int v = 0;
+                    for (int k = i + 3; k < close; k++) {
+                        int d = Character.digit(s.charAt(k), 16);
+                        if (d < 0) {
+                            return null;
+                        }
+                        v = v * 16 + d;
+                    }
+                    return v > 0x7F ? null : new Literal(close + 1, String.valueOf((char) v));
+                }
+                int end = i + 2;
+                int v = 0;
+                int digits = 0;
+                while (end < s.length() && digits < 2 && Character.digit(s.charAt(end), 16) >= 0) {
+                    v = v * 16 + Character.digit(s.charAt(end), 16);
+                    end++;
+                    digits++;
+                }
+                return digits == 0 || v > 0x7F ? null : new Literal(end, String.valueOf((char) v));
+            }
+            case 'Q' -> {
+                int close = s.indexOf("\\E", i + 2);
+                String text = close < 0 ? s.substring(i + 2) : s.substring(i + 2, close);
+                return new Literal(close < 0 ? s.length() : close + 2, text);
+            }
+            default -> {
+                if (Character.isLetterOrDigit(e)) {
+                    return null; // \d, \w, \p, octal, backreference: not a fixed literal
+                }
+                return new Literal(i + 2, String.valueOf(e));
+            }
+        }
     }
 
     private String hexEscape() {
