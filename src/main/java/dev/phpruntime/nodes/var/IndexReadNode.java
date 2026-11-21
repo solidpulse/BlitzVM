@@ -17,11 +17,16 @@ public final class IndexReadNode extends PhpNode {
     }
 
     /** Element of an array or character of a string; null when absent. */
-    @TruffleBoundary
     public static Object index(Object container, Object k) {
         if (container instanceof PhpArray a) {
-            return a.get(k);
+            return a.getFast(k);
         }
+        return indexSlow(container, k);
+    }
+
+    /** The non-array cases, out of line: strings, objects and scalars. */
+    @TruffleBoundary
+    private static Object indexSlow(Object container, Object k) {
         if (container instanceof String s) {
             long i;
             if (k instanceof Long l) {
