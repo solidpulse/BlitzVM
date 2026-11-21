@@ -16,6 +16,7 @@ import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.Visibility;
 import dev.phpruntime.snapshot.SnapshotGeneration;
 import dev.phpruntime.snapshot.SnapshotRun;
+import org.mariadb.jdbc.Configuration;
 
 import java.lang.reflect.Field;
 import java.net.ConnectException;
@@ -28,6 +29,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -94,6 +96,23 @@ final class MysqliFunctions {
     /** Counts JDBC connections opened by this process, so a test can prove lazy restore. */
     private static final AtomicLong OPENED_CONNECTIONS = new AtomicLong();
 
+    /**
+     * Parsed Connector/J configurations, keyed by the URL and every driver property (so the
+     * credentials and the per-link timeouts are part of the key). Parsing is a large part of a
+     * connect: it reads the URL, maps and converts every property, builds the URL again and
+     * loads the codecs through the service loader. A configuration is immutable once parsed,
+     * so one instance can be shared by every connection with the same key.
+     */
+    private static final int MAX_CONFIGURATIONS = 64;
+    private static final Map<ConfigKey, Configuration> CONFIGURATIONS = Collections.synchronizedMap(
+            new LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<ConfigKey, Configuration> eldest) {
+                    return size() > MAX_CONFIGURATIONS;
+                }
+            });
+    private static final AtomicLong PARSED_CONFIGURATIONS = new AtomicLong();
+
     // ------------------------------------------------------------------ state
 
     /** Per-request mysqli state. */
@@ -125,6 +144,13 @@ final class MysqliFunctions {
         SessionState freshSession;
         String poolServerInfo;
         boolean poolable;
+
+        /**
+         * Whether {@link #charset} is known to match the session's charset. A fresh connection
+         * has the driver's utf8mb4 setup, so a matching {@code mysqli_set_charset} needs no
+         * statement until something else may have changed the charset.
+         */
+        boolean charsetFromServer;
 
         /** Everything needed to open another connection exactly like the original connect. */
         String url;
@@ -199,6 +225,10 @@ final class MysqliFunctions {
 
     /** Everything that determines the session at connect time, and therefore what may be reused. */
     record PoolKey(String url, String user, String password, Map<String, String> properties) {
+    }
+
+    /** Everything Connector/J's configuration parser reads: the URL and the driver properties. */
+    record ConfigKey(String url, Map<String, String> properties) {
     }
 
     /** An idle connection and the state it had when it was opened. */
@@ -359,6 +389,26 @@ final class MysqliFunctions {
         return OPENED_CONNECTIONS.get();
     }
 
+    static long configurationsParsedForTest() {
+        return PARSED_CONFIGURATIONS.get();
+    }
+
+    /** The driver configuration for this URL and property set, parsed once per distinct key. */
+    private static Configuration configuration(String url, Properties props) throws SQLException {
+        ConfigKey key = new ConfigKey(url, propertyMap(props));
+        Configuration parsed = CONFIGURATIONS.get(key);
+        if (parsed != null) {
+            return parsed;
+        }
+        parsed = Configuration.parse(url, props);
+        if (parsed == null) {
+            throw new SQLException("Unsupported connection URL", "HY000", 2002);
+        }
+        PARSED_CONFIGURATIONS.incrementAndGet();
+        CONFIGURATIONS.put(key, parsed);
+        return parsed;
+    }
+
     /**
      * Opens a restored link and replays the session setup boot performed, inside
      * {@code blocking(...)}. Returns false after reporting a lost connection on {@code fn}.
@@ -383,6 +433,8 @@ final class MysqliFunctions {
             link.freshSession = opened.session();
             link.poolable = false;
             link.physicalCatalog = opened.catalog();
+            // A fresh connection already has the driver's utf8mb4 setup.
+            link.charsetFromServer = "utf8mb4".equals(link.charset);
             if (link.initCommand != null && !link.initCommand.isEmpty()) {
                 runSetup(ctx, link, link.initCommand);
             }
@@ -419,6 +471,7 @@ final class MysqliFunctions {
                 case CHARSET -> {
                     runSetup(ctx, link, "SET NAMES " + step.text());
                     link.charset = step.text();
+                    link.charsetFromServer = true;
                 }
                 case DATABASE -> {
                     blocking(ctx, () -> {
@@ -444,6 +497,7 @@ final class MysqliFunctions {
 
     private static void runSetup(PhpContext ctx, Link link, String sql) throws SQLException {
         String javaSql = MysqliSql.toJava(sql);
+        link.charsetFromServer = false;
         blocking(ctx, () -> {
             try (Statement st = link.conn.createStatement()) {
                 st.execute(javaSql);
@@ -614,9 +668,10 @@ final class MysqliFunctions {
         }
 
         /**
-         * Off unless -Dblitz.mysqli.pool=true. Measured on the WordPress front page (2026-11-19): no
-         * latency gain at steady state, and each idle pooled connection kept about 32 MB of driver
-         * buffers alive (16 connections, about 510 MB of live heap).
+         * Off unless -Dblitz.mysqli.pool=true. It gave no latency gain at steady state on the
+         * WordPress front page, so it stays opt-in. A released connection has its session reset
+         * and its driver buffers dropped ({@link #shrinkRetainedBuffers}), so an idle one keeps
+         * little memory.
          */
         static boolean enabled() {
             return "true".equalsIgnoreCase(System.getProperty("blitz.mysqli.pool"));
@@ -686,6 +741,7 @@ final class MysqliFunctions {
                 if (!current.equals(fresh)) {
                     restoreSession(c, fresh, current);
                 }
+                shrinkRetainedBuffers(c);
                 return offer(key, c, serverInfo, fresh, catalog);
             });
             if (!pooled) {
@@ -1217,10 +1273,18 @@ final class MysqliFunctions {
             }
             String cs = PhpOps.toStr(a[1]);
             try {
-                execute(ctx, l, "SET NAMES " + cs);
-                l.charset = cs;
-                if (recording(ctx)) {
-                    addSetup(l, MysqliSnapshot.Setup.charset(cs));
+                // The driver's connect setup already runs "set NAMES utf8mb4", which is the
+                // charset WordPress asks for, so a matching request on a fresh session would
+                // send a statement that changes nothing. php's own client sends it anyway, but
+                // the session it leaves behind is identical, and skipping halves the connect
+                // setup statements in the WordPress flow.
+                if (!(cs.equals(l.charset) && l.charsetFromServer)) {
+                    execute(ctx, l, "SET NAMES " + cs);
+                    l.charset = cs;
+                    l.charsetFromServer = true;
+                    if (recording(ctx)) {
+                        addSetup(l, MysqliSnapshot.Setup.charset(cs));
+                    }
                 }
                 clearError(l);
                 return true;
@@ -1536,6 +1600,7 @@ final class MysqliFunctions {
             l.key = key;
             l.poolable = l.freshSession != null;
             l.charset = l.freshSession == null ? "utf8mb4" : l.freshSession.charsetClient();
+            l.charsetFromServer = true;
             l.restored = false;
             l.setup = null;
             l.refusals.clear();
@@ -1588,7 +1653,7 @@ final class MysqliFunctions {
                 return new Opened(idle.connection(), idle.serverInfo(), idle.session(), idle.catalog(), true);
             }
         }
-        Connection conn = new org.mariadb.jdbc.Driver().connect(url, props);
+        Connection conn = org.mariadb.jdbc.Driver.connect(configuration(url, props));
         if (conn == null) {
             throw new SQLException("Unsupported connection URL", "HY000", 2002);
         }
@@ -1676,6 +1741,7 @@ final class MysqliFunctions {
             l.freshSession = opened.session();
             l.poolable = l.freshSession != null;
             l.charset = l.freshSession == null ? "utf8mb4" : l.freshSession.charsetClient();
+            l.charsetFromServer = true;
             clearError(l);
             l.affectedRows = 0;
             l.insertId = 0;
@@ -1720,6 +1786,9 @@ final class MysqliFunctions {
     private static void execute(PhpContext ctx, Link l, String sql) throws SQLException {
         beforeServerOperation(ctx, l, sql);
         String javaSql = MysqliSql.toJava(sql);
+        // Any statement can change the charset, so a later mysqli_set_charset for the current
+        // name has to be sent until it is known to have set the session itself.
+        l.charsetFromServer = false;
         blocking(ctx, () -> {
             try (Statement st = l.conn.createStatement()) {
                 st.execute(javaSql);
@@ -1784,6 +1853,7 @@ final class MysqliFunctions {
         try {
             beforeServerOperation(ctx, l, sql);
             String javaSql = MysqliSql.toJava(sql);
+            l.charsetFromServer = false;
             Outcome out = blocking(ctx, () -> {
                 try (Statement st = l.conn.createStatement()) {
                     boolean hasResult = st.execute(javaSql, Statement.RETURN_GENERATED_KEYS);
@@ -1873,6 +1943,7 @@ final class MysqliFunctions {
         }
         try {
             beforeServerOperation(ctx, l, p.sql);
+            l.charsetFromServer = false;
             Outcome out = blocking(ctx, () -> {
                 boolean has = p.ps.execute();
                 if (has) {
@@ -1931,6 +2002,28 @@ final class MysqliFunctions {
     private static final Field DRIVER_CHARSET =
             driverField("org.mariadb.jdbc.message.server.ColumnDefinitionPacket", "charset");
 
+    /** The driver's read and write buffers, which an idle pooled connection otherwise keeps. */
+    private static final Field DRIVER_CLIENT =
+            driverField("org.mariadb.jdbc.Connection", "client");
+    private static final Field DRIVER_READER =
+            driverField("org.mariadb.jdbc.client.impl.StandardClient", "reader");
+    private static final Field DRIVER_READ_BUF =
+            driverField("org.mariadb.jdbc.client.socket.impl.PacketReader", "readBuf");
+    private static final Field DRIVER_READ_ARRAY =
+            driverField("org.mariadb.jdbc.client.impl.StandardReadableByteBuf", "buf");
+    private static final Field DRIVER_WRITER =
+            driverField("org.mariadb.jdbc.client.impl.StandardClient", "writer");
+    private static final Field DRIVER_WRITE_ARRAY =
+            driverField("org.mariadb.jdbc.client.socket.impl.PacketWriter", "buf");
+    private static final Field DRIVER_WRITE_POS =
+            driverField("org.mariadb.jdbc.client.socket.impl.PacketWriter", "pos");
+    private static final Field DRIVER_WRITE_MARK =
+            driverField("org.mariadb.jdbc.client.socket.impl.PacketWriter", "mark");
+
+    private static final int SMALL_READ_BUFFER = 1024;
+    private static final int SMALL_WRITE_BUFFER = 8192;
+    private static final int KEEP_BUFFER_UP_TO = 8192;
+
     private static Field driverField(String className, String fieldName) {
         try {
             Field f = Class.forName(className).getDeclaredField(fieldName);
@@ -1939,6 +2032,52 @@ final class MysqliFunctions {
         } catch (ReflectiveOperationException | RuntimeException e) {
             return null;
         }
+    }
+
+    /**
+     * Replaces the driver's read and write buffers when they grew for a large result or a large
+     * statement. They are attached to the connection and would otherwise stay alive for as long
+     * as the connection sits in the pool. The next packet allocates whatever size it needs.
+     */
+    private static void shrinkRetainedBuffers(Connection c) {
+        if (DRIVER_CLIENT == null || DRIVER_READER == null || DRIVER_READ_BUF == null
+                || DRIVER_READ_ARRAY == null || DRIVER_WRITER == null || DRIVER_WRITE_ARRAY == null) {
+            return;
+        }
+        try {
+            Object client = DRIVER_CLIENT.get(c);
+            if (client == null) {
+                return;
+            }
+            Object reader = DRIVER_READER.get(client);
+            if (reader != null) {
+                Object readBuf = DRIVER_READ_BUF.get(reader);
+                if (readBuf != null) {
+                    shrink(DRIVER_READ_ARRAY, readBuf, SMALL_READ_BUFFER);
+                }
+            }
+            Object writer = DRIVER_WRITER.get(client);
+            if (writer != null) {
+                // A marked write is in progress; its offsets refer to the current array.
+                if (DRIVER_WRITE_MARK != null && DRIVER_WRITE_MARK.getInt(writer) >= 0) {
+                    return;
+                }
+                shrink(DRIVER_WRITE_ARRAY, writer, SMALL_WRITE_BUFFER);
+                if (DRIVER_WRITE_POS != null) {
+                    DRIVER_WRITE_POS.setInt(writer, 4);
+                }
+            }
+        } catch (IllegalAccessException | RuntimeException ignored) {
+            // The driver internals moved; an idle connection keeping a buffer is only memory.
+        }
+    }
+
+    private static void shrink(Field arrayField, Object owner, int size) throws IllegalAccessException {
+        byte[] array = (byte[]) arrayField.get(owner);
+        if (array == null || array.length <= KEEP_BUFFER_UP_TO) {
+            return;
+        }
+        arrayField.set(owner, new byte[size]);
     }
 
     /**
