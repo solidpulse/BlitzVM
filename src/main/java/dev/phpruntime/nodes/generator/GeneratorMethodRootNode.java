@@ -64,4 +64,10 @@ public final class GeneratorMethodRootNode extends RootNode {
         return "Generator::" + name;
     }
 
+    /** A builtin method is not guest code: tools treat it as internal. */
+    @Override
+    public boolean isInternal() {
+        return true;
+    }
+
 }

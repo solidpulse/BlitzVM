@@ -550,5 +550,11 @@ public final class PhpExceptions {
         public String getName() {
             return name;
         }
+
+        /** A builtin method is not guest code: tools treat it as internal. */
+        @Override
+        public boolean isInternal() {
+            return true;
+        }
     }
 }

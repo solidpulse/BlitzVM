@@ -188,4 +188,7 @@ public final class ClosureMethodRootNode extends RootNode {
     }
 
     @Override public String getName() { return "Closure::" + name; }
+
+    /** A builtin method is not guest code: tools treat it as internal. */
+    @Override public boolean isInternal() { return true; }
 }

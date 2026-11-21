@@ -135,29 +135,35 @@ public final class BytecodeEmitter {
      */
     private void emitExpression(dev.phpruntime.nodes.PhpNode expr, int traitSelfSlot) {
         b.beginSource(source);
-        b.beginRoot();
         int line = expr.line();
         SourceSection whole = line > 0 && source != null && line <= source.getLineCount()
                 ? source.createSection(line) : null;
         if (whole != null) {
             currentLine = line;
+            // Outside beginRoot: this section is the root node's own, which the sampler and
+            // the debugger read, not just the section of the instructions in the body.
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
+        b.beginRoot();
         if (traitSelfSlot >= 0) {
             storeArgument(traitSelfSlot, 0);
         }
         b.beginReturn();
         expr(expr);
         b.endReturn();
+        b.endRoot();
         if (whole != null) {
             b.endSourceSection();
         }
-        b.endRoot();
         b.endSource();
     }
 
     private void emitMain(dev.phpruntime.nodes.PhpMainRootNode main) {
         b.beginSource(source);
+        SourceSection whole = source != null && source.getLineCount() >= 1 ? source.createSection(1) : null;
+        if (whole != null) {
+            b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
+        }
         b.beginRoot();
         if (main.usesSymbolTable()) {
             // Arguments: (include path or eval mode, the caller's symbol table).
@@ -178,6 +184,9 @@ public final class BytecodeEmitter {
         b.emitMainResult();
         b.endReturn();
         b.endRoot();
+        if (whole != null) {
+            b.endSourceSection();
+        }
         b.endSource();
     }
 
@@ -235,15 +244,17 @@ public final class BytecodeEmitter {
 
     private void emitRoot() {
         b.beginSource(source);
-        b.beginRoot();
         bodyReturnType = fn != null && !fn.isGenerator()
                 ? DeclaredType.of(fn.returnType(), fn.declaringClass(), language) : null;
         SourceSection whole = fn.getSourceSection();
         if (whole != null) {
             // Everything on the declaration's line reports that line; deeper nodes nest their own.
             currentLine = whole.getStartLine();
+            // Outside beginRoot: this section belongs to the root node itself, which is what
+            // tools such as the CPU sampler and the debugger read for the whole invocation.
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
+        b.beginRoot();
         b.emitEnter();
         bindSpecialSlots();
         bindParameters();
@@ -272,10 +283,10 @@ public final class BytecodeEmitter {
             b.emitLoadConstant(PhpNull.INSTANCE);
         }
         b.endReturn();
+        b.endRoot();
         if (whole != null) {
             b.endSourceSection();
         }
-        b.endRoot();
         b.endSource();
     }
 
