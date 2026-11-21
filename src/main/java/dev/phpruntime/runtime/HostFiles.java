@@ -99,21 +99,32 @@ public final class HostFiles {
         return directoryOnly(path) ? file.isDirectory() && file.canExecute() : file.canExecute();
     }
 
-    private static boolean directoryOnly(String path) {
+    /**
+     * Whether a PHP path ends in a slash. A trailing slash asks the kernel for a directory
+     * (ENOTDIR otherwise), while {@link File} drops it and stats the path itself.
+     */
+    public static boolean directoryOnly(String path) {
         return !path.isEmpty() && path.charAt(path.length() - 1) == '/';
     }
 
     /**
      * The host {@link File} for a PHP path, resolved against the context's working directory
      * exactly as TruffleFile resolves it, or null when this context does not use the host
-     * default file system (or the path cannot exist on the host, such as one with a NUL byte).
+     * default file system (or the path cannot exist on the host, such as one with a NUL byte or
+     * an empty path). Callers that need more than a boolean (reading, listing, canonicalising)
+     * use this and then act on the {@link File} directly, which skips TruffleFile's option
+     * layers on the same syscalls.
      */
-    private static File file(PhpContext ctx, String path) {
-        if (!ctx.usesHostFileSystem() || path.indexOf('\0') >= 0) {
+    public static File file(PhpContext ctx, String path) {
+        if (!ctx.usesHostFileSystem() || path.isEmpty() || path.indexOf('\0') >= 0) {
             return null;
         }
         File file = new File(path);
-        return file.isAbsolute() ? file : new File(ctx.env().getCurrentWorkingDirectory().getPath(), path);
+        if (file.isAbsolute()) {
+            return file;
+        }
+        String workingDirectory = ctx.hostWorkingDirectory();
+        return workingDirectory == null ? null : new File(workingDirectory, path);
     }
 
     private static Method method(Class<?> type, String name) {

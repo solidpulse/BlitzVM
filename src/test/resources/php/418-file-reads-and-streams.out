@@ -1,0 +1,17 @@
+fgc|"one\ntwo\r\n\nthree"|"one\ntwo\r\n\nthree"|""|
+window|"two\r\n\nthree""three""two\r\n"""
+readfail|falsefalse""
+file|["one\n","two\r\n","\n","three"]|["one","two","three"]|[]|[]|false
+readfile|15|"one\ntwo\r\n\nthree"
+readfile dir|-1|""
+hash|f85ca1b0bf62d2335e03c678d3160915|c106751830a2470e7a201d670b51d0f5cc7c3cfb|d41d8cd98f00b204e9800998ecf8427e|d41d8cd98f00b204e9800998ecf8427e|false
+read|0|"one\n"|4|"two\r\n"|"\n"|false|0|"three"|""|true|15|0|"e\n"
+short read|"one"|"\n"
+dir stream|1|false
+open dir w|false|false|false
+x mode|1|false|"abc"
+append|1|2|3|"xyz"
+truncate|6|"abc"|true|"a"
+opendir|[".","..","a.txt","bin.dat","dir","empty.txt","link-file","link-missing","new.txt","trunc.txt"]|"."|false
+scandir|[".","..","a.txt","bin.dat","dir","empty.txt","link-file","link-missing","new.txt","trunc.txt"]|["trunc.txt","new.txt","link-missing","link-file","empty.txt","dir","bin.dat","a.txt","..","."]|false
+scandir none|[".","..","a.txt","bin.dat","dir","empty.txt","link-file","link-missing","new.txt","trunc.txt"]

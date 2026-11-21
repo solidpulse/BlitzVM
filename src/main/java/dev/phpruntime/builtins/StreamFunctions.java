@@ -10,8 +10,10 @@ import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpResource;
 import dev.phpruntime.runtime.PhpStrings;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
 import java.nio.file.StandardCopyOption;
@@ -23,7 +25,6 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * Resources and streams: fopen and friends, directory handles, stat, glob and stream contexts.
@@ -181,7 +182,7 @@ final class StreamFunctions {
         }
         if (lower.startsWith("file://")) {
             path = path.substring(7);
-        } else if (lower.matches("^[a-z][a-z0-9+.-]+://.*")) {
+        } else if (hasScheme(lower)) {
             // TODO: http(s), ftp and other wrappers (network I/O must go through scheduler.blocking).
             ctx.warning(fn + "(): Unable to find the wrapper \"" + path.substring(0, path.indexOf(':'))
                     + "\" - did you forget to enable it when you configured PHP?", 0);
@@ -206,13 +207,30 @@ final class StreamFunctions {
         if (m == 'r' || plus) {
             opts.add(StandardOpenOption.READ);
         }
+        String javaPath = PhpStrings.toJava(path);
         try {
-            TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (isDir(ctx, path) && m != 'r') {
-                ctx.warning(fn + "(" + path + "): Failed to open stream: Is a directory", 0);
-                return null;
+            SeekableByteChannel ch;
+            File host = HostFiles.file(ctx, javaPath);
+            if (host != null) {
+                try {
+                    // One open(2); the directory check only runs when the open already failed,
+                    // which is where php's "Is a directory" comes from.
+                    ch = Files.newByteChannel(host.toPath(), opts);
+                } catch (IOException e) {
+                    if (host.isDirectory()) {
+                        ctx.warning(fn + "(" + path + "): Failed to open stream: Is a directory", 0);
+                        return null;
+                    }
+                    throw e;
+                }
+            } else {
+                TruffleFile f = ctx.env().getPublicTruffleFile(javaPath);
+                if (isDir(ctx, path) && m != 'r') {
+                    ctx.warning(fn + "(" + path + "): Failed to open stream: Is a directory", 0);
+                    return null;
+                }
+                ch = f.newByteChannel(opts);
             }
-            SeekableByteChannel ch = f.newByteChannel(opts);
             return new PhpStream.FileStream(ch, mode, path);
         } catch (java.nio.file.FileAlreadyExistsException e) {
             ctx.warning(fn + "(" + path + "): Failed to open stream: File exists", 0);
@@ -222,6 +240,27 @@ final class StreamFunctions {
             ctx.warning(fn + "(" + path + "): Failed to open stream: No such file or directory", 0);
         }
         return null;
+    }
+
+    /** Whether a lowercased path starts with a wrapper scheme (letters, digits, +.- then ://). */
+    private static boolean hasScheme(String lower) {
+        int i = 0;
+        if (lower.isEmpty() || lower.charAt(0) < 'a' || lower.charAt(0) > 'z') {
+            return false;
+        }
+        for (i = 1; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            if (c == ':') {
+                return i >= 2 && i + 2 < lower.length()
+                        && lower.charAt(i + 1) == '/' && lower.charAt(i + 2) == '/';
+            }
+            boolean schemeChar = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '+' || c == '.' || c == '-';
+            if (!schemeChar) {
+                return false;
+            }
+        }
+        return false;
     }
 
     static PhpResource resource(Object v, String fn) {
@@ -479,16 +518,28 @@ final class StreamFunctions {
 
     /** Opens a directory as php's opendir resource; null after a warning on failure. */
     static PhpResource openDir(PhpContext ctx, String path, String fn) {
+        String javaPath = PhpStrings.toJava(path);
         try {
-            TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!isDir(ctx, path)) {
-                throw new IOException();
-            }
             List<String> names = new ArrayList<>();
             names.add(".");
             names.add("..");
-            for (TruffleFile child : dir.list()) {
-                names.add(PhpStrings.fromJava(child.getName()));
+            File host = HostFiles.file(ctx, javaPath);
+            if (host != null) {
+                String[] entries = host.list();
+                if (entries == null) {
+                    throw new IOException();
+                }
+                for (String name : entries) {
+                    names.add(PhpStrings.fromJava(name));
+                }
+            } else {
+                TruffleFile dir = ctx.env().getPublicTruffleFile(javaPath);
+                if (!isDir(ctx, path)) {
+                    throw new IOException();
+                }
+                for (TruffleFile child : dir.list()) {
+                    names.add(PhpStrings.fromJava(child.getName()));
+                }
             }
             return new PhpResource(streamId(ctx), "stream", new PhpStream.DirHandle(names));
         } catch (IOException | SecurityException | IllegalArgumentException e) {
@@ -545,6 +596,9 @@ final class StreamFunctions {
             if (data == null) {
                 return false;
             }
+            if (data == READ_DIRECTORY) {
+                return -1L;
+            }
             ctx.echo(PhpStrings.of(data));
             return (long) data.length;
         });
@@ -559,8 +613,15 @@ final class StreamFunctions {
         Builtins.def("fileatime", 1, 1, (ctx, a) -> statField(ctx, PhpOps.toStr(a[0]), "fileatime", 8));
         Builtins.def("filectime", 1, 1, (ctx, a) -> statField(ctx, PhpOps.toStr(a[0]), "filectime", 10));
         Builtins.def("is_link", 1, 1, (ctx, a) -> {
+            String path = PhpOps.toStr(a[0]);
+            String javaPath = PhpStrings.toJava(path);
             try {
-                return ctx.env().getPublicTruffleFile(PhpStrings.toJava(PhpOps.toStr(a[0]))).isSymbolicLink();
+                File host = HostFiles.file(ctx, javaPath);
+                if (host != null) {
+                    // A trailing slash follows the link, and is_link() is false for its target.
+                    return !HostFiles.directoryOnly(javaPath) && Files.isSymbolicLink(host.toPath());
+                }
+                return ctx.env().getPublicTruffleFile(javaPath).isSymbolicLink();
             } catch (SecurityException | IllegalArgumentException e) {
                 return false;
             }
@@ -684,14 +745,39 @@ final class StreamFunctions {
         Builtins.def("glob", 1, 2, (ctx, a) -> glob(ctx, PhpOps.toStr(a[0]), a.length > 1 ? PhpOps.toLong(a[1]) : 0));
     }
 
-    /** Reads a whole local file for file(), readfile() and friends; warns and returns null if missing. */
+    /**
+     * Reads a whole local file for file(), readfile() and friends. Returns null after a warning
+     * when the path cannot be opened, and {@link #READ_DIRECTORY} when it is a directory (php
+     * opens it and reads no bytes).
+     */
     static byte[] readFile(PhpContext ctx, String path, String fn) {
+        String javaPath = PhpStrings.toJava(path);
         try {
-            TruffleFile f = ctx.env().getPublicTruffleFile(PhpStrings.toJava(path));
-            if (!isFile(ctx, path)) {
-                throw new IOException();
+            byte[] data;
+            File host = HostFiles.file(ctx, javaPath);
+            if (host != null) {
+                try {
+                    // One open/read/close; php does not stat first either.
+                    data = Files.readAllBytes(host.toPath());
+                } catch (IOException e) {
+                    if (host.isDirectory()) {
+                        consumeStreamId(ctx);
+                        return READ_DIRECTORY;
+                    }
+                    throw e;
+                }
+            } else {
+                TruffleFile f = ctx.env().getPublicTruffleFile(javaPath);
+                try {
+                    data = f.readAllBytes();
+                } catch (IOException e) {
+                    if (f.isDirectory()) {
+                        consumeStreamId(ctx);
+                        return READ_DIRECTORY;
+                    }
+                    throw e;
+                }
             }
-            byte[] data = f.readAllBytes();
             consumeStreamId(ctx);
             return data;
         } catch (IOException | SecurityException | IllegalArgumentException e) {
@@ -699,6 +785,12 @@ final class StreamFunctions {
             return null;
         }
     }
+
+    /**
+     * php opens a directory as a stream and reads no bytes from it: file(), md5_file() and
+     * sha1_file() behave as for an empty file, while readfile() returns -1.
+     */
+    static final byte[] READ_DIRECTORY = new byte[0];
 
     private static Object hashFile(PhpContext ctx, Object[] a, String algo, String fn) {
         byte[] data = readFile(ctx, PhpOps.toStr(a[0]), fn);
@@ -717,8 +809,39 @@ final class StreamFunctions {
 
     /** stat()/lstat(): PHP's 26-entry array, or false with a warning when fn is not null. */
     static Object stat(PhpContext ctx, String path, boolean noFollow, String fn) {
+        String javaPath = PhpStrings.toJava(path);
+        File host = HostFiles.file(ctx, javaPath);
+        if (host != null) {
+            try {
+                // php's stat(2) with a trailing slash requires a directory and then follows the
+                // link even for lstat; File drops the slash, so ask the kernel with one stat.
+                boolean directoryOnly = HostFiles.directoryOnly(javaPath);
+                if (directoryOnly && !host.isDirectory()) {
+                    throw new IOException();
+                }
+                LinkOption[] opts = noFollow && !directoryOnly
+                        ? new LinkOption[]{LinkOption.NOFOLLOW_LINKS} : new LinkOption[0];
+                // An explicit list, not "unix:*": the star also resolves owner and group names
+                // through getpwuid/getgrgid, which php's stat(2) does not.
+                java.util.Map<String, Object> at = Files.readAttributes(host.toPath(),
+                        "unix:dev,ino,mode,nlink,uid,gid,rdev,size,lastAccessTime,lastModifiedTime,ctime", opts);
+                long size = num((Number) at.get("size"));
+                return statArray(num((Number) at.get("dev")), num((Number) at.get("ino")),
+                        num((Number) at.get("mode")), num((Number) at.get("nlink")),
+                        num((Number) at.get("uid")), num((Number) at.get("gid")),
+                        num((Number) at.get("rdev")), size,
+                        secs((FileTime) at.get("lastAccessTime")),
+                        secs((FileTime) at.get("lastModifiedTime")),
+                        secs((FileTime) at.get("ctime")),
+                        4096, (size + 511) / 512);
+            } catch (IOException | SecurityException | IllegalArgumentException | UnsupportedOperationException e) {
+                if (fn != null) {
+                    ctx.warning(fn + "(): " + (fn.equals("lstat") ? "Lstat" : "stat") + " failed for " + path, 0);
+                }
+                return false;
+            }
+        }
         try {
-            String javaPath = PhpStrings.toJava(path);
             TruffleFile f = ctx.env().getPublicTruffleFile(javaPath);
             Boolean hostExists = noFollow ? null : HostFiles.exists(ctx, javaPath);
             if (hostExists != null && !hostExists) {
@@ -802,17 +925,22 @@ final class StreamFunctions {
     static Object glob(PhpContext ctx, String pattern, long flags) {
         List<String> alternatives = (flags & GLOB_BRACE) != 0 ? expandBraces(pattern) : List.of(pattern);
         boolean escape = (flags & GLOB_NOESCAPE) == 0;
+        // The type is only needed to filter or mark directories; a plain glob never stats a
+        // match that a directory listing produced.
+        boolean needType = (flags & (GLOB_ONLYDIR | GLOB_MARK)) != 0;
         PhpArray out = new PhpArray();
         for (String alt : alternatives) {
             List<String> matches = new ArrayList<>();
-            expand(ctx, "", alt.startsWith("/") ? "/" : "", alt.split("/"), alt.startsWith("/") ? 1 : 0, escape, matches);
-            List<String> kept = new ArrayList<>();
+            // -1 keeps the empty segments of a trailing slash, which php echoes back.
+            String[] segments = alt.split("/", -1);
+            expand(ctx, alt.startsWith("/") ? "/" : "", segments, alt.startsWith("/") ? 1 : 0, escape, matches, false);
+            List<String> kept = new ArrayList<>(matches.size());
             for (String m : matches) {
-                boolean isDir = isDir(ctx, m);
+                boolean isDir = needType && (m.endsWith("/") || isDir(ctx, m));
                 if ((flags & GLOB_ONLYDIR) != 0 && !isDir) {
                     continue;
                 }
-                kept.add((flags & GLOB_MARK) != 0 && isDir ? m + "/" : m);
+                kept.add((flags & GLOB_MARK) != 0 && isDir && !m.endsWith("/") ? m + "/" : m);
             }
             if ((flags & GLOB_NOSORT) == 0) {
                 kept.sort(String::compareTo);
@@ -820,61 +948,120 @@ final class StreamFunctions {
             for (String k : kept) {
                 out.append(k);
             }
-        }
-        if (out.size() == 0 && (flags & GLOB_NOCHECK) != 0) {
-            out.append(pattern);
+            // php expands braces first and applies GLOB_NOCHECK to each alternative.
+            if (kept.isEmpty() && (flags & GLOB_NOCHECK) != 0) {
+                out.append(alt);
+            }
         }
         return out;
     }
 
-    private static void expand(PhpContext ctx, String unused, String prefix, String[] segments, int i, boolean escape, List<String> out) {
+    /**
+     * Expands one alternative's segments into matches. A path produced by a directory listing is
+     * known to exist, so the leaf needs no stat and a dangling symlink still matches, as php's
+     * glob reports readdir entries without following the link. Prefixes keep their separators:
+     * a pattern ending in a star adds no trailing slash, one ending in a slash keeps it.
+     */
+    private static void expand(PhpContext ctx, String prefix, String[] segments, int i, boolean escape,
+                               List<String> out, boolean known) {
         if (i == segments.length) {
-            if (!prefix.isEmpty() && exists(ctx, prefix)) {
-                out.add(prefix.endsWith("/") && prefix.length() > 1 ? prefix.substring(0, prefix.length() - 1) : prefix);
+            if (!prefix.isEmpty() && (known || existsNoFollow(ctx, prefix))) {
+                out.add(prefix);
             }
             return;
         }
         String seg = segments[i];
         String sep = i + 1 < segments.length ? "/" : "";
         if (seg.isEmpty()) {
-            expand(ctx, unused, prefix, segments, i + 1, escape, out);
+            expand(ctx, prefix + sep, segments, i + 1, escape, out, known);
             return;
         }
         if (!hasMagic(seg, escape)) {
-            String literal = escape ? seg.replaceAll("\\\\(.)", "$1") : seg;
+            String literal = escape ? unescape(seg) : seg;
             String next = prefix + literal + sep;
-            if (sep.isEmpty() || isDir(ctx, prefix + literal)) {
-                expand(ctx, unused, next, segments, i + 1, escape, out);
+            if (sep.isEmpty()) {
+                expand(ctx, next, segments, i + 1, escape, out, false);
+            } else if (isDir(ctx, prefix + literal)) {
+                expand(ctx, next, segments, i + 1, escape, out, true);
             }
             return;
         }
-        Pattern re = segmentRegex(seg, escape);
         String dirPath = prefix.isEmpty() ? "." : prefix;
+        String[] names = listNames(ctx, dirPath);
+        if (names == null) {
+            return;
+        }
+        boolean dotSegment = seg.charAt(0) == '.'
+                || (escape && seg.length() > 1 && seg.charAt(0) == '\\' && seg.charAt(1) == '.');
+        if (dotSegment) {
+            // readdir reports these two entries and php matches them for a leading-dot pattern.
+            expandName(ctx, prefix, ".", seg, sep, segments, i, escape, out);
+            expandName(ctx, prefix, "..", seg, sep, segments, i, escape, out);
+        }
+        for (String name : names) {
+            if (name.startsWith(".") && !dotSegment) {
+                continue;
+            }
+            expandName(ctx, prefix, name, seg, sep, segments, i, escape, out);
+        }
+    }
+
+    private static void expandName(PhpContext ctx, String prefix, String name, String seg, String sep,
+                                   String[] segments, int i, boolean escape, List<String> out) {
+        if (!matchesSegment(seg, name, escape)) {
+            return;
+        }
+        if (!sep.isEmpty() && !isDir(ctx, prefix + name)) {
+            return;
+        }
+        expand(ctx, prefix + name + sep, segments, i + 1, escape, out, true);
+    }
+
+    /** Directory entries for glob()'s next segment, or null when the directory cannot be listed. */
+    private static String[] listNames(PhpContext ctx, String dirPath) {
+        String javaPath = PhpStrings.toJava(dirPath);
+        File host = HostFiles.file(ctx, javaPath);
+        if (host != null) {
+            String[] entries = host.list();
+            if (entries == null) {
+                return null;
+            }
+            for (int i = 0; i < entries.length; i++) {
+                entries[i] = PhpStrings.fromJava(entries[i]);
+            }
+            return entries;
+        }
         try {
-            TruffleFile dir = ctx.env().getPublicTruffleFile(PhpStrings.toJava(dirPath));
+            TruffleFile dir = ctx.env().getPublicTruffleFile(javaPath);
             if (!isDir(ctx, dirPath)) {
-                return;
+                return null;
             }
             List<String> names = new ArrayList<>();
             for (TruffleFile child : dir.list()) {
                 names.add(PhpStrings.fromJava(child.getName()));
             }
-            names.sort(String::compareTo);
-            for (String name : names) {
-                if (name.startsWith(".") && !seg.startsWith(".")) {
-                    continue;
-                }
-                if (!re.matcher(name).matches()) {
-                    continue;
-                }
-                if (!sep.isEmpty() && !isDir(ctx, prefix + name)) {
-                    continue;
-                }
-                expand(ctx, unused, prefix + name + sep, segments, i + 1, escape, out);
-            }
+            return names.toArray(new String[0]);
         } catch (IOException | SecurityException | IllegalArgumentException e) {
             // unreadable directories contribute nothing, as with GLOB_ERR unset
+            return null;
         }
+    }
+
+    /** Removes the backslashes from an escaped literal segment. */
+    private static String unescape(String seg) {
+        int backslash = seg.indexOf('\\');
+        if (backslash < 0) {
+            return seg;
+        }
+        StringBuilder out = new StringBuilder(seg.length());
+        for (int i = 0; i < seg.length(); i++) {
+            char c = seg.charAt(i);
+            if (c == '\\' && i + 1 < seg.length()) {
+                c = seg.charAt(++i);
+            }
+            out.append(c);
+        }
+        return out.toString();
     }
 
     private static boolean hasMagic(String seg, boolean escape) {
@@ -889,38 +1076,117 @@ final class StreamFunctions {
         return false;
     }
 
-    private static Pattern segmentRegex(String seg, boolean escape) {
-        StringBuilder re = new StringBuilder();
-        for (int i = 0; i < seg.length(); i++) {
-            char c = seg.charAt(i);
-            if (c == '\\' && escape && i + 1 < seg.length()) {
-                re.append(Pattern.quote(String.valueOf(seg.charAt(++i))));
-            } else if (c == '*') {
-                re.append("[^/]*");
-            } else if (c == '?') {
-                re.append("[^/]");
-            } else if (c == '[') {
-                int close = seg.indexOf(']', i + 2);
-                if (close < 0) {
-                    re.append("\\[");
+    /**
+     * glob(3) matching for one path segment, byte by byte, as if with FNM_PATHNAME unset: '*'
+     * matches any run of bytes (including none), '?' one byte, '[...]' a class with '!' negation
+     * and '-' ranges, and an unterminated '[' is a literal. A backslash escapes unless
+     * GLOB_NOESCAPE is set. Written out rather than compiled to a regex: patterns repeat on every
+     * front-page request and Pattern.compile was the visible cost in glob.
+     */
+    static boolean matchesSegment(String pattern, String name, boolean escape) {
+        int p = 0;
+        int n = 0;
+        int star = -1;
+        int starAt = 0;
+        while (n < name.length()) {
+            if (p < pattern.length()) {
+                char c = pattern.charAt(p);
+                if (c == '*') {
+                    star = p++;
+                    starAt = n;
                     continue;
                 }
-                String body = seg.substring(i + 1, close);
-                boolean negate = body.startsWith("!") || body.startsWith("^");
-                if (negate) {
-                    body = body.substring(1);
+                if (c == '?') {
+                    p++;
+                    n++;
+                    continue;
                 }
-                re.append('[').append(negate ? "^" : "");
-                for (char b : body.toCharArray()) {
-                    re.append(b == '-' ? "-" : (Character.isLetterOrDigit(b) ? String.valueOf(b) : "\\" + b));
+                if (c == '[') {
+                    int close = classEnd(pattern, p, escape);
+                    if (close < 0) {
+                        if (name.charAt(n) == '[') {
+                            p++;
+                            n++;
+                            continue;
+                        }
+                    } else if (classMatches(pattern, p, close, name.charAt(n), escape)) {
+                        p = close + 1;
+                        n++;
+                        continue;
+                    }
+                } else if (c == '\\' && escape && p + 1 < pattern.length()) {
+                    if (pattern.charAt(p + 1) == name.charAt(n)) {
+                        p += 2;
+                        n++;
+                        continue;
+                    }
+                } else if (c == name.charAt(n)) {
+                    p++;
+                    n++;
+                    continue;
                 }
-                re.append(']');
-                i = close;
-            } else {
-                re.append(Pattern.quote(String.valueOf(c)));
+            }
+            if (star < 0) {
+                return false;
+            }
+            p = star + 1;
+            n = ++starAt;
+        }
+        while (p < pattern.length() && pattern.charAt(p) == '*') {
+            p++;
+        }
+        return p == pattern.length();
+    }
+
+    /** The index of the ']' that closes the class opened at {@code open}, or -1 if there is none. */
+    private static int classEnd(String pattern, int open, boolean escape) {
+        int i = open + 1;
+        if (i < pattern.length() && pattern.charAt(i) == '!') {
+            i++;
+        }
+        if (i < pattern.length() && pattern.charAt(i) == ']') {
+            i++;
+        }
+        for (; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            if (c == '\\' && escape) {
+                i++;
+            } else if (c == ']') {
+                return i;
             }
         }
-        return Pattern.compile(re.toString());
+        return -1;
+    }
+
+    /** Whether a character is a member of the class between {@code open} and {@code close}. */
+    private static boolean classMatches(String pattern, int open, int close, char ch, boolean escape) {
+        int i = open + 1;
+        boolean negate = i < close && pattern.charAt(i) == '!';
+        if (negate) {
+            i++;
+        }
+        boolean matched = false;
+        while (i < close) {
+            char lo = pattern.charAt(i);
+            if (lo == '\\' && escape && i + 1 < close) {
+                lo = pattern.charAt(++i);
+            }
+            i++;
+            if (i + 1 < close && pattern.charAt(i) == '-') {
+                char hi = pattern.charAt(i + 1);
+                if (hi == '\\' && escape && i + 2 < close) {
+                    hi = pattern.charAt(i + 2);
+                    i++;
+                }
+                if (ch >= lo && ch <= hi) {
+                    matched = true;
+                }
+                i += 2;
+            } else if (ch == lo) {
+                matched = true;
+            }
+        }
+        return matched != negate;
     }
 
     /** GLOB_BRACE: "a{b,c}d" becomes ["abd", "acd"], nested braces included, left to right. */
@@ -969,6 +1235,27 @@ final class StreamFunctions {
         }
         try {
             return ctx.env().getPublicTruffleFile(javaPath).exists();
+        } catch (SecurityException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
+     * lstat-based existence for glob(): readdir lists a dangling symlink, and php's glob returns
+     * it for a literal pattern too. A trailing slash still requires a directory, as the kernel's
+     * stat does.
+     */
+    private static boolean existsNoFollow(PhpContext ctx, String path) {
+        String javaPath = PhpStrings.toJava(path);
+        File host = HostFiles.file(ctx, javaPath);
+        if (host != null) {
+            if (HostFiles.directoryOnly(javaPath)) {
+                return host.isDirectory();
+            }
+            return Files.exists(host.toPath(), LinkOption.NOFOLLOW_LINKS);
+        }
+        try {
+            return ctx.env().getPublicTruffleFile(javaPath).exists(LinkOption.NOFOLLOW_LINKS);
         } catch (SecurityException | IllegalArgumentException e) {
             return false;
         }
