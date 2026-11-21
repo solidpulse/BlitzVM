@@ -707,6 +707,13 @@ public final class PhpClass {
                     throw PhpError.fatal("Access level to " + template.name() + "::$" + decl.name()
                             + " must be public (as in interface " + iface.name() + ")");
                 }
+                if (decl.type() != null && prop.type() != null
+                        && !decl.type().toString().equals(prop.type().toString())) {
+                    String hook = decl.getHook() != null ? "get" : "set";
+                    throw PhpError.fatal("Declaration of " + template.name() + "::$" + decl.name() + "::" + hook
+                            + "(): " + prop.type() + " must be compatible with "
+                            + iface.name() + "::$" + decl.name() + "::" + hook + "(): " + decl.type());
+                }
                 if (decl.getHook() != null) {
                     if (prop.virtual() && prop.getHook() == null
                             || prop.getHook() != null && prop.getHook().isAbstract()) {
