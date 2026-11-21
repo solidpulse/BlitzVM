@@ -28,6 +28,7 @@ public final class SplClasses {
         iface(language, out, "OuterIterator", List.of("Iterator"), "getInnerIterator");
         out.put("generator", GeneratorClasses.buildTemplate(language));
         arrayClasses(language, out);
+        emptyIterator(language, out);
         iteratorClasses(language, out);
         filterClasses(language, out);
         fileClasses(language, out);
@@ -132,6 +133,19 @@ public final class SplClasses {
                 false, false, false, "ArrayIterator", List.of("RecursiveIterator"), List.of(),
                 List.of(constant("CHILD_ARRAYS_ONLY", 4)), recursiveMethods);
         out.put(recursive.lowerName(), recursive);
+    }
+
+    private static void emptyIterator(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> methods = new LinkedHashMap<>();
+        for (String method : List.of("rewind", "valid", "current", "key", "next")) {
+            String lower = method.toLowerCase();
+            methods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, false, false, false,
+                    new dev.phpruntime.nodes.call.SplEmptyMethodRootNode(language, method).getCallTarget()));
+        }
+        PhpClassTemplate template = new PhpClassTemplate(language.nextTemplateId(), "EmptyIterator", false,
+                false, false, false, null, List.of("Iterator"), List.of(), List.of(), methods);
+        out.put(template.lowerName(), template);
     }
 
     private static void iteratorClasses(PhpLanguage language, Map<String, PhpClassTemplate> out) {
