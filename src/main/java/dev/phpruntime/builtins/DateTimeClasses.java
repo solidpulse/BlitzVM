@@ -423,6 +423,7 @@ public final class DateTimeClasses {
             PhpArray out = new PhpArray();
             out.put("timezone_type", (long) state.type);
             out.put("timezone", state.name());
+            appendDynamicProperties(self, out);
             return out;
         });
 
@@ -441,6 +442,7 @@ public final class DateTimeClasses {
                 throw throwDateException(ctx, "Exception", "Invalid serialization data for DateTimeZone object");
             }
             self.setNativeState(state);
+            applyDynamicProperties(self, data, java.util.Set.of("timezone_type", "timezone"));
             return PhpNull.INSTANCE;
         });
 
@@ -584,6 +586,7 @@ public final class DateTimeClasses {
                 if (state.dateString != null) {
                     out.put("date_string", state.dateString);
                 }
+                appendDynamicProperties(self, out, DATEINTERVAL_PROPERTIES);
                 return out;
             }
             out.put("y", state.diff.y);
@@ -596,6 +599,7 @@ public final class DateTimeClasses {
             out.put("invert", (long) state.diff.invert);
             out.put("days", state.diff.days != TIMELIB_UNSET ? (Object) state.diff.days : Boolean.FALSE);
             out.put("from_string", false);
+            appendDynamicProperties(self, out, DATEINTERVAL_PROPERTIES);
             return out;
         });
 
@@ -623,6 +627,7 @@ public final class DateTimeClasses {
                 state.initialized = true;
                 self.setNativeState(state);
                 syncPropertiesFromRelTime(self, time.relative, true);
+                applyDynamicProperties(self, data, java.util.Set.of("from_string", "date_string"));
                 return PhpNull.INSTANCE;
             }
             DateIntervalState state = new DateIntervalState(new TimelibRelTime());
@@ -644,6 +649,8 @@ public final class DateTimeClasses {
             state.initialized = true;
             self.setNativeState(state);
             syncPropertiesFromRelTime(self, state.diff, false);
+            applyDynamicProperties(self, data, java.util.Set.of("y", "m", "d", "h", "i", "s", "f", "invert",
+                    "days", "from_string", "date_string"));
             return PhpNull.INSTANCE;
         });
 
@@ -1516,6 +1523,7 @@ public final class DateTimeClasses {
                 default -> "";
             };
             out.put("timezone", tzName);
+            appendDynamicProperties(self, out);
             return out;
         });
 
@@ -1551,6 +1559,7 @@ public final class DateTimeClasses {
                 throw throwDateException(ctx, "DateException", "Invalid serialization data for " + className + " object");
             }
             self.setNativeState(new DateTimeState(t));
+            applyDynamicProperties(self, data, java.util.Set.of("date", "timezone_type", "timezone"));
             return PhpNull.INSTANCE;
         });
 
@@ -1792,6 +1801,35 @@ public final class DateTimeClasses {
         put.execute(self, "recurrences", state.recurrences != null ? state.recurrences : 1L);
         put.execute(self, "include_start_date", state.includeStartDate);
         put.execute(self, "include_end_date", state.includeEndDate);
+    }
+
+    /** php's DateTime/DateTimeImmutable/DateTimeZone/DateInterval __serialize include dynamic properties. */
+    private static final java.util.Set<String> DATEINTERVAL_PROPERTIES = java.util.Set.of(
+            "y", "m", "d", "h", "i", "s", "f", "invert", "days", "from_string");
+
+    private static void appendDynamicProperties(PhpObject self, PhpArray out) {
+        appendDynamicProperties(self, out, java.util.Set.of());
+    }
+
+    private static void appendDynamicProperties(PhpObject self, PhpArray out, java.util.Set<String> declared) {
+        DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+        for (Object key : DynamicObject.GetKeyArrayNode.getUncached().execute(self)) {
+            String name = (String) key;
+            if (!out.containsKey(name) && !declared.contains(name)) {
+                out.put(name, get.execute(self, name, PhpNull.INSTANCE));
+            }
+        }
+    }
+
+    /** Restores properties from __unserialize() data that the date code above did not consume. */
+    private static void applyDynamicProperties(PhpObject self, PhpArray data, java.util.Set<String> handled) {
+        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+        for (var entry : data.entries()) {
+            String name = PhpOps.toStr(entry.getKey());
+            if (!handled.contains(name)) {
+                put.execute(self, name, entry.getValue());
+            }
+        }
     }
 
     private static PhpException throwDateException(PhpContext ctx, String className, String message) {

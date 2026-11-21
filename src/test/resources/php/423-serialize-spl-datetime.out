@@ -34,3 +34,9 @@ DateInterval 1-2-3 4:5:6
 O:12:"DateInterval":10:{s:1:"y";i:1;s:1:"m";i:2;s:1:"d";i:3;s:1:"h";i:4;s:1:"i";i:5;s:1:"s";i:6;s:1:"f";d:0;s:6:"invert";i:0;s:4:"days";b:0;s:11:"from_string";b:0;}
 O:12:"DateTimeZone":2:{s:13:"timezone_type";i:1;s:8:"timezone";s:6:"+02:00";}
 O:12:"DateTimeZone":2:{s:13:"timezone_type";i:1;s:8:"timezone";s:6:"+02:00";}
+O:8:"DateTime":4:{s:4:"date";s:26:"2022-01-01 00:00:00.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";s:3:"tag";s:5:"extra";}
+extra 2022-01-01
+O:8:"DateTime":4:{s:4:"date";s:26:"2022-01-01 00:00:00.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";s:3:"tag";s:5:"extra";}
+O:12:"DateInterval":3:{s:11:"from_string";b:1;s:11:"date_string";s:6:"2 days";s:3:"tag";s:8:"interval";}
+interval 2
+O:12:"DateInterval":3:{s:11:"from_string";b:1;s:11:"date_string";s:6:"2 days";s:3:"tag";s:8:"interval";}

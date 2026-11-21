@@ -68,3 +68,19 @@ echo serialize($restored), "\n";
 $offsetZone = new DateTimeZone('+02:00');
 echo serialize($offsetZone), "\n";
 echo serialize(unserialize(serialize($offsetZone))), "\n";
+
+$dynamic = new DateTime('2022-01-01 00:00:00', new DateTimeZone('UTC'));
+$dynamic->tag = 'extra';
+$serialized = serialize($dynamic);
+echo $serialized, "\n";
+$restored = unserialize($serialized);
+echo $restored->tag, ' ', $restored->format('Y-m-d'), "\n";
+echo serialize($restored), "\n";
+
+$fromString = DateInterval::createFromDateString('2 days');
+$fromString->tag = 'interval';
+$serialized = serialize($fromString);
+echo $serialized, "\n";
+$restored = unserialize($serialized);
+echo $restored->tag, ' ', $restored->format('%d'), "\n";
+echo serialize($restored), "\n";
