@@ -37,6 +37,7 @@ public final class SnapshotRun {
     private List<String> refusal;
     private Map<String, String> fingerprint;
     private Set<String> includedFiles = Set.of();
+    private boolean fingerprinting = true;
 
     private SnapshotRun(Mode mode, String bootPath, Snapshot restoreFrom, RestoreHook hook) {
         this.mode = mode;
@@ -60,6 +61,15 @@ public final class SnapshotRun {
     /** A restored run whose context gets {@code hook} applied after the copy, before the entry. */
     public static SnapshotRun restored(String bootPath, Snapshot snapshot, RestoreHook hook) {
         return new SnapshotRun(Mode.RESTORED, bootPath, snapshot, hook);
+    }
+
+    /**
+     * Skips the boundary fingerprint, which only the harness and verify mode compare. Walking and
+     * hashing WordPress's whole state costs milliseconds per request.
+     */
+    public SnapshotRun withoutFingerprint() {
+        fingerprinting = false;
+        return this;
     }
 
     /** Whether this include is the boot file and starts a boundary that needs reporting on return. */
@@ -94,7 +104,9 @@ public final class SnapshotRun {
             }
             throw new SnapshotAbort();
         }
-        fingerprint = StateFingerprint.fingerprint(ctx);
+        if (fingerprinting) {
+            fingerprint = StateFingerprint.fingerprint(ctx);
+        }
     }
 
     /** Called once for the entry script, after its request globals exist and before its body. */

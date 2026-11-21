@@ -250,6 +250,9 @@ public final class SnapshotServer implements AutoCloseable {
                 counters.hits.increment();
                 SnapshotRun run = SnapshotRun.restored(bootPath, snapshot,
                         ctx -> applyRestore(ctx, startSeconds));
+                if (!verify) {
+                    run.withoutFingerprint();
+                }
                 return new Plan(Outcome.HIT, run);
             }
             counters.stale(stale);
