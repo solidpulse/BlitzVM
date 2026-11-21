@@ -217,6 +217,7 @@ public final class SnapshotServer implements AutoCloseable {
         State state = store.state;
         if (state == State.DISABLED) {
             if (now - store.disabledUntil < 0) {
+                counters.stale("disabled");
                 return Plan.of(Outcome.STALE);
             }
             synchronized (store) {
@@ -252,7 +253,9 @@ public final class SnapshotServer implements AutoCloseable {
                 return new Plan(Outcome.HIT, run);
             }
             counters.stale(stale);
-            if (recordStale(store, now)) {
+            // TTL expiry is bounded by ttl_ms by construction (up to 30 a minute at 2 s), so only
+            // writes and file changes count toward disabling a key that churns.
+            if (!"ttl".equals(stale) && recordStale(store, now)) {
                 return Plan.of(Outcome.STALE);
             }
             startBuild(store, transport.serverPort());

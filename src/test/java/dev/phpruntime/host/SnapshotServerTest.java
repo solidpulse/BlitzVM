@@ -161,6 +161,24 @@ class SnapshotServerTest {
     }
 
     @Test
+    void ttlExpiryAloneNeverDisablesAKey() throws Exception {
+        Path app = copyApp("snapshot-app", temp.resolve("app"));
+        Path profile = app.resolve("profile-short-ttl.properties");
+        Files.writeString(profile, Files.readString(app.resolve("profile.properties"))
+                .replace("ttl_ms=1000", "ttl_ms=300"));
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        try (Fixture snap = Fixture.start(app, profile, log::add)) {
+            waitForHit(snap, "/");
+            for (int i = 1; i <= 35; i++) {
+                Thread.sleep(350); // past ttl_ms=300
+                assertEquals("stale", snap.get("/").snapshot());
+                waitForHit(snap, "/");
+            }
+            assertTrue(log.stream().noneMatch(l -> l.contains("snapshot disabled")), "disabled: " + log);
+        }
+    }
+
+    @Test
     void wordpressProfileShipsItsAfterRestoreProgram() throws Exception {
         SnapshotProfile profile = SnapshotProfile.load("wordpress");
         assertEquals("wp-load.php", profile.boot());
