@@ -32,9 +32,25 @@ public final class PhpStrings {
         if (s.isEmpty()) {
             return "";
         }
-        String existing = LITERALS.putIfAbsent(s, s);
+        // Keys are short. Long literals (templates, heredocs) gain nothing from identity and
+        // would be held for the life of the process; eval'd or regenerated code could add new
+        // literals forever, so the table also stops growing at a fixed size.
+        if (s.length() > INTERN_MAX_LENGTH) {
+            return s;
+        }
+        String existing = LITERALS.get(s);
+        if (existing != null) {
+            return existing;
+        }
+        if (LITERALS.size() >= INTERN_MAX_ENTRIES) {
+            return s;
+        }
+        existing = LITERALS.putIfAbsent(s, s);
         return existing == null ? s : existing;
     }
+
+    private static final int INTERN_MAX_LENGTH = 64;
+    private static final int INTERN_MAX_ENTRIES = 200_000;
 
     public static byte[] bytes(String php) {
         return php.getBytes(StandardCharsets.ISO_8859_1);
