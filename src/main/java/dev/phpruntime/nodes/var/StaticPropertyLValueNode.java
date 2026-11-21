@@ -111,6 +111,26 @@ public final class StaticPropertyLValueNode extends LValueNode {
         return val;
     }
 
+    /** isset()/?? treat an uninitialized typed static property as unset instead of throwing. */
+    @Override
+    public Object readIfSet(VirtualFrame frame, Object[] keys) {
+        PhpClass cls = (PhpClass) keys[0];
+        String name = (String) keys[1];
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
+        Resolution res = resolution(cls, name, caller);
+        if (res.decl() == null || !res.accessible()) {
+            return null;
+        }
+        Object val = res.decl().slot(PhpContext.get(this)).get();
+        return val == PhpClass.UNINITIALIZED ? null : val;
+    }
+
+    @Override
+    public boolean isSet(VirtualFrame frame, Object[] keys) {
+        Object value = readIfSet(frame, keys);
+        return value != null && value != PhpNull.INSTANCE;
+    }
+
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
         PhpClass cls = (PhpClass) keys[0];

@@ -322,12 +322,130 @@ final class ArrayFunctions {
                 (x, y) -> StringFunctions.natCompare(PhpOps.toStr(x.getValue()), PhpOps.toStr(y.getValue()), false), true));
         Builtins.defRef("natcasesort", 1, 1, REF_FIRST, (ctx, a) -> sort(a,
                 (x, y) -> StringFunctions.natCompare(PhpOps.toStr(x.getValue()), PhpOps.toStr(y.getValue()), true), true));
+        Builtins.defRef("array_multisort", 1, -1, 0x7FFFFFFF, (ctx, a) -> arrayMultisort(a));
         Builtins.defRef("shuffle", 1, 1, REF_FIRST, (ctx, a) -> {
             List<Object> values = new ArrayList<>(writable(a).values());
             Collections.shuffle(values, java.util.concurrent.ThreadLocalRandom.current());
             a[0] = PhpArray.ofList(values);
             return true;
         });
+    }
+
+    /**
+     * array_multisort(): sorts every listed array by the columns in order. The reference
+     * implementation keeps the arrays at their argument positions, so the writeback of the
+     * all-reference argument list replaces each one.
+     */
+    private static Object arrayMultisort(Object[] a) {
+        List<PhpArray> arrays = new ArrayList<>();
+        List<Long> orders = new ArrayList<>();
+        List<Long> types = new ArrayList<>();
+        long order = 4; // SORT_ASC
+        long type = 0; // SORT_REGULAR
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] instanceof PhpArray array) {
+                arrays.add(array);
+                orders.add(order);
+                types.add(type);
+                order = 4;
+                type = 0;
+            } else if (a[i] instanceof Long value) {
+                long flag = value;
+                if (flag == 4 || flag == 3) {
+                    if (arrays.isEmpty()) {
+                        order = flag;
+                    } else {
+                        orders.set(orders.size() - 1, flag);
+                    }
+                } else if (flag == 0 || flag == 1 || flag == 2 || flag == 5 || flag == 6
+                        || ((flag & 8) != 0 && ((flag & ~8) == 2 || (flag & ~8) == 6))) {
+                    if (arrays.isEmpty()) {
+                        type = flag;
+                    } else {
+                        types.set(types.size() - 1, flag);
+                    }
+                } else {
+                    throw new PhpError(PhpError.VALUE_ERROR,
+                            "array_multisort(): Argument #" + (i + 1) + " must be a valid sort flag", null);
+                }
+            } else {
+                throw new PhpError(PhpError.TYPE_ERROR, "array_multisort(): Argument #" + (i + 1)
+                        + " ($array) must be an array or a sort flag that has not already been specified", null);
+            }
+        }
+        if (arrays.isEmpty()) {
+            throw new PhpError(PhpError.TYPE_ERROR,
+                    "array_multisort(): Argument #1 ($array) must be an array or a sort flag that has not already been specified", null);
+        }
+        int size = arrays.get(0).size();
+        for (PhpArray array : arrays) {
+            if (array.size() != size) {
+                throw new PhpError(PhpError.VALUE_ERROR, "Array sizes are inconsistent", null);
+            }
+        }
+        @SuppressWarnings("unchecked")
+        List<Object>[] columns = new List[arrays.size()];
+        for (int c = 0; c < arrays.size(); c++) {
+            List<Object> values = new ArrayList<>(size);
+            for (Map.Entry<Object, Object> entry : arrays.get(c).entries()) {
+                values.add(entry.getValue());
+            }
+            columns[c] = values;
+        }
+        Integer[] indices = new Integer[size];
+        for (int i = 0; i < size; i++) {
+            indices[i] = i;
+        }
+        java.util.Arrays.sort(indices, (x, y) -> {
+            for (int c = 0; c < columns.length; c++) {
+                int cmp = compareColumn(columns[c].get(x), columns[c].get(y), types.get(c));
+                if (cmp != 0) {
+                    return orders.get(c) == 3 ? -cmp : cmp;
+                }
+            }
+            return 0;
+        });
+        for (int c = 0; c < arrays.size(); c++) {
+            List<Object> sorted = new ArrayList<>(size);
+            for (Integer index : indices) {
+                sorted.add(columns[c].get(index));
+            }
+            a[arrayPosition(a, c)] = PhpArray.ofList(sorted);
+        }
+        return true;
+    }
+
+    private static int arrayPosition(Object[] a, int column) {
+        int seen = 0;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] instanceof PhpArray) {
+                if (seen == column) {
+                    return i;
+                }
+                seen++;
+            }
+        }
+        return a.length - 1;
+    }
+
+    private static int compareColumn(Object left, Object right, long type) {
+        if (type == 1) {
+            return Double.compare(PhpOps.toDouble(left), PhpOps.toDouble(right));
+        }
+        if (type == 2 || type == 5 || type == 6 || type == 10 || type == 14) {
+            String l = PhpOps.toStr(left);
+            String r = PhpOps.toStr(right);
+            boolean foldCase = (type & 8) != 0;
+            if ((type & ~8) == 6) {
+                return StringFunctions.natCompare(l, r, foldCase);
+            }
+            if (foldCase) {
+                l = dev.phpruntime.runtime.PhpStrings.lower(l);
+                r = dev.phpruntime.runtime.PhpStrings.lower(r);
+            }
+            return l.compareTo(r);
+        }
+        return PhpOps.compare(left, right);
     }
 
     private static Object sort(Object[] a, Comparator<Map.Entry<Object, Object>> cmp, boolean keepKeys) {
