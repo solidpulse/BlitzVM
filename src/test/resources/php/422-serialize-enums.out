@@ -1,0 +1,39 @@
+E:11:"Suit:Hearts";
+E:13:"Status:Active";
+E:10:"Level:High";
+a:4:{i:0;E:11:"Suit:Hearts";i:1;r:2;i:2;E:10:"Status:Off";i:3;E:9:"Level:Low";}
+enum(Suit::Hearts)
+enum(Status::Off)
+enum(Level::High)
+Hearts Off off 10
+enum(Suit::Hearts)
+bool(true)
+enum(Status::Off)
+bool(true)
+enum(Level::High)
+bool(true)
+enum(Suit::Hearts)
+bool(true)
+ERR[2]: unserialize(): Error at offset 17 of 20 bytes
+bool(false)
+ERR[2]: unserialize(): Undefined constant Status::Gone
+ERR[2]: unserialize(): Error at offset 19 of 19 bytes
+bool(false)
+ERR[2]: unserialize(): Undefined constant Level::Gone
+ERR[2]: unserialize(): Error at offset 18 of 18 bytes
+bool(false)
+ERR[2]: unserialize(): Error at offset 13 of 18 bytes
+bool(false)
+ERR[2]: unserialize(): Error at offset 18 of 19 bytes
+bool(false)
+ERR[2]: unserialize(): Invalid enum name 'Missing' (missing colon)
+ERR[2]: unserialize(): Error at offset 0 of 14 bytes
+bool(false)
+ERR[2]: unserialize(): Class 'NoSuch' not found
+ERR[2]: unserialize(): Error at offset 0 of 21 bytes
+bool(false)
+ERR[2]: unserialize(): Class 'stdClass' is not an enum
+ERR[2]: unserialize(): Error at offset 0 of 18 bytes
+bool(false)
+Error: Cannot instantiate enum Suit
+Error: Cannot instantiate enum Status
