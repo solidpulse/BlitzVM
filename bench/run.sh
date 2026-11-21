@@ -16,8 +16,11 @@ LOAD_SECONDS="${LOAD_SECONDS:-10}"
 WWW="$ROOT/www"   # document root; the wordpress scenario points it at WP_DIR
 
 wait_up() { for _ in $(seq 1 100); do curl -fs "$1" >/dev/null 2>&1 && return 0; sleep 0.2; done; echo "server did not come up: $1" >&2; return 1; }
+# A leftover server on the port would answer wait_up and be measured instead of the new one.
+port_free() { if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$1/"; then echo "port $1 is already serving; stop that process first" >&2; return 1; fi; }
 
 start_truffle() { # $1 workers, $2 http front end (netty|jdk)
+  port_free 18401 || return 1
   "$ROOT/bin/php-truffle" serve --port 18401 --cpus "$1" --quantum-ms 10 --max-exec-ms 30000 --http "${2:-netty}" "$WWW" > "$RUN/truffle.log" 2>&1 &
   PIDS=$!; BASE=http://127.0.0.1:18401; wait_up "$BASE/${PROBE:-hello.php}"
 }
@@ -51,6 +54,7 @@ start_swoole() { # $1 workers, $2 preempt 0|1
   BASE=http://127.0.0.1:18403; wait_up "$BASE/hello.php"
 }
 start_franken() { # $1 PHP threads, $2 classic|worker (worker mode runs www/ routes through bench/franken/worker.php)
+  port_free 18406 || return 1
   local tmpl="$ROOT/bench/franken/Caddyfile.tmpl"; [[ "${2:-classic}" == worker ]] && tmpl="$ROOT/bench/franken/Caddyfile-worker.tmpl"
   sed -e "s|__PORT__|18406|g" -e "s|__WORKERS__|$1|g" -e "s|__THREADS__|$(( $1 + 1 ))|g" -e "s|__WWW__|$WWW|g" -e "s|__WORKER__|$ROOT/bench/franken/worker.php|g" "$tmpl" > "$RUN/Caddyfile"
   PHP_INI_SCAN_DIR="$ROOT/bench/franken" "${FRANKENPHP:-frankenphp}" run --config "$RUN/Caddyfile" --adapter caddyfile > "$RUN/franken.log" 2>&1 &
