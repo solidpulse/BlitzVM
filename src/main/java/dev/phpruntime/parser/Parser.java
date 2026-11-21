@@ -290,6 +290,14 @@ public final class Parser {
             next();
             return null;
         }
+        if (isVoidCastToken()) {
+            next();
+            next();
+            next();
+            PhpNode value = expression();
+            endStatement();
+            return new VoidCastNode(value).at(line);
+        }
         if (t.kind() == Kind.IDENT) {
             String kw = dev.phpruntime.runtime.PhpStrings.lower(t.text());
             if (peek(1).isOp(":") && !kw.equals("default") && !kw.equals("case") && !kw.equals("goto")) {
@@ -1822,6 +1830,9 @@ public final class Parser {
                     return new IncDecNode(target, t.text().equals("++"), true).at(line);
                 }
                 case "(" -> {
+                    if (isVoidCastToken()) {
+                        throw error("syntax error, unexpected token \"(void)\"");
+                    }
                     CastNode.Kind cast = castKind();
                     if (cast != null) {
                         pos += 3;
@@ -1926,6 +1937,14 @@ public final class Parser {
             case "require_once" -> IncludeNode.Kind.REQUIRE_ONCE;
             default -> null;
         };
+    }
+
+    /** Whether the tokens here spell {@code (void)}, php 8.5's statement-only cast. */
+    private boolean isVoidCastToken() {
+        return peek().isOp("(")
+                && peek(1).kind() == Kind.IDENT
+                && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(peek(1).text(), "void")
+                && peek(2).isOp(")");
     }
 
     private CastNode.Kind castKind() {
