@@ -1,0 +1,11 @@
+/srv/app /srv/app/.tempest GenericContainer
+KernelImpl
+bool(false)
+bool(false)
+string(9) "127.0.0.1"
+string(5) "redis"
+bool(false)
+string(3) "tag"
+kernel root hook=$root::get
+ip virtual=1
+cache privateSet=1

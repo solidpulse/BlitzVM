@@ -1,0 +1,26 @@
+read set-only: Error: Cannot read from set-only virtual property Virtuals::$setOnly
+write get-only: Error: Cannot write to get-only virtual property Virtuals::$getOnly
+unset hooked: Error: Cannot unset hooked property Virtuals::$getOnly
+isset set-only: Error: Cannot read from set-only virtual property Virtuals::$setOnly
+indirect virtual: Error: Indirect modification of Virtuals::$array is not allowed
+reference virtual: Error: Indirect modification of Virtuals::$getOnly is not allowed
+Array
+(
+    [0] => 1
+    [1] => 2
+    [2] => 3
+)
+type set: TypeError: Typed::$name::set(): Argument #1 ($value) must be of type string, null given
+type get: TypeError: Typed::$count::set(): Argument #1 ($value) must be of type int, string given
+uninitialized get: Error: Typed property Typed::$name must not be accessed before initialization
+reference backed: Error: Typed property Typed::$name must not be accessed before initialization
+ok
+2 a!
+private set: Error: Cannot modify private(set) property PrivateSet::$value from global scope
+protected set: Error: Cannot modify protected(set) property PrivateSet::$text from global scope
+private inc: Error: Cannot modify private(set) property PrivateSet::$value from global scope
+private append: Error: Cannot modify protected(set) property PrivateSet::$text from global scope
+private index: Error: Cannot indirectly modify private(set) property PrivateSet::$value from global scope
+private unset: Error: Cannot unset private(set) property PrivateSet::$value from global scope
+private reference: Error: Cannot indirectly modify private(set) property PrivateSet::$value from global scope
+protected magic set: Error: Cannot modify protected(set) property PrivateSet::$text from global scope

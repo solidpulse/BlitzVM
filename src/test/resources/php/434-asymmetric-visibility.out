@@ -1,0 +1,22 @@
+ABCD
+S
+global private: Cannot modify private(set) property Base::$privateSet from global scope
+global protected: Cannot modify protected(set) property Base::$protectedSet from global scope
+global static: Cannot modify private(set) property Base::$staticValue from global scope
+global readonly: Cannot modify readonly property Base::$readonly
+readonly from method: Cannot modify readonly property Base::$readonly
+child protected: ok
+child
+child private: Cannot modify private(set) property Base::$privateSet from scope Child
+magic: Cannot modify protected(set) property Magic::$value from global scope
+first 20 nick
+renamed 21 other
+promoted write: Cannot modify private(set) property Promoted::$name from global scope
+7
+readonly asymmetric write: Cannot modify readonly property ReadonlyAsymmetric::$id
+privateSet: mods=4129 privateSet=1 protectedSet=0 readonly=0
+protectedSet: mods=2049 privateSet=0 protectedSet=1 readonly=0
+implied: mods=4129 privateSet=1 protectedSet=0 readonly=0
+impliedProtected: mods=2049 privateSet=0 protectedSet=1 readonly=0
+readonly: mods=2177 privateSet=0 protectedSet=1 readonly=1
+staticValue: mods=4145 privateSet=1 protectedSet=0 readonly=0
