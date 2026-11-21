@@ -128,6 +128,20 @@ show("promoted write", function () use ($promoted) {
     $promoted->name = "x";
 });
 
+class WideParent
+{
+    public protected(set) string $x = "a";
+}
+
+class WideChild extends WideParent
+{
+    public string $x = "d";
+}
+
+$wide = new WideChild();
+$wide->x = "new";
+echo $wide->x, " ", (int) (new ReflectionProperty(WideChild::class, "x"))->isProtectedSet(), "\n";
+
 class ReadonlyAsymmetric
 {
     public private(set) readonly int $id;

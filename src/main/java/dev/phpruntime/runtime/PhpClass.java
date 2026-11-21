@@ -595,8 +595,9 @@ public final class PhpClass {
         }
         Object defVal = virtual ? PhpNull.INSTANCE : defaultFor(p);
         String storageKey = prev != null ? prev.storageKey() : p.name();
-        Visibility setVisibility = p.setVisibility() != null ? p.setVisibility()
-                : (prev != null ? prev.setVisibility() : null);
+        // A redeclaration without a set modifier widens writes to its own read visibility;
+        // php does not inherit the parent's asymmetric set level (x6 in the task notes).
+        Visibility setVisibility = p.setVisibility();
         InstanceProp ip = new InstanceProp(p.name(), storageKey, p.visibility(), setVisibility, p.isReadonly(),
                 this, defVal, p.defaultTarget(), p.type(), declaredType, getHook, setHook, virtual,
                 p.setVisibility() == Visibility.PRIVATE);

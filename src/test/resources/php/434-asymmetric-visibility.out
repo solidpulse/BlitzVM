@@ -12,6 +12,7 @@ magic: Cannot modify protected(set) property Magic::$value from global scope
 first 20 nick
 renamed 21 other
 promoted write: Cannot modify private(set) property Promoted::$name from global scope
+new 0
 7
 readonly asymmetric write: Cannot modify readonly property ReadonlyAsymmetric::$id
 privateSet: mods=4129 privateSet=1 protectedSet=0 readonly=0
