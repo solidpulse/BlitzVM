@@ -159,7 +159,12 @@ public final class IncludeNode extends PhpNode {
     /** Whether this include is the boot file of a snapshot run; ordinary requests have no run. */
     private static boolean snapshotBegin(PhpContext ctx, String canonicalPath) {
         dev.phpruntime.snapshot.SnapshotRun run = ctx.snapshotRun();
-        return run != null && run.beginBootInclude(ctx, canonicalPath);
+        return run != null && beginBoot(run, ctx, canonicalPath);
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static boolean beginBoot(dev.phpruntime.snapshot.SnapshotRun run, PhpContext ctx, String canonicalPath) {
+        return run.beginBootInclude(ctx, canonicalPath);
     }
 
     /**

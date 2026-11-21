@@ -1,5 +1,7 @@
 package dev.phpruntime.snapshot;
 
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+
 import dev.phpruntime.PhpContext;
 
 /**
@@ -32,7 +34,11 @@ public final class SnapshotSupport {
         }
     }
 
-    /** Called after the entry script's globals and included file are established. */
+    /**
+     * Called after the entry script's globals and included file are established. Out of line:
+     * compiled code must not inline the restore and the boundary fingerprint walker.
+     */
+    @TruffleBoundary
     public static void entryStarted(PhpContext ctx) {
         SnapshotRun run = ctx.snapshotRun();
         if (run != null) {
@@ -40,7 +46,12 @@ public final class SnapshotSupport {
         }
     }
 
-    /** Called by an include node when the boot include has returned. */
+    /**
+     * Called by an include node when the boot include has returned. Out of line: inlining the
+     * capture and the recursive fingerprint walker made Graal bail out of whole functions
+     * ("Too deep inlining"), which then stayed interpreted.
+     */
+    @TruffleBoundary
     public static void bootIncludeReturned(PhpContext ctx) {
         SnapshotRun run = ctx.snapshotRun();
         if (run != null) {
