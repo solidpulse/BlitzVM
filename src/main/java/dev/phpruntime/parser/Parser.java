@@ -2516,7 +2516,15 @@ public final class Parser {
                         reads[i] = scope.compactVariable(varName);
                     } else { dynamic = true; }
                 }
-                return scopeBuiltinFallback(rn, pca, new CompactNode(args, reads, names, dynamic ? scope.dynamicSlot() : -1), line);
+                CompactNode compact;
+                if (!dynamic) {
+                    compact = new CompactNode(args, reads, names, -1);
+                } else if (scope.isFileScope()) {
+                    compact = new CompactNode(args, reads, names, scope.dynamicSlot());
+                } else {
+                    compact = scope.computedCompact(new CompactNode(args, reads, names, -1));
+                }
+                return scopeBuiltinFallback(rn, pca, compact, line);
             }
             if (builtinName.equalsIgnoreCase("extract") && pca.names() == null && pca.spreads() == null) {
                 if (pca.args().length < 1 || pca.args().length > 3) { throw error("extract() expects 1 to 3 arguments"); }

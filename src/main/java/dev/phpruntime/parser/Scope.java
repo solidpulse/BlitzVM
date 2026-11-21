@@ -56,6 +56,18 @@ final class Scope {
     private boolean included;
     private final Map<String, Integer> literalSlots = new HashMap<>();
     private final Set<String> globalNames = new java.util.LinkedHashSet<>();
+    /** compact() calls with computed names, bound to the locals or the table once the body is known. */
+    private final List<dev.phpruntime.nodes.expr.CompactNode> computedCompacts = new ArrayList<>();
+
+    /**
+     * A compact() whose names are computed. php reads them from the function's locals; compact never
+     * creates or changes a variable, so a symbol table is not needed unless something else requires
+     * one: {@link #build} binds the node to the locals then, or to the table if the body has one.
+     */
+    dev.phpruntime.nodes.expr.CompactNode computedCompact(dev.phpruntime.nodes.expr.CompactNode node) {
+        computedCompacts.add(node);
+        return node;
+    }
 
     LValueNode compactVariable(String name) {
         if (global) {
@@ -351,6 +363,23 @@ final class Scope {
     }
 
     FrameDescriptor build() {
+        for (dev.phpruntime.nodes.expr.CompactNode compact : computedCompacts) {
+            if (tableSlot >= 0) {
+                compact.useTable(tableSlot);
+                continue;
+            }
+            List<String> names = new ArrayList<>();
+            List<LValueNode> reads = new ArrayList<>();
+            for (var entry : slots.entrySet()) {
+                String name = entry.getKey();
+                if (name.startsWith("@") || name.startsWith("#") || (name.equals("this") && closureObjSlot >= 0)) {
+                    continue;
+                }
+                names.add(name);
+                reads.add(new LocalVarNode(entry.getValue(), name, kind(entry.getValue())));
+            }
+            compact.bindLocals(names.toArray(new String[0]), reads.toArray(new LValueNode[0]));
+        }
         if (global) { frame.info(new dev.phpruntime.runtime.PhpGlobalLayout(globalNames.toArray(new String[0]))); }
         if (tableSlot >= 0) {
             Map<String, Integer> locals = new java.util.LinkedHashMap<>();

@@ -1,0 +1,88 @@
+warning:compact(): Undefined variable $distinct
+array(6) {
+  ["where"]=>
+  string(9) "WHERE 1=1"
+  ["groupby"]=>
+  string(2) "ID"
+  ["join"]=>
+  string(0) ""
+  ["orderby"]=>
+  NULL
+  ["fields"]=>
+  string(1) "*"
+  ["limits"]=>
+  string(8) "LIMIT 10"
+}
+array(7) {
+  ["where"]=>
+  string(9) "WHERE 1=1"
+  ["groupby"]=>
+  string(2) "ID"
+  ["join"]=>
+  string(0) ""
+  ["orderby"]=>
+  NULL
+  ["distinct"]=>
+  string(8) "DISTINCT"
+  ["fields"]=>
+  string(1) "*"
+  ["limits"]=>
+  string(8) "LIMIT 10"
+}
+warning:compact(): Undefined variable $join
+array(3) {
+  ["groupby"]=>
+  string(2) "ID"
+  ["limits"]=>
+  string(8) "LIMIT 10"
+  ["fields"]=>
+  string(1) "*"
+}
+array(2) {
+  ["alias"]=>
+  string(7) "changed"
+  ["out"]=>
+  string(7) "changed"
+}
+array(2) {
+  ["n"]=>
+  int(6)
+  ["s"]=>
+  string(2) "ab"
+}
+string(7) "changed"
+warning:compact(): Undefined variable $missing
+array(2) {
+  [0]=>
+  string(5) "local"
+  [1]=>
+  string(4) "this"
+}
+int(6)
+bool(true)
+warning:compact(): Undefined variable $c
+array(2) {
+  ["a"]=>
+  int(1)
+  ["b"]=>
+  int(2)
+}
+warning:compact(): Argument #1 must be string or array of strings, int given
+array(1) {
+  ["v"]=>
+  int(1)
+}
+array(2) {
+  ["p"]=>
+  int(1)
+  ["q"]=>
+  int(2)
+}
+array(1) {
+  ["g"]=>
+  string(3) "gen"
+}
+array(1) {
+  ["top"]=>
+  string(4) "file"
+}
