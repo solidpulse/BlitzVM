@@ -1,6 +1,7 @@
 package dev.phpruntime.nodes.expr;
 
 import dev.phpruntime.nodes.PhpNode;
+import dev.phpruntime.runtime.PhpStrings;
 
 /** A literal: int, float, string, bool or null. */
 public final class ConstNode extends PhpNode {
@@ -13,7 +14,7 @@ public final class ConstNode extends PhpNode {
     }
 
     public ConstNode(Object value, String constantName) {
-        this.value = value;
+        this.value = value instanceof String s ? PhpStrings.intern(s) : value;
         this.constantName = constantName;
     }
 
