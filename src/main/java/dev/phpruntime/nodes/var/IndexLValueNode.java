@@ -8,7 +8,6 @@ import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
-import dev.phpruntime.nodes.expr.ConstNode;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
@@ -31,11 +30,6 @@ public final class IndexLValueNode extends LValueNode {
     @Children private final PhpNode[] keyNodes;
     @Child private ArrayAccessNode access;
     /**
-     * Normalised keys and hashes for the key positions that are constant literals, computed
-     * once. Null when no key is constant, or when there are none (an append).
-     */
-    @CompilationFinal(dimensions = 1) private final PhpArray.KnownKey[] knownKeys;
-    /**
      * Which uncommon write paths this site has taken. Until one is seen, compiled code
      * deoptimizes there instead of carrying string offsets, ArrayAccess objects, references
      * inside the path and array creation into every array write.
@@ -48,40 +42,11 @@ public final class IndexLValueNode extends LValueNode {
     public IndexLValueNode(LValueNode base, PhpNode[] keyNodes) {
         this.base = base;
         this.keyNodes = keyNodes;
-        this.knownKeys = knownKeysOf(keyNodes);
     }
 
     public IndexLValueNode(PhpLanguage language, LValueNode base, PhpNode[] keyNodes) {
         this(base, keyNodes);
         this.access = new ArrayAccessNode(language);
-    }
-
-    /** The constant key positions of a site, normalised and hashed once at parse time. */
-    private static PhpArray.KnownKey[] knownKeysOf(PhpNode[] keyNodes) {
-        PhpArray.KnownKey[] out = null;
-        for (int i = 0; i < keyNodes.length; i++) {
-            PhpNode n = keyNodes[i];
-            if (n instanceof ConstNode c && (c.value() instanceof String || c.value() instanceof Long)) {
-                if (out == null) {
-                    out = new PhpArray.KnownKey[keyNodes.length];
-                }
-                out[i] = PhpArray.knownKey(c.value());
-            }
-        }
-        return out;
-    }
-
-    private PhpArray.KnownKey knownKey(int at, Object key) {
-        PhpArray.KnownKey[] keys = knownKeys;
-        if (keys == null) {
-            return null;
-        }
-        PhpArray.KnownKey known = keys[at];
-        if (known == null) {
-            return null;
-        }
-        Object normalized = known.key();
-        return normalized == key || normalized.equals(key) ? known : null;
     }
 
     private record PackedKeys(Object[] baseKeys, Object[] arrayKeys) {}
@@ -93,17 +58,10 @@ public final class IndexLValueNode extends LValueNode {
 
     /**
      * A copy with no key expressions over another base, for bytecode: the operation evaluates
-     * the keys and calls this node's read, write, cell and unset methods with them. Constant
-     * key nodes are kept (they have no code to evaluate) so the copy can cache their hash.
+     * the keys and calls this node's read, write, cell and unset methods with them.
      */
     public IndexLValueNode headless(PhpLanguage language, LValueNode headlessBase) {
-        PhpNode[] keys = new PhpNode[keyNodes.length];
-        for (int i = 0; i < keys.length; i++) {
-            // A fresh ConstNode: the original belongs to the parsed AST and cannot have a
-            // second parent. It carries no code, only the key value the copy caches.
-            keys[i] = keyNodes[i] instanceof ConstNode c ? new ConstNode(c.value()) : null;
-        }
-        return new IndexLValueNode(language, headlessBase, keys).at(line());
+        return new IndexLValueNode(language, headlessBase, new PhpNode[keyNodes.length]).at(line());
     }
 
     public LValueNode base() {
@@ -217,44 +175,14 @@ public final class IndexLValueNode extends LValueNode {
         }
         Object root = base.read(frame, bk);
         try {
-            Object[] ak = arrayKeys(keys);
             if (root instanceof PhpObject) {
-                writeMixed(root, ak, 0, value);
+                writeMixed(root, arrayKeys(keys), 0, value);
                 return;
             }
-            if (keyNodes.length == 1 && root instanceof PhpArray array) {
-                // $a[k] = v and $a[] = v: one key, no recursion, no intermediate key arrays.
-                PhpArray writable = array.forWrite();
-                putAt(writable, ak[0], 0, value);
-                base.write(frame, bk, writable);
-                return;
-            }
-            base.write(frame, bk, writeMixed(root, ak, 0, value));
+            base.write(frame, bk, writeMixed(root, arrayKeys(keys), 0, value));
         } catch (PhpError e) {
             throw e.at(this);
         }
-    }
-
-    /** Writes one element of an already writable array, inline when the key is a literal. */
-    private void putAt(PhpArray array, Object key, int at, Object value) {
-        if (key == APPEND) {
-            array.appendWritable(value);
-            return;
-        }
-        PhpArray.KnownKey known = knownKey(at, key);
-        if (known != null) {
-            array.putKnown(known, value);
-        } else {
-            array.putFast(key, value);
-        }
-    }
-
-    private Object rawAt(PhpArray array, Object key, int at) {
-        if (key == APPEND) {
-            return null;
-        }
-        PhpArray.KnownKey known = knownKey(at, key);
-        return known != null ? array.getRawKnown(known) : array.getRawFast(key);
     }
 
     @Override
@@ -364,9 +292,13 @@ public final class IndexLValueNode extends LValueNode {
         }
         PhpArray arr = writable(root, key);
         if (at == keyNodes.length - 1) {
-            putAt(arr, key, at, value);
+            if (key == APPEND) {
+                arr.append(value);
+            } else {
+                arr.put(key, value);
+            }
         } else {
-            Object raw = rawAt(arr, key, at);
+            Object raw = key == APPEND ? null : arr.getRaw(key);
             if (raw instanceof PhpReference ref) {
                 if (!seenRef) {
                     CompilerDirectives.transferToInterpreterAndInvalidate();
@@ -375,7 +307,11 @@ public final class IndexLValueNode extends LValueNode {
                 ref.setValue(writeMixed(ref.getValue(), keys, at + 1, value));
             } else {
                 Object child = writeMixed(raw, keys, at + 1, value);
-                putAt(arr, key, at, child);
+                if (key == APPEND) {
+                    arr.append(child);
+                } else {
+                    arr.put(key, child);
+                }
             }
         }
         return arr;
@@ -430,10 +366,11 @@ public final class IndexLValueNode extends LValueNode {
             PhpReference ref = keys[at] == APPEND ? array.appendRef(new PhpReference(PhpNull.INSTANCE)) : array.obtainElementRef(key);
             return new CellResult(array, ref);
         }
-        Object raw = rawAt(array, key, at);
+        Object raw = keys[at] == APPEND ? null : array.getRaw(key);
         CellResult child = mixedCell(raw instanceof PhpReference ref ? ref.getValue() : raw, keys, at + 1);
         if (raw instanceof PhpReference ref) { ref.setValue(child.root()); }
-        else { putAt(array, key, at, child.root()); }
+        else if (keys[at] == APPEND) { array.append(child.root()); }
+        else { array.put(key, child.root()); }
         return new CellResult(array, child.cell());
     }
 
@@ -534,20 +471,7 @@ public final class IndexLValueNode extends LValueNode {
             return;
         }
         try {
-            Object[] ak = arrayKeys(keys);
-            if (keyNodes.length == 1) {
-                PhpArray writable = ((PhpArray) root).forWrite();
-                Object key = ak[0];
-                PhpArray.KnownKey known = knownKey(0, key);
-                if (known != null) {
-                    writable.removeKnown(known);
-                } else {
-                    writable.removeFast(key);
-                }
-                base.write(frame, bk, writable);
-                return;
-            }
-            Object result = unsetPath((PhpArray) root, ak);
+            Object result = unsetPath((PhpArray) root, arrayKeys(keys));
             base.write(frame, bk, result);
         } catch (PhpError e) {
             throw e.at(this);
@@ -572,11 +496,11 @@ public final class IndexLValueNode extends LValueNode {
         if (!(root instanceof PhpArray array)) { return root; }
         array = array.forWrite();
         if (at == keyNodes.length - 1) {
-            array.removeFast(keys[at]);
+            array.remove(keys[at]);
         } else {
-            Object raw = rawAt(array, keys[at], at);
+            Object raw = array.getRaw(keys[at]);
             if (raw instanceof PhpReference ref) { ref.setValue(unsetMixed(ref.getValue(), keys, at + 1)); }
-            else if (raw != null) { putAt(array, keys[at], at, unsetMixed(raw, keys, at + 1)); }
+            else if (raw != null) { array.put(keys[at], unsetMixed(raw, keys, at + 1)); }
         }
         return array;
     }
