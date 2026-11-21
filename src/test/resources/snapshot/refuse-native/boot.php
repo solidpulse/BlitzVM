@@ -1,2 +1,2 @@
 <?php
-$storage = new SplObjectStorage();
+$storage = new AppendIterator();

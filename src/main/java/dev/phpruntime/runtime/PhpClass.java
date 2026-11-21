@@ -192,16 +192,25 @@ public final class PhpClass {
 
         /**
          * A request's class state at a point in time. The values are raw PHP values (possibly
-         * reference cells and arrays); the snapshot layer maps them through its copier.
+         * reference cells and arrays); the snapshot layer maps them through its copier. The
+         * enum cases are the canonical case objects, so a restore can install the same ones.
          */
         public record StateSnapshot(Map<String, StaticValue> statics,
                                     Map<String, Object> constants,
-                                    Object[] defaultValues) {
+                                    Object[] defaultValues,
+                                    Map<String, Object> enumCases) {
             public StateSnapshot {
                 statics = Collections.unmodifiableMap(new LinkedHashMap<>(statics));
                 constants = constants == null ? null
                         : Collections.unmodifiableMap(new LinkedHashMap<>(constants));
                 defaultValues = defaultValues == null ? null : defaultValues.clone();
+                enumCases = enumCases == null ? null
+                        : Collections.unmodifiableMap(new LinkedHashMap<>(enumCases));
+            }
+
+            public StateSnapshot(Map<String, StaticValue> statics, Map<String, Object> constants,
+                                 Object[] defaultValues) {
+                this(statics, constants, defaultValues, null);
             }
         }
 
@@ -211,7 +220,21 @@ public final class PhpClass {
                     slots.put(name, new StaticValue(slot.initializedForSnapshot(), slot.rawValueForSnapshot())));
             return new StateSnapshot(slots,
                     constants == null ? null : new LinkedHashMap<>(constants),
-                    defaultValues == null ? null : defaultValues.clone());
+                    defaultValues == null ? null : defaultValues.clone(),
+                    enumCases == null ? null : new LinkedHashMap<>(enumCases));
+        }
+
+        /** The canonical enum case object for {@code caseName}, or null before it is created. */
+        public Object enumCase(String caseName) {
+            return enumCases == null ? null : enumCases.get(caseName);
+        }
+
+        /** Installs a restored canonical enum case object. */
+        public void putEnumCase(String caseName, Object value) {
+            if (enumCases == null) {
+                enumCases = new HashMap<>();
+            }
+            enumCases.put(caseName, value);
         }
 
     }
@@ -234,6 +257,11 @@ public final class PhpClass {
         }
         if (snap.defaultValues() != null) {
             state.defaultValues = snap.defaultValues().clone();
+        }
+        if (snap.enumCases() != null) {
+            for (Map.Entry<String, Object> entry : snap.enumCases().entrySet()) {
+                state.putEnumCase(entry.getKey(), entry.getValue());
+            }
         }
     }
 

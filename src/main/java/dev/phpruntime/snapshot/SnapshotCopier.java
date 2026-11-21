@@ -5,6 +5,7 @@ import dev.phpruntime.builtins.ContextState;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpClass;
 import dev.phpruntime.runtime.PhpClosure;
+import dev.phpruntime.runtime.EnumCaseState;
 import dev.phpruntime.runtime.PhpNativeState;
 import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
@@ -12,9 +13,12 @@ import dev.phpruntime.runtime.PhpReference;
 import dev.phpruntime.runtime.PhpResource;
 import dev.phpruntime.runtime.SplArrayState;
 
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Fills one fresh request context from a snapshot. One instance per restore; the identity map
@@ -36,6 +40,7 @@ final class SnapshotCopier {
 
     private void restoreAll(Snapshot snapshot) {
         ctx.restoreObjectIds(snapshot.nextObjectId, snapshot.nextAnonymousId);
+        ctx.restoreEnumObjectId(snapshot.nextEnumObjectId);
 
         for (Map.Entry<String, PhpClass> entry : snapshot.classes.entrySet()) {
             ctx.restoreClass(entry.getKey(), entry.getValue());
@@ -87,6 +92,98 @@ final class SnapshotCopier {
         }
 
         ContextState.restore(ctx, snapshot.contextState);
+        restoreEnvironment(snapshot.envAdditions);
+    }
+
+    /**
+     * Applies what boot added to the environment on top of this request's own values. A key the
+     * request defines wins, as it would have with the immutable dotenv loader: that loader skips
+     * a variable defined in {@code $_SERVER}, {@code $_ENV} or {@code getenv()}, so a replayed
+     * addition must not appear in any of the three. Keys boot wrote outside the loader (only one
+     * of the three structures) are replayed into that structure alone, since php would have
+     * written them regardless.
+     */
+    private void restoreEnvironment(Snapshot.EnvAdditions additions) {
+        if (additions == null) {
+            return;
+        }
+        if (additions.environmentGlobal()) {
+            ctx.exposeAutoGlobalById(ctx.language().globalId("_ENV"));
+        }
+        if (additions.isEmpty()) {
+            return;
+        }
+        Set<String> loaderKeys = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : additions.putenv().entrySet()) {
+            if (containsKey(additions.server(), entry.getKey())
+                    || containsKey(additions.environment(), entry.getKey())) {
+                loaderKeys.add(entry.getKey());
+            }
+        }
+        // Decide against the request as it arrived, before any addition is written: a key that
+        // is replayed into $_SERVER must not then make its own $_ENV replay look request-supplied.
+        Set<String> defined = new HashSet<>();
+        for (String name : loaderKeys) {
+            if (definedInRequest(name)) {
+                defined.add(name);
+            }
+        }
+        for (Map.Entry<Object, Object> entry : additions.server().entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (loaderKeys.contains(key) ? defined.contains(key) : hasInGlobal("_SERVER", entry.getKey())) {
+                continue;
+            }
+            putInGlobal("_SERVER", entry.getKey(), copyValue(entry.getValue()));
+        }
+        for (Map.Entry<Object, Object> entry : additions.environment().entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (loaderKeys.contains(key) ? defined.contains(key) : hasInGlobal("_ENV", entry.getKey())) {
+                continue;
+            }
+            putInGlobal("_ENV", entry.getKey(), copyValue(entry.getValue()));
+        }
+        for (Map.Entry<String, String> entry : additions.putenv().entrySet()) {
+            if (loaderKeys.contains(entry.getKey())) {
+                if (defined.contains(entry.getKey())) {
+                    continue;
+                }
+            } else if (ContextState.envOverrides(ctx).containsKey(entry.getKey())) {
+                continue;
+            }
+            ContextState.putEnvOverride(ctx, entry.getKey(), entry.getValue());
+        }
+    }
+
+    private static boolean containsKey(Map<Object, Object> map, String key) {
+        for (Object candidate : map.keySet()) {
+            if (String.valueOf(candidate).equals(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasInGlobal(String name, Object key) {
+        Object value = ctx.peekGlobal(name);
+        return value instanceof PhpArray array && array.containsKey(key);
+    }
+
+    private void putInGlobal(String name, Object key, Object value) {
+        Object current = ctx.peekGlobal(name);
+        if (current instanceof PhpArray array) {
+            array.put(key, value);
+        }
+    }
+
+    /** Whether the request already defines a variable in any of the loader's three readers. */
+    private boolean definedInRequest(String name) {
+        if (hasInGlobal("_SERVER", name) || hasInGlobal("_ENV", name)) {
+            return true;
+        }
+        if (System.getenv(name) != null) {
+            return true;
+        }
+        return ContextState.envOverrides(ctx).containsKey(name);
     }
 
     private PhpClass.RequestState.StateSnapshot state(PhpClass.RequestState.StateSnapshot in) {
@@ -110,7 +207,14 @@ final class SnapshotCopier {
                 defaults[i] = copyValue(in.defaultValues()[i]);
             }
         }
-        return new PhpClass.RequestState.StateSnapshot(statics, constants, defaults);
+        Map<String, Object> enumCases = null;
+        if (in.enumCases() != null) {
+            enumCases = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : in.enumCases().entrySet()) {
+                enumCases.put(entry.getKey(), copyValue(entry.getValue()));
+            }
+        }
+        return new PhpClass.RequestState.StateSnapshot(statics, constants, defaults, enumCases);
     }
 
     private Object copyValue(Object v) {
@@ -145,6 +249,9 @@ final class SnapshotCopier {
         }
         if (v instanceof Snapshot.NativeArrayNode nativeArray) {
             return copyNativeArray(nativeArray);
+        }
+        if (v instanceof Snapshot.NativeStateNode nativeState) {
+            return ((RestoredNativeState) nativeState.state()).restoreNativeState(ctx, this::copyValue);
         }
         if (v instanceof PhpNativeState prototype) {
             return prototype.copy();
@@ -195,6 +302,16 @@ final class SnapshotCopier {
         if (existing != null) {
             return existing;
         }
+        // Enum cases are canonical per request: E::CASE, E::from(), cases() and every value
+        // reached through the snapshot must be this one object, with the id it had at capture.
+        EnumCaseState enumCase = node.nativeState instanceof EnumCaseState state ? state : null;
+        if (enumCase != null) {
+            Object canonical = ctx.classState(node.cls).enumCase(enumCase.caseName());
+            if (canonical instanceof PhpObject caseObject) {
+                copies.put(node, caseObject);
+                return caseObject;
+            }
+        }
         PhpObject object = new PhpObject(node.cls, node.id);
         copies.put(node, object);
         // The object exists in the map before its closure and properties are copied, so a
@@ -211,6 +328,9 @@ final class SnapshotCopier {
             values[i] = raw == PhpClass.UNINITIALIZED ? raw : copyValue(raw);
         }
         node.putAll().execute(object, node.keys, values);
+        if (enumCase != null) {
+            ctx.classState(node.cls).putEnumCase(enumCase.caseName(), object);
+        }
         return object;
     }
 

@@ -69,6 +69,16 @@ public final class ContextState {
 
     // ------------------------------------------------------------ snapshot support
 
+    /** The putenv() overrides this request has made, in insertion order; null means unset. */
+    public static java.util.Map<String, String> envOverrides(PhpContext ctx) {
+        return new java.util.LinkedHashMap<>(of(ctx).envOverrides);
+    }
+
+    /** Replays one putenv() effect in a restored request. */
+    public static void putEnvOverride(PhpContext ctx, String name, String value) {
+        of(ctx).envOverrides.put(name, value);
+    }
+
     /** Reasons this request's builtin state cannot go into a boot snapshot, in a stable order. */
     public static java.util.List<String> snapshotRefusals(PhpContext ctx) {
         java.util.List<String> reasons = new java.util.ArrayList<>();

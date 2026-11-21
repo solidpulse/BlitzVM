@@ -16,11 +16,13 @@ import dev.phpruntime.runtime.PhpResource;
 import dev.phpruntime.runtime.PhpStringBuffer;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -43,7 +45,8 @@ final class SnapshotCapture {
     record PreBoot(Map<String, String> globals, Map<String, String> constants,
                    IdentityHashMap<PhpClass, String> classStates, Set<String> functions,
                    Set<String> classes, Set<String> includedFiles, boolean outputStarted,
-                   int headerCount, int status) {
+                   int headerCount, int status, Map<Object, String> server,
+                   Map<Object, String> environment, Map<String, String> putenv) {
 
         boolean hasGlobal(String name) {
             return globals.containsKey(name);
@@ -52,6 +55,11 @@ final class SnapshotCapture {
         boolean hasConstant(String name) {
             return constants.containsKey(name);
         }
+    }
+
+    /** What boot added to the environment, replayed into every restored request. */
+    private record EnvDelta(Map<Object, Object> server, Map<Object, Object> environment,
+                            Map<String, String> putenv) {
     }
 
     static PreBoot beginBoot(PhpContext ctx) {
@@ -78,20 +86,93 @@ final class SnapshotCapture {
         }
         Set<String> included = new LinkedHashSet<>(ctx.snapshotIncludedFiles());
         return new PreBoot(globals, constants, classStates, functions, classes, included,
-                ctx.outputStarted(), ctx.request().responseHeaders.size(), ctx.request().status);
+                ctx.outputStarted(), ctx.request().responseHeaders.size(), ctx.request().status,
+                entryDigests(ctx.peekGlobal("_SERVER")), entryDigests(ctx.peekGlobal("_ENV")),
+                ContextState.envOverrides(ctx));
+    }
+
+    /** Key-level digests of an environment superglobal, so boot-added keys can be told apart. */
+    private static Map<Object, String> entryDigests(Object value) {
+        Map<Object, String> out = new LinkedHashMap<>();
+        if (value instanceof PhpArray array) {
+            for (Map.Entry<Object, Object> entry : array.rawEntries()) {
+                out.put(entry.getKey(), StateFingerprint.digest(entry.getValue()));
+            }
+        }
+        return out;
     }
 
     static Snapshot capture(PhpContext ctx, PreBoot pre) {
-        List<String> reasons = refusalReasons(ctx, pre);
+        List<String> reasons = new ArrayList<>();
+        EnvDelta delta = environmentDelta(ctx, pre, reasons);
+        reasons.addAll(refusalReasons(ctx, pre, delta));
         if (!reasons.isEmpty()) {
             throw new SnapshotRefused(reasons);
         }
-        return new Builder(ctx, pre).build();
+        return new Builder(ctx, pre, delta).build();
+    }
+
+    /**
+     * The environment changes boot made. A key that was not defined before boot and is there
+     * now is recorded for replay; a pre-boot key boot changed or removed is still a refusal.
+     */
+    private static EnvDelta environmentDelta(PhpContext ctx, PreBoot pre, List<String> reasons) {
+        Map<Object, Object> server = addedEntries(ctx.peekGlobal("_SERVER"), pre.server(), "$_SERVER", reasons);
+        Map<Object, Object> environment = addedEntries(ctx.peekGlobal("_ENV"), pre.environment(), "$_ENV", reasons);
+        Map<String, String> now = ContextState.envOverrides(ctx);
+        Map<String, String> putenv = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : now.entrySet()) {
+            if (pre.putenv().containsKey(entry.getKey())) {
+                if (!Objects.equals(pre.putenv().get(entry.getKey()), entry.getValue())) {
+                    reasons.add("boot changed the pre-boot environment variable " + entry.getKey());
+                }
+            } else {
+                putenv.put(entry.getKey(), entry.getValue());
+            }
+        }
+        for (String name : pre.putenv().keySet()) {
+            if (!now.containsKey(name)) {
+                reasons.add("boot removed the pre-boot environment variable " + name);
+            }
+        }
+        return new EnvDelta(server, environment, putenv);
+    }
+
+    /** Superglobals whose boot-added entries are replayed per request, never captured as globals. */
+    private static boolean isEnvironmentGlobal(String name) {
+        return name.equals("_SERVER") || name.equals("_ENV");
+    }
+
+    private static Map<Object, Object> addedEntries(Object current, Map<Object, String> before,
+                                                    String global, List<String> reasons) {
+        if (!(current instanceof PhpArray array)) {
+            if (!before.isEmpty()) {
+                reasons.add("boot changed the pre-boot global " + global);
+            }
+            return Map.of();
+        }
+        Map<Object, Object> added = new LinkedHashMap<>();
+        Set<Object> seen = new HashSet<>();
+        for (Map.Entry<Object, Object> entry : array.rawEntries()) {
+            seen.add(entry.getKey());
+            String previous = before.get(entry.getKey());
+            if (previous == null && !before.containsKey(entry.getKey())) {
+                added.put(entry.getKey(), entry.getValue());
+            } else if (!previous.equals(StateFingerprint.digest(entry.getValue()))) {
+                reasons.add("boot changed the pre-boot global " + global);
+            }
+        }
+        for (Object key : before.keySet()) {
+            if (!seen.contains(key)) {
+                reasons.add("boot removed the pre-boot global " + global);
+            }
+        }
+        return added;
     }
 
     // ---------------------------------------------------------------- refusal checks
 
-    private static List<String> refusalReasons(PhpContext ctx, PreBoot pre) {
+    private static List<String> refusalReasons(PhpContext ctx, PreBoot pre, EnvDelta delta) {
         Set<String> reasons = new LinkedHashSet<>();
         if (ctx.outputStarted() && !pre.outputStarted()) {
             reasons.add(OUTPUT_WRITTEN);
@@ -109,6 +190,11 @@ final class SnapshotCapture {
             globals.put(global.name(), global.cell());
         }
         for (Map.Entry<String, String> entry : pre.globals().entrySet()) {
+            // The environment superglobals are handled key by key in environmentDelta(): boot may
+            // add keys there, which is replayed instead of refused.
+            if (entry.getKey().equals("_SERVER") || entry.getKey().equals("_ENV")) {
+                continue;
+            }
             PhpReference cell = globals.get(entry.getKey());
             if (cell == null) {
                 reasons.add("boot removed the pre-boot global $" + entry.getKey());
@@ -149,7 +235,7 @@ final class SnapshotCapture {
 
         Scanner scanner = new Scanner();
         for (PhpContext.SnapshotGlobal global : ctx.snapshotGlobals()) {
-            if (!pre.hasGlobal(global.name())) {
+            if (!pre.hasGlobal(global.name()) && !isEnvironmentGlobal(global.name())) {
                 scanner.value(global.cell());
             }
         }
@@ -188,6 +274,12 @@ final class SnapshotCapture {
         }
         Object substitute = ContextState.snapshot(ctx).mbSubstitute();
         scanner.value(substitute);
+        for (Object value : delta.server().values()) {
+            scanner.value(value);
+        }
+        for (Object value : delta.environment().values()) {
+            scanner.value(value);
+        }
 
         reasons.addAll(scanner.reasons);
         return new ArrayList<>(reasons);
@@ -300,9 +392,23 @@ final class SnapshotCapture {
                 reasons.add(generator.isClosed() ? "native state of Generator is not supported" : LIVE_GENERATOR);
                 return;
             }
+            if (state instanceof SnapshotNativeState snapshotable) {
+                // Walk whatever request objects the state points at; the descriptor itself holds
+                // only engine-wide values and the values seen here.
+                snapshotable.snapshotNativeState(v -> {
+                    value(v);
+                    return v;
+                });
+                return;
+            }
             String name = state.getClass().getSimpleName();
             switch (name) {
                 case "DateTimeState", "DateTimeZoneState", "DateIntervalState", "SplFileState" -> {
+                }
+                // Reflection metadata and enum cases are engine-wide, except the states that
+                // hold request objects, which implement SnapshotNativeState above.
+                case "TypeState", "MethodState", "PropertyState", "EnumCaseRefState", "ConstantState",
+                        "EnumCaseState" -> {
                 }
                 case "SplArrayState" -> {
                     // The storage is public; walk whatever it points at.
@@ -351,18 +457,20 @@ final class SnapshotCapture {
     private static final class Builder {
         private final PhpContext ctx;
         private final PreBoot pre;
+        private final EnvDelta env;
         private final IdentityHashMap<Object, Object> mapped = new IdentityHashMap<>();
         private final IdentityHashMap<PhpArray, Boolean> pureMemo = new IdentityHashMap<>();
 
-        Builder(PhpContext ctx, PreBoot pre) {
+        Builder(PhpContext ctx, PreBoot pre, EnvDelta env) {
             this.ctx = ctx;
             this.pre = pre;
+            this.env = env;
         }
 
         Snapshot build() {
             List<Snapshot.Global> globals = new ArrayList<>();
             for (PhpContext.SnapshotGlobal global : ctx.snapshotGlobals()) {
-                if (pre.hasGlobal(global.name())) {
+                if (pre.hasGlobal(global.name()) || isEnvironmentGlobal(global.name())) {
                     continue;
                 }
                 globals.add(new Snapshot.Global(global.name(), global.id(), global.dynamic(),
@@ -446,8 +554,34 @@ final class SnapshotCapture {
                 functionTable[fn.id(ctx.language())] = fn;
             }
             return new Snapshot(globals, constants, functions, functionTable, classes, classStates, included,
-                    autoloaders, shutdown, handlers, exceptionHandlers, staticLocals,
-                    ContextState.snapshot(ctx), ctx.snapshotNextObjectId(), ctx.snapshotNextAnonymousId());
+                    autoloaders, shutdown, handlers, exceptionHandlers, staticLocals, envAdditions(),
+                    ContextState.snapshot(ctx), ctx.snapshotNextObjectId(), ctx.snapshotNextEnumObjectId(),
+                    ctx.snapshotNextAnonymousId());
+        }
+
+        private Snapshot.EnvAdditions envAdditions() {
+            Map<Object, Object> server = new LinkedHashMap<>();
+            for (Map.Entry<Object, Object> entry : env.server().entrySet()) {
+                server.put(entry.getKey(), value(entry.getValue()));
+            }
+            Map<Object, Object> environment = new LinkedHashMap<>();
+            for (Map.Entry<Object, Object> entry : env.environment().entrySet()) {
+                environment.put(entry.getKey(), value(entry.getValue()));
+            }
+            return new Snapshot.EnvAdditions(server, environment, new LinkedHashMap<>(env.putenv()),
+                    environmentGlobalExposed());
+        }
+
+        private boolean environmentGlobalExposed() {
+            if (pre.globals().containsKey("_ENV")) {
+                return true;
+            }
+            for (PhpContext.SnapshotGlobal global : ctx.snapshotGlobals()) {
+                if (global.name().equals("_ENV")) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private Object owner(Object owner) {
@@ -487,7 +621,14 @@ final class SnapshotCapture {
                     defaults[i] = value(snap.defaultValues()[i]);
                 }
             }
-            return new PhpClass.RequestState.StateSnapshot(statics, constants, defaults);
+            Map<String, Object> enumCases = null;
+            if (snap.enumCases() != null) {
+                enumCases = new LinkedHashMap<>();
+                for (Map.Entry<String, Object> entry : snap.enumCases().entrySet()) {
+                    enumCases.put(entry.getKey(), value(entry.getValue()));
+                }
+            }
+            return new PhpClass.RequestState.StateSnapshot(statics, constants, defaults, enumCases);
         }
 
         private Object value(Object v) {
@@ -605,15 +746,28 @@ final class SnapshotCapture {
                 throw new SnapshotRefused(List.of(generator.isClosed()
                         ? "native state of Generator is not supported" : LIVE_GENERATOR));
             }
-            String name = state.getClass().getSimpleName();
-            if (name.equals("SplArrayState")) {
-                dev.phpruntime.runtime.SplArrayState arrayState = (dev.phpruntime.runtime.SplArrayState) state;
-                return new Snapshot.NativeArrayNode(value(arrayState.storage.array),
-                        value(arrayState.storage.object), arrayState.flags, arrayState.position,
-                        arrayState.iteratorClass, arrayState.storage.version, arrayState.storage.size);
+            if (state instanceof SnapshotNativeState snapshotable) {
+                return new Snapshot.NativeStateNode(snapshotable.snapshotNativeState(this::value));
             }
-            // DateTime*, DateInterval and SplFileInfo states own no request objects; copy()
-            // produces a prototype whose copy() is taken again for each restore.
+            String name = state.getClass().getSimpleName();
+            switch (name) {
+                case "TypeState", "MethodState", "PropertyState", "EnumCaseRefState", "ConstantState",
+                        "EnumCaseState" -> {
+                    // Immutable metadata, or an enum case descriptor whose object is canonicalized
+                    // by the copier; nothing here belongs to the template request.
+                    return state.copy();
+                }
+                case "SplArrayState" -> {
+                    dev.phpruntime.runtime.SplArrayState arrayState = (dev.phpruntime.runtime.SplArrayState) state;
+                    return new Snapshot.NativeArrayNode(value(arrayState.storage.array),
+                            value(arrayState.storage.object), arrayState.flags, arrayState.position,
+                            arrayState.iteratorClass, arrayState.storage.version, arrayState.storage.size);
+                }
+                default -> {
+                    // DateTime*, DateInterval and SplFileInfo states own no request objects; copy()
+                    // produces a prototype whose copy() is taken again for each restore.
+                }
+            }
             return state.copy();
         }
 

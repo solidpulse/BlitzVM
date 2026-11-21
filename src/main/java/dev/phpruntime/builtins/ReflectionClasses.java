@@ -27,6 +27,8 @@ import dev.phpruntime.runtime.PhpSignature;
 import dev.phpruntime.runtime.PhpStrings;
 import dev.phpruntime.runtime.PhpType;
 import dev.phpruntime.runtime.Visibility;
+import dev.phpruntime.snapshot.RestoredNativeState;
+import dev.phpruntime.snapshot.SnapshotNativeState;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * The Reflection API: {@code Reflector}, the type classes, {@code ReflectionClass},
@@ -60,15 +63,28 @@ public final class ReflectionClasses {
     }
 
     /** The class (and, for ReflectionObject, the instance) behind a ReflectionClass. */
-    private record ClassState(PhpClass cls, PhpObject object) implements PhpNativeState {
+    private record ClassState(PhpClass cls, PhpObject object)
+            implements PhpNativeState, SnapshotNativeState {
         @Override
         public PhpNativeState copy() {
             return new ClassState(cls, object);
         }
+
+        @Override
+        public Object snapshotNativeState(Function<Object, Object> map) {
+            return new ClassStateSnapshot(cls, map.apply(object));
+        }
+
+        private record ClassStateSnapshot(PhpClass cls, Object object) implements RestoredNativeState {
+            @Override
+            public PhpNativeState restoreNativeState(PhpContext ctx, Function<Object, Object> unmap) {
+                return new ClassState(cls, object == null ? null : (PhpObject) unmap.apply(object));
+            }
+        }
     }
 
     /** A function, closure or first-class callable behind a ReflectionFunction. */
-    private static final class FunctionState implements PhpNativeState {
+    private static final class FunctionState implements PhpNativeState, SnapshotNativeState {
         final String name;
         final PhpCallable callable;
         final PhpObject closureObject;
@@ -94,6 +110,30 @@ public final class ReflectionClasses {
         public PhpNativeState copy() {
             return this;
         }
+
+        @Override
+        public Object snapshotNativeState(Function<Object, Object> map) {
+            return new FunctionStateSnapshot(name, map.apply(closureObject), root, builtin, signature,
+                    closure, internal);
+        }
+
+        private record FunctionStateSnapshot(String name, Object closureObject, PhpFunctionRootNode root,
+                                             Builtins.Def builtin, PhpSignature signature, boolean closure,
+                                             boolean internal) implements RestoredNativeState {
+            @Override
+            public PhpNativeState restoreNativeState(PhpContext ctx, Function<Object, Object> unmap) {
+                PhpObject object = closureObject == null ? null : (PhpObject) unmap.apply(closureObject);
+                PhpCallable restored;
+                if (object != null) {
+                    restored = PhpCallable.resolveOrNull(ctx, object);
+                } else if (builtin != null) {
+                    restored = PhpCallable.resolveOrNull(ctx, builtin.name());
+                } else {
+                    restored = PhpCallable.resolveOrNull(ctx, name);
+                }
+                return new FunctionState(name, restored, object, root, builtin, signature, closure, internal);
+            }
+        }
     }
 
     /** A method behind a ReflectionMethod. */
@@ -109,10 +149,27 @@ public final class ReflectionClasses {
     /** One parameter, with the reflection object of its declaring function. */
     private record ParameterState(PhpParameter parameter, int position, PhpClass declaringClass,
                                   PhpFunctionRootNode root, int requiredCount, boolean internal,
-                                  PhpObject declaringFunction) implements PhpNativeState {
+                                  PhpObject declaringFunction)
+            implements PhpNativeState, SnapshotNativeState {
         @Override
         public PhpNativeState copy() {
             return this;
+        }
+
+        @Override
+        public Object snapshotNativeState(Function<Object, Object> map) {
+            return new ParameterStateSnapshot(parameter, position, declaringClass, root, requiredCount,
+                    internal, map.apply(declaringFunction));
+        }
+
+        private record ParameterStateSnapshot(PhpParameter parameter, int position, PhpClass declaringClass,
+                                              PhpFunctionRootNode root, int requiredCount, boolean internal,
+                                              Object declaringFunction) implements RestoredNativeState {
+            @Override
+            public PhpNativeState restoreNativeState(PhpContext ctx, Function<Object, Object> unmap) {
+                return new ParameterState(parameter, position, declaringClass, root, requiredCount,
+                        internal, (PhpObject) unmap.apply(declaringFunction));
+            }
         }
     }
 
@@ -148,11 +205,35 @@ public final class ReflectionClasses {
     }
 
     /** One attribute occurrence, with the declaration it appears on. */
-    private record AttributeState(PhpAttribute attribute, int target, boolean repeated) implements PhpNativeState {
+    private record AttributeState(PhpAttribute attribute, int target, boolean repeated)
+            implements PhpNativeState, SnapshotNativeState {
         @Override
         public PhpNativeState copy() {
             return this;
         }
+
+        @Override
+        public Object snapshotNativeState(Function<Object, Object> map) {
+            return new AttributeStateSnapshot(copyAttribute(attribute, map), target, repeated);
+        }
+
+        private record AttributeStateSnapshot(PhpAttribute attribute, int target, boolean repeated)
+                implements RestoredNativeState {
+            @Override
+            public PhpNativeState restoreNativeState(PhpContext ctx, Function<Object, Object> unmap) {
+                return new AttributeState(copyAttribute(attribute, unmap), target, repeated);
+            }
+        }
+    }
+
+    /** Copies an attribute's argument values through {@code map}, keeping targets shared. */
+    private static PhpAttribute copyAttribute(PhpAttribute attribute, Function<Object, Object> map) {
+        List<PhpAttribute.Argument> arguments = new ArrayList<>(attribute.arguments().size());
+        for (PhpAttribute.Argument argument : attribute.arguments()) {
+            arguments.add(new PhpAttribute.Argument(argument.name(), map.apply(argument.value()),
+                    argument.target()));
+        }
+        return new PhpAttribute(attribute.name(), arguments);
     }
 
     // ---------------------------------------------------------------- registration
@@ -2649,10 +2730,27 @@ public final class ReflectionClasses {
         return filterClass != null && actual != null && actual.isInstanceOf(filterClass);
     }
 
-    private record ReferenceState(PhpReference reference, String id) implements PhpNativeState {
+    private record ReferenceState(PhpReference reference, String id)
+            implements PhpNativeState, SnapshotNativeState {
         @Override
         public PhpNativeState copy() {
             return this;
+        }
+
+        @Override
+        public Object snapshotNativeState(Function<Object, Object> map) {
+            return new ReferenceStateSnapshot(map.apply(reference));
+        }
+
+        private record ReferenceStateSnapshot(Object reference) implements RestoredNativeState {
+            @Override
+            public PhpNativeState restoreNativeState(PhpContext ctx, Function<Object, Object> unmap) {
+                PhpReference restored = (PhpReference) unmap.apply(reference);
+                // getId() is only unique within one request: it must name the restored cell, not
+                // keep the identity hash the template run happened to see.
+                return new ReferenceState(restored,
+                        String.format("%020x", System.identityHashCode(restored)));
+            }
         }
     }
 
