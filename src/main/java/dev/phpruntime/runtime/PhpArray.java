@@ -296,6 +296,34 @@ public final class PhpArray implements TruffleObject {
         return out;
     }
 
+    /** Whether any key is a string; a packed array has none. */
+    @TruffleBoundary
+    public boolean hasStringKey() {
+        if (keys == null) {
+            return false;
+        }
+        for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
+            if (keys[pos] instanceof String) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The raw values (reference cells kept) in order, as a new array: {@link #rawValues} without a list. */
+    @TruffleBoundary
+    public Object[] rawValueArray() {
+        if (keys == null) {
+            return Arrays.copyOf(values, size);
+        }
+        Object[] out = new Object[size];
+        int i = 0;
+        for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
+            out[i++] = values[pos];
+        }
+        return out;
+    }
+
     @TruffleBoundary
     public List<Object> rawValues() {
         List<Object> out = new ArrayList<>(size);

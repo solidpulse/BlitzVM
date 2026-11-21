@@ -67,14 +67,7 @@ final class CallableFunctions {
         }
         if (cb.kind() != PhpCallable.Kind.BUILTIN && cb.kind() != PhpCallable.Kind.MAGIC_CALL
                 && cb.callTarget() != null && dev.phpruntime.nodes.PhpFunctionRootNode.of(cb.callTarget().getRootNode()) instanceof dev.phpruntime.nodes.PhpFunctionRootNode fnRoot) {
-            boolean hasStringKey = false;
-            for (Object k : arr.keys()) {
-                if (k instanceof String) {
-                    hasStringKey = true;
-                    break;
-                }
-            }
-            if (hasStringKey) {
+            if (arr.hasStringKey()) {
                 java.util.List<Object> pos = new java.util.ArrayList<>();
                 java.util.Map<String, Object> named = new java.util.LinkedHashMap<>();
                 boolean seenNamed = false;
@@ -132,7 +125,7 @@ final class CallableFunctions {
                 return dev.phpruntime.nodes.call.CallArgHelper.unwrapReturn(cb.callTarget().call(frameArgs));
             }
         }
-        return cb.call(ctx, null, ctx.currentBuiltinCallSite(), arr.rawValues().toArray());
+        return cb.call(ctx, null, ctx.currentBuiltinCallSite(), arr.rawValueArray());
     }
 
     private static Object splAutoloadRegister(PhpContext ctx, Object[] a) {
