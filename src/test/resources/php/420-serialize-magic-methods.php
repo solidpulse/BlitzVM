@@ -130,6 +130,7 @@ $both = unserialize('C:4:"Both":6:{legacy}');
 echo "both after C ok\n";
 $both2 = unserialize('O:4:"Both":1:{s:1:"z";i:5;}');
 echo "both after O ok\n";
+var_dump(unserialize('O:6:"Legacy":0:{}'));
 
 $child = new stdClass();
 $child->v = 3;

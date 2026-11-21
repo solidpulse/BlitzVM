@@ -410,6 +410,10 @@ final class SerializeFunctions {
     }
 
     private static String displayName(PhpClass cls) {
+        if (cls.template().isAnonymous()) {
+            String parent = cls.template().parentName();
+            return (parent == null ? "class" : parent) + "@anonymous";
+        }
         String name = cls.name();
         int nul = name.indexOf('\0');
         return nul < 0 ? name : name.substring(0, nul);
@@ -417,7 +421,7 @@ final class SerializeFunctions {
 
     /** Internal classes that have no __serialize and are never serializable in php. */
     private static final java.util.Set<String> NEVER_SERIALIZABLE = java.util.Set.of(
-            "closure", "generator", "mysqli", "mysqli_result", "mysqli_stmt", "mysqli_sql_exception");
+            "closure", "generator", "mysqli", "mysqli_result", "mysqli_stmt");
 
     private static boolean isIncomplete(PhpClass cls) {
         return cls.name().equalsIgnoreCase("__PHP_Incomplete_Class");
@@ -832,6 +836,11 @@ final class SerializeFunctions {
             if (cls == null) {
                 cls = ctx.lookupClass("__PHP_Incomplete_Class");
             }
+            if (!isIncomplete(cls) && implementsSerializable(cls)
+                    && cls.lookupMethod("__unserialize") == null) {
+                ctx.warning("Erroneous data format for unserializing '" + cls.name() + "'", 0);
+                throw new Malformed(payloadStart);
+            }
             if (options.maxDepth > 0 && depth > options.maxDepth) {
                 depthError(depth);
             }
@@ -1178,6 +1187,13 @@ final class SerializeFunctions {
         private PhpObject createObject(PhpClass cls) {
             if (cls == null) {
                 cls = ctx.lookupClass("__PHP_Incomplete_Class");
+            }
+            if (NEVER_SERIALIZABLE.contains(cls.lowerName())
+                    || (cls.isBuiltin() && !cls.isThrowable() && !isIncomplete(cls)
+                    && !cls.name().equalsIgnoreCase("stdClass")
+                    && cls.lookupMethod("__unserialize") == null
+                    && !implementsSerializable(cls))) {
+                throw new PhpError("Exception", "Unserialization of '" + displayName(cls) + "' is not allowed", null);
             }
             if (cls.isInterface()) {
                 throw new PhpError("Cannot instantiate interface " + cls.name());
