@@ -16,3 +16,10 @@ echo 'hearts id=', spl_object_id(Suit::Hearts) === $heartsId ? 'same' : 'differe
 echo 'spades id=', spl_object_id(Suit::Spades) === $spadesId ? 'same' : 'different', "\n";
 echo 'distinct=', spl_object_id(Suit::Hearts) !== spl_object_id(Suit::Spades) ? 'yes' : 'no', "\n";
 echo 'name=', Suit::Hearts->name, ' ', Suit::Hearts->value, "\n";
+
+// A case created only after the restore must not reuse a captured enum id.
+enum Fresh
+{
+    case X;
+}
+echo 'fresh id distinct=', spl_object_id(Fresh::X) !== $heartsId ? 'yes' : 'no', "\n";
