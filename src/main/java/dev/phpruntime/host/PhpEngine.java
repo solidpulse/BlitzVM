@@ -53,7 +53,7 @@ public final class PhpEngine implements AutoCloseable {
     private final int maxRequestsPerContext;
     private final ConcurrentHashMap<Path, CachedSource> sources = new ConcurrentHashMap<>();
 
-    private record CachedSource(long modified, Source source) {
+    private record CachedSource(long modified, long size, Source source) {
     }
 
     /**
@@ -317,9 +317,14 @@ public final class PhpEngine implements AutoCloseable {
 
     private Source source(Path script) throws IOException {
         Path abs = script.toAbsolutePath().normalize();
-        long modified = Files.getLastModifiedTime(abs).toMillis();
+        // Size as well as mtime, from the same stat: a file rewritten within the timestamp's
+        // granularity would otherwise keep its old parsed source.
+        java.nio.file.attribute.BasicFileAttributes attrs =
+                Files.readAttributes(abs, java.nio.file.attribute.BasicFileAttributes.class);
+        long modified = attrs.lastModifiedTime().toMillis();
+        long size = attrs.size();
         CachedSource cached = sources.get(abs);
-        if (cached != null && cached.modified() == modified) {
+        if (cached != null && cached.modified() == modified && cached.size() == size) {
             return cached.source();
         }
         // A cached Source lets the shared engine reuse the parsed call target across contexts.
@@ -327,7 +332,7 @@ public final class PhpEngine implements AutoCloseable {
         Source src = Source.newBuilder(language, abs.toFile())
                 .encoding(language.equals("php") ? StandardCharsets.ISO_8859_1 : StandardCharsets.UTF_8)
                 .cached(true).build();
-        sources.put(abs, new CachedSource(modified, src));
+        sources.put(abs, new CachedSource(modified, size, src));
         return src;
     }
 
