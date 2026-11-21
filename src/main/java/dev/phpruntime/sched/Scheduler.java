@@ -49,7 +49,12 @@ public final class Scheduler implements AutoCloseable {
 
     public Scheduler(int cpus, long quantumMillis, long maxExecutionMillis) {
         this.cpus = cpus;
-        this.slots = new Semaphore(cpus, true);
+        // Non-fair: a released slot goes to whichever ready request takes it first. A fair
+        // semaphore hands it to the longest-parked thread, and the slot sits idle until the OS
+        // has woken that thread, which on short requests cost more than the request itself
+        // (hello: 35k req/s fair, 53k non-fair). Preemption keeps its round-robin guarantee in
+        // yieldSlot. -Dblitz.sched.fair=true restores the strict FIFO hand-off.
+        this.slots = new Semaphore(cpus, Boolean.getBoolean("blitz.sched.fair"));
         this.quantumNanos = TimeUnit.MILLISECONDS.toNanos(quantumMillis);
         this.maxCpuNanos = maxExecutionMillis <= 0 ? Long.MAX_VALUE : TimeUnit.MILLISECONDS.toNanos(maxExecutionMillis);
         this.ticker = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -204,9 +209,24 @@ public final class Scheduler implements AutoCloseable {
                 return;
             }
             preemptions.incrementAndGet();
+            long grantsBefore = grants.get();
             onSlotReleased();
+            // With non-fair slots this thread would usually win its own slot straight back; wait
+            // until a waiting request has been granted one (or nobody waits any more) so a
+            // CPU-bound script really goes to the back of the line.
+            TruffleSafepoint.setBlockedThreadInterruptible(location, (Long g) -> awaitHandoff(g), grantsBefore);
             TruffleSafepoint.setBlockedThreadInterruptible(location, Semaphore::acquire, slots);
             onSlotAcquired();
+        }
+
+        private void awaitHandoff(long grantsBefore) throws InterruptedException {
+            Scheduler s = Scheduler.this;
+            while (s.grants.get() == grantsBefore && s.slots.hasQueuedThreads()) {
+                java.util.concurrent.locks.LockSupport.parkNanos(20_000);
+                if (Thread.interrupted()) {
+                    throw new InterruptedException();
+                }
+            }
         }
 
         @Override
