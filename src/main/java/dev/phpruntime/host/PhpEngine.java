@@ -185,7 +185,7 @@ public final class PhpEngine implements AutoCloseable {
             try {
                 ctx.eval(source);
                 // A clean run may be pooled again; everything else closes the context below.
-                reusable = !task.timedOut() && !php.endedAbnormally()
+                reusable = (task == null || !task.timedOut()) && !php.endedAbnormally()
                         && borrowed.uses < maxRequestsPerContext;
                 return request.status;
             } catch (PolyglotException e) {
