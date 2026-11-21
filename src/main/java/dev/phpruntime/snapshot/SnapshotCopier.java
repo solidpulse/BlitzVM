@@ -1,6 +1,5 @@
 package dev.phpruntime.snapshot;
 
-import com.oracle.truffle.api.object.DynamicObject;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.builtins.ContextState;
 import dev.phpruntime.runtime.PhpArray;
@@ -206,11 +205,12 @@ final class SnapshotCopier {
         if (node.nativeState != null) {
             object.setNativeState((PhpNativeState) copyValue(node.nativeState));
         }
-        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
-        for (int i = 0; i < node.keys.length; i++) {
+        Object[] values = new Object[node.keys.length];
+        for (int i = 0; i < values.length; i++) {
             Object raw = node.values[i];
-            put.execute(object, node.keys[i], raw == PhpClass.UNINITIALIZED ? raw : copyValue(raw));
+            values[i] = raw == PhpClass.UNINITIALIZED ? raw : copyValue(raw);
         }
+        node.putAll().execute(object, node.keys, values);
         return object;
     }
 

@@ -43,10 +43,25 @@ public final class Snapshot {
         Object[] values;
         ClosureNode closure;
         Object nativeState;
+        /**
+         * Puts every property of a restored copy in one step. Its cache holds the transition from
+         * the class's root shape to this object's final shape, so a restore neither looks up
+         * transitions property by property nor creates shapes again once old copies are gone.
+         */
+        private volatile com.oracle.truffle.api.object.DynamicObject.PutAllNode putAll;
 
         ObjectNode(PhpClass cls, long id) {
             this.cls = cls;
             this.id = id;
+        }
+
+        com.oracle.truffle.api.object.DynamicObject.PutAllNode putAll() {
+            com.oracle.truffle.api.object.DynamicObject.PutAllNode node = putAll;
+            if (node == null) {
+                node = com.oracle.truffle.api.object.DynamicObject.PutAllNode.create();
+                putAll = node;
+            }
+            return node;
         }
     }
 
