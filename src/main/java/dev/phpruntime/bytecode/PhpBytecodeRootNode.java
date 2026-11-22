@@ -4772,6 +4772,346 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     // ---- 17d: last coverage
 
+    // ------------------------------------------------------------------ named calls without spread
+
+    /** Starts a named call's compact argument buffer and resolves this callee's binding plan. */
+    @Operation
+    @ConstantOperand(type = NamedArgs.Spec.class)
+    public static final class StartNamedArgs {
+        @Specialization
+        static Object start(NamedArgs.Spec spec, Object callee,
+                            @Cached("create()") NamedArgs.Cache cache) {
+            return new NamedArgs.Buffer(spec, cache.planFor(callee, spec));
+        }
+    }
+
+    /** One variable argument of a named call, stored at its constant call-site index. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "index")
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    @ConstantOperand(type = LocalAccessor.class, name = "args")
+    public static final class NamedVarArg {
+        @Specialization
+        static void add(VirtualFrame frame, int index, String name, LocalAccessor acc, VarInfo info,
+                        LocalAccessor calleeLocal, LocalAccessor argsLocal, @Bind BytecodeNode bytecode,
+                        @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                        @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
+            NamedArgs.Buffer args = (NamedArgs.Buffer) argsLocal.getObject(bytecode, frame);
+            int mode = args.mode(index);
+            if (mode < 0) {
+                mode = NamedArgs.genericMode(callee, name.isEmpty() ? null : name, index);
+            }
+            if (mode == NamedArgs.MODE_REF) {
+                Object cell = "this".equals(info.name())
+                        ? new PhpReference(ReadVar.read(frame, acc, info, bytecode, bci, node))
+                        : ObtainVarCell.obtain(frame, acc, info, bytecode);
+                if (args.spec.duplicate(index)) {
+                    NamedArgs.throwDuplicate(name, location);
+                }
+                args.values[index] = cell;
+                return;
+            }
+            if (mode == NamedArgs.MODE_MAGIC) {
+                Object v = ReadVar.read(frame, acc, info, bytecode, bci, node);
+                if (args.spec.duplicate(index)) {
+                    NamedArgs.throwDuplicate(name, location);
+                }
+                args.values[index] = PhpOps.copyOnAssign(v);
+                return;
+            }
+            Object v = current(frame, acc, bytecode);
+            v = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
+            if (args.spec.duplicate(index)) {
+                NamedArgs.throwDuplicate(name, location);
+            }
+            args.values[index] = v;
+            if (mode == NamedArgs.MODE_BUILTIN_REF) {
+                args.setRef(index, new LocalLValue(acc, info, bytecode), dev.phpruntime.nodes.var.LValueNode.NO_KEYS);
+            }
+        }
+    }
+
+    /** One place argument of a named call, stored at its constant call-site index. */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "index")
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    @ConstantOperand(type = LocalAccessor.class, name = "args")
+    public static final class NamedPlaceArg {
+        @Specialization
+        static void add(VirtualFrame frame, PlaceSpec spec, int index, String name, LocalAccessor calleeLocal,
+                        LocalAccessor argsLocal, Object prepared, @Bind BytecodeNode bytecode,
+                        @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                        @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                        @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
+            NamedArgs.Buffer args = (NamedArgs.Buffer) argsLocal.getObject(bytecode, frame);
+            Object[] keys = ((PreparedPlace) prepared).keys();
+            int mode = args.mode(index);
+            if (mode < 0) {
+                mode = NamedArgs.genericMode(callee, name.isEmpty() ? null : name, index);
+            }
+            if (mode == NamedArgs.MODE_REF) {
+                if (spec.template() instanceof dev.phpruntime.nodes.var.GlobalVarNode gv
+                        && gv.isGlobalsSuperglobal()) {
+                    throw NamedArgs.globalsByRef(args, callee, index, name.isEmpty() ? null : name, location);
+                }
+                Object cell = engine.obtainCell(frame, keys);
+                if (args.spec.duplicate(index)) {
+                    NamedArgs.throwDuplicate(name, location);
+                }
+                args.values[index] = cell;
+                return;
+            }
+            if (mode == NamedArgs.MODE_MAGIC) {
+                Object v = engine.readValue(frame, keys);
+                if (args.spec.duplicate(index)) {
+                    NamedArgs.throwDuplicate(name, location);
+                }
+                args.values[index] = PhpOps.copyOnAssign(v);
+                return;
+            }
+            Object v = engine.read(frame, keys);
+            v = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
+            if (args.spec.duplicate(index)) {
+                NamedArgs.throwDuplicate(name, location);
+            }
+            args.values[index] = v;
+            if (mode == NamedArgs.MODE_BUILTIN_REF) {
+                args.setRef(index, engine, keys);
+            }
+        }
+    }
+
+    /** One plain expression argument of a named call. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "index")
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = int.class, name = "kind")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    @ConstantOperand(type = LocalAccessor.class, name = "args")
+    public static final class NamedValueArg {
+        @Specialization
+        static void add(VirtualFrame frame, int index, String name, int kind, LocalAccessor calleeLocal,
+                        LocalAccessor argsLocal, Object value, @Bind BytecodeNode bytecode,
+                        @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                        @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            Object callee = calleeLocal.getObject(bytecode, frame);
+            NamedArgs.Buffer args = (NamedArgs.Buffer) argsLocal.getObject(bytecode, frame);
+            PhpReference returned = value instanceof PhpReference r ? r : null;
+            if (returned != null) {
+                value = CallArgHelper.unwrapReturn(returned);
+            }
+            int mode = args.mode(index);
+            if (mode < 0) {
+                mode = NamedArgs.genericMode(callee, name.isEmpty() ? null : name, index);
+            }
+            Object v;
+            if (mode == NamedArgs.MODE_REF) {
+                if (returned != null) {
+                    // A by-reference return becomes the argument cell only where the callee
+                    // declares the parameter by reference in guest code; an internal method
+                    // takes the value, as the positional path does.
+                    if ((args.plan != null && args.plan.kind == NamedArgs.KIND_INTERNAL)
+                            || (args.plan == null && NamedArgs.isInternalCallee(callee))) {
+                        v = PhpOps.copyOnAssign(value);
+                    } else {
+                        returned.ensureDefined();
+                        v = returned;
+                    }
+                } else {
+                    v = NamedArgs.valueToRef(value, kind, args, callee, index,
+                            name.isEmpty() ? null : name, location, lineOf(bytecode, bci));
+                }
+            } else {
+                v = PhpOps.copyOnAssign(value);
+            }
+            if (args.spec.duplicate(index)) {
+                NamedArgs.throwDuplicate(name, location);
+            }
+            args.values[index] = v;
+        }
+    }
+
+    /** {@code f(name: v)} without spread: bind from the plan and call. */
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
+    public static final class DoNamedFunction {
+        @Specialization
+        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object argsObj,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
+            NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
+            Builtins.Def builtin = builtinCallee(callee);
+            if (builtin != null) {
+                NamedArgs.Plan plan = buffer.plan;
+                if (plan != null) {
+                    if (plan.hasError()) {
+                        plan.throwError(location);
+                    }
+                    return NamedArgs.callBuiltin(frame, builtin, buffer, plan, location);
+                }
+                return Ops.callComplexBuiltinBoundary(frame.materialize(), builtin, NamedArgs.toRaw(buffer), location);
+            }
+            PhpFunction fn = (PhpFunction) callee;
+            NamedArgs.Plan plan = buffer.plan;
+            Object[] args;
+            if (plan != null) {
+                if (plan.hasError()) {
+                    plan.throwError(location);
+                }
+                args = NamedArgs.bind(plan, plan.prefixLength, null, null, null, buffer.values);
+            } else {
+                PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
+                args = CallArgHelper.bindToFunction(new Object[0], NamedArgs.toRaw(buffer), fnRoot, location);
+            }
+            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args));
+        }
+    }
+
+    /** {@code $obj->m(name: v)} / {@code C::m(name: v)} without spread. */
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
+    public static final class DoNamedMethod {
+        @Specialization
+        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object argsObj,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
+            MethodCallee m = (MethodCallee) callee;
+            NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
+            if (m.entry() == null) {
+                return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
+                        m.obj(), m.cls(), m.name(), NamedArgs.magicArray(buffer)}));
+            }
+            NamedArgs.Plan plan = buffer.plan;
+            if (plan != null) {
+                if (plan.hasError()) {
+                    plan.throwError(location);
+                }
+                Object[] args = NamedArgs.bind(plan, plan.prefixLength, m.thisArg(), m.cls(), null, buffer.values);
+                return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
+            }
+            CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
+            PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
+            Object[] args = fnRoot != null
+                    ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
+                    : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
+                            m.entry().parameterNames(), location);
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
+        }
+    }
+
+    /** {@code new C(name: v)} without spread. */
+    @Operation
+    public static final class DoNamedConstructor {
+        @Specialization
+        static Object call(VirtualFrame frame, Object object, Object callee, Object argsObj,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
+            PhpObject obj = (PhpObject) object;
+            NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
+            if (callee instanceof MethodCallee m) {
+                NamedArgs.Plan plan = buffer.plan;
+                if (plan != null) {
+                    if (plan.hasError()) {
+                        plan.throwError(location);
+                    }
+                    Object[] args = NamedArgs.bind(plan, plan.prefixLength, m.thisArg(), m.cls(), null, buffer.values);
+                    dispatch.callMethod(m.entry(), args);
+                } else {
+                    CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
+                    PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
+                    Object[] args = fnRoot != null
+                            ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
+                            : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
+                                    m.entry().parameterNames(), location);
+                    dispatch.callMethod(m.entry(), args);
+                }
+            } else {
+                String name = buffer.spec.firstName();
+                if (name != null) {
+                    CompilerDirectives.transferToInterpreter();
+                    throw new PhpError("Unknown named parameter $" + name, location);
+                }
+            }
+            return obj;
+        }
+    }
+
+    /** {@code $f(name: v)} without spread. */
+    @Operation
+    @ConstantOperand(type = boolean.class, name = "keepRef")
+    public static final class DoNamedValue {
+        @Specialization
+        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object argsObj,
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
+            ValueCallee v = (ValueCallee) callee;
+            dev.phpruntime.runtime.PhpCallable cb = v.callable();
+            NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
+            NamedArgs.Plan plan = buffer.plan;
+            Object result;
+            switch (cb.kind()) {
+                case CLOSURE -> {
+                    Object[] args = namedValueArgs(plan, buffer, 3, cb.boundThis(), cb.calledClass(),
+                            cb.closureObj(), v.sig(), location);
+                    result = dispatch.call(cb.callTarget(), args);
+                }
+                case USER_FUNCTION -> {
+                    Object[] args = namedValueArgs(plan, buffer, 0, null, null, null, v.sig(), location);
+                    result = dispatch.call(cb.callTarget(), args);
+                }
+                case METHOD -> {
+                    int prefix = cb.traitSelf() != null ? 3 : 2;
+                    Object[] args = namedValueArgs(plan, buffer, prefix, cb.boundThis(), cb.calledClass(),
+                            cb.traitSelf(), v.sig(), location);
+                    result = dispatch.call(cb.callTarget(), args);
+                }
+                case MAGIC_CALL -> result = dispatch.call(cb.callTarget(), new Object[]{
+                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), NamedArgs.magicArray(buffer)});
+                case BUILTIN -> {
+                    if (plan != null) {
+                        if (plan.hasError()) {
+                            plan.throwError(location);
+                        }
+                        result = NamedArgs.callBuiltin(frame, cb.builtin(), buffer, plan, location);
+                    } else {
+                        result = Ops.callComplexBuiltinBoundary(frame.materialize(), cb.builtin(),
+                                NamedArgs.toRaw(buffer), location);
+                    }
+                }
+                default -> throw CompilerDirectives.shouldNotReachHere();
+            }
+            return Ops.ret(keepRef, result);
+        }
+
+        private static Object[] namedValueArgs(NamedArgs.Plan plan, NamedArgs.Buffer buffer, int prefix,
+                                               Object a, Object b, Object c, PhpFunctionRootNode fnRoot,
+                                               SiteNode location) {
+            if (plan != null) {
+                if (plan.hasError()) {
+                    plan.throwError(location);
+                }
+                return NamedArgs.bind(plan, plan.prefixLength, a, b, c, buffer.values);
+            }
+            Object[] prefixArgs = switch (prefix) {
+                case 3 -> new Object[]{a, b, c};
+                case 2 -> new Object[]{a, b};
+                default -> new Object[0];
+            };
+            return CallArgHelper.bindToFunction(prefixArgs, NamedArgs.toRaw(buffer), fnRoot, location);
+        }
+    }
+
     /** A fresh mutable argument list for one call with spread or named arguments. */
     @Operation
     public static final class NewRawArgs {

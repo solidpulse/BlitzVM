@@ -1157,6 +1157,71 @@ public final class BytecodeEmitter {
     }
 
     /**
+     * A named call without spread: one pre-sized value buffer, then each argument is evaluated
+     * into its constant index. The site's names and argument forms are a constant operand, so
+     * binding can be planned once per callee.
+     */
+    public void namedArgs(PhpNode[] args, dev.phpruntime.nodes.var.LValueNode[] refTargets,
+                          String[] argNames, BytecodeLocal callee, BytecodeLocal argsLocal) {
+        byte[] kinds = new byte[args.length];
+        for (int i = 0; i < args.length; i++) {
+            kinds[i] = namedArgKind(refTargets != null ? refTargets[i] : null);
+        }
+        b.beginStoreLocal(argsLocal);
+        b.beginStartNamedArgs(new NamedArgs.Spec(argNames, kinds));
+        b.emitLoadLocal(callee);
+        b.endStartNamedArgs();
+        b.endStoreLocal();
+        for (int i = 0; i < args.length; i++) {
+            namedArg(args[i], refTargets != null ? refTargets[i] : null,
+                    argNames != null ? argNames[i] : null, kinds[i], i, callee, argsLocal);
+        }
+    }
+
+    /** How a named call's argument is prepared, matching {@link #complexArg}'s classification. */
+    private byte namedArgKind(dev.phpruntime.nodes.var.LValueNode refTarget) {
+        if (refTarget instanceof LocalVarNode) {
+            return NamedArgs.ARG_VAR;
+        }
+        if (refTarget != null && isPlace(refTarget)) {
+            return NamedArgs.ARG_PLACE;
+        }
+        if (refTarget == null) {
+            return NamedArgs.ARG_VALUE;
+        }
+        throw new Unsupported("named argument from " + refTarget.getClass().getSimpleName());
+    }
+
+    /** One argument of a named call, evaluated into its constant buffer index. */
+    public void namedArg(PhpNode arg, dev.phpruntime.nodes.var.LValueNode refTarget, String name, byte kind,
+                         int index, BytecodeLocal callee, BytecodeLocal argsLocal) {
+        String n = name == null ? "" : name;
+        if (kind == NamedArgs.ARG_VAR) {
+            LocalVarNode lv = (LocalVarNode) refTarget;
+            b.emitNamedVarArg(index, n, accessor(lv), info(lv), callee, argsLocal);
+            return;
+        }
+        if (kind == NamedArgs.ARG_PLACE) {
+            BytecodeLocal prepared = temp();
+            b.beginStoreLocal(prepared);
+            place(refTarget, PhpBytecodeRootNode.P_KEYS, 0, null);
+            b.endStoreLocal();
+            b.beginNamedPlaceArg(placeSpec(refTarget), index, n, callee, argsLocal);
+            b.emitLoadLocal(prepared);
+            b.endNamedPlaceArg();
+            return;
+        }
+        int valueKind = arg instanceof dev.phpruntime.nodes.expr.NewNode ? 2
+                : (arg instanceof dev.phpruntime.nodes.call.CallNode
+                || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
+                || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
+        b.beginNamedValueArg(index, n, valueKind, callee, argsLocal);
+        exprForRef(arg);
+        b.endNamedValueArg();
+    }
+
+    /**
      * One argument of a spread/named call. A variable or place keeps its cell/keys so a
      * by-reference parameter or a by-reference builtin still receives the right cell.
      */

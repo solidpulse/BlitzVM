@@ -1,0 +1,864 @@
+package dev.phpruntime.bytecode;
+
+import com.oracle.truffle.api.CompilerDirectives;
+import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.RootCallTarget;
+import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.Node;
+import dev.phpruntime.builtins.BuiltinParams;
+import dev.phpruntime.builtins.Builtins;
+import dev.phpruntime.nodes.PhpFunctionRootNode;
+import dev.phpruntime.nodes.call.CallArgHelper;
+import dev.phpruntime.nodes.var.LValueNode;
+import dev.phpruntime.runtime.PhpArray;
+import dev.phpruntime.runtime.PhpError;
+import dev.phpruntime.runtime.PhpFunction;
+import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpOps;
+import dev.phpruntime.runtime.PhpReference;
+
+import java.util.List;
+
+/**
+ * Compact argument buffer and per-site binding plan for calls that use named arguments and no
+ * spread. The emitter knows the argument count and names, so a call allocates one value array
+ * in call-site order and stores each argument at a constant index; the by-reference side table
+ * is allocated only when an argument goes to a by-reference parameter. The plan maps each
+ * argument to its parameter slot once per callee, so binding does not scan parameter names or
+ * build maps on every call.
+ */
+final class NamedArgs {
+
+    static final byte ARG_VALUE = 0;
+    static final byte ARG_VAR = 1;
+    static final byte ARG_PLACE = 2;
+
+    static final byte MODE_VALUE = 0;
+    static final byte MODE_REF = 1;
+    static final byte MODE_BUILTIN_REF = 2;
+    /** A magic call reads a place as a plain value, without the lvalue read's warning. */
+    static final byte MODE_MAGIC = 3;
+
+    static final byte KIND_USER = 0;
+    static final byte KIND_BUILTIN = 1;
+    static final byte KIND_INTERNAL = 2;
+
+    private static final Object NO_DEFAULT = new Object();
+    private static final int CACHE_LIMIT = 4;
+
+    private NamedArgs() {
+    }
+
+    /** The call site's argument names (null for a positional argument) and argument forms. */
+    static final class Spec {
+        final String[] names;
+        final byte[] kinds;
+        private final boolean[] duplicates;
+
+        Spec(String[] names, byte[] kinds) {
+            this.names = names.clone();
+            this.kinds = kinds.clone();
+            this.duplicates = new boolean[names.length];
+            for (int i = 0; i < names.length; i++) {
+                if (names[i] == null) {
+                    continue;
+                }
+                for (int j = 0; j < i; j++) {
+                    if (names[i].equals(names[j])) {
+                        duplicates[i] = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        /** The name of the named argument at {@code index}, or null. */
+        String name(int index) {
+            return names[index];
+        }
+
+        byte kind(int index) {
+            return kinds[index];
+        }
+
+        int length() {
+            return names.length;
+        }
+
+        /** Whether the named argument at {@code index} repeats a name used earlier. */
+        boolean duplicate(int index) {
+            return duplicates[index];
+        }
+
+        String firstName() {
+            for (String name : names) {
+                if (name != null) {
+                    return name;
+                }
+            }
+            return null;
+        }
+    }
+
+    /** One call's evaluated arguments, in call-site order. */
+    static final class Buffer {
+        final Spec spec;
+        final Plan plan;
+        final Object[] values;
+        private LValueNode[] refs;
+        private Object[][] refKeys;
+
+        Buffer(Spec spec, Plan plan) {
+            this.spec = spec;
+            this.plan = plan;
+            this.values = new Object[spec.length()];
+        }
+
+        /** The by-reference mode of an argument; -1 when only the generic path can decide. */
+        int mode(int index) {
+            return plan == null ? -1 : plan.mode[index];
+        }
+
+        void setRef(int index, LValueNode ref, Object[] keys) {
+            if (refs == null) {
+                refs = new LValueNode[values.length];
+                refKeys = new Object[values.length][];
+            }
+            refs[index] = ref;
+            refKeys[index] = keys;
+        }
+
+        LValueNode ref(int index) {
+            return refs == null ? null : refs[index];
+        }
+
+        Object[] refKeys(int index) {
+            return refKeys == null ? null : refKeys[index];
+        }
+    }
+
+    /** How one call site binds its arguments for one callee. Built once, then immutable. */
+    static final class Plan {
+        final Spec spec;
+        final byte kind;
+        final PhpFunctionRootNode fn;
+        final Builtins.Def def;
+        final int prefixLength;
+        /** Argument index to parameter slot; -1 for a named variadic entry, -2 when ignored. */
+        final int[] dest;
+        /** Slot to argument index, or -1 for a default/unpassed slot. */
+        final int[] slotArg;
+        /** Per slot: the builtin default, or {@link #NO_DEFAULT}. */
+        final Object[] defaults;
+        final int totalSlots;
+        /** Slot of the trailing {@code NamedVariadic}, or -1. */
+        final int variadicSlot;
+        final boolean variadicByRef;
+        final byte[] mode;
+        final String error;
+        final boolean errorIsArgumentCount;
+
+        Plan(Spec spec, byte kind, PhpFunctionRootNode fn, Builtins.Def def, int prefixLength,
+             int[] dest, int[] slotArg, Object[] defaults, int totalSlots, int variadicSlot,
+             boolean variadicByRef, byte[] mode, String error, boolean errorIsArgumentCount) {
+            this.spec = spec;
+            this.kind = kind;
+            this.fn = fn;
+            this.def = def;
+            this.prefixLength = prefixLength;
+            this.dest = dest;
+            this.slotArg = slotArg;
+            this.defaults = defaults;
+            this.totalSlots = totalSlots;
+            this.variadicSlot = variadicSlot;
+            this.variadicByRef = variadicByRef;
+            this.mode = mode;
+            this.error = error;
+            this.errorIsArgumentCount = errorIsArgumentCount;
+        }
+
+        boolean hasError() {
+            return error != null;
+        }
+
+        /** Throws the binding error this callee always raises for this site. */
+        @TruffleBoundary
+        void throwError(Node site) {
+            if (errorIsArgumentCount) {
+                throw new PhpError(PhpError.ARGUMENT_COUNT, error, site);
+            }
+            throw new PhpError(error, site);
+        }
+
+        /** The parameter a named argument bound to a by-reference parameter writes. */
+        int refParam(int arg) {
+            int d = dest[arg];
+            if (d >= 0) {
+                return d;
+            }
+            return d == -1 ? fn.normalParamCount() : -1;
+        }
+    }
+
+    // ------------------------------------------------------------------ per-site plan cache
+
+    private record Entry(Object key, int kind, Plan plan) {
+    }
+
+    private static final Entry[] EMPTY = new Entry[0];
+
+    /**
+     * The per-instruction plan cache. At most {@link #CACHE_LIMIT} callees are cached; a site
+     * that sees more goes megamorphic and uses the generic binding. Entries are immutable and
+     * published as one array, as other requests read the cache without the lock.
+     */
+    static final class Cache extends Node {
+        @CompilationFinal(dimensions = 1) private Entry[] entries = EMPTY;
+
+        static Cache create() {
+            return new Cache();
+        }
+
+        Plan planFor(Object callee, Spec spec) {
+            Object key = keyOf(callee);
+            int kind = kindOf(callee);
+            if (key == null) {
+                return null;
+            }
+            Entry[] snapshot = entries;
+            for (Entry entry : snapshot) {
+                if (entry.key() == key && entry.kind() == kind) {
+                    return entry.plan();
+                }
+            }
+            if (snapshot.length >= CACHE_LIMIT) {
+                return null;
+            }
+            return planSlow(callee, spec, key, kind);
+        }
+
+        @TruffleBoundary
+        private Plan planSlow(Object callee, Spec spec, Object key, int kind) {
+            java.util.concurrent.locks.Lock lock = getLock();
+            lock.lock();
+            try {
+                Entry[] snapshot = entries;
+                for (Entry entry : snapshot) {
+                    if (entry.key() == key && entry.kind() == kind) {
+                        return entry.plan();
+                    }
+                }
+                if (snapshot.length >= CACHE_LIMIT) {
+                    return null;
+                }
+                Plan plan = build(callee, spec);
+                Entry[] next = java.util.Arrays.copyOf(snapshot, snapshot.length + 1);
+                next[snapshot.length] = new Entry(key, kind, plan);
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                java.lang.invoke.VarHandle.storeStoreFence();
+                entries = next;
+                return plan;
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * The cache key: the part of the callee that decides binding. A request-local wrapper
+     * object (a method callee, a callable value) is not part of the key.
+     */
+    static Object keyOf(Object callee) {
+        if (callee instanceof Builtins.Def) {
+            return callee;
+        }
+        if (callee instanceof PhpFunction fn) {
+            return rootOf(fn.callTarget());
+        }
+        if (callee instanceof PhpBytecodeRootNode.MethodCallee m) {
+            if (m.entry() == null) {
+                return null;
+            }
+            // Prefer the declared function (shared AST) and fall back to the call target, which
+            // belongs to the class template: a MethodEntry may be built per request.
+            PhpFunctionRootNode root = m.sigTarget() != null ? rootOf(m.sigTarget()) : null;
+            return root != null ? root : m.sigTarget();
+        }
+        if (callee instanceof PhpBytecodeRootNode.ValueCallee v) {
+            dev.phpruntime.runtime.PhpCallable cb = v.callable();
+            return switch (cb.kind()) {
+                case BUILTIN -> cb.builtin();
+                case MAGIC_CALL -> null;
+                default -> v.sig() != null ? v.sig() : rootOf(cb.callTarget());
+            };
+        }
+        return null;
+    }
+
+    /** Distinguishes callee shapes with the same binding key but a different argument prefix. */
+    static int kindOf(Object callee) {
+        if (callee instanceof Builtins.Def) {
+            return 1;
+        }
+        if (callee instanceof PhpFunction) {
+            return 2;
+        }
+        if (callee instanceof PhpBytecodeRootNode.MethodCallee) {
+            return 3;
+        }
+        if (callee instanceof PhpBytecodeRootNode.ValueCallee v) {
+            dev.phpruntime.runtime.PhpCallable cb = v.callable();
+            return switch (cb.kind()) {
+                case CLOSURE -> 4;
+                case USER_FUNCTION -> 5;
+                case METHOD -> 6 + (cb.traitSelf() != null ? 1 : 0);
+                case MAGIC_CALL -> 8;
+                case BUILTIN -> 9;
+            };
+        }
+        return 0;
+    }
+
+    static PhpFunctionRootNode rootOf(RootCallTarget target) {
+        return target == null ? null : PhpFunctionRootNode.of(target.getRootNode());
+    }
+
+    // ------------------------------------------------------------------ plan construction
+
+    @TruffleBoundary
+    static Plan build(Object callee, Spec spec) {
+        if (callee instanceof Builtins.Def def) {
+            return buildBuiltin(def, spec, 0);
+        }
+        if (callee instanceof PhpFunction fn) {
+            PhpFunctionRootNode fnRoot = rootOf(fn.callTarget());
+            return fnRoot == null ? null : buildUser(fnRoot, spec, 0);
+        }
+        if (callee instanceof PhpBytecodeRootNode.MethodCallee m) {
+            if (m.entry() == null) {
+                return null;
+            }
+            PhpFunctionRootNode fnRoot = m.sigTarget() != null ? rootOf(m.sigTarget()) : null;
+            if (fnRoot != null) {
+                return buildUser(fnRoot, spec, 2);
+            }
+            long refMask = m.sigTarget() != null
+                    ? PhpBytecodeRootNode.Ops.refMaskSlow(m.sigTarget().getRootNode()) : 0L;
+            return buildInternal(m.entry().parameterNames(), spec, 2, refMask);
+        }
+        if (callee instanceof PhpBytecodeRootNode.ValueCallee v) {
+            dev.phpruntime.runtime.PhpCallable cb = v.callable();
+            if (cb.kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
+                return buildBuiltin(cb.builtin(), spec, 0);
+            }
+            if (cb.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL) {
+                return null;
+            }
+            PhpFunctionRootNode fnRoot = v.sig() != null ? v.sig() : rootOf(cb.callTarget());
+            if (fnRoot == null) {
+                return null;
+            }
+            int prefix = switch (cb.kind()) {
+                case CLOSURE -> 3;
+                case METHOD -> cb.traitSelf() != null ? 3 : 2;
+                default -> 0;
+            };
+            return buildUser(fnRoot, spec, prefix);
+        }
+        return null;
+    }
+
+    private static Plan buildUser(PhpFunctionRootNode fn, Spec spec, int prefix) {
+        int argc = spec.length();
+        int normal = fn.normalParamCount();
+        boolean variadic = fn.isVariadic();
+        int[] dest = new int[argc];
+        int[] slotArg = new int[normal];
+        java.util.Arrays.fill(slotArg, -1);
+        boolean[] occupied = new boolean[normal];
+        int positional = 0;
+        for (int i = 0; i < argc; i++) {
+            if (spec.name(i) == null) {
+                dest[i] = positional;
+                if (positional < normal) {
+                    occupied[positional] = true;
+                }
+                positional++;
+            }
+        }
+        String error = null;
+        int highest = positional - 1;
+        for (int i = 0; i < argc; i++) {
+            String name = spec.name(i);
+            if (name == null) {
+                continue;
+            }
+            int idx = paramIndex(fn, name);
+            if (idx >= 0) {
+                dest[i] = idx;
+                if (error == null && (idx < positional || occupied[idx])) {
+                    error = "Named parameter $" + name + " overwrites previous argument";
+                }
+                occupied[idx] = true;
+                slotArg[idx] = i;
+                highest = Math.max(highest, idx);
+            } else if (variadic) {
+                dest[i] = -1;
+            } else {
+                dest[i] = -2;
+                if (error == null) {
+                    error = "Unknown named parameter $" + name;
+                }
+            }
+        }
+        int variadicSlot = -1;
+        int totalSlots;
+        if (hasVariadicEntry(dest)) {
+            totalSlots = Math.max(positional, normal);
+            variadicSlot = totalSlots;
+        } else {
+            totalSlots = Math.max(positional, highest + 1);
+        }
+        byte[] mode = new byte[argc];
+        for (int i = 0; i < argc; i++) {
+            int d = dest[i];
+            boolean byRef = d >= 0 ? fn.isParamByRef(d) : d == -1 && fn.isParamByRef(normal);
+            mode[i] = byRef ? MODE_REF : MODE_VALUE;
+        }
+        return new Plan(spec, KIND_USER, fn, null, prefix, dest, slotArg, null, totalSlots,
+                variadicSlot, variadic && fn.isParamByRef(normal), mode, error, false);
+    }
+
+    private static boolean hasVariadicEntry(int[] dest) {
+        for (int d : dest) {
+            if (d == -1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Plan buildBuiltin(Builtins.Def def, Spec spec, int prefix) {
+        int argc = spec.length();
+        BuiltinParams.Param[] params = BuiltinParams.forName(def.name());
+        int[] dest = new int[argc];
+        java.util.Arrays.fill(dest, -2);
+        int positional = 0;
+        for (int i = 0; i < argc; i++) {
+            if (spec.name(i) == null) {
+                dest[i] = positional++;
+            }
+        }
+        if (params == null) {
+            return new Plan(spec, KIND_BUILTIN, null, def, prefix, dest, new int[0], null,
+                    positional, -1, false, valuesOnly(argc),
+                    "Unknown named parameter $" + spec.firstName(), false);
+        }
+        int normal = params.length;
+        while (normal > 0 && params[normal - 1].variadic()) {
+            normal--;
+        }
+        boolean variadic = normal < params.length;
+        int capacity = Math.max(normal, argc) + 1;
+        int[] slotArg = new int[capacity];
+        java.util.Arrays.fill(slotArg, -1);
+        for (int i = 0; i < positional; i++) {
+            slotArg[i] = i;
+        }
+        String error = null;
+        boolean errorCount = false;
+        int highest = positional - 1;
+        for (int i = 0; i < argc; i++) {
+            String name = spec.name(i);
+            if (name == null) {
+                continue;
+            }
+            int idx = builtinParamIndex(params, normal, name);
+            if (idx < 0) {
+                dest[i] = -2;
+                if (error == null) {
+                    if (variadic) {
+                        error = def.name() + "() does not accept unknown named parameters";
+                        errorCount = true;
+                    } else {
+                        error = "Unknown named parameter $" + name;
+                    }
+                }
+                continue;
+            }
+            dest[i] = idx;
+            if (error == null && idx < positional) {
+                error = "Named parameter $" + name + " overwrites previous argument";
+            }
+            if (error == null && def.isRef(idx) && spec.kind(i) == ARG_VALUE) {
+                error = def.name() + "(): Argument #" + (idx + 1) + " ($" + params[idx].name()
+                        + ") could not be passed by reference";
+            }
+            slotArg[idx] = i;
+            highest = Math.max(highest, idx);
+        }
+        int length = Math.max(positional, highest + 1);
+        Object[] defaults = null;
+        for (int i = positional; i < length && i < normal; i++) {
+            if (slotArg[i] >= 0) {
+                continue;
+            }
+            BuiltinParams.Param param = params[i];
+            if (!param.hasDefault()) {
+                if (error == null) {
+                    errorCount = true;
+                    if (param.optional()) {
+                        error = def.name() + "(): Argument #" + (i + 1) + " ($" + param.name()
+                                + ") must be passed explicitly, because the default value is not known";
+                    } else {
+                        error = def.name() + "(): Argument #" + (i + 1) + " ($" + param.name()
+                                + ") not passed";
+                    }
+                }
+                if (defaults == null) {
+                    defaults = new Object[length];
+                    java.util.Arrays.fill(defaults, NO_DEFAULT);
+                }
+                continue;
+            }
+            if (defaults == null) {
+                defaults = new Object[length];
+                java.util.Arrays.fill(defaults, NO_DEFAULT);
+            }
+            defaults[i] = param.defaultValue() == null ? PhpNull.INSTANCE : param.defaultValue();
+        }
+        byte[] mode = new byte[argc];
+        for (int i = 0; i < argc; i++) {
+            int d = dest[i];
+            boolean byRef = d >= 0 && def.isRef(d);
+            boolean hasPlace = spec.kind(i) == ARG_VAR || spec.kind(i) == ARG_PLACE;
+            mode[i] = byRef && hasPlace ? MODE_BUILTIN_REF : MODE_VALUE;
+        }
+        return new Plan(spec, KIND_BUILTIN, null, def, prefix, dest, slotArg, defaults, length,
+                -1, false, mode, error, errorCount);
+    }
+
+    private static Plan buildInternal(List<String> paramNames, Spec spec, int prefix, long refMask) {
+        int argc = spec.length();
+        int[] dest = new int[argc];
+        int positional = 0;
+        for (int i = 0; i < argc; i++) {
+            if (spec.name(i) == null) {
+                dest[i] = positional++;
+            } else {
+                dest[i] = -2;
+            }
+        }
+        if (paramNames.isEmpty()) {
+            return new Plan(spec, KIND_INTERNAL, null, null, prefix, dest,
+                    positionalSlots(positional), null, positional, -1, false,
+                    internalModes(dest, refMask), null, false);
+        }
+        int capacity = Math.max(paramNames.size(), argc) + 1;
+        int[] slotArg = new int[capacity];
+        java.util.Arrays.fill(slotArg, -1);
+        for (int i = 0; i < positional; i++) {
+            slotArg[i] = i;
+        }
+        String error = null;
+        int highest = positional - 1;
+        for (int i = 0; i < argc; i++) {
+            String name = spec.name(i);
+            if (name == null) {
+                continue;
+            }
+            int idx = internalParamIndex(paramNames, name);
+            if (idx < 0) {
+                dest[i] = -2;
+                if (error == null) {
+                    error = "Unknown named parameter $" + name;
+                }
+                continue;
+            }
+            dest[i] = idx;
+            if (error == null && idx < positional) {
+                error = "Named parameter $" + name + " overwrites previous argument";
+            }
+            slotArg[idx] = i;
+            highest = Math.max(highest, idx);
+        }
+        int totalSlots = Math.max(positional, highest + 1);
+        return new Plan(spec, KIND_INTERNAL, null, null, prefix, dest, slotArg, null, totalSlots,
+                -1, false, internalModes(dest, refMask), error, false);
+    }
+
+    private static byte[] internalModes(int[] dest, long refMask) {
+        byte[] mode = new byte[dest.length];
+        for (int i = 0; i < dest.length; i++) {
+            int d = dest[i];
+            mode[i] = d >= 0 && PhpFunctionRootNode.refBit(refMask, d) ? MODE_REF : MODE_VALUE;
+        }
+        return mode;
+    }
+
+    private static int[] positionalSlots(int positional) {
+        int[] slots = new int[positional];
+        for (int i = 0; i < positional; i++) {
+            slots[i] = i;
+        }
+        return slots;
+    }
+
+    private static byte[] valuesOnly(int argc) {
+        byte[] mode = new byte[argc];
+        java.util.Arrays.fill(mode, MODE_VALUE);
+        return mode;
+    }
+
+    private static int paramIndex(PhpFunctionRootNode fn, String name) {
+        String[] names = fn.paramNames();
+        int normal = fn.normalParamCount();
+        for (int i = 0; i < normal; i++) {
+            if (name.equals(names[i])) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int builtinParamIndex(BuiltinParams.Param[] params, int normal, String name) {
+        for (int i = 0; i < normal; i++) {
+            if (params[i].name().equals(name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int internalParamIndex(List<String> names, String name) {
+        for (int i = 0; i < names.size(); i++) {
+            if (names.get(i).equalsIgnoreCase(name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // ------------------------------------------------------------------ binding
+
+    /** Builds the callee's argument array: prefix, then parameter slots in the plan's order. */
+    @TruffleBoundary
+    static Object[] bind(Plan plan, int prefixLength, Object a, Object b, Object c, Object[] values) {
+        int extra = plan.variadicSlot >= 0 ? 1 : 0;
+        Object[] out = new Object[prefixLength + plan.totalSlots + extra];
+        if (prefixLength > 0) {
+            out[0] = a;
+        }
+        if (prefixLength > 1) {
+            out[1] = b;
+        }
+        if (prefixLength > 2) {
+            out[2] = c;
+        }
+        int base = prefixLength;
+        if (plan.kind == KIND_USER) {
+            java.util.Arrays.fill(out, base, base + plan.totalSlots, PhpFunctionRootNode.UNPASSED);
+            PhpArray namedEntries = null;
+            String[] names = plan.spec.names;
+            for (int i = 0; i < values.length; i++) {
+                int d = plan.dest[i];
+                if (d >= 0) {
+                    out[base + d] = values[i];
+                } else if (d == -1) {
+                    if (namedEntries == null) {
+                        namedEntries = new PhpArray();
+                    }
+                    String name = names[i];
+                    Object value = values[i];
+                    if (value instanceof PhpReference ref && plan.variadicByRef) {
+                        namedEntries.putRef(name, ref);
+                    } else {
+                        Object v = value instanceof PhpReference ref ? ref.getValue() : value;
+                        namedEntries.put(name, PhpOps.copyOnAssign(v));
+                    }
+                }
+            }
+            if (plan.variadicSlot >= 0) {
+                out[base + plan.totalSlots] = new PhpFunctionRootNode.NamedVariadic(namedEntries);
+            }
+        } else if (plan.kind == KIND_BUILTIN) {
+            for (int s = 0; s < plan.totalSlots; s++) {
+                int arg = plan.slotArg[s];
+                if (arg >= 0) {
+                    out[base + s] = values[arg];
+                } else {
+                    Object value = plan.defaults == null ? null : plan.defaults[s];
+                    out[base + s] = value == null || value == NO_DEFAULT
+                            ? PhpNull.INSTANCE : PhpOps.copyOnAssign(value);
+                }
+            }
+        } else {
+            for (int s = 0; s < plan.totalSlots; s++) {
+                int arg = plan.slotArg[s];
+                out[base + s] = arg >= 0 ? values[arg] : PhpNull.INSTANCE;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * A builtin with named arguments: places defaults, then invokes and writes by-reference
+     * results back through the cell or lvalue the argument captured. The frame is materialized
+     * only for a builtin that has by-reference parameters.
+     */
+    static Object callBuiltin(VirtualFrame frame, Builtins.Def def, Buffer buffer, Plan plan, Node site) {
+        if (def.refMask() == 0) {
+            return callBuiltin((com.oracle.truffle.api.frame.MaterializedFrame) null, def, buffer, plan, site, false);
+        }
+        return callBuiltin(frame.materialize(), def, buffer, plan, site, true);
+    }
+
+    @TruffleBoundary
+    private static Object callBuiltin(com.oracle.truffle.api.frame.MaterializedFrame frame, Builtins.Def def,
+                                      Buffer buffer, Plan plan, Node site, boolean refs) {
+        Object[] values = bind(plan, 0, null, null, null, buffer.values);
+        Object[] originals = null;
+        LValueNode[] lvs = null;
+        Object[][] keys = null;
+        if (refs) {
+            originals = values.clone();
+            lvs = new LValueNode[values.length];
+            keys = new Object[values.length][];
+            for (int s = 0; s < plan.totalSlots; s++) {
+                int arg = plan.slotArg[s];
+                if (arg >= 0) {
+                    lvs[s] = buffer.ref(arg);
+                    keys[s] = buffer.refKeys(arg);
+                }
+            }
+        }
+        return CallArgHelper.callBoundBuiltin(frame, def, values, originals, lvs, keys, site);
+    }
+
+    // ------------------------------------------------------------------ generic fallback
+
+    @TruffleBoundary
+    static void throwDuplicate(String name, Node site) {
+        throw new PhpError("Named parameter $" + name + " overwrites previous argument", site);
+    }
+
+    /** The old list/map argument structure, rebuilt only when a site is megamorphic. */
+    @TruffleBoundary
+    static CallArgHelper.RawCallArgs toRaw(Buffer buffer) {
+        CallArgHelper.RawCallArgs raw = CallArgHelper.newRawCallArgs();
+        for (int i = 0; i < buffer.values.length; i++) {
+            String name = buffer.spec.name(i);
+            Object value = buffer.values[i];
+            LValueNode ref = buffer.ref(i);
+            Object[] keys = buffer.refKeys(i);
+            if (name != null) {
+                raw.named().put(name, value);
+                if (ref != null) {
+                    raw.namedRefTargets().put(name, ref);
+                    raw.namedRefKeys().put(name, keys);
+                }
+                raw.namedNodes().put(name, null);
+            } else {
+                raw.positional().add(value);
+                raw.posRefTargets().add(ref);
+                raw.posRefKeys().add(keys);
+                raw.posNodes().add(null);
+            }
+        }
+        return raw;
+    }
+
+    /** The array a {@code __call}/{@code __callStatic} receives, from the compact buffer. */
+    @TruffleBoundary
+    static PhpArray magicArray(Buffer buffer) {
+        PhpArray arr = new PhpArray();
+        for (int i = 0; i < buffer.values.length; i++) {
+            Object value = buffer.values[i];
+            String name = buffer.spec.name(i);
+            Object copied = PhpOps.copyOnAssign(value);
+            if (name == null) {
+                arr.append(copied);
+            } else {
+                arr.put(name, copied);
+            }
+        }
+        return arr;
+    }
+
+    /** The by-reference mode of an argument at a site with no plan. */
+    @TruffleBoundary
+    static int genericMode(Object callee, String name, int index) {
+        Builtins.Def builtin = PhpBytecodeRootNode.builtinCallee(callee);
+        if (builtin != null) {
+            return MODE_BUILTIN_REF;
+        }
+        if (PhpBytecodeRootNode.Ops.ignoresRefTargets(callee)) {
+            return MODE_MAGIC;
+        }
+        PhpFunctionRootNode fn = PhpBytecodeRootNode.signature(callee);
+        if (fn != null) {
+            boolean byRef = name != null
+                    ? namedByRef(fn, name)
+                    : fn.isParamByRef(index);
+            return byRef ? MODE_REF : MODE_VALUE;
+        }
+        if (callee instanceof PhpBytecodeRootNode.MethodCallee m && m.entry() != null
+                && m.sigTarget() != null) {
+            long mask = PhpBytecodeRootNode.Ops.refMaskSlow(m.sigTarget().getRootNode());
+            if (mask != 0) {
+                int param = name != null ? internalParamIndex(m.entry().parameterNames(), name) : index;
+                if (param >= 0 && PhpFunctionRootNode.refBit(mask, param)) {
+                    return MODE_REF;
+                }
+            }
+        }
+        return MODE_VALUE;
+    }
+
+    static boolean namedByRef(PhpFunctionRootNode fn, String name) {
+        int idx = paramIndex(fn, name);
+        if (idx >= 0) {
+            return fn.isParamByRef(idx);
+        }
+        return fn.isVariadic() && fn.isParamByRef(fn.normalParamCount());
+    }
+
+    /** Whether a callee is a Java-implemented method, whose by-reference returns are unwrapped. */
+    static boolean isInternalCallee(Object callee) {
+        return callee instanceof PhpBytecodeRootNode.MethodCallee m && m.entry() != null
+                && PhpBytecodeRootNode.signature(callee) == null;
+    }
+
+    /** An expression argument bound to a by-reference parameter: php's error or temporary cell. */
+    @TruffleBoundary
+    static Object valueToRef(Object value, int kind, Buffer buffer, Object callee, int index, String name,
+                             Node site, int line) {
+        PhpFunctionRootNode fn = buffer.plan != null && buffer.plan.fn != null
+                ? buffer.plan.fn : PhpBytecodeRootNode.signature(callee);
+        int param = buffer.plan != null ? buffer.plan.refParam(index)
+                : (name != null ? indexOf(fn, name) : index);
+        if (kind == 0) {
+            throw CallArgHelper.cannotPassByRef(fn, param, site);
+        }
+        if (kind == 1) {
+            dev.phpruntime.PhpContext.get(site).notice("Only variables should be passed by reference", line);
+        }
+        return new PhpReference(PhpOps.copyOnAssign(value));
+    }
+
+    private static int indexOf(PhpFunctionRootNode fn, String name) {
+        int idx = paramIndex(fn, name);
+        return idx >= 0 ? idx : fn.normalParamCount();
+    }
+
+    /** A {@code $GLOBALS} element cannot be bound by reference; only the place path needs this. */
+    @TruffleBoundary
+    static PhpError globalsByRef(Buffer buffer, Object callee, int index, String name, Node site) {
+        PhpFunctionRootNode fn = buffer.plan != null && buffer.plan.fn != null
+                ? buffer.plan.fn : PhpBytecodeRootNode.signature(callee);
+        int param = buffer.plan != null ? buffer.plan.refParam(index)
+                : (name != null ? indexOf(fn, name) : index);
+        return CallArgHelper.cannotPassByRef(fn, param, site);
+    }
+}

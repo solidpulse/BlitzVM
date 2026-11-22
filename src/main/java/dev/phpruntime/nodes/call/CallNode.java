@@ -21,6 +21,7 @@ public final class CallNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final String[] argNames;
     @CompilationFinal(dimensions = 1) private final boolean[] spreads;
     private final boolean hasSpreadOrNamed;
+    private final boolean hasSpread;
 
     @Child private SplBuiltinNode spl;
 
@@ -61,6 +62,7 @@ public final class CallNode extends PhpNode {
         this.argNames = argNames;
         this.spreads = spreads;
         boolean complex = false;
+        boolean spreadSeen = false;
         if (argNames != null) {
             for (String s : argNames) {
                 if (s != null) {
@@ -69,15 +71,17 @@ public final class CallNode extends PhpNode {
                 }
             }
         }
-        if (!complex && spreads != null) {
+        if (spreads != null) {
             for (boolean b : spreads) {
                 if (b) {
                     complex = true;
+                    spreadSeen = true;
                     break;
                 }
             }
         }
         this.hasSpreadOrNamed = complex;
+        this.hasSpread = spreadSeen;
     }
 
     public CallNode withSpl(dev.phpruntime.PhpLanguage language) {
@@ -159,13 +163,22 @@ public final class CallNode extends PhpNode {
             b.beginBlock();
             b.beginStoreLocal(result);
             if (hasSpreadOrNamed) {
-                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
-                e.beginRawArgs(raw);
-                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexFunction(keepRef);
-                b.emitLoadLocal(callee);
-                b.emitLoadLocal(raw);
-                b.endDoComplexFunction();
+                if (!hasSpread) {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal args = e.temp();
+                    e.namedArgs(this.args, this.refTargets, this.argNames, callee, args);
+                    b.beginDoNamedFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(args);
+                    b.endDoNamedFunction();
+                } else {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                    e.beginRawArgs(raw);
+                    e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                    b.beginDoComplexFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(raw);
+                    b.endDoComplexFunction();
+                }
             } else {
                 b.beginDoCall(site.withKeepRef(keepRef), callee);
                 for (int i = 0; i < args.length; i++) {
@@ -229,13 +242,22 @@ public final class CallNode extends PhpNode {
             b.beginBlock();
             b.emitResolveFunction(site, callee);
             if (hasSpreadOrNamed) {
-                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
-                e.beginRawArgs(raw);
-                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexFunction(keepRef);
-                b.emitLoadLocal(callee);
-                b.emitLoadLocal(raw);
-                b.endDoComplexFunction();
+                if (!hasSpread) {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal args = e.temp();
+                    e.namedArgs(this.args, this.refTargets, this.argNames, callee, args);
+                    b.beginDoNamedFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(args);
+                    b.endDoNamedFunction();
+                } else {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                    e.beginRawArgs(raw);
+                    e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                    b.beginDoComplexFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(raw);
+                    b.endDoComplexFunction();
+                }
             } else {
                 b.beginDoCall(site.withKeepRef(keepRef), callee);
                 for (int i = 0; i < args.length; i++) {

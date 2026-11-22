@@ -32,6 +32,18 @@ public final class CallArgHelper {
     private CallArgHelper() {
     }
 
+    /** {@link #findParamIndex} lookups: the generic named-binding path, exposed for tests. */
+    private static final java.util.concurrent.atomic.AtomicLong GENERIC_NAMED_BINDINGS =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    public static long genericNamedBindingCount() {
+        return GENERIC_NAMED_BINDINGS.get();
+    }
+
+    public static void resetGenericNamedBindingCount() {
+        GENERIC_NAMED_BINDINGS.set(0);
+    }
+
     public static Object unwrapReturn(Object res) {
         if (res instanceof PhpReference ref) {
             return unwrapReturnedRef(ref);
@@ -100,6 +112,7 @@ public final class CallArgHelper {
 
     @TruffleBoundary
     public static int findParamIndex(PhpFunctionRootNode fnRoot, String name) {
+        GENERIC_NAMED_BINDINGS.incrementAndGet();
         String[] names = fnRoot.paramNames();
         int normal = fnRoot.normalParamCount();
         for (int i = 0; i < normal; i++) {
@@ -283,7 +296,16 @@ public final class CallArgHelper {
         BuiltinBound bound = hasNamed(raw.named())
                 ? bindNamedBuiltin(def, raw, site)
                 : positionalBuiltinBound(raw);
-        Object[] values = bound.values();
+        return callBoundBuiltin(frame, def, bound.values(), bound.originals(), bound.lvs(), bound.keys(), site);
+    }
+
+    /**
+     * Invokes a builtin on arguments already in parameter order. {@code originals}, {@code lvs}
+     * and {@code keys} describe by-reference arguments: the value before unwrapping and where a
+     * result is written back. They are null for builtins without by-reference parameters.
+     */
+    public static Object callBoundBuiltin(VirtualFrame frame, Builtins.Def def, Object[] values, Object[] originals,
+                                          LValueNode[] lvs, Object[][] keys, Node site) {
         for (int i = 0; i < values.length; i++) {
             if (values[i] instanceof PhpReference ref && !def.isRef(i)) {
                 values[i] = ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
@@ -295,7 +317,7 @@ public final class CallArgHelper {
         Object result = invokeBuiltin(def, values, site);
         if (def.refMask() != 0) {
             // Folds away for builtins without by-ref parameters when def is a PE constant.
-            writeBackBuiltinRefs(frame, def, bound);
+            writeBackBuiltinRefs(frame, def, values, originals, lvs, keys);
         }
         return result;
     }
@@ -442,17 +464,17 @@ public final class CallArgHelper {
         return list.toArray(new Object[0][]);
     }
 
-    private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, BuiltinBound bound) {
-        Object[] values = bound.values();
+    private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, Object[] values,
+                                             Object[] originals, LValueNode[] lvs, Object[][] keys) {
         for (int i = 0; i < values.length; i++) {
             if (!def.isRef(i)) {
                 continue;
             }
-            Object orig = bound.originals()[i];
+            Object orig = originals[i];
             if (orig instanceof PhpReference ref) {
                 ref.setValue(values[i]);
-            } else if (bound.lvs()[i] != null) {
-                bound.lvs()[i].write(frame, bound.keys()[i], values[i]);
+            } else if (lvs[i] != null) {
+                lvs[i].write(frame, keys[i], values[i]);
             }
         }
     }
