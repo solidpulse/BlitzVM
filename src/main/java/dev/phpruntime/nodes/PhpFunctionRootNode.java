@@ -175,6 +175,11 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return declaringClass;
     }
 
+    /** The engine-wide class id of {@link #declaringClass()} for {@code PhpContext.classById}, or -1. */
+    public int declaringClassId() {
+        return declaringClassId;
+    }
+
     /**
      * The function metadata of a call target's root: this node itself, or the AST root a
      * bytecode root was compiled from. Null for any other root.

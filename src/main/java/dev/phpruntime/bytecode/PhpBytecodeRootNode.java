@@ -1018,7 +1018,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     return c;
                 }
             }
-            return fn.declaringClass() == null ? null : PhpContext.get(root).lookupClass(fn.declaringClass());
+            int id = fn.declaringClassId();
+            return id < 0 ? null : PhpContext.get(root).classById(id);
         }
 
         static PhpClass calledClass(PhpBytecodeRootNode root, VirtualFrame frame) {

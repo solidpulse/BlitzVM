@@ -220,6 +220,14 @@ public final class DeclaredType {
             return false;
         }
         ClassGroup group = classGroups.get(index);
+        if (group.fastClassId() >= 0) {
+            // A single named class: the context's id table finds a declared class without
+            // lowercasing and hashing the name; autoload still goes through resolveClass.
+            PhpClass target = ctx.classById(group.fastClassId());
+            if (target != null) {
+                return obj.phpClass().isInstanceOf(target);
+            }
+        }
         for (String name : group.names()) {
             PhpClass target = resolveClass(name, ctx, selfClass, calledClass);
             if (target == null || !obj.phpClass().isInstanceOf(target)) {
@@ -384,9 +392,17 @@ public final class DeclaredType {
     public Object checkParameter(Object value, PhpBytecodeRootNode root, Node site, int paramIndex,
                                  String paramName, PhpClass selfClass, PhpClass calledClass) {
         PhpContext ctx = PhpContext.get(site);
-        CallMode mode = CallMode.of(root, site);
         PhpFunctionRootNode fn = root.function();
-        Object result = matchOrCoerce(value, ctx, selfClass, calledClass, mode.strict(), fn.line());
+        // A value strict mode accepts (an exact match, or an int widened to float) comes out the
+        // same in weak mode, so the caller's mode only matters when that fails. Finding it walks
+        // the stack, which typed code would otherwise pay on every class-typed argument.
+        Object strictResult = matchOrCoerce(value, ctx, selfClass, calledClass, true, fn.line());
+        if (strictResult != NO_MATCH) {
+            return strictResult;
+        }
+        CallMode mode = CallMode.of(root, site);
+        Object result = mode.strict() ? NO_MATCH
+                : matchOrCoerce(value, ctx, selfClass, calledClass, false, fn.line());
         if (result != NO_MATCH) {
             return result;
         }

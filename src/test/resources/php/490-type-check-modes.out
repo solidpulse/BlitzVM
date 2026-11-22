@@ -1,0 +1,26 @@
+float(5)
+string(1) "5"
+int(5)
+bool(true)
+bool(true)
+int(2)
+takes_int(): Argument #1 ($i) must be of type int, string given, called in FILE on line 22
+takes_string(): Argument #1 ($s) must be of type string, int given, called in FILE on line 22
+takes_union(): Argument #1 ($v) must be of type string|int, float given, called in FILE on line 22
+TypedTarget::withSelf(): Argument #1 ($other) must be of type TypedTarget, stdClass given, called in FILE on line 23
+TypedTarget::unionOfClasses(): Argument #1 ($c) must be of type Countable|Traversable, stdClass given, called in FILE on line 23
+TypedTarget::intersect(): Argument #1 ($c) must be of type Countable&Traversable, stdClass given, called in FILE on line 24
+warning:Implicit conversion from float 5.5 to int loses precision
+float(5)
+string(1) "5"
+int(5)
+int(42)
+string(2) "12"
+bool(true)
+NULL
+takes_int(): Argument #1 ($i) must be of type int, string given, called in FILE on line 6
+bool(true)
+bool(true)
+float(0)
+float(1)
+float(2)
