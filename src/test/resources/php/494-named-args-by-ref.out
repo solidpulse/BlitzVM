@@ -1,0 +1,21 @@
+a? s=a?
+a! s2=a!
+v+ data=v+
+b. box=b.
+p~ pos=p~
+{"second":"b!","first":"a!"}
+a! b!
+Array
+(
+    [0] => b
+)
+bbb n=3
+1,2,3
+4 5,6
+Error: withRef(): Argument #1 ($value) could not be passed by reference
+Error: preg_match(): Argument #3 ($matches) could not be passed by reference
+15 count=15
+RefMethod
+Box
+__construct
+value
