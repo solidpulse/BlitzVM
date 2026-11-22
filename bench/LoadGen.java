@@ -29,6 +29,9 @@ public class LoadGen {
             .build();
 
     public static void main(String[] args) throws Exception {
+        if (!args[0].equals("once") && !Boolean.getBoolean("skipPreflight")) {
+            preflight(args[1]);
+        }
         switch (args[0]) {
             case "load" -> load(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
             case "probe" -> probe(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
@@ -70,6 +73,30 @@ public class LoadGen {
         }
     }
 
+    /**
+     * One request before any load: a run against a URL that answers 404, 500 or a redirect measures
+     * nothing, so refuse to start (-DskipPreflight=true to bypass, -Dexpect=TEXT to also require
+     * TEXT in the body).
+     */
+    private static void preflight(String url) throws Exception {
+        HttpResponse<String> r;
+        try {
+            r = CLIENT.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60)).build(),
+                    HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            System.out.println("PREFLIGHT FAILED " + url + ": " + e);
+            System.exit(2);
+            return;
+        }
+        String expect = System.getProperty("expect");
+        if (r.statusCode() != 200 || (expect != null && !r.body().contains(expect))) {
+            String body = r.body().length() > 200 ? r.body().substring(0, 200) + "..." : r.body();
+            System.out.println("PREFLIGHT FAILED " + url + ": status " + r.statusCode() + ", "
+                    + r.body().length() + " bytes: " + body.replace('\n', ' '));
+            System.exit(2);
+        }
+    }
+
     private static void load(String url, int concurrency, int seconds) throws Exception {
         // Warm-up: lets JITs (Graal, opcache) settle before measuring.
         long warmEnd = System.nanoTime() + Duration.ofSeconds(Long.getLong("warmup", 5)).toNanos();
@@ -86,8 +113,9 @@ public class LoadGen {
         perThread.forEach(all::addAll);
         Collections.sort(all);
         int n = all.size();
-        System.out.printf("requests=%d errors=%d rps=%.0f p50=%.2fms p99=%.2fms max=%.2fms%n",
-                n, errors.get(), n / elapsed, pct(all, 50), pct(all, 99), n == 0 ? 0 : all.get(n - 1) / 1e6);
+        System.out.printf("requests=%d errors=%d rps=%.0f p50=%.2fms p99=%.2fms max=%.2fms%s%n",
+                n, errors.get(), n / elapsed, pct(all, 50), pct(all, 99), n == 0 ? 0 : all.get(n - 1) / 1e6,
+                errors.get() * 100 > Math.max(n, 1) ? "  INVALID: more than 1% errors" : "");
     }
 
     private static void run(String url, int concurrency, long end, List<List<Long>> sink, AtomicLong errors) throws Exception {
