@@ -57,7 +57,7 @@ public final class Lexer {
 
     private void lexHtml() {
         int start = pos;
-        int open = src.indexOf("<?", pos);
+        int open = nextOpenTag(pos);
         int end = open < 0 ? src.length() : open;
         if (end > start) {
             String html = src.substring(start, end);
@@ -68,15 +68,40 @@ public final class Lexer {
         if (open < 0) {
             return;
         }
-        if (src.startsWith("<?php", pos)) {
-            pos += 5;
-        } else if (src.startsWith("<?=", pos)) {
+        if (src.startsWith("<?=", pos)) {
             out.add(new Token(Kind.OPEN_ECHO, "<?=", pos, line));
             pos += 3;
         } else {
-            pos += 2; // short open tag "<?"
+            pos += 5; // "<?php"
         }
         inCode = true;
+    }
+
+    /**
+     * The next {@code <?php} (any case, followed by whitespace or the end) or {@code <?=}, as php
+     * with short_open_tag off (every shipped php.ini) sees them; a bare {@code <?}, as in
+     * {@code <?xml ...?>}, stays inline HTML.
+     */
+    private int nextOpenTag(int from) {
+        int search = from;
+        while (true) {
+            int open = src.indexOf("<?", search);
+            if (open < 0) {
+                return -1;
+            }
+            if (src.startsWith("<?=", open)) {
+                return open;
+            }
+            if (src.regionMatches(true, open, "<?php", 0, 5)
+                    && (open + 5 == src.length() || isOpenTagSpace(src.charAt(open + 5)))) {
+                return open;
+            }
+            search = open + 2;
+        }
+    }
+
+    private static boolean isOpenTagSpace(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
     }
 
     private void lexCode() {

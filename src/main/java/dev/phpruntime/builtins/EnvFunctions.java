@@ -28,7 +28,7 @@ final class EnvFunctions {
             Map.entry("file_uploads", "1"),
             Map.entry("allow_url_fopen", "1"),
             Map.entry("default_charset", "UTF-8"),
-            Map.entry("short_open_tag", "1"),
+            Map.entry("short_open_tag", ""),
             Map.entry("output_buffering", "0"),
             Map.entry("precision", "14"),
             Map.entry("serialize_precision", "-1"),
