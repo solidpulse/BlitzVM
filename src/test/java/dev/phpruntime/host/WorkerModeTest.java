@@ -297,7 +297,6 @@ $boot = is_file($bootFile) ? (int) file_get_contents($bootFile) + 1 : 1;
                 $handler = static function (): void {
                     if (($_GET['spin'] ?? '') === '1') {
                         $stop = __DIR__ . '/stop';
-                        @unlink($stop);
                         while (! file_exists($stop)) {
                         }
                         echo "spun\\n";
@@ -332,6 +331,7 @@ $boot = is_file($bootFile) ? (int) file_get_contents($bootFile) + 1 : 1;
 
             PhpDispatcher.Response spun = spinning.get(10, TimeUnit.SECONDS);
             assertEquals("spun\n", text(spun));
+            assertTrue(scheduler.preemptions() > 0, "the busy request was never preempted");
         } finally {
             exec.shutdownNow();
         }
