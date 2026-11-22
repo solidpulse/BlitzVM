@@ -1,0 +1,30 @@
+bool(true)
+bool(true)
+NULL
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+NULL
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+NULL
+bool(true)
+bool(true)
+NULL
+ValueError: "nowhere" is not a valid backing value for enum Zone
+ValueError: 3 is not a valid backing value for enum Level
+ValueError: "zz" is not a valid backing value for enum Expr
+TypeError: Level::from(): Argument #1 ($value) must be of type int, string given
+TypeError: Zone::from(): Argument #1 ($value) must be of type string|int, array given
+warning: Implicit conversion from float 1.5 to int loses precision
+enum(Level::Low)
+UTC,Paris,Kolkata,Empty,Zero
+3
