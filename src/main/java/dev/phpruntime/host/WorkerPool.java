@@ -408,10 +408,10 @@ public final class WorkerPool implements AutoCloseable {
         }
 
         @Override
-        public void finishRequest(PhpContext ctx) {
+        public boolean finishRequest(PhpContext ctx) {
             Job job = currentJob;
             if (job == null || responded) {
-                return;
+                return false;
             }
             try {
                 ctx.flush();
@@ -419,6 +419,7 @@ public final class WorkerPool implements AutoCloseable {
                 // The response is whatever reached the buffer.
             }
             finish(job, ctx);
+            return true;
         }
 
         private void runOne(Job job, PhpContext ctx, PhpCallable callback) {

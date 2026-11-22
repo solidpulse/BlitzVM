@@ -433,6 +433,33 @@ $boot = is_file($bootFile) ? (int) file_get_contents($bootFile) + 1 : 1;
     }
 
     @Test
+    void fastcgiFinishRequestIsTheSameAndReportsWhetherItSent() throws Exception {
+        Path after = dir.resolve("after.txt");
+        start("""
+                <?php
+                $handler = static function (): void {
+                    echo "exists=" . var_export(function_exists('fastcgi_finish_request'), true) . "\n";
+                    $first = fastcgi_finish_request();
+                    $second = fastcgi_finish_request();
+                    $third = frankenphp_finish_request();
+                    echo "after\n";
+                    file_put_contents(__DIR__ . '/after.txt', var_export([$first, $second, $third], true));
+                };
+                while (frankenphp_handle_request($handler)) {
+                }
+                """);
+
+        PhpDispatcher.Response one = get("/one");
+        assertEquals(200, one.status(), text(one));
+        assertEquals("exists=true\n", text(one));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!Files.exists(after) && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertEquals("array (\n  0 => true,\n  1 => false,\n  2 => false,\n)", Files.readString(after));
+    }
+
+    @Test
     void aWorkerScriptThatNeverReachesHandleRequestBacksOff() throws Exception {
         Files.writeString(dir.resolve("index.php"), "<?php\n");
         Files.writeString(dir.resolve("worker.php"), "<?php\n");

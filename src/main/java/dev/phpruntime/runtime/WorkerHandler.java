@@ -17,6 +17,9 @@ public interface WorkerHandler {
      */
     boolean handleRequest(PhpContext ctx, PhpCallable callback);
 
-    /** {@code frankenphp_finish_request()}: send the response now and keep executing. */
-    void finishRequest(PhpContext ctx);
+    /**
+     * {@code frankenphp_finish_request()} and {@code fastcgi_finish_request()}: send the response
+     * now and keep executing. Returns whether this call sent it (false once it was sent).
+     */
+    boolean finishRequest(PhpContext ctx);
 }
