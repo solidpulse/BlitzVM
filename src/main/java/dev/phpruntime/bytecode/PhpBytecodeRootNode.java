@@ -214,8 +214,42 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** The source position a bytecode frame on the stack is executing, for backtraces. */
     @TruffleBoundary
     public static SourceSection callSiteSection(FrameInstance fi) {
+        // Without a stored bytecode index, BytecodeLocation finds the call node by scanning the
+        // caller's bytecode; backtraces (debug_backtrace per Tempest view) repeat that for every
+        // frame. A cached call node sits at one index, so its section is kept on the root. The
+        // uncached interpreter reports the bytecode node itself, whose index varies: not cached.
+        Node call = fi.getCallNode();
+        PhpBytecodeRootNode owner = call == null || call instanceof BytecodeNode ? null
+                : call.getRootNode() instanceof PhpBytecodeRootNode r ? r : null;
+        if (owner != null) {
+            Object hit = owner.siteSections().get(call);
+            if (hit != null) {
+                return hit == NO_SECTION ? null : (SourceSection) hit;
+            }
+        }
         BytecodeLocation loc = BytecodeLocation.get(fi);
-        return loc == null ? null : loc.getSourceLocation();
+        SourceSection section = loc == null ? null : loc.getSourceLocation();
+        if (owner != null && loc != null) {
+            owner.siteSections().put(call, section == null ? NO_SECTION : section);
+        }
+        return section;
+    }
+
+    private static final Object NO_SECTION = new Object();
+    private volatile java.util.concurrent.ConcurrentHashMap<Node, Object> siteSections;
+
+    private java.util.concurrent.ConcurrentHashMap<Node, Object> siteSections() {
+        java.util.concurrent.ConcurrentHashMap<Node, Object> m = siteSections;
+        if (m == null) {
+            synchronized (this) {
+                m = siteSections;
+                if (m == null) {
+                    m = new java.util.concurrent.ConcurrentHashMap<>();
+                    siteSections = m;
+                }
+            }
+        }
+        return m;
     }
 
     /** What a variable operation needs besides its local: the AST's kind and the name for warnings. */
