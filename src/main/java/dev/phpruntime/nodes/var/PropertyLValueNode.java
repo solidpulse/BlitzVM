@@ -627,9 +627,33 @@ public final class PropertyLValueNode extends LValueNode {
         if (type == null) {
             return value;
         }
-        return type.checkProperty(value, PhpContext.get(this), this, CallMode.strictAt(this),
-                owner == null ? null : PhpContext.get(this).lookupClass(owner),
+        if (type.matchesFast(value)) {
+            // Scalars, null and untyped-enough values pass without resolving the owner class.
+            return value;
+        }
+        PhpContext ctx = PhpContext.get(this);
+        return type.checkProperty(value, ctx, this, CallMode.strictAt(this),
+                owner == null ? null : ownerClass(ctx, owner),
                 owner != null ? owner : obj.phpClass().name(), name);
+    }
+
+    /** The last owner name this site resolved, and its engine-wide class id. */
+    private String cachedOwner;
+    private int cachedOwnerId = -1;
+
+    /** The declaring class of a typed property through the context's id table, not a name lookup. */
+    @TruffleBoundary
+    private PhpClass ownerClass(PhpContext ctx, String owner) {
+        int id;
+        if (owner == cachedOwner) {
+            id = cachedOwnerId;
+        } else {
+            id = ctx.language().classId(owner.startsWith("\\") ? owner.substring(1) : owner);
+            cachedOwnerId = id;
+            cachedOwner = owner;
+        }
+        PhpClass cls = ctx.classById(id);
+        return cls != null ? cls : ctx.lookupClass(owner);
     }
 
     private PhpReference.CellCheck cellCheck(PhpClass.PropertyResolution res, PhpObject obj, String name) {
