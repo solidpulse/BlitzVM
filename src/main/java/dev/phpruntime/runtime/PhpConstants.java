@@ -14,6 +14,8 @@ public final class PhpConstants {
             Map.entry("DIRECTORY_SEPARATOR", "/"),
             Map.entry("PATH_SEPARATOR", ":"),
             Map.entry("PHP_EOL", "\n"),
+            Map.entry("MT_RAND_MT19937", 0L),
+            Map.entry("MT_RAND_PHP", 1L),
             Map.entry("PHP_INT_MAX", Long.MAX_VALUE),
             Map.entry("PHP_INT_MIN", Long.MIN_VALUE),
             Map.entry("PHP_INT_SIZE", 8L),

@@ -325,7 +325,7 @@ final class ArrayFunctions {
         Builtins.defRef("array_multisort", 1, -1, 0x7FFFFFFF, (ctx, a) -> arrayMultisort(a));
         Builtins.defRef("shuffle", 1, 1, REF_FIRST, (ctx, a) -> {
             List<Object> values = new ArrayList<>(writable(a).values());
-            Collections.shuffle(values, java.util.concurrent.ThreadLocalRandom.current());
+            RandomFunctions.shuffleValues(ctx, values);
             a[0] = PhpArray.ofList(values);
             return true;
         });

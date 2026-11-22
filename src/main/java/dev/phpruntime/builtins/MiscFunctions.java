@@ -73,7 +73,7 @@ final class MiscFunctions {
                 return false;
             }
         });
-        Builtins.def("array_rand", 1, 2, (ctx, a) -> arrayRand(a));
+        Builtins.def("array_rand", 1, 2, (ctx, a) -> RandomFunctions.arrayRand(ctx, a));
         Builtins.def("normalizer_normalize", 1, 2, (ctx, a) -> {
             java.text.Normalizer.Form form = form(a.length > 1 ? PhpOps.toLong(a[1]) : 16);
             return form == null ? false : PhpStrings.fromJava(java.text.Normalizer.normalize(PhpStrings.toJava(PhpOps.toStr(a[0])), form));

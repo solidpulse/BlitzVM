@@ -1,0 +1,55 @@
+bytes 66 b33d 5c0362 0e95f52e 6af463bb47 bcae4199142ccb 66d6f02779182272 d241ef27d6f497194a ca55917557b8bddd74ed6d5563ace299 67eb9224973e44b582a0a0a69506450534 01034cf857e9d4b8ebf51ad59dfd44f025db5b3681093300bf148c2ebb9301fe 1499f32ea044139ecbd1e24d394d959c15705686fc18cf01ebf2936e586be70530
+bytes 1 66
+bytes 2 66dc
+bytes 3 66dce1
+bytes 8 66dce15fb33deacb
+bytes 9 66dce15fb33deacb5c
+bytes 16 66dce15fb33deacb5c0362f30e95f52e
+gfbs 10 1 67
+gfbs 10 5 6762646463
+gfbs 10 20 6762646463646666656468656a68626a65696767
+gfbs 3 17 6361626263616363626263636161626163
+gfbs 1 5 6161616161
+gfbs 2 7 61616262626261
+gfbs 62 40 4d4348465a39516c4364495a6f76315551304a3768757a683855627a75536c794d77574e35794959
+gfbs 128 30 665c615f333d6a4b5c0362730e15752e6a74633b475419473c2e4119142c
+gfbs 256 20 66dce15fb33deacb5c0362f30e95f52e6af463bb
+gfbs 256 20 66dce15fb33deacb5c0362f30e95f52e6af463bb
+gfbs long 2aa74cd67e23dce0fa71b2d66e36e7acd7270b6a31b0490b2b0d2945bb1348b4afe5e940efb0e8d2
+shuffle 0 
+shuffle 1 61
+shuffle 2 6261
+shuffle 3 636261
+shuffle 5 6561626463
+shuffle 8 6261646866656367
+shuffle 13 676b646269636d6861656a6c66
+shuffle assoc [3,2,1]
+pick single [0] 1710563033
+shuffleBytes  
+shuffleBytes 61 61
+shuffleBytes 6162 6261
+shuffleBytes 6162636465666768696a 62646a68676169656663
+shuffleBytes 717171717171717171717171717171717171717171717171717171717171 717171717171717171717171717171717171717171717171717171717171
+pick 1 [2]
+pick 2 [1,2]
+pick 3 [0,3,4]
+pick 4 [0,1,3,4]
+pick 5 [0,1,2,3,4]
+pick 2 ["y","z"]
+pick 3 ["x","y","z"]
+Random\Randomizer::getBytes(): Argument #1 ($length) must be greater than 0
+Random\Randomizer::getBytesFromString(): Argument #1 ($string) must not be empty
+Random\Randomizer::getBytesFromString(): Argument #2 ($length) must be greater than 0
+Random\Randomizer::pickArrayKeys(): Argument #1 ($array) must not be empty
+Random\Randomizer::pickArrayKeys(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)
+user nextInt 8639827975960957312 583544060893818495
+user int 95 1167088121787636990
+user float 3fe2547698badcfe
+user bytes 0123456789abcdeffe
+user shuffle [1,4,3,2]
+user gfbs 626466686a6967656361
+calls 3255307777713450285 1
+calls shuffle 5
+serialize 334995689 334995689
+serialize len 13122
+engine prop Random\Engine\PcgOneseq128XslRr64 be71d827c4e1f439

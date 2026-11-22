@@ -72,20 +72,15 @@ final class MathFunctions {
             long v = parseBase(dev.phpruntime.runtime.PhpStrings.lower(PhpOps.toStr(a[0])), (int) PhpOps.toLong(a[1]));
             return Long.toString(v, (int) PhpOps.toLong(a[2]));
         });
-        Builtins.def("rand", 0, 2, (ctx, a) -> random(a, false));
-        Builtins.def("mt_rand", 0, 2, (ctx, a) -> random(a, false));
         Builtins.def("random_int", 2, 2, (ctx, a) -> random(a, true));
-        Builtins.def("mt_getrandmax", 0, 0, (ctx, a) -> 2147483647L);
-        Builtins.def("getrandmax", 0, 0, (ctx, a) -> 2147483647L);
-        Builtins.def("lcg_value", 0, 0, (ctx, a) -> ThreadLocalRandom.current().nextDouble());
     }
 
     private static Object random(Object[] a, boolean strictOrder) {
         if (a.length < 2) {
             return (long) ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
         }
-        long lo = PhpOps.toLong(a[0]);
-        long hi = PhpOps.toLong(a[1]);
+        long lo = RandomClasses.intArg(a[0], "random_int", 1, "min");
+        long hi = RandomClasses.intArg(a[1], "random_int", 2, "max");
         if (hi < lo) {
             if (strictOrder) {
                 throw new PhpError(PhpError.VALUE_ERROR, "random_int(): Argument #1 ($min) must be less than or equal to argument #2 ($max)", null);
