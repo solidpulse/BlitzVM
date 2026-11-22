@@ -97,8 +97,11 @@ public class LoadGen {
         String target = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
         // -Dhost overrides the Host header (WordPress renders and redirects by its configured site URL).
         String hostHeader = System.getProperty("host", host + ":" + port);
-        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + hostHeader + "\r\nUser-Agent: loadgen\r\n\r\n")
-                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        String head = "GET " + target + " HTTP/1.1\r\nHost: " + hostHeader + "\r\nUser-Agent: loadgen\r\n";
+        byte[] request = (head + "\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        // -Dcookies=true: each connection acts as one browser, sending back the cookies it was given
+        // (otherwise an app with sessions creates a new session on every request).
+        boolean cookies = Boolean.getBoolean("cookies");
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < concurrency; i++) {
             List<Long> lat = new ArrayList<>();
@@ -109,6 +112,8 @@ public class LoadGen {
             }
             threads.add(Thread.ofPlatform().start(() -> {
                 RawConnection conn = null;
+                java.util.Map<String, String> jar = new java.util.LinkedHashMap<>();
+                byte[] withCookies = request;
                 try {
                     while (System.nanoTime() < end) {
                         long t = System.nanoTime();
@@ -116,7 +121,15 @@ public class LoadGen {
                             if (conn == null) {
                                 conn = new RawConnection(host, port);
                             }
-                            int status = conn.exchange(request);
+                            conn.jar = cookies ? jar : null;
+                            int status = conn.exchange(withCookies);
+                            if (cookies && conn.jarChanged) {
+                                StringBuilder c = new StringBuilder(head).append("Cookie: ");
+                                jar.forEach((k, v) -> c.append(k).append('=').append(v).append("; "));
+                                c.setLength(c.length() - 2);
+                                withCookies = c.append("\r\n\r\n").toString()
+                                        .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+                            }
                             if (status != 200) {
                                 errors.incrementAndGet();
                             }
@@ -146,6 +159,8 @@ public class LoadGen {
         private final java.io.OutputStream out;
         private final java.io.BufferedInputStream in;
         boolean closed;
+        java.util.Map<String, String> jar;
+        boolean jarChanged;
 
         RawConnection(String host, int port) throws java.io.IOException {
             socket = new java.net.Socket(host, port);
@@ -167,6 +182,7 @@ public class LoadGen {
             int status = Integer.parseInt(statusLine.split(" ")[1]);
             long length = -1;
             boolean chunked = false;
+            jarChanged = false;
             for (String h = line(); !h.isEmpty(); h = line()) {
                 int c = h.indexOf(':');
                 String name = h.substring(0, c).trim();
@@ -177,6 +193,12 @@ public class LoadGen {
                     chunked = true;
                 } else if (name.equalsIgnoreCase("Connection") && value.equalsIgnoreCase("close")) {
                     closed = true;
+                } else if (jar != null && name.equalsIgnoreCase("Set-Cookie")) {
+                    String pair = value.split(";", 2)[0];
+                    int eq = pair.indexOf('=');
+                    if (eq > 0 && !pair.substring(eq + 1).equals(jar.put(pair.substring(0, eq), pair.substring(eq + 1)))) {
+                        jarChanged = true;
+                    }
                 }
             }
             if (chunked) {
