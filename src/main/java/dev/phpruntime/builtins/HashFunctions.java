@@ -116,7 +116,7 @@ final class HashFunctions {
             return PhpStrings.of(Blake2b.hash(msg, key, (int) len));
         });
         Builtins.def("random_bytes", 1, 1, (ctx, a) -> {
-            long length = PhpOps.toLong(a[0]);
+            long length = RandomClasses.intArg(a[0], "random_bytes", 1, "length");
             if (length < 1 || length > Integer.MAX_VALUE - 8) {
                 throw new PhpError(PhpError.VALUE_ERROR, "random_bytes(): Argument #1 ($length) must be greater than 0", null);
             }

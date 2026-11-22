@@ -82,6 +82,9 @@ public final class PhpExceptions {
         addSubclass(language, out, "UnexpectedValueException", "RuntimeException");
         addSubclass(language, out, "JsonException", EXCEPTION);
         addSubclass(language, out, "SodiumException", EXCEPTION);
+        addSubclass(language, out, "Random\\RandomException", EXCEPTION);
+        addSubclass(language, out, "Random\\RandomError", ERROR);
+        addSubclass(language, out, "Random\\BrokenRandomEngineError", "Random\\RandomError");
         addSubclass(language, out, "mysqli_sql_exception", "RuntimeException");
         addSubclass(language, out, "DateException", EXCEPTION);
         addSubclass(language, out, "DateInvalidTimeZoneException", "DateException");
