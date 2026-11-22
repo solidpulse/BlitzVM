@@ -948,6 +948,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static void check(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
                           String name, @Bind BytecodeNode bytecode, @Bind Node node) {
+            if (type.isMixed()) {
+                // Accepts every element: no walk, no materialized frame (type is a constant).
+                return;
+            }
             Object raw = acc.isCleared(bytecode, frame) ? null : acc.getObject(bytecode, frame);
             if (!(raw instanceof PhpArray array)) {
                 return;
@@ -2975,6 +2979,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     }
                 } else {
                     Object value = array.get(key);
+                    if (type.matchesFast(value)) {
+                        // Already one of the declared types (a string for Stringable|string).
+                        index++;
+                        continue;
+                    }
                     Object checked = type.checkParameter(value, root, node, index, null, self, called);
                     if (checked != value) {
                         if (out == null) {

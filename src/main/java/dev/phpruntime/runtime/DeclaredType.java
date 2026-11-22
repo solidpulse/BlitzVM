@@ -49,6 +49,13 @@ public final class DeclaredType {
     private final int mask;
     private final List<ClassGroup> classGroups;
     private final int fastClassId;
+    /**
+     * Class ids of every class member when each is one plain class or interface (no
+     * intersection, self, parent or static), as in {@code Reflector|ReflectionType|string};
+     * null otherwise. Lets an object argument to such a union skip the boundary call.
+     */
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1)
+    private final int[] fastClassIds;
 
     private DeclaredType(PhpType type, String declaredClass, PhpLanguage language) {
         this.type = type;
@@ -64,6 +71,16 @@ public final class DeclaredType {
             fast = groups.get(0).fastClassId();
         }
         this.fastClassId = fast;
+        int[] ids = groups.isEmpty() ? null : new int[groups.size()];
+        for (int i = 0; ids != null && i < groups.size(); i++) {
+            ClassGroup g = groups.get(i);
+            if (g.names().size() != 1 || g.fastClassId() < 0) {
+                ids = null;
+            } else {
+                ids[i] = g.fastClassId();
+            }
+        }
+        this.fastClassIds = fast >= 0 ? new int[]{fast} : ids;
     }
 
     public static DeclaredType of(PhpType type, String declaredClass, PhpLanguage language) {
@@ -118,19 +135,38 @@ public final class DeclaredType {
         return (mask & OBJECT) != 0;
     }
 
-    /** Whether the class fast path can run (one plain class/interface member). */
+    /** Whether the class fast path can run (every class member one plain class/interface). */
     public boolean hasFastClass() {
-        return fastClassId >= 0;
+        return fastClassIds != null;
     }
 
-    /** The one cheap guard for an object of the declared class (or a subclass/implementor). */
+    /**
+     * The cheap guard for an object of a declared class (or a subclass/implementor). A class not
+     * declared in this request has no instances, so an unresolved member simply does not match;
+     * the caller's slow path decides then.
+     */
     public boolean fastClassMatches(PhpObject value, PhpContext ctx, PhpClass selfClass) {
-        PhpClass target = ctx.classById(fastClassId);
-        if (target == null && selfClass != null) {
-            // A self/parent type left unresolved in a trait.
-            target = resolveGroupName(0, selfClass, null, ctx);
+        if (fastClassId >= 0) {
+            PhpClass target = ctx.classById(fastClassId);
+            if (target == null && selfClass != null) {
+                // A self/parent type left unresolved in a trait.
+                target = resolveGroupName(0, selfClass, null, ctx);
+            }
+            return target != null && value.phpClass().isInstanceOf(target);
         }
-        return target != null && value.phpClass().isInstanceOf(target);
+        return anyClassMatches(value.phpClass(), ctx);
+    }
+
+    @com.oracle.truffle.api.nodes.ExplodeLoop
+    private boolean anyClassMatches(PhpClass cls, PhpContext ctx) {
+        int[] ids = fastClassIds;
+        for (int i = 0; i < ids.length; i++) {
+            PhpClass target = ctx.classById(ids[i]);
+            if (target != null && cls.isInstanceOf(target)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ fast matching
