@@ -66,6 +66,7 @@ public final class PhpDispatcher implements AutoCloseable {
     private final Path docRoot;
     private final PhpEngine engine;
     private final SnapshotServer snapshots;
+    private final WorkerPool workers;
     /** Resolved request paths, revalidated on the file system at most every {@link #routeRevalidateNanos}. */
     private final ConcurrentHashMap<String, Route> routes = new ConcurrentHashMap<>();
     /** Original request header name to its CGI server name, e.g. User-Agent to HTTP_USER_AGENT. */
@@ -79,8 +80,14 @@ public final class PhpDispatcher implements AutoCloseable {
 
     /** With a profile, eligible requests are served from boot snapshots; without, nothing changes. */
     public PhpDispatcher(Path docRoot, PhpEngine engine, SnapshotProfile profile) {
+        this(docRoot, engine, profile, null);
+    }
+
+    /** With a worker pool, PHP routes are handed to a long-lived worker instead of a fresh run. */
+    public PhpDispatcher(Path docRoot, PhpEngine engine, SnapshotProfile profile, WorkerPool workers) {
         this.docRoot = docRoot.toAbsolutePath().normalize();
         this.engine = engine;
+        this.workers = workers;
         try {
             this.snapshots = profile == null ? null : new SnapshotServer(this.docRoot, engine, profile);
         } catch (IOException e) {
@@ -134,6 +141,15 @@ public final class PhpDispatcher implements AutoCloseable {
             }
             Path file = route.file();
             String pathInfo = route.pathInfo();
+            if (workers != null && file.toString().endsWith(".php")) {
+                PhpRequest request = buildRequest(req, workers.workerScript(), null);
+                workers.prepare(request);
+                PhpEngine.Result result = workers.execute(request);
+                if (!result.errors().isEmpty()) {
+                    System.err.print(result.errors());
+                }
+                return response(request, result);
+            }
             PhpRequest request = buildRequest(req, file, pathInfo);
             SnapshotServer.Plan plan = null;
             if (snapshots != null) {
@@ -157,15 +173,19 @@ public final class PhpDispatcher implements AutoCloseable {
                     snapshots.verify(request, file, result, run);
                 }
             }
-            List<String[]> headers = new ArrayList<>(request.responseHeaders);
-            if (headers.stream().noneMatch(h -> h[0].equalsIgnoreCase("Content-Type"))) {
-                headers.add(new String[]{"Content-Type", "text/html; charset=UTF-8"});
-            }
-            headers.add(new String[]{"X-Powered-By", "php-truffle"});
-            return new Response(result.status(), headers, result.body());
+            return response(request, result);
         } catch (IOException | RuntimeException e) {
             return Response.text(500, "Internal Server Error: " + e + "\n");
         }
+    }
+
+    private static Response response(PhpRequest request, PhpEngine.Result result) {
+        List<String[]> headers = new ArrayList<>(request.responseHeaders);
+        if (headers.stream().noneMatch(h -> h[0].equalsIgnoreCase("Content-Type"))) {
+            headers.add(new String[]{"Content-Type", "text/html; charset=UTF-8"});
+        }
+        headers.add(new String[]{"X-Powered-By", "php-truffle"});
+        return new Response(result.status(), headers, result.body());
     }
 
     /**

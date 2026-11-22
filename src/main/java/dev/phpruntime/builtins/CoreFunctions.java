@@ -22,8 +22,11 @@ final class CoreFunctions {
         types();
         time();
         http();
-        Builtins.def("function_exists", 1, 1, (ctx, a) ->
-                ctx.lookupFunction(PhpOps.toStr(a[0])) != null || Builtins.lookup(PhpOps.toStr(a[0])) != null);
+        Builtins.def("function_exists", 1, 1, (ctx, a) -> {
+            String name = PhpOps.toStr(a[0]);
+            return ctx.lookupFunction(name) != null
+                    || (WorkerFunctions.available(ctx, name) && Builtins.lookup(name) != null);
+        });
         Builtins.def("define", 2, 2, (ctx, a) ->
                 ctx.defineConstant(PhpOps.toStr(a[0]), PhpOps.copyOnAssign(a[1]), 0));
         Builtins.def("defined", 1, 1, (ctx, a) ->
