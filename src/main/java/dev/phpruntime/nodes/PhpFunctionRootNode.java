@@ -298,7 +298,21 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     }
     public boolean usesSymbolTable() { return scopeLayout != null; }
     public boolean isGenerator() { return generator; }
-    public int line() { return getSourceSection() != null ? getSourceSection().getStartLine() : -1; }
+    /** Start line of the declaration; cached because getStartLine() searches the source's line map. */
+    public int line() {
+        int l = cachedLine;
+        if (l == Integer.MIN_VALUE) {
+            com.oracle.truffle.api.source.SourceSection section = getSourceSection();
+            if (section == null) {
+                return -1;
+            }
+            l = section.getStartLine();
+            cachedLine = l;
+        }
+        return l;
+    }
+
+    private int cachedLine = Integer.MIN_VALUE;
 
     public PhpFunctionRootNode withGeneratorSource(PhpNode source) {
         this.generatorSource = source;

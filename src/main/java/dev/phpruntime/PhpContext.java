@@ -64,6 +64,13 @@ public final class PhpContext {
     private PhpFunction[] functionsById = new PhpFunction[16];
     private final Map<String, PhpClass> classes = new HashMap<>();
     private PhpClass[] classesById;
+    /**
+     * lookupClass() results keyed by the name exactly as given. Builtins such as is_a() and
+     * class_exists() receive the same class-name strings over and over (literals keep their
+     * cached hash), so a hit skips lowercasing and rehashing. Only found classes are stored and a
+     * hit is checked against {@link #classesById}, so it cannot outlive the class it names.
+     */
+    private final HashMap<String, PhpClass> classByExactName = new HashMap<>();
     /** Null until a class's static properties or constants are used. */
     private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
@@ -829,17 +836,28 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
+        PhpClass hit = classByExactName.get(name);
+        if (hit != null) {
+            int id = hit.classId();
+            PhpClass[] table = classesById;
+            if (id >= 0 && id < table.length && table[id] == hit) {
+                return hit;
+            }
+        }
         String n = name.startsWith("\\") ? name.substring(1) : name;
         String lower = PhpStrings.lower(n);
-        PhpClass existing = classes.get(lower);
-        if (existing != null) {
-            return existing;
+        PhpClass found = classes.get(lower);
+        if (found == null) {
+            PhpClassTemplate builtin = language.builtinClassTemplate(lower);
+            if (builtin == null) {
+                return null;
+            }
+            found = declareClassInternal(builtin, true);
         }
-        PhpClassTemplate builtin = language.builtinClassTemplate(lower);
-        if (builtin != null) {
-            return declareClassInternal(builtin, true);
+        if (found != null) {
+            classByExactName.put(name, found);
         }
-        return null;
+        return found;
     }
 
     /** class_alias(): makes an existing class reachable under another name in this request. */

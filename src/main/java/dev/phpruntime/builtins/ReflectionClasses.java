@@ -323,8 +323,8 @@ public final class ReflectionClasses {
             return true;
         }
         if (type instanceof PhpType.Named named) {
-            String lower = PhpStrings.lower(named.name());
-            return lower.equals("null") || lower.equals("mixed");
+            String n = named.name();
+            return PhpStrings.equalsIgnoreCase(n, "null") || PhpStrings.equalsIgnoreCase(n, "mixed");
         }
         if (type instanceof PhpType.Union union) {
             for (PhpType member : union.members()) {

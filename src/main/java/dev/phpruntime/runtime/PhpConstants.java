@@ -484,14 +484,14 @@ public final class PhpConstants {
 
     /** Looks up a built-in constant (including case-insensitive true/false/null), or null if absent. */
     public static Object lookupBuiltin(String name) {
-        String lower = PhpStrings.lower(name);
-        if (lower.equals("true")) {
+        // Most names are upper-case constants; compare in place instead of lowercasing a copy.
+        if (PhpStrings.equalsIgnoreCase(name, "true")) {
             return Boolean.TRUE;
         }
-        if (lower.equals("false")) {
+        if (PhpStrings.equalsIgnoreCase(name, "false")) {
             return Boolean.FALSE;
         }
-        if (lower.equals("null")) {
+        if (PhpStrings.equalsIgnoreCase(name, "null")) {
             return PhpNull.INSTANCE;
         }
         return compileTime(name);

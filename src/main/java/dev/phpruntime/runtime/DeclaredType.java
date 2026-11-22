@@ -396,7 +396,8 @@ public final class DeclaredType {
         // A value strict mode accepts (an exact match, or an int widened to float) comes out the
         // same in weak mode, so the caller's mode only matters when that fails. Finding it walks
         // the stack, which typed code would otherwise pay on every class-typed argument.
-        Object strictResult = matchOrCoerce(value, ctx, selfClass, calledClass, true, fn.line());
+        // The strict pass never coerces, so it needs no line; looking one up costs a source scan.
+        Object strictResult = matchOrCoerce(value, ctx, selfClass, calledClass, true, 0);
         if (strictResult != NO_MATCH) {
             return strictResult;
         }
@@ -440,6 +441,10 @@ public final class DeclaredType {
             return PhpNull.INSTANCE;
         }
         PhpContext ctx = PhpContext.get(site);
+        if (matches(v, ctx, selfClass, calledClass)) {
+            return v;
+        }
+        // The line is only for a weak-mode coercion's deprecation.
         int line = Math.max(0, PhpBacktrace.sourceLine(site));
         Object result = matchOrCoerce(v, ctx, selfClass, calledClass, root.strictTypes(), line);
         if (result != NO_MATCH) {
@@ -468,7 +473,7 @@ public final class DeclaredType {
     public Object checkProperty(Object value, PhpContext ctx, Node site, boolean strict, PhpClass selfClass,
                                 String owner, String property) {
         Object v = value == null ? PhpNull.INSTANCE : value;
-        if (matchesFast(v)) {
+        if (matchesFast(v) || matches(v, ctx, selfClass, null)) {
             return v;
         }
         int line = site == null ? 0 : Math.max(0, PhpBacktrace.sourceLine(site));
