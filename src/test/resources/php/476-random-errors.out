@@ -1,0 +1,72 @@
+secure Random\Engine\Secure crypto engine 8
+Trying to clone an uncloneable object of class Random\Engine\Secure
+Serialization of 'Random\Engine\Secure' is not allowed
+Unserialization of 'Random\Engine\Secure' is not allowed
+default Random\Engine\Secure
+Trying to clone an uncloneable object of class Random\Randomizer
+Cannot create dynamic property Random\Randomizer::$extra
+Cannot modify readonly property Random\Randomizer::$engine
+nextInt A random engine must return a non-empty string
+getBytes A random engine must return a non-empty string
+getInt A random engine must return a non-empty string
+getFloat A random engine must return a non-empty string
+getBytesFromString A random engine must return a non-empty string
+shuffleArray A random engine must return a non-empty string
+shuffleBytes A random engine must return a non-empty string
+pickArrayKeys A random engine must return a non-empty string
+getInt Failed to generate an acceptable random number in 50 attempts
+getFloat no error
+getBytesFromString Failed to generate an acceptable random number in 50 attempts
+pickArrayKeys Failed to generate an acceptable random number in 50 attempts
+chunk4 25231488 000102030001 3
+chunk10 00010203040506070001 253048761457115264 3
+chunk1 64646464646464646464 127 11
+Random\Engine\Mt19937::__serialize() expects exactly 0 arguments, 1 given
+Random\Engine\Mt19937::__debugInfo() expects exactly 0 arguments, 1 given
+Random\Engine\Mt19937::__unserialize(): Argument #1 ($data) must be of type array, null given
+Invalid serialization data for Random\Engine\Mt19937 object
+Random\Randomizer::__serialize() expects exactly 0 arguments, 1 given
+Random\Randomizer::__unserialize(): Argument #1 ($data) must be of type array, string given
+Invalid serialization data for Random\Randomizer object
+Invalid serialization data for Random\Randomizer object
+getBytes 0 ValueError: Random\Randomizer::getBytes(): Argument #1 ($length) must be greater than 0
+getBytes object TypeError: Random\Randomizer::getBytes(): Argument #1 ($length) must be of type int, stdClass given
+getBytesFromString empty ValueError: Random\Randomizer::getBytesFromString(): Argument #1 ($string) must not be empty
+getBytesFromString zero ValueError: Random\Randomizer::getBytesFromString(): Argument #2 ($length) must be greater than 0
+getBytesFromString array TypeError: Random\Randomizer::getBytesFromString(): Argument #1 ($string) must be of type string, array given
+getBytesFromString object TypeError: Random\Randomizer::getBytesFromString(): Argument #1 ($string) must be of type string, stdClass given
+pickArrayKeys empty ValueError: Random\Randomizer::pickArrayKeys(): Argument #1 ($array) must not be empty
+pickArrayKeys too many ValueError: Random\Randomizer::pickArrayKeys(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)
+pickArrayKeys object TypeError: Random\Randomizer::pickArrayKeys(): Argument #1 ($array) must be of type array, stdClass given
+shuffleArray object TypeError: Random\Randomizer::shuffleArray(): Argument #1 ($array) must be of type array, stdClass given
+shuffleBytes object TypeError: Random\Randomizer::shuffleBytes(): Argument #1 ($bytes) must be of type string, stdClass given
+getInt reversed ValueError: Random\Randomizer::getInt(): Argument #2 ($max) must be greater than or equal to argument #1 ($min)
+getFloat equal ValueError: Random\Randomizer::getFloat(): Argument #2 ($max) must be greater than argument #1 ($min)
+getFloat infinite ValueError: Random\Randomizer::getFloat(): Argument #1 ($min) must be finite
+getFloat nan ValueError: Random\Randomizer::getFloat(): Argument #2 ($max) must be finite
+getFloat empty open ValueError: The given interval is empty, there are no floats between argument #1 ($min) and argument #2 ($max)
+getFloat boundary TypeError: Random\Randomizer::getFloat(): Argument #3 ($boundary) must be of type Random\IntervalBoundary, int given
+getFloat too many ArgumentCountError: Random\Randomizer::getFloat() expects at most 3 arguments, 4 given
+getInt one ArgumentCountError: Random\Randomizer::getInt() expects exactly 2 arguments, 1 given
+nextInt one ArgumentCountError: Random\Randomizer::nextInt() expects exactly 0 arguments, 1 given
+getBytes zero args ArgumentCountError: Random\Randomizer::getBytes() expects exactly 1 argument, 0 given
+pickArrayKeys one ArgumentCountError: Random\Randomizer::pickArrayKeys() expects exactly 2 arguments, 1 given
+boundaries ClosedOpen,ClosedClosed,OpenClosed,OpenOpen
+hierarchy error throwable exception
+nulls 0 0
+floatseed 895547922 25
+boolseed 895547922
+stringseed 804318771
+single 0 1710563033
+mt_srand(): Argument #1 ($seed) must be of type ?int, string given
+array_rand(): Argument #2 ($num) must be of type int, string given
+array_rand(): Argument #2 ($num) must be of type int, stdClass given
+random_int(): Argument #1 ($min) must be of type int, stdClass given
+random_bytes(): Argument #1 ($length) must be of type int, array given
+str_shuffle(): Argument #1 ($string) must be of type string, stdClass given
+shuffle(): Argument #1 ($array) could not be passed by reference
+mt_rand() expects exactly 2 arguments, 1 given
+rand() expects exactly 2 arguments, 3 given
+bool(true)
+bool(true)
+bool(true)
