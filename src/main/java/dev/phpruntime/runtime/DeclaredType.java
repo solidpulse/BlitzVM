@@ -400,12 +400,13 @@ public final class DeclaredType {
         if (strictResult != NO_MATCH) {
             return strictResult;
         }
-        CallMode mode = CallMode.of(root, site);
-        Object result = mode.strict() ? NO_MATCH
-                : matchOrCoerce(value, ctx, selfClass, calledClass, false, fn.line());
-        if (result != NO_MATCH) {
-            return result;
+        if (!CallMode.strictOfCallerOf(root, site)) {
+            Object result = matchOrCoerce(value, ctx, selfClass, calledClass, false, fn.line());
+            if (result != NO_MATCH) {
+                return result;
+            }
         }
+        CallMode mode = CallMode.of(root, site);
         StringBuilder msg = new StringBuilder(fn.qualifiedCallableName()).append("(): Argument #")
                 .append(paramIndex + 1);
         if (paramName != null) {
