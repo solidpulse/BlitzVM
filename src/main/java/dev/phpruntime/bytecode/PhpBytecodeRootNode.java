@@ -3269,7 +3269,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             // CallNode.callBuiltin: a call result may be passed with a notice; anything else
             // (a plain expression or a new object) is an error for a builtin.
             if (kind != 1) {
-                throw new PhpError(def.name() + "(): Argument #" + (param + 1) + " could not be passed by reference");
+                dev.phpruntime.builtins.BuiltinParams.Param[] params =
+                        dev.phpruntime.builtins.BuiltinParams.forName(def.name());
+                String suffix = params != null && param < params.length ? " ($" + params[param].name() + ")" : "";
+                throw new PhpError(def.name() + "(): Argument #" + (param + 1) + suffix
+                        + " could not be passed by reference");
             }
             PhpContext.get(node).notice("Only variables should be passed by reference", line);
             return new PhpReference(PhpOps.copyOnAssign(value));
