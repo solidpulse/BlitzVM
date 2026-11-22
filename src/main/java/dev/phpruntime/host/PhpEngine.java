@@ -104,6 +104,78 @@ public final class PhpEngine implements AutoCloseable {
         return pool == null ? 0 : pool.created();
     }
 
+    /** A long-lived worker context: one polyglot context and one permanent {@link PhpContext}. */
+    public final class WorkerContext implements AutoCloseable {
+        private final Context context;
+        private final PhpContextHolder holder;
+        private final RequestStreams streams;
+        private final PhpContext php;
+
+        private WorkerContext(Context context, PhpContextHolder holder, RequestStreams streams, PhpContext php) {
+            this.context = context;
+            this.holder = holder;
+            this.streams = streams;
+            this.php = php;
+        }
+
+        public Context context() {
+            return context;
+        }
+
+        public PhpContext php() {
+            return php;
+        }
+
+        public void installStreams(OutputStream out, OutputStream err) {
+            streams.install(out, err);
+        }
+
+        public void clearStreams() {
+            streams.clear();
+        }
+
+        @Override
+        public void close() {
+            streams.clear();
+            holder.clear();
+            try {
+                context.close();
+            } catch (RuntimeException ignored) {
+                // already closed by a timeout, or the engine is going away
+            }
+        }
+    }
+
+    /**
+     * Builds a long-lived context for one worker. It must be called, used and closed on the
+     * worker's own thread: Truffle tracks which threads have entered a context.
+     */
+    public WorkerContext newWorkerContext() {
+        RequestStreams streams = new RequestStreams();
+        PhpContextHolder holder = PhpContextHolder.prepare();
+        Context context = null;
+        try {
+            context = Context.newBuilder("php").engine(engine).allowIO(IOAccess.ALL)
+                    .out(streams.out()).err(streams.err()).build();
+            context.initialize("php");
+            if (!holder.isBound()) {
+                throw new IllegalStateException("PHP language context was not created");
+            }
+            return new WorkerContext(context, holder, streams, holder.install());
+        } catch (RuntimeException | Error e) {
+            if (context != null) {
+                try {
+                    context.close();
+                } catch (RuntimeException ignored) {
+                    // the failure is already being reported
+                }
+            }
+            throw e;
+        } finally {
+            PhpContextHolder.finishPrepare();
+        }
+    }
+
     /** Executes a script and buffers its output, as the HTTP server needs. */
     public Result execute(Path script, PhpRequest request) throws IOException {
         return execute(script, request, null);
@@ -315,7 +387,7 @@ public final class PhpEngine implements AutoCloseable {
         return sb.toString();
     }
 
-    private Source source(Path script) throws IOException {
+    Source source(Path script) throws IOException {
         Path abs = script.toAbsolutePath().normalize();
         // Size as well as mtime, from the same stat: a file rewritten within the timestamp's
         // granularity would otherwise keep its old parsed source.

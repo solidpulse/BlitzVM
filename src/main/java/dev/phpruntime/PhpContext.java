@@ -20,6 +20,7 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpQuery;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 
@@ -90,6 +91,11 @@ public final class PhpContext {
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
     private PrintStream err;
     private PhpRequest request;
+    /**
+     * The host handler for a long-lived worker context, or null for an ordinary request
+     * context. It lives as long as the context, unlike the per-request {@link PhpRequest}.
+     */
+    private dev.phpruntime.runtime.WorkerHandler workerHandler;
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
     private Node currentBuiltinCallSite;
@@ -218,6 +224,15 @@ public final class PhpContext {
     /** Binds the host request to this fresh context before its first line runs. */
     public void bindRequest(PhpRequest request) {
         this.request = request;
+    }
+
+    /** The worker-mode handler for this context, or null when it is not a worker. */
+    public dev.phpruntime.runtime.WorkerHandler workerHandler() {
+        return workerHandler;
+    }
+
+    public void setWorkerHandler(dev.phpruntime.runtime.WorkerHandler handler) {
+        this.workerHandler = handler;
     }
 
     public Object builtinState() {
@@ -525,6 +540,152 @@ public final class PhpContext {
             }
         }
         return snap;
+    }
+
+    // ------------------------------------------------------------ worker mode
+
+    private static final String[] WORKER_SUPERGLOBALS =
+            {"_GET", "_POST", "_COOKIE", "_FILES", "_REQUEST", "_SERVER", "_ENV"};
+
+    /** The superglobals a worker had before its first request; restored after every request. */
+    public static final class Superglobals {
+        private final Map<String, Object> values;
+
+        private Superglobals(Map<String, Object> values) {
+            this.values = values;
+        }
+    }
+
+    /** Captures the worker's own superglobal values before the first request replaces them. */
+    @TruffleBoundary
+    public Superglobals captureSuperglobals() {
+        Map<String, Object> values = new java.util.LinkedHashMap<>();
+        for (String name : WORKER_SUPERGLOBALS) {
+            values.put(name, peekGlobal(name));
+        }
+        return new Superglobals(values);
+    }
+
+    /**
+     * Starts one request on a long-lived worker context. Unlike a fresh context, the script's
+     * globals, functions, classes and static state stay; only what a request owns is replaced.
+     */
+    @TruffleBoundary
+    public void beginWorkerRequest(PhpRequest req) {
+        bindRequest(req);
+        // A request starts with no output buffers and a response that has not been sent.
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        PhpArray get = req.queryString.isEmpty() ? toArray(req.get) : PhpQuery.parseQuery(req.queryString);
+        String contentType = PhpQuery.header(req.headers, "Content-Type");
+        PhpArray post = !req.body.isEmpty() && contentType != null
+                && PhpStrings.lower(contentType).startsWith("application/x-www-form-urlencoded")
+                ? PhpQuery.parseQuery(req.body) : toArray(req.post);
+        writeGlobal("_GET", get);
+        writeGlobal("_POST", post);
+        PhpArray all = get.share().forWrite();
+        for (var e : post.entries()) {
+            all.put(e.getKey(), e.getValue());
+        }
+        writeGlobal("_REQUEST", all);
+        PhpArray cookies = PhpQuery.parseCookies(PhpQuery.header(req.headers, "Cookie"));
+        writeGlobal("_COOKIE", cookies);
+        // FrankenPHP's variables_order is EGPCS with an empty request_order, so cookies are
+        // part of $_REQUEST and win over GET and POST for the same name.
+        for (var e : cookies.entries()) {
+            all.put(e.getKey(), e.getValue());
+        }
+        writeGlobal("_FILES", new PhpArray());
+        PhpArray environment = new PhpArray();
+        req.environment.forEach((key, value) -> environment.put(
+                PhpStrings.fromJava(key), PhpStrings.fromJava(value)));
+        writeGlobal("_ENV", environment);
+        writeGlobal("_SERVER", toArray(req.server));
+        if (!req.scriptFilename.isEmpty() && !req.server.containsKey("SCRIPT_FILENAME")) {
+            PhpArray server = toArray(req.server);
+            server.put("SCRIPT_FILENAME", PhpStrings.fromJava(req.scriptFilename));
+            writeGlobal("_SERVER", server);
+        }
+    }
+
+    /**
+     * Ends one request on a long-lived worker context: flushes what the request left open,
+     * restores the worker's own superglobals and binds the worker's own request again.
+     */
+    @TruffleBoundary
+    public void endWorkerRequest(Superglobals boot, PhpRequest bootRequest) {
+        try {
+            flush();
+        } catch (Throwable ignored) {
+            // A cancelled context cannot write anything; the response was already settled.
+        }
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        for (Map.Entry<String, Object> e : boot.values.entrySet()) {
+            writeGlobal(e.getKey(), e.getValue());
+        }
+        bindRequest(bootRequest);
+    }
+
+    /** Everything the current request produced but has not written yet, without running handlers. */
+    @TruffleBoundary
+    public String takePendingOutput() {
+        StringBuilder sb = new StringBuilder();
+        if (buffers != null) {
+            for (OutputBuffer b : buffers) {
+                sb.append(b.text);
+            }
+            buffers.clear();
+        }
+        sb.append(output);
+        output.setLength(0);
+        return sb.toString();
+    }
+
+    /** How many shutdown functions exist now; a worker request runs only the ones added later. */
+    public int shutdownFunctionCount() {
+        return shutdownFunctions == null ? 0 : shutdownFunctions.size();
+    }
+
+    /** Runs the shutdown functions registered since {@code from}, in registration order. */
+    @TruffleBoundary
+    public void runShutdownFunctionsFrom(int from) {
+        if (shutdownFunctions == null) {
+            return;
+        }
+        for (int i = from; i < shutdownFunctions.size(); i++) {
+            ShutdownEntry entry = shutdownFunctions.get(i);
+            PhpCallable cb = PhpCallable.resolveOrNull(this, entry.callable());
+            if (cb != null) {
+                try {
+                    cb.call(this, null, null, entry.args());
+                } catch (ControlFlow.Exit e) {
+                    endedAbnormally = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    /** Drops the request's shutdown functions so the worker's own ones still see script end. */
+    public void removeShutdownFunctionsFrom(int from) {
+        if (shutdownFunctions != null) {
+            while (shutdownFunctions.size() > from) {
+                shutdownFunctions.remove(shutdownFunctions.size() - 1);
+            }
+        }
+    }
+
+    private static PhpArray toArray(Map<String, String> m) {
+        PhpArray a = new PhpArray();
+        m.forEach(a::put);
+        return a;
     }
 
     @TruffleBoundary

@@ -171,6 +171,8 @@ fileperms	filename:0:!
 filesize	filename:0:!
 filter_var	value:0:!	filter:0:516	options:0:0
 floatval	value:0:!
+frankenphp_finish_request
+frankenphp_handle_request	callback:0:!
 flock	stream:0:!	operation:0:!	would_block:0:NULL
 floor	num:0:!
 flush

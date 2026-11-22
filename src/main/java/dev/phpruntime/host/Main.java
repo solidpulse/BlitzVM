@@ -21,6 +21,8 @@ import java.nio.file.Path;
  *     --http netty|jdk HTTP front end (default netty: native epoll on Linux)
  *     --profile <name|file>  serve eligible requests from boot snapshots (wordpress, or a
  *                       properties file); off without it
+ *     --worker <script>     FrankenPHP-style worker mode: boot script once and keep it warm
+ *     --workers N       worker threads (default: the --cpus count); may exceed --cpus
  * </pre>
  */
 public final class Main {
@@ -101,6 +103,8 @@ public final class Main {
         Path docRoot = Path.of(".");
         String http = "netty";
         String profileName = null;
+        Path workerScript = null;
+        int workerCount = -1;
         long warmupSeconds = 0;
         java.util.List<String> warmupPaths = new java.util.ArrayList<>();
         String warmupHost = null;
@@ -115,8 +119,20 @@ public final class Main {
                 case "--max-exec-ms" -> maxExec = Long.parseLong(args[++i]);
                 case "--http" -> http = args[++i];
                 case "--profile" -> profileName = args[++i];
+                case "--worker" -> workerScript = Path.of(args[++i]);
+                case "--workers" -> workerCount = Integer.parseInt(args[++i]);
                 default -> docRoot = Path.of(args[i]);
             }
+        }
+        if (workerScript != null && profileName != null) {
+            System.err.println("php-truffle: --worker cannot be combined with --profile");
+            System.exit(64);
+            return;
+        }
+        if (workerScript != null && !Files.isRegularFile(workerScript)) {
+            System.err.println("php-truffle: worker script not found: " + workerScript);
+            System.exit(64);
+            return;
         }
         SnapshotProfile profile = null;
         if (profileName != null) {
@@ -129,9 +145,16 @@ public final class Main {
         }
         Scheduler scheduler = new Scheduler(cpus, quantum, maxExec);
         PhpEngine engine = new PhpEngine(scheduler);
+        WorkerPool workers = null;
         PhpDispatcher dispatcher;
         try {
-            dispatcher = new PhpDispatcher(docRoot, engine, profile);
+            if (workerScript != null) {
+                workers = new WorkerPool(engine, scheduler, workerScript, docRoot,
+                        workerCount > 0 ? workerCount : cpus, port);
+                dispatcher = new PhpDispatcher(docRoot, engine, profile, workers);
+            } else {
+                dispatcher = new PhpDispatcher(docRoot, engine, profile);
+            }
         } catch (IllegalArgumentException e) {
             System.err.println("php-truffle: " + e.getMessage());
             System.exit(64);
@@ -141,6 +164,21 @@ public final class Main {
                 ? new PhpHttpServer(dispatcher, port, 256)
                 : new NettyPhpServer(dispatcher, port, 256);
         String transport = server instanceof NettyPhpServer n ? n.transport() : "jdk-httpserver";
+        if (workers != null) {
+            int count = workers.workerCount();
+            System.out.println("php-truffle worker mode: " + count + " worker" + (count == 1 ? "" : "s")
+                    + " running " + workerScript.toAbsolutePath().normalize());
+            workers.start();
+            try {
+                if (!workers.awaitReady(WorkerPool.STARTUP_TIMEOUT_MILLIS)) {
+                    System.err.println("php-truffle: only " + workers.readyCount() + " of " + count
+                            + " workers reached frankenphp_handle_request() within "
+                            + WorkerPool.STARTUP_TIMEOUT_MILLIS / 1000 + " s; opening the port anyway");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         if (warmupSeconds > 0) {
             // Before the port opens: clients never see the interpreter-speed first minutes.
             java.util.List<String> paths = warmupPaths.isEmpty() ? java.util.List.of("/") : warmupPaths;
@@ -152,11 +190,20 @@ public final class Main {
         server.start();
         System.out.printf("php-truffle serving %s on http://localhost:%d (%s, cpus=%d, quantum=%dms, max-exec=%dms)%n",
                 docRoot.toAbsolutePath().normalize(), server.port(), transport, cpus, quantum, maxExec);
+        if (workers != null) {
+            System.out.println("blitz worker mode: " + workers.workerCount() + " worker"
+                    + (workers.workerCount() == 1 ? "" : "s") + ", script "
+                    + workerScript.toAbsolutePath().normalize());
+        }
         if (profile != null) {
             System.out.println("blitz snapshot: profile " + profile.name() + " " + profile.describe());
         }
+        final WorkerPool workerPool = workers;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.close();
+            if (workerPool != null) {
+                workerPool.close();
+            }
             dispatcher.close();
             engine.close();
             scheduler.close();
@@ -165,7 +212,7 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file>]\n"
+        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file>] [--worker <script> [--workers N]]\n"
                 + "         [--warmup-seconds N [--warmup-path /p ...] [--warmup-host host:port]] [docroot]");
         System.err.println("       php-truffle --snapshot-check <boot.php> <entry.php>   capture, restore twice and compare");
         System.err.println("       php-truffle --engine-options   list runtime and engine option descriptors");

@@ -101,6 +101,11 @@ public final class Scheduler implements AutoCloseable {
         return preemptions.get();
     }
 
+    /** Requests currently holding a slot; idle worker threads must not appear here. */
+    public int runningCount() {
+        return running.size();
+    }
+
     @Override
     public void close() {
         ticker.shutdownNow();
