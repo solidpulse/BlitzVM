@@ -2112,10 +2112,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /**
      * {@link #takesRef} with an identity profile of what decides the answer: the callee's
-     * signature call target, builtin or signature. While an argument operation sees one, that
-     * object is a constant in compiled code, so the mask folds and the by-reference or by-value
-     * branch that cannot happen drops out; a method callee is a fresh record per call, so without
-     * the profile the mask is loaded through it on every argument.
+     * signature call target, builtin or signature. An argument operation has a fixed parameter
+     * index, so while it sees one such object the answer is a constant in compiled code and the
+     * by-reference or by-value branch that cannot happen drops out. A method callee is a fresh
+     * record per call, so without the profile the mask is loaded through it on every argument.
      */
     static final class RefProfile extends Node {
         private static final Object UNSET = new Object();
@@ -2123,26 +2123,34 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         /** A callee with no by-reference parameters at all ({@code __call}, unknown). */
         private static final Object NONE = new Object();
 
-        @CompilerDirectives.CompilationFinal private Object key = UNSET;
+        /** The decision for one key, published as one object so key and answer never mix. */
+        private record Seen(Object key, boolean ref) {
+        }
+
+        @CompilerDirectives.CompilationFinal private Object state = UNSET;
 
         static RefProfile create() {
             return new RefProfile();
         }
 
         boolean takesRef(Object callee, int param) {
-            Object k = key;
-            if (k != GENERIC) {
-                Object actual = refKey(callee);
-                if (actual == k) {
-                    return refBitOf(k, param);
+            Object st = state;
+            if (st instanceof Seen seen) {
+                if (refKey(callee) == seen.key()) {
+                    return seen.ref();
                 }
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                key = k == UNSET ? actual : GENERIC;
-                return refBitOf(actual, param);
+                state = GENERIC;
+            } else if (st == UNSET) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                boolean ref = PhpBytecodeRootNode.takesRef(callee, param);
+                state = new Seen(refKey(callee), ref);
+                return ref;
             }
             return PhpBytecodeRootNode.takesRef(callee, param);
         }
 
+        /** The object that decides {@link PhpBytecodeRootNode#takesRef} for every parameter. */
         private static Object refKey(Object callee) {
             if (callee instanceof PhpFunction fn) {
                 return fn.callTarget();
@@ -2157,22 +2165,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 if (v.callable().kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
                     return v.callable().builtin();
                 }
-                return v.sig() != null ? v.sig() : NONE;
+                if (v.sig() != null) {
+                    return v.sig();
+                }
+                // A Java method: its call target is unique to the method, as its mask is.
+                return v.callable().callTarget() != null ? v.callable().callTarget() : NONE;
             }
             return NONE;
-        }
-
-        private static boolean refBitOf(Object key, int param) {
-            if (key instanceof RootCallTarget t) {
-                return PhpFunctionRootNode.refBit(refMaskOf(t), param);
-            }
-            if (key instanceof Builtins.Def def) {
-                return def.isRef(param);
-            }
-            if (key instanceof PhpFunctionRootNode sig) {
-                return PhpFunctionRootNode.refBit(sig.refMask(), param);
-            }
-            return false;
         }
     }
 
