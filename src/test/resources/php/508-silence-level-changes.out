@@ -1,0 +1,17 @@
+start er=22527 ini=22527
+  error_reporting(1) returned 4437, now er=1 ini=1
+after @set_er(1) er=22527 ini=1
+  error_reporting(8) returned 4437, now er=8 ini=8
+after @set_er(8) er=8 ini=8
+  ini_set('2') returned '22527', now er=2 ini=2
+after @set_ini(2) er=2 ini=2
+  ini_set('0') returned '22527', now er=0 ini=0
+after @set_ini(0) er=22527 ini=0
+inside @ er=4437 ini=22527
+after @show er=22527 ini=22527
+  error_reporting(4437) returned 4437, now er=4437 ini=22527
+after @set_to_masked er=22527 ini=22527
+  after two sets er=1 ini=1
+after 8 then 1 er=22527 ini=1
+  after two sets er=8 ini=8
+after 1 then 8 er=8 ini=8

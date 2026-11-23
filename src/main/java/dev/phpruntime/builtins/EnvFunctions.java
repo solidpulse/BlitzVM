@@ -99,7 +99,7 @@ final class EnvFunctions {
                 return ContextState.of(ctx).unserializeCallbackFunc;
             }
             if (PhpStrings.lower(name).equals("error_reporting")) {
-                return String.valueOf(ctx.errorReporting());
+                return String.valueOf(ctx.errorReportingIni());
             }
             String v = INI.get(name);
             return v == null ? false : v;

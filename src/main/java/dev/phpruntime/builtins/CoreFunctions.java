@@ -46,14 +46,21 @@ final class CoreFunctions {
         Builtins.def("error_reporting", 0, 1, (ctx, a) -> {
             long old = ctx.errorReporting();
             if (a.length > 0 && a[0] != null && a[0] != PhpNull.INSTANCE) {
-                ctx.setErrorReporting(PhpOps.toLong(a[0]));
+                long level = PhpOps.toLong(a[0]);
+                // php leaves the ini entry alone when the level would not change.
+                if (level != old) {
+                    ctx.setErrorReporting(level);
+                    ctx.setErrorReportingIni(level);
+                }
             }
             return old;
         });
         Builtins.def("ini_set", 2, 2, (ctx, a) -> {
             if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("error_reporting")) {
-                String previous = String.valueOf(ctx.errorReporting());
-                ctx.setErrorReporting(PhpOps.toLong(a[1]));
+                String previous = String.valueOf(ctx.errorReportingIni());
+                long level = PhpOps.toLong(a[1]);
+                ctx.setErrorReporting(level);
+                ctx.setErrorReportingIni(level);
                 return previous;
             }
             if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("unserialize_callback_func")) {

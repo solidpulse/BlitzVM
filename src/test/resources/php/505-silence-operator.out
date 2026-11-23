@@ -1,0 +1,23 @@
+start er=22527
+undefined after er=22527 value=NULL
+array after er=22527 value=NULL
+property after er=22527 value=NULL
+  function er=4437
+call after er=22527 value=1
+  method er=4437
+method after er=22527 value=1
+  static er=4437
+static after er=22527 value=1
+  closure er=4437
+closure after er=22527 value=1
+  arrow er=4437
+arrow after er=22527 value=1
+builtin after er=22527 value=3
+file after er=22527 value=false
+coalesce after er=22527 value=2
+  falsy er=4437
+if body er=22527
+  include er=4437
+include after er=22527 value='included'
+  include er=4437
+require after er=22527 value='included'

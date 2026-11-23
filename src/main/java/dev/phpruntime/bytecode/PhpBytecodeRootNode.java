@@ -1520,6 +1520,39 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    // ------------------------------------------------------------------ @
+
+    /**
+     * {@code @expr}: masks error_reporting to the fatal levels for the operand. Yields the
+     * level to restore, which the emitter keeps in a local around a try/finally.
+     */
+    @Operation
+    public static final class SilenceBegin {
+        @Specialization
+        static long begin(@Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            long previous = ctx.errorReporting();
+            ctx.setErrorReporting(previous & PhpContext.SILENCE_MASK);
+            return previous;
+        }
+    }
+
+    /**
+     * Ends {@code @expr}, restoring the level saved by {@link SilenceBegin}. php keeps a level
+     * the operand set itself with error_reporting() or ini_set() when it enables anything
+     * outside the fatal mask, and restores otherwise.
+     */
+    @Operation
+    public static final class SilenceEnd {
+        @Specialization
+        static void end(long previous, @Bind Node node) {
+            PhpContext ctx = PhpContext.get(node);
+            if ((ctx.errorReporting() & ~PhpContext.SILENCE_MASK) == 0) {
+                ctx.setErrorReporting(previous);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ arrays
 
     @Operation

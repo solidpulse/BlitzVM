@@ -2116,7 +2116,7 @@ public final class Parser {
                 }
                 case "@" -> {
                     next();
-                    return binary(UNARY_POWER - 1);
+                    return new SilenceNode(binary(UNARY_POWER - 1)).at(line);
                 }
                 case "++", "--" -> {
                     next();

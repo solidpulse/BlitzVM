@@ -102,8 +102,18 @@ public final class PhpContext {
     private boolean inErrorHandler;
     /** php.ini-production's error_reporting, E_ALL &amp; ~E_DEPRECATED, as ini_get reports. */
     public static final long DEFAULT_ERROR_REPORTING = 22527L;
+    /**
+     * The levels {@code @expr} leaves enabled while the operand runs: E_ERROR, E_PARSE,
+     * E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR and E_RECOVERABLE_ERROR (php 8's 4437).
+     */
+    public static final long SILENCE_MASK = 4437L;
     /** The error_reporting level: which diagnostics the default handler displays. */
     private long errorReporting = DEFAULT_ERROR_REPORTING;
+    /**
+     * The "error_reporting" ini entry. It is normally equal to {@link #errorReporting}, but
+     * {@code @expr} masks the runtime level only, so ini_get keeps reporting the full level.
+     */
+    private long errorReportingIni = DEFAULT_ERROR_REPORTING;
 
     public long errorReporting() {
         return errorReporting;
@@ -111,6 +121,14 @@ public final class PhpContext {
 
     public void setErrorReporting(long level) {
         errorReporting = level;
+    }
+
+    public long errorReportingIni() {
+        return errorReportingIni;
+    }
+
+    public void setErrorReportingIni(long level) {
+        errorReportingIni = level;
     }
     private final StringBuilder output = new StringBuilder();
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */

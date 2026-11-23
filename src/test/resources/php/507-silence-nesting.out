@@ -1,0 +1,28 @@
+start er=22527
+    inner start er=4437
+    inner after @ er=4437
+    inner nested er=4437
+    inner end er=4437
+after @function er=22527
+    inner start er=4437
+    inner after @ er=4437
+    inner nested er=4437
+    inner end er=4437
+after @@function er=22527
+    thrower er=4437
+catch er=22527
+caught boom
+after catch er=22527
+  outer start er=4437
+    thrower er=4437
+  outer catch er=4437
+  caught boom
+  outer after catch er=4437
+after @outer_with_catch er=22527
+    thrower method er=4437
+catch method er=22527
+    thrower static er=4437
+catch static er=22527
+    thrower closure er=4437
+catch closure er=22527
+end er=22527
