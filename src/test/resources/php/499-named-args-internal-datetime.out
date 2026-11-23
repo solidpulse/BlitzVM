@@ -1,0 +1,22 @@
+string(19) "2020-01-02 03:04:05"
+bool(true)
+string(10) "2021-03-04"
+bool(true)
+string(8) "05:06:00"
+string(16) "Thu, 06 May 2021"
+string(10) "2021-05-07"
+int(1)
+string(12) "Europe/Paris"
+int(7200)
+bool(true)
+string(3) "1 2"
+string(10) "2020-01-02"
+string(10) "04/03/2021"
+string(2) "03"
+string(12) "Europe/Paris"
+string(1) "2"
+string(4) "2021"
+int(3600)
+Error: Unknown named parameter $bogus
+Error: Unknown named parameter $FORMAT
+Error: Named parameter $format overwrites previous argument

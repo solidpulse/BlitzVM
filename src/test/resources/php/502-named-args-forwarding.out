@@ -1,0 +1,42 @@
+string(3) "1-5"
+array(2) {
+  ["x"]=>
+  int(1)
+  ["y"]=>
+  int(2)
+}
+string(3) "1-5"
+array(2) {
+  ["x"]=>
+  int(1)
+  ["y"]=>
+  int(2)
+}
+int(6)
+string(5) "s:1-5"
+string(5) "s:1-5"
+string(3) "1-5"
+string(3) "1-5"
+string(5) "s:1-5"
+string(5) "s:1-5"
+string(3) "1-5"
+string(3) "1-5"
+string(3) "1-5"
+string(3) "1-5"
+string(3) "1-5"
+string(3) "1-5"
+string(5) "i:1-5"
+warning: bump(): Argument #1 ($x) must be passed by reference, value given
+int(2)
+int(1)
+int(2)
+int(2)
+int(2)
+int(2)
+Error: Unknown named parameter $z
+Error: Unknown named parameter $s
+Error: Named parameter $a overwrites previous argument
+Error: Cannot use positional argument after named argument
+Error: Unknown named parameter $z
+Error: Unknown named parameter $z
+Error: Unknown named parameter $z
