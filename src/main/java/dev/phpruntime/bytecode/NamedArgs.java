@@ -5,6 +5,7 @@ import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import dev.phpruntime.builtins.BuiltinParams;
 import dev.phpruntime.builtins.Builtins;
@@ -62,11 +63,11 @@ final class NamedArgs {
 
     /** The call site's argument names (null for a positional argument) and argument forms. */
     static final class Spec {
-        final String[] names;
-        final byte[] kinds;
+        @CompilationFinal(dimensions = 1) final String[] names;
+        @CompilationFinal(dimensions = 1) final byte[] kinds;
         /** Per argument: {@link #VALUE_PLAIN}, {@link #VALUE_CALL} or {@link #VALUE_NEW}. */
-        private final byte[] valueKinds;
-        private final boolean[] duplicates;
+        @CompilationFinal(dimensions = 1) private final byte[] valueKinds;
+        @CompilationFinal(dimensions = 1) private final boolean[] duplicates;
 
         Spec(String[] names, byte[] kinds, byte[] valueKinds) {
             this.names = names.clone();
@@ -163,16 +164,16 @@ final class NamedArgs {
         final Builtins.Def def;
         final int prefixLength;
         /** Argument index to parameter slot; -1 for a named variadic entry, -2 when ignored. */
-        final int[] dest;
+        @CompilationFinal(dimensions = 1) final int[] dest;
         /** Slot to argument index, or -1 for a default/unpassed slot. */
-        final int[] slotArg;
+        @CompilationFinal(dimensions = 1) final int[] slotArg;
         /** Per slot: the builtin default, or {@link #NO_DEFAULT}. */
-        final Object[] defaults;
+        @CompilationFinal(dimensions = 1) final Object[] defaults;
         final int totalSlots;
         /** Slot of the trailing {@code NamedVariadic}, or -1. */
         final int variadicSlot;
         final boolean variadicByRef;
-        final byte[] mode;
+        @CompilationFinal(dimensions = 1) final byte[] mode;
         final String error;
         final boolean errorIsArgumentCount;
 
@@ -281,6 +282,40 @@ final class NamedArgs {
             } finally {
                 lock.unlock();
             }
+        }
+    }
+
+    /**
+     * An identity profile of the plan one operation sees. While every call through the operation
+     * uses the same plan (a monomorphic site), compiled code gets the plan as a constant, so the
+     * by-reference modes fold and {@link #bindConstant} unrolls; a second plan turns the profile
+     * generic for good and the operation reads the plan at run time.
+     */
+    static final class PlanProfile extends Node {
+        @CompilationFinal private Plan expected;
+        @CompilationFinal private byte state; // 0 uninitialized, 1 monomorphic, 2 generic
+
+        static PlanProfile create() {
+            return new PlanProfile();
+        }
+
+        Plan profile(Plan plan) {
+            byte st = state;
+            if (st == 1) {
+                if (plan == expected) {
+                    return expected;
+                }
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                state = 2;
+                expected = null;
+                return plan;
+            }
+            if (st == 0) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                expected = plan;
+                state = 1;
+            }
+            return plan;
         }
     }
 
@@ -717,6 +752,52 @@ final class NamedArgs {
         } else {
             for (int s = 0; s < plan.totalSlots; s++) {
                 int arg = plan.slotArg[s];
+                out[base + s] = arg >= 0 ? values[arg] : PhpNull.INSTANCE;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@link #bind} for a plan that is a compilation constant: the loops unroll over the call
+     * site's arguments, so the argument array can stay virtual into an inlined callee. Plans with
+     * a named-variadic entry or a builtin callee go through {@link #bind}.
+     */
+    static Object[] bindArgs(Plan plan, Object a, Object b, Object c, Object[] values) {
+        if (CompilerDirectives.inCompiledCode() && CompilerDirectives.isPartialEvaluationConstant(plan)
+                && plan.variadicSlot < 0 && plan.kind != KIND_BUILTIN) {
+            return bindConstant(plan, a, b, c, values);
+        }
+        return bind(plan, plan.prefixLength, a, b, c, values);
+    }
+
+    @ExplodeLoop
+    private static Object[] bindConstant(Plan plan, Object a, Object b, Object c, Object[] values) {
+        int base = plan.prefixLength;
+        Object[] out = new Object[base + plan.totalSlots];
+        if (base > 0) {
+            out[0] = a;
+        }
+        if (base > 1) {
+            out[1] = b;
+        }
+        if (base > 2) {
+            out[2] = c;
+        }
+        if (plan.kind == KIND_USER) {
+            for (int s = 0; s < plan.totalSlots; s++) {
+                out[base + s] = PhpFunctionRootNode.UNPASSED;
+            }
+            int[] dest = plan.dest;
+            for (int i = 0; i < dest.length; i++) {
+                if (dest[i] >= 0) {
+                    out[base + dest[i]] = values[i];
+                }
+            }
+        } else {
+            int[] slotArg = plan.slotArg;
+            for (int s = 0; s < plan.totalSlots; s++) {
+                int arg = slotArg[s];
                 out[base + s] = arg >= 0 ? values[arg] : PhpNull.INSTANCE;
             }
         }
