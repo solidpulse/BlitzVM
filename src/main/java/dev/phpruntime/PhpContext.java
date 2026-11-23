@@ -67,10 +67,16 @@ public final class PhpContext {
     /**
      * lookupClass() results keyed by the name exactly as given. Builtins such as is_a() and
      * class_exists() receive the same class-name strings over and over (literals keep their
-     * cached hash), so a hit skips lowercasing and rehashing. Only found classes are stored and a
-     * hit is checked against {@link #classesById}, so it cannot outlive the class it names.
+     * cached hash), so a hit skips lowercasing and rehashing. A found class is checked against
+     * {@link #classesById}, so it cannot outlive the class it names. A miss is stored as the
+     * {@link #classGeneration} it was seen at: Tempest asks is_a() and class_exists() about
+     * names that are not classes (type names, optional integrations) thousands of times per
+     * request, and any class declaration makes those entries stale.
      */
-    private final HashMap<String, PhpClass> classByExactName = new HashMap<>();
+    private final HashMap<String, Object> classByExactName = new HashMap<>();
+    /** Bumped whenever a class or alias is added to {@link #classes}. */
+    private int classGeneration;
+    private int missingClassEntries;
     /** Null until a class's static properties or constants are used. */
     private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
@@ -154,6 +160,7 @@ public final class PhpContext {
         if (linked != null && linked.matches(null, List.of(), List.of())) {
             PhpClass cls = linked.cls();
             classes.put(template.lowerName(), cls);
+            classGeneration++;
             int id = cls.classId();
             if (id >= classesById.length) {
                 classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
@@ -848,13 +855,15 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
-        PhpClass hit = classByExactName.get(name);
-        if (hit != null) {
+        Object cached = classByExactName.get(name);
+        if (cached instanceof PhpClass hit) {
             int id = hit.classId();
             PhpClass[] table = classesById;
             if (id >= 0 && id < table.length && table[id] == hit) {
                 return hit;
             }
+        } else if (cached instanceof Integer generation && generation == classGeneration) {
+            return null;
         }
         String n = name.startsWith("\\") ? name.substring(1) : name;
         String lower = PhpStrings.lower(n);
@@ -862,6 +871,7 @@ public final class PhpContext {
         if (found == null) {
             PhpClassTemplate builtin = language.builtinClassTemplate(lower);
             if (builtin == null) {
+                rememberMissingClass(name);
                 return null;
             }
             found = declareClassInternal(builtin, true);
@@ -870,6 +880,17 @@ public final class PhpContext {
             classByExactName.put(name, found);
         }
         return found;
+    }
+
+    private void rememberMissingClass(String name) {
+        if (missingClassEntries >= 4096) {
+            // Names can come from input; keep the table bounded.
+            classByExactName.values().removeIf(v -> v instanceof Integer);
+            missingClassEntries = 0;
+        }
+        if (!(classByExactName.put(name, classGeneration) instanceof Integer)) {
+            missingClassEntries++;
+        }
     }
 
     /** class_alias(): makes an existing class reachable under another name in this request. */
@@ -881,6 +902,7 @@ public final class PhpContext {
             return false;
         }
         classes.put(lower, cls);
+        classGeneration++;
         int id = language.classId(lower);
         if (id >= classesById.length) {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
@@ -1135,6 +1157,7 @@ public final class PhpContext {
             }
         }
         classes.put(lower, cls);
+        classGeneration++;
         int id = cls.classId();
         if (id >= classesById.length) {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
@@ -1440,6 +1463,7 @@ public final class PhpContext {
     @TruffleBoundary
     public void restoreClass(String lowerName, PhpClass cls) {
         PhpClass existing = classes.putIfAbsent(lowerName, cls);
+        classGeneration++;
         if (existing != null) {
             if (existing != cls) {
                 throw new IllegalStateException("snapshot class " + lowerName
