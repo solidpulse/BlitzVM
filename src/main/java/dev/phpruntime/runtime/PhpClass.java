@@ -26,11 +26,18 @@ public final class PhpClass {
 
     public record MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
                               boolean isStatic, boolean isFinal, boolean fromTrait,
-                              RootCallTarget callTarget, List<String> parameterNames) {
+                              RootCallTarget callTarget, List<String> parameterNames,
+                              long refMask, int variadicIndex) {
         public MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
                            boolean isStatic, boolean isFinal, boolean fromTrait,
                            RootCallTarget callTarget) {
-            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, List.of());
+            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, List.of(), 0L, -1);
+        }
+
+        public MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
+                           boolean isStatic, boolean isFinal, boolean fromTrait,
+                           RootCallTarget callTarget, List<String> parameterNames) {
+            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, parameterNames, 0L, -1);
         }
     }
 
@@ -418,9 +425,7 @@ public final class PhpClass {
 
         boolean ownIsTrait = template.isTrait();
         for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
-            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(),
-                    ownIsTrait, m.callTarget(), m.signature() == null ? List.of() : m.signature().parameters().stream()
-                            .map(PhpParameter::name).toList());
+            MethodEntry entry = methodEntry(m, ownIsTrait);
             putMethod(m.lowerName(), m.methodId(), entry);
         }
 
@@ -512,6 +517,41 @@ public final class PhpClass {
             this.methodsById = java.util.Arrays.copyOf(this.methodsById, Math.max(methodId + 1, this.methodsById.length * 2));
         }
         this.methodsById[methodId] = entry;
+    }
+
+    /**
+     * The linked entry for a method declared on this template. An explicit signature (guest
+     * code, or a Java method that registers its names) supplies the names; a Java method
+     * without one takes php's names from the generated {@link InternalParamNames} table.
+     */
+    private MethodEntry methodEntry(PhpClassTemplate.MethodDecl m, boolean fromTrait) {
+        List<String> names = List.of();
+        long refMask = 0L;
+        int variadic = -1;
+        if (m.signature() != null) {
+            List<PhpParameter> parameters = m.signature().parameters();
+            List<String> declared = new ArrayList<>(parameters.size());
+            for (int i = 0; i < parameters.size(); i++) {
+                PhpParameter parameter = parameters.get(i);
+                declared.add(parameter.name());
+                if (parameter.byRef() && i < 64) {
+                    refMask |= 1L << i;
+                }
+                if (parameter.variadic()) {
+                    variadic = i;
+                }
+            }
+            names = List.copyOf(declared);
+        } else {
+            InternalParamNames.Params params = InternalParamNames.forMethod(template.lowerName(), m.lowerName());
+            if (params != null) {
+                names = params.names();
+                refMask = params.refMask();
+                variadic = params.variadicIndex();
+            }
+        }
+        return new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(),
+                fromTrait, m.callTarget(), names, refMask, variadic);
     }
 
     private void composeTraitMethods(PhpLanguage language, Map<String, PhpClass> resolvedTraits) {
