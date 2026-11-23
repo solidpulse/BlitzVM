@@ -1164,11 +1164,13 @@ public final class BytecodeEmitter {
     public void namedArgs(PhpNode[] args, dev.phpruntime.nodes.var.LValueNode[] refTargets,
                           String[] argNames, BytecodeLocal callee, BytecodeLocal argsLocal) {
         byte[] kinds = new byte[args.length];
+        byte[] valueKinds = new byte[args.length];
         for (int i = 0; i < args.length; i++) {
             kinds[i] = namedArgKind(refTargets != null ? refTargets[i] : null);
+            valueKinds[i] = (byte) namedValueKind(args[i]);
         }
         b.beginStoreLocal(argsLocal);
-        b.beginStartNamedArgs(new NamedArgs.Spec(argNames, kinds));
+        b.beginStartNamedArgs(new NamedArgs.Spec(argNames, kinds, valueKinds));
         b.emitLoadLocal(callee);
         b.endStartNamedArgs();
         b.endStoreLocal();
@@ -1211,14 +1213,20 @@ public final class BytecodeEmitter {
             b.endNamedPlaceArg();
             return;
         }
-        int valueKind = arg instanceof dev.phpruntime.nodes.expr.NewNode ? 2
-                : (arg instanceof dev.phpruntime.nodes.call.CallNode
-                || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
-                || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
-                || arg instanceof dev.phpruntime.nodes.call.CallValueNode) ? 1 : 0;
-        b.beginNamedValueArg(index, n, valueKind, callee, argsLocal);
+        b.beginNamedValueArg(index, n, namedValueKind(arg), callee, argsLocal);
         exprForRef(arg);
         b.endNamedValueArg();
+    }
+
+    /** A value argument's form: a plain expression, a call result, or {@code new}. */
+    private static int namedValueKind(PhpNode arg) {
+        if (arg instanceof dev.phpruntime.nodes.expr.NewNode) {
+            return NamedArgs.VALUE_NEW;
+        }
+        return arg instanceof dev.phpruntime.nodes.call.CallNode
+                || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
+                || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                || arg instanceof dev.phpruntime.nodes.call.CallValueNode ? NamedArgs.VALUE_CALL : NamedArgs.VALUE_PLAIN;
     }
 
     /**

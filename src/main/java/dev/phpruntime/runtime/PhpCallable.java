@@ -33,9 +33,19 @@ public final class PhpCallable {
     private final PhpClass calledClass;
     private final PhpClass traitSelf;
     private final String magicMethodName;
+    /** A Java-implemented method's declared parameter names (for named arguments); else empty. */
+    private final java.util.List<String> parameterNames;
 
     private PhpCallable(Kind kind, PhpObject closureObj, RootCallTarget callTarget, Builtins.Def builtin,
                         Object boundThis, PhpClass calledClass, PhpClass traitSelf, String magicMethodName) {
+        this(kind, closureObj, callTarget, builtin, boundThis, calledClass, traitSelf, magicMethodName,
+                java.util.List.of());
+    }
+
+    private PhpCallable(Kind kind, PhpObject closureObj, RootCallTarget callTarget, Builtins.Def builtin,
+                        Object boundThis, PhpClass calledClass, PhpClass traitSelf, String magicMethodName,
+                        java.util.List<String> parameterNames) {
+        this.parameterNames = parameterNames;
         this.kind = kind;
         this.closureObj = closureObj;
         this.callTarget = callTarget;
@@ -53,6 +63,11 @@ public final class PhpCallable {
 
     public Kind kind() {
         return kind;
+    }
+
+    /** The parameter names a Java-implemented method declares; empty for guest code. */
+    public java.util.List<String> parameterNames() {
+        return parameterNames;
     }
 
     public PhpObject closureObj() {
@@ -158,7 +173,7 @@ public final class PhpCallable {
                     }
                     Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
                     return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, thisArg, cls,
-                            entry.fromTrait() ? entry.declaringClass() : null, null);
+                            entry.fromTrait() ? entry.declaringClass() : null, null, entry.parameterNames());
                 }
                 PhpClass.MethodEntry magic = cls.callMethod();
                 if (magic != null && magic.callTarget() != null) {
@@ -198,10 +213,12 @@ public final class PhpCallable {
             }
             PhpClass ts = entry.fromTrait() ? entry.declaringClass() : null;
             if (entry.isStatic()) {
-                return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, PhpNull.INSTANCE, cls, ts, null);
+                return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, PhpNull.INSTANCE, cls, ts, null,
+                        entry.parameterNames());
             }
             if (callerThis instanceof PhpObject co && co.phpClass().isInstanceOf(entry.declaringClass())) {
-                return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, co, co.phpClass(), ts, null);
+                return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, co, co.phpClass(), ts, null,
+                        entry.parameterNames());
             }
             return null;
         }

@@ -1,0 +1,9 @@
+notice: Only variables should be passed by reference (line 10)
+string(1) "a"
+notice: Only variables should be passed by reference (line 11)
+string(1) "z"
+notice: Only variables should be passed by reference (line 12)
+int(1)
+Error: array_shift(): Argument #1 ($array) could not be passed by reference
+int(42)
+Error: Unknown named parameter $nope

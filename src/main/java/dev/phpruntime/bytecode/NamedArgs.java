@@ -39,6 +39,16 @@ final class NamedArgs {
     static final byte MODE_BUILTIN_REF = 2;
     /** A magic call reads a place as a plain value, without the lvalue read's warning. */
     static final byte MODE_MAGIC = 3;
+    /**
+     * A call result (or {@code new}) bound to a builtin's by-reference parameter: the builtin
+     * gets a temporary, after php's notice for a call result.
+     */
+    static final byte MODE_BUILTIN_TEMP = 4;
+
+    /** {@link #ARG_VALUE} forms, as {@link BytecodeEmitter#namedArg} classifies them. */
+    static final byte VALUE_PLAIN = 0;
+    static final byte VALUE_CALL = 1;
+    static final byte VALUE_NEW = 2;
 
     static final byte KIND_USER = 0;
     static final byte KIND_BUILTIN = 1;
@@ -54,11 +64,14 @@ final class NamedArgs {
     static final class Spec {
         final String[] names;
         final byte[] kinds;
+        /** Per argument: {@link #VALUE_PLAIN}, {@link #VALUE_CALL} or {@link #VALUE_NEW}. */
+        private final byte[] valueKinds;
         private final boolean[] duplicates;
 
-        Spec(String[] names, byte[] kinds) {
+        Spec(String[] names, byte[] kinds, byte[] valueKinds) {
             this.names = names.clone();
             this.kinds = kinds.clone();
+            this.valueKinds = valueKinds.clone();
             this.duplicates = new boolean[names.length];
             for (int i = 0; i < names.length; i++) {
                 if (names[i] == null) {
@@ -80,6 +93,10 @@ final class NamedArgs {
 
         byte kind(int index) {
             return kinds[index];
+        }
+
+        byte valueKind(int index) {
+            return valueKinds[index];
         }
 
         int length() {
@@ -493,7 +510,8 @@ final class NamedArgs {
             if (error == null && idx < positional) {
                 error = "Named parameter $" + name + " overwrites previous argument";
             }
-            if (error == null && def.isRef(idx) && spec.kind(i) == ARG_VALUE) {
+            if (error == null && def.isRef(idx) && spec.kind(i) == ARG_VALUE
+                    && spec.valueKind(i) == VALUE_PLAIN) {
                 error = def.name() + "(): Argument #" + (idx + 1) + " ($" + params[idx].name()
                         + ") could not be passed by reference";
             }
@@ -535,7 +553,8 @@ final class NamedArgs {
             int d = dest[i];
             boolean byRef = d >= 0 && def.isRef(d);
             boolean hasPlace = spec.kind(i) == ARG_VAR || spec.kind(i) == ARG_PLACE;
-            mode[i] = byRef && hasPlace ? MODE_BUILTIN_REF : MODE_VALUE;
+            mode[i] = !byRef ? MODE_VALUE : hasPlace ? MODE_BUILTIN_REF
+                    : spec.valueKind(i) != VALUE_PLAIN ? MODE_BUILTIN_TEMP : MODE_VALUE;
         }
         return new Plan(spec, KIND_BUILTIN, null, def, prefix, dest, slotArg, defaults, length,
                 -1, false, mode, error, errorCount);
@@ -847,6 +866,12 @@ final class NamedArgs {
             dev.phpruntime.PhpContext.get(site).notice("Only variables should be passed by reference", line);
         }
         return new PhpReference(PhpOps.copyOnAssign(value));
+    }
+
+    /** php's notice for a call result passed to a by-reference parameter. */
+    @TruffleBoundary
+    static void onlyVariablesNotice(Node site, int line) {
+        dev.phpruntime.PhpContext.get(site).notice("Only variables should be passed by reference", line);
     }
 
     private static int indexOf(PhpFunctionRootNode fn, String name) {

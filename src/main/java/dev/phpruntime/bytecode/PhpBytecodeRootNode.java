@@ -4935,6 +4935,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             name.isEmpty() ? null : name, location, lineOf(bytecode, bci));
                 }
             } else {
+                if (mode == NamedArgs.MODE_BUILTIN_TEMP && kind == NamedArgs.VALUE_CALL) {
+                    NamedArgs.onlyVariablesNotice(location, lineOf(bytecode, bci));
+                }
                 v = PhpOps.copyOnAssign(value);
             }
             if (args.spec.duplicate(index)) {
@@ -5077,10 +5080,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             // so the callee is not inlined once per kind.
             Object[] args = switch (cb.kind()) {
                 case CLOSURE -> namedValueArgs(plan, buffer, 3, cb.boundThis(), cb.calledClass(),
-                        cb.closureObj(), v.sig(), location);
-                case USER_FUNCTION -> namedValueArgs(plan, buffer, 0, null, null, null, v.sig(), location);
+                        cb.closureObj(), v.sig(), null, location);
+                case USER_FUNCTION -> namedValueArgs(plan, buffer, 0, null, null, null, v.sig(), null, location);
                 case METHOD -> namedValueArgs(plan, buffer, cb.traitSelf() != null ? 3 : 2, cb.boundThis(),
-                        cb.calledClass(), cb.traitSelf(), v.sig(), location);
+                        cb.calledClass(), cb.traitSelf(), v.sig(), cb, location);
                 case MAGIC_CALL -> new Object[]{
                         cb.boundThis(), cb.calledClass(), cb.magicMethodName(), NamedArgs.magicArray(buffer)};
                 default -> throw CompilerDirectives.shouldNotReachHere();
@@ -5088,21 +5091,34 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return Ops.ret(keepRef, dispatch.call(cb.callTarget(), args));
         }
 
+        /** {@code method} is the callable when it is a method (it may be Java-implemented), else null. */
         private static Object[] namedValueArgs(NamedArgs.Plan plan, NamedArgs.Buffer buffer, int prefix,
                                                Object a, Object b, Object c, PhpFunctionRootNode fnRoot,
-                                               SiteNode location) {
+                                               dev.phpruntime.runtime.PhpCallable method, SiteNode location) {
             if (plan != null) {
                 if (plan.hasError()) {
                     plan.throwError(location);
                 }
                 return NamedArgs.bind(plan, plan.prefixLength, a, b, c, buffer.values);
             }
+            return genericValueArgs(buffer, prefix, a, b, c, fnRoot, method, location);
+        }
+
+        @TruffleBoundary
+        private static Object[] genericValueArgs(NamedArgs.Buffer buffer, int prefix, Object a, Object b, Object c,
+                                                 PhpFunctionRootNode fnRoot, dev.phpruntime.runtime.PhpCallable method,
+                                                 SiteNode location) {
             Object[] prefixArgs = switch (prefix) {
                 case 3 -> new Object[]{a, b, c};
                 case 2 -> new Object[]{a, b};
                 default -> new Object[0];
             };
-            return CallArgHelper.bindToFunction(prefixArgs, NamedArgs.toRaw(buffer), fnRoot, location);
+            CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
+            if (fnRoot == null && method != null && !method.parameterNames().isEmpty()) {
+                // A Java-implemented method has no guest signature; it declares its names instead.
+                return CallArgHelper.bindToInternal(prefixArgs, raw, method.parameterNames(), location);
+            }
+            return CallArgHelper.bindToFunction(prefixArgs, raw, fnRoot, location);
         }
     }
 
