@@ -912,7 +912,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = "type.hasFastClass()")
         static void classValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
                                String name, PhpObject value, @Bind Node node, @Bind BytecodeNode bytecode) {
-            if (type.fastClassMatches(value, PhpContext.get(node), DeclaredTypes.selfClass(rootOf(node), frame))) {
+            // A trait's unresolved self/parent is the only fast case needing the self class; it
+            // is rare, so it takes the slow path instead of resolving self on every call.
+            if (type.fastClassMatches(value, PhpContext.get(node), null)) {
                 return;
             }
             slow(frame, type, acc, info, param, name, value, node, bytecode);
@@ -926,9 +928,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         private static void slow(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
                                  String name, Object value, Node node, BytecodeNode bytecode) {
-            PhpBytecodeRootNode root = rootOf(node);
-            Object result = type.checkParameter(value, root, node, param, name,
-                    DeclaredTypes.selfClass(root, frame), DeclaredTypes.calledClass(root, frame));
+            Object result = DeclaredTypes.checkParameter(type, value, rootOf(node), node, param, name,
+                    frame.getArguments());
             Object raw = acc.isCleared(bytecode, frame) ? null : acc.getObject(bytecode, frame);
             if (raw instanceof PhpReference ref) {
                 ref.setValue(result);
@@ -1013,8 +1014,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.hasFastClass()"})
         static Object classValue(VirtualFrame frame, DeclaredType type, boolean implicit, PhpObject value,
                                  @Bind Node node) {
-            PhpBytecodeRootNode root = rootOf(node);
-            if (type.fastClassMatches(value, PhpContext.get(node), DeclaredTypes.selfClass(root, frame))) {
+            if (type.fastClassMatches(value, PhpContext.get(node), null)) {
                 return value;
             }
             return slowReturn(frame, type, implicit, value, node);
@@ -1028,25 +1028,43 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         private static Object slowReturn(VirtualFrame frame, DeclaredType type, boolean implicit, Object value,
                                          Node node) {
             PhpBytecodeRootNode root = rootOf(node);
+            Object[] args = frame.getArguments();
             if (value instanceof PhpReference ref) {
-                Object checked = type.checkReturn(ref.getValue(), root, node, implicit,
-                        DeclaredTypes.selfClass(root, frame), DeclaredTypes.calledClass(root, frame));
-                ref.setValue(checked);
+                ref.setValue(DeclaredTypes.checkReturn(type, ref.getValue(), root, node, implicit, args));
                 return ref;
             }
-            return type.checkReturn(value, root, node, implicit,
-                    DeclaredTypes.selfClass(root, frame), DeclaredTypes.calledClass(root, frame));
+            return DeclaredTypes.checkReturn(type, value, root, node, implicit, args);
         }
     }
 
     /** The runtime class helpers the type operations need, derived from the running frame. */
     static final class DeclaredTypes {
+        /**
+         * A parameter check that a fast specialization could not settle (coercion, a trait's
+         * self, an error): the class context is resolved here, out of compiled code.
+         */
+        @TruffleBoundary
+        static Object checkParameter(DeclaredType type, Object value, PhpBytecodeRootNode root, Node node, int param,
+                                     String name, Object[] args) {
+            return type.checkParameter(value, root, node, param, name, selfClass(root, args), calledClass(root, args));
+        }
+
+        /** {@link #checkParameter} for a return value. */
+        @TruffleBoundary
+        static Object checkReturn(DeclaredType type, Object value, PhpBytecodeRootNode root, Node node,
+                                  boolean implicit, Object[] args) {
+            return type.checkReturn(value, root, node, implicit, selfClass(root, args), calledClass(root, args));
+        }
+
         static PhpClass selfClass(PhpBytecodeRootNode root, com.oracle.truffle.api.frame.Frame frame) {
+            return selfClass(root, frame.getArguments());
+        }
+
+        static PhpClass selfClass(PhpBytecodeRootNode root, Object[] args) {
             PhpFunctionRootNode fn = root.function();
             if (fn == null) {
                 return null;
             }
-            Object[] args = frame.getArguments();
             if (fn.traitSelfSlot() >= 0) {
                 if (fn.isClosure()) {
                     if (args.length > 2 && args[2] instanceof PhpObject obj && obj.closure() != null
@@ -1062,7 +1080,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         static PhpClass calledClass(PhpBytecodeRootNode root, VirtualFrame frame) {
-            Object[] args = frame.getArguments();
+            return calledClass(root, frame.getArguments());
+        }
+
+        static PhpClass calledClass(PhpBytecodeRootNode root, Object[] args) {
             if (root.function() != null && root.function().argOffset() > 0) {
                 if (args.length > 1 && args[1] instanceof PhpClass c) {
                     return c;
