@@ -235,6 +235,9 @@ final class NamedArgs {
             if (snapshot.length >= CACHE_LIMIT) {
                 return null;
             }
+            // Compiled code holds the entries array as a constant, so it is invalidated here,
+            // outside the boundary; otherwise it would miss and take the lock on every call.
+            CompilerDirectives.transferToInterpreterAndInvalidate();
             return planSlow(callee, spec, key, kind);
         }
 
@@ -255,7 +258,6 @@ final class NamedArgs {
                 Plan plan = build(callee, spec);
                 Entry[] next = java.util.Arrays.copyOf(snapshot, snapshot.length + 1);
                 next[snapshot.length] = new Entry(key, kind, plan);
-                CompilerDirectives.transferToInterpreterAndInvalidate();
                 java.lang.invoke.VarHandle.storeStoreFence();
                 entries = next;
                 return plan;

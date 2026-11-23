@@ -4830,8 +4830,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             args.values[index] = v;
             if (mode == NamedArgs.MODE_BUILTIN_REF) {
-                args.setRef(index, new LocalLValue(acc, info, bytecode), dev.phpruntime.nodes.var.LValueNode.NO_KEYS);
+                args.setRef(index, localLValue(acc, info, bytecode), dev.phpruntime.nodes.var.LValueNode.NO_KEYS);
             }
+        }
+
+        /** Built behind a boundary: the plan is not a constant, so this branch stays in the graph. */
+        @TruffleBoundary
+        private static LocalLValue localLValue(LocalAccessor acc, VarInfo info, BytecodeNode bytecode) {
+            return new LocalLValue(acc, info, bytecode);
         }
     }
 
@@ -4990,21 +4996,34 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
                         m.obj(), m.cls(), m.name(), NamedArgs.magicArray(buffer)}));
             }
+            Object[] args = methodArgs(m, buffer, location);
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
+        }
+
+        /**
+         * The argument array for a method or constructor, from the plan or, at a megamorphic
+         * site, from the generic binder. Kept apart from the dispatch so the callee is called
+         * (and inlined) from one place only.
+         */
+        static Object[] methodArgs(MethodCallee m, NamedArgs.Buffer buffer, SiteNode location) {
             NamedArgs.Plan plan = buffer.plan;
             if (plan != null) {
                 if (plan.hasError()) {
                     plan.throwError(location);
                 }
-                Object[] args = NamedArgs.bind(plan, plan.prefixLength, m.thisArg(), m.cls(), null, buffer.values);
-                return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
+                return NamedArgs.bind(plan, plan.prefixLength, m.thisArg(), m.cls(), null, buffer.values);
             }
+            return genericMethodArgs(m, buffer, location);
+        }
+
+        @TruffleBoundary
+        private static Object[] genericMethodArgs(MethodCallee m, NamedArgs.Buffer buffer, SiteNode location) {
             CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-            Object[] args = fnRoot != null
+            return fnRoot != null
                     ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                     : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
                             m.entry().parameterNames(), location);
-            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
         }
     }
 
@@ -5019,22 +5038,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpObject obj = (PhpObject) object;
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             if (callee instanceof MethodCallee m) {
-                NamedArgs.Plan plan = buffer.plan;
-                if (plan != null) {
-                    if (plan.hasError()) {
-                        plan.throwError(location);
-                    }
-                    Object[] args = NamedArgs.bind(plan, plan.prefixLength, m.thisArg(), m.cls(), null, buffer.values);
-                    dispatch.callMethod(m.entry(), args);
-                } else {
-                    CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
-                    PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-                    Object[] args = fnRoot != null
-                            ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
-                            : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
-                                    m.entry().parameterNames(), location);
-                    dispatch.callMethod(m.entry(), args);
-                }
+                dispatch.callMethod(m.entry(), DoNamedMethod.methodArgs(m, buffer, location));
             } else {
                 String name = buffer.spec.firstName();
                 if (name != null) {
@@ -5059,39 +5063,29 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             dev.phpruntime.runtime.PhpCallable cb = v.callable();
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             NamedArgs.Plan plan = buffer.plan;
-            Object result;
-            switch (cb.kind()) {
-                case CLOSURE -> {
-                    Object[] args = namedValueArgs(plan, buffer, 3, cb.boundThis(), cb.calledClass(),
-                            cb.closureObj(), v.sig(), location);
-                    result = dispatch.call(cb.callTarget(), args);
+            if (cb.kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
+                if (plan == null) {
+                    return Ops.ret(keepRef, Ops.callComplexBuiltinBoundary(frame.materialize(), cb.builtin(),
+                            NamedArgs.toRaw(buffer), location));
                 }
-                case USER_FUNCTION -> {
-                    Object[] args = namedValueArgs(plan, buffer, 0, null, null, null, v.sig(), location);
-                    result = dispatch.call(cb.callTarget(), args);
+                if (plan.hasError()) {
+                    plan.throwError(location);
                 }
-                case METHOD -> {
-                    int prefix = cb.traitSelf() != null ? 3 : 2;
-                    Object[] args = namedValueArgs(plan, buffer, prefix, cb.boundThis(), cb.calledClass(),
-                            cb.traitSelf(), v.sig(), location);
-                    result = dispatch.call(cb.callTarget(), args);
-                }
-                case MAGIC_CALL -> result = dispatch.call(cb.callTarget(), new Object[]{
-                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), NamedArgs.magicArray(buffer)});
-                case BUILTIN -> {
-                    if (plan != null) {
-                        if (plan.hasError()) {
-                            plan.throwError(location);
-                        }
-                        result = NamedArgs.callBuiltin(frame, cb.builtin(), buffer, plan, location);
-                    } else {
-                        result = Ops.callComplexBuiltinBoundary(frame.materialize(), cb.builtin(),
-                                NamedArgs.toRaw(buffer), location);
-                    }
-                }
-                default -> throw CompilerDirectives.shouldNotReachHere();
+                return Ops.ret(keepRef, NamedArgs.callBuiltin(frame, cb.builtin(), buffer, plan, location));
             }
-            return Ops.ret(keepRef, result);
+            // Every guest kind builds its argument array first and then shares one dispatch,
+            // so the callee is not inlined once per kind.
+            Object[] args = switch (cb.kind()) {
+                case CLOSURE -> namedValueArgs(plan, buffer, 3, cb.boundThis(), cb.calledClass(),
+                        cb.closureObj(), v.sig(), location);
+                case USER_FUNCTION -> namedValueArgs(plan, buffer, 0, null, null, null, v.sig(), location);
+                case METHOD -> namedValueArgs(plan, buffer, cb.traitSelf() != null ? 3 : 2, cb.boundThis(),
+                        cb.calledClass(), cb.traitSelf(), v.sig(), location);
+                case MAGIC_CALL -> new Object[]{
+                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), NamedArgs.magicArray(buffer)};
+                default -> throw CompilerDirectives.shouldNotReachHere();
+            };
+            return Ops.ret(keepRef, dispatch.call(cb.callTarget(), args));
         }
 
         private static Object[] namedValueArgs(NamedArgs.Plan plan, NamedArgs.Buffer buffer, int prefix,

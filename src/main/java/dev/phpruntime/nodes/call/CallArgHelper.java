@@ -249,6 +249,7 @@ public final class CallArgHelper {
      * Named arguments for an internal method: the parameter names come from the class
      * template signature, since there is no guest function frame to read them from.
      */
+    @TruffleBoundary
     public static Object[] bindToInternal(Object[] prefix, RawCallArgs raw, List<String> paramNames, Node site) {
         List<Object> pos = raw.positional();
         Map<String, Object> named = raw.named();
