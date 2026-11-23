@@ -98,6 +98,9 @@ final class EnvFunctions {
             if (PhpStrings.lower(name).equals("unserialize_callback_func")) {
                 return ContextState.of(ctx).unserializeCallbackFunc;
             }
+            if (PhpStrings.lower(name).equals("error_reporting")) {
+                return String.valueOf(ctx.errorReporting());
+            }
             String v = INI.get(name);
             return v == null ? false : v;
         });

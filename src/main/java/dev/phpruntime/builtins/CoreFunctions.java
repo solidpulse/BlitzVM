@@ -43,8 +43,19 @@ final class CoreFunctions {
         Builtins.def("phpversion", 0, 1, (ctx, a) -> "8.3.0-truffle");
         Builtins.def("memory_get_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
         Builtins.def("memory_get_peak_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory());
-        Builtins.def("error_reporting", 0, 1, (ctx, a) -> 32767L);
+        Builtins.def("error_reporting", 0, 1, (ctx, a) -> {
+            long old = ctx.errorReporting();
+            if (a.length > 0 && a[0] != null && a[0] != PhpNull.INSTANCE) {
+                ctx.setErrorReporting(PhpOps.toLong(a[0]));
+            }
+            return old;
+        });
         Builtins.def("ini_set", 2, 2, (ctx, a) -> {
+            if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("error_reporting")) {
+                String previous = String.valueOf(ctx.errorReporting());
+                ctx.setErrorReporting(PhpOps.toLong(a[1]));
+                return previous;
+            }
             if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("unserialize_callback_func")) {
                 ContextState state = ContextState.of(ctx);
                 String previous = state.unserializeCallbackFunc;

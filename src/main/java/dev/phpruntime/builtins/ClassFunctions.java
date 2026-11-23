@@ -121,7 +121,7 @@ final class ClassFunctions {
         Builtins.def("is_a", 2, 3, (ctx, a) -> {
             boolean allowString = a.length >= 3 && PhpOps.toBool(a[2]);
             if (a[0] instanceof String && !allowString) {
-                ctx.warning("Calling is_a() with a string when $allow_string is false", 0);
+                ctx.deprecated("Calling is_a() with a string when $allow_string is false", 0);
                 return false;
             }
             PhpClass subject = resolveSubjectClass(ctx, a[0], allowString);

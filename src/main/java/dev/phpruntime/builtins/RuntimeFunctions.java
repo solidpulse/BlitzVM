@@ -145,7 +145,7 @@ final class RuntimeFunctions {
             }
             if ((what & 2L) != 0) {
                 sb.append("\nCore\n\nassert.active => On => On\n");
-                sb.append("error_reporting => 32767 => 32767\n");
+                sb.append("error_reporting => " + ctx.errorReporting() + " => " + ctx.errorReporting() + "\n");
                 sb.append("display_errors => On => On\n");
             }
             ctx.echo(sb.toString());

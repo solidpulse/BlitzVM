@@ -94,6 +94,18 @@ public final class PhpContext {
     private Deque<Object> exceptionHandlers;
     private IdentityHashMap<Object, Map<String, PhpReference>> staticLocals;
     private boolean inErrorHandler;
+    /** php.ini-production's error_reporting, E_ALL &amp; ~E_DEPRECATED, as ini_get reports. */
+    public static final long DEFAULT_ERROR_REPORTING = 22527L;
+    /** The error_reporting level: which diagnostics the default handler displays. */
+    private long errorReporting = DEFAULT_ERROR_REPORTING;
+
+    public long errorReporting() {
+        return errorReporting;
+    }
+
+    public void setErrorReporting(long level) {
+        errorReporting = level;
+    }
     private final StringBuilder output = new StringBuilder();
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
     private PrintStream err;
@@ -1900,7 +1912,14 @@ public final class PhpContext {
 
     @TruffleBoundary
     private boolean emitDiagnostic(long errno, String label, String message, int line) {
-        String file = PhpStrings.fromJava(currentGuestFile());
+        GuestLocation where = currentGuestLocation();
+        String file = PhpStrings.fromJava(where.file());
+        if (line <= 0) {
+            // Builtins pass 0; php reports the line of the call that raised it.
+            int site = currentBuiltinCallSite != null
+                    ? dev.phpruntime.runtime.PhpBacktrace.callSiteLine(currentBuiltinCallSite) : 0;
+            line = site > 0 ? site : where.line();
+        }
         ErrorHandlerEntry handler = errorHandlers == null ? null : errorHandlers.peek();
         if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
                 && (handler.errorLevels() & errno) != 0) {
@@ -1917,7 +1936,37 @@ public final class PhpContext {
                 }
             }
         }
+        if ((errorReporting & errno) == 0) {
+            // A user handler sees every level it asked for; the default display honours
+            // error_reporting, so a masked deprecation stays silent as in php.
+            return false;
+        }
         errStream().println("PHP " + label + ":  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
         return false;
+    }
+
+    private record GuestLocation(String file, int line) {
+    }
+
+    /** The file and current line of the innermost PHP frame. */
+    @TruffleBoundary
+    private GuestLocation currentGuestLocation() {
+        GuestLocation found = com.oracle.truffle.api.Truffle.getRuntime().iterateFrames(frame -> {
+            if (frame.getCallTarget() instanceof com.oracle.truffle.api.RootCallTarget target
+                    && target.getRootNode() instanceof dev.phpruntime.nodes.PhpRootNode root
+                    && root.source() != null && root.source().getPath() != null) {
+                int line = 0;
+                if (root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode) {
+                    com.oracle.truffle.api.source.SourceSection at =
+                            dev.phpruntime.bytecode.PhpBytecodeRootNode.callSiteSection(frame);
+                    if (at != null) {
+                        line = at.getStartLine();
+                    }
+                }
+                return new GuestLocation(root.source().getPath(), line);
+            }
+            return null;
+        });
+        return found != null ? found : new GuestLocation(request().scriptFilename, 0);
     }
 }
