@@ -171,6 +171,16 @@ public final class Main {
             workers.start();
             try {
                 if (!workers.awaitReady(WorkerPool.STARTUP_TIMEOUT_MILLIS)) {
+                    if (workers.readyCount() == 0 && workers.bootAttempts() > count) {
+                        // Every worker failed at least once and none got through: requests would
+                        // queue forever, so fail at startup instead.
+                        System.err.println("php-truffle: no worker reached frankenphp_handle_request() within "
+                                + WorkerPool.STARTUP_TIMEOUT_MILLIS / 1000 + " s and the worker script keeps failing;"
+                                + " not opening the port");
+                        workers.close();
+                        System.exit(1);
+                        return;
+                    }
                     System.err.println("php-truffle: only " + workers.readyCount() + " of " + count
                             + " workers reached frankenphp_handle_request() within "
                             + WorkerPool.STARTUP_TIMEOUT_MILLIS / 1000 + " s; opening the port anyway");
@@ -190,11 +200,6 @@ public final class Main {
         server.start();
         System.out.printf("php-truffle serving %s on http://localhost:%d (%s, cpus=%d, quantum=%dms, max-exec=%dms)%n",
                 docRoot.toAbsolutePath().normalize(), server.port(), transport, cpus, quantum, maxExec);
-        if (workers != null) {
-            System.out.println("blitz worker mode: " + workers.workerCount() + " worker"
-                    + (workers.workerCount() == 1 ? "" : "s") + ", script "
-                    + workerScript.toAbsolutePath().normalize());
-        }
         if (profile != null) {
             System.out.println("blitz snapshot: profile " + profile.name() + " " + profile.describe());
         }

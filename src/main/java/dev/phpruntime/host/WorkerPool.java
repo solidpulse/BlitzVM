@@ -295,7 +295,8 @@ public final class WorkerPool implements AutoCloseable {
         try {
             Thread.sleep(delay);
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            // Nothing interrupts a worker to stop it (close() uses sentinels), so a stray
+            // interrupt is dropped; keeping it would turn every later backoff into a spin.
         }
     }
 
@@ -477,7 +478,11 @@ public final class WorkerPool implements AutoCloseable {
                 }
             } finally {
                 try {
-                    ctx.runShutdownFunctionsFrom(shutdownBase);
+                    // A timed-out request's context is cancelled: no more guest code runs on it,
+                    // and the worker restarts for the timeout, not for a failed shutdown function.
+                    if (!timedOut) {
+                        ctx.runShutdownFunctionsFrom(shutdownBase);
+                    }
                 } catch (dev.phpruntime.nodes.ControlFlow.Exit e) {
                     exited = true;
                     restartReason = "exit in a shutdown function";
