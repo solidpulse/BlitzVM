@@ -103,7 +103,8 @@ import java.util.Map;
         booleanConverter = PhpBytecodeRootNode.IsNonNull.class)
 public abstract class PhpBytecodeRootNode extends PhpRootNode implements BytecodeRootNode {
 
-    private PhpFunctionRootNode function;
+    /** Set once by {@link #init} before the root runs, so compiled code reads it as a constant. */
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal private PhpFunctionRootNode function;
     /** {@link PhpFunctionRootNode#refMask} of the function, read by call sites. */
     @com.oracle.truffle.api.CompilerDirectives.CompilationFinal private long refMask;
     private dev.phpruntime.nodes.PhpMainRootNode main;
@@ -1983,9 +1984,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
                            @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
                            @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer,
-                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile undefinedSeen) {
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile undefinedSeen,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
-            if (takesRef(callee, param)) {
+            if (refs.takesRef(callee, param)) {
                 if ("this".equals(info.name())) {
                     return new PhpReference(ReadVar.read(frame, acc, info, bytecode, bci, node));
                 }
@@ -2012,13 +2014,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object send(VirtualFrame frame, int param, int kind, LocalAccessor calleeLocal, Object value,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
             if (value instanceof PhpReference returned) {
                 // Only a call result (kind 1) emitted for its reference: a by-reference return.
                 return Ops.sendReturnedRef(callee, param, returned);
             }
-            if (takesRef(callee, param)) {
+            if (refs.takesRef(callee, param)) {
                 return Ops.sendValueToRef(callee, param, kind, value, node, bytecode, bci);
             }
             return callee instanceof Builtins.Def ? value : PhpOps.copyOnAssign(value);
@@ -2073,6 +2076,72 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return v.sig() != null && PhpFunctionRootNode.refBit(v.sig().refMask(), param);
         }
         return false;
+    }
+
+    /**
+     * {@link #takesRef} with an identity profile of what decides the answer: the callee's
+     * signature call target, builtin or signature. While an argument operation sees one, that
+     * object is a constant in compiled code, so the mask folds and the by-reference or by-value
+     * branch that cannot happen drops out; a method callee is a fresh record per call, so without
+     * the profile the mask is loaded through it on every argument.
+     */
+    static final class RefProfile extends Node {
+        private static final Object UNSET = new Object();
+        private static final Object GENERIC = new Object();
+        /** A callee with no by-reference parameters at all ({@code __call}, unknown). */
+        private static final Object NONE = new Object();
+
+        @CompilerDirectives.CompilationFinal private Object key = UNSET;
+
+        static RefProfile create() {
+            return new RefProfile();
+        }
+
+        boolean takesRef(Object callee, int param) {
+            Object k = key;
+            if (k != GENERIC) {
+                Object actual = refKey(callee);
+                if (actual == k) {
+                    return refBitOf(k, param);
+                }
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                key = k == UNSET ? actual : GENERIC;
+                return refBitOf(actual, param);
+            }
+            return PhpBytecodeRootNode.takesRef(callee, param);
+        }
+
+        private static Object refKey(Object callee) {
+            if (callee instanceof PhpFunction fn) {
+                return fn.callTarget();
+            }
+            if (callee instanceof MethodCallee m) {
+                return m.entry() != null ? m.sigTarget() : NONE;
+            }
+            if (callee instanceof Builtins.Def def) {
+                return def;
+            }
+            if (callee instanceof ValueCallee v) {
+                if (v.callable().kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
+                    return v.callable().builtin();
+                }
+                return v.sig() != null ? v.sig() : NONE;
+            }
+            return NONE;
+        }
+
+        private static boolean refBitOf(Object key, int param) {
+            if (key instanceof RootCallTarget t) {
+                return PhpFunctionRootNode.refBit(refMaskOf(t), param);
+            }
+            if (key instanceof Builtins.Def def) {
+                return def.isRef(param);
+            }
+            if (key instanceof PhpFunctionRootNode sig) {
+                return PhpFunctionRootNode.refBit(sig.refMask(), param);
+            }
+            return false;
+        }
     }
 
     static long refMaskOf(RootCallTarget target) {
@@ -2301,9 +2370,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
                            @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
-            int mode = Places.sendMode(callee, param);
+            int mode = refs.takesRef(callee, param) ? P_CELL : P_READ;
             Object[] keys = Places.staticKeys(ops, spec.arrayKeys, spec.baseCount);
             Object result = Places.runSend(frame, engine, keys, mode);
             return Places.sendValue(callee, mode, result);
@@ -2336,9 +2406,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
                            @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
-            int mode = Places.sendMode(callee, param);
+            int mode = refs.takesRef(callee, param) ? P_CELL : P_READ;
             Object[] keys = Places.globalsElementKeys(ops, spec.baseCount, spec.arrayKeys);
             Object result = Places.runSend(frame, engine, keys, mode);
             return Places.sendValue(callee, mode, result);
@@ -2354,9 +2425,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
                            @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
-            int mode = Places.sendMode(callee, param);
+            int mode = refs.takesRef(callee, param) ? P_CELL : P_READ;
             Object result = Places.runSend(frame, engine, Places.globalKeys(ops, spec.arrayKeys), mode);
             return Places.sendValue(callee, mode, result);
         }
@@ -2505,9 +2577,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            LocalAccessor calleeLocal, @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
                            @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
-                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
-            int mode = Places.sendMode(callee, param);
+            int mode = refs.takesRef(callee, param) ? P_CELL : P_READ;
             Object[] holder = {HOLDER_EMPTY};
             Object[] keys = Places.varKeys(current(frame, acc, bytecode, buffer), holder, ops, spec.arrayKeys);
             Object result = Places.runSend(frame, engine, keys, mode);
@@ -2527,9 +2600,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object send(VirtualFrame frame, PlaceSpec spec, int param, LocalAccessor calleeLocal,
                            @Variadic Object[] ops, @Bind BytecodeNode bytecode,
                            @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
-                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType) {
+                           @Cached("createClassProfile()") com.oracle.truffle.api.profiles.ValueProfile calleeType,
+                           @Cached("create()") RefProfile refs) {
             Object callee = calleeType.profile(calleeLocal.getObject(bytecode, frame));
-            int mode = Places.sendMode(callee, param);
+            int mode = refs.takesRef(callee, param) ? P_CELL : P_READ;
             Object result = Places.runSend(frame, engine, Places.objKeys(ops, spec.arrayKeys, spec.baseCount), mode);
             return Places.sendValue(callee, mode, result);
         }
@@ -2606,10 +2680,6 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return run(frame, engine, keys, P_CELL, 0, null);
             }
             return run(frame, engine, keys, P_READ, 0, null);
-        }
-
-        static int sendMode(Object callee, int param) {
-            return takesRef(callee, param) ? P_CELL : P_READ;
         }
 
         static Object sendValue(Object callee, int mode, Object result) {
