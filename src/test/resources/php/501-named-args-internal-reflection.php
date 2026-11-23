@@ -11,6 +11,7 @@ class Widget { public $made; function __construct($a = 1, $b = 2) { $this->made 
 $widgetClass = new ReflectionClass(objectOrClass: 'Widget');
 var_dump($widgetClass->newInstance(b: 5, a: 1)->made);
 var_dump($widgetClass->newInstanceArgs(['b' => 5, 'a' => 1])->made);
+var_dump($rc->newInstance(datetime: '2020-01-02 03:04:05', timezone: new DateTimeZone('UTC'))->format('Y-m-d H:i:s'));
 var_dump($rc->hasMethod(name: 'format'));
 var_dump($rc->getMethod(name: 'format')->getName());
 $rm = new ReflectionMethod(objectOrMethod: 'DateTime', method: 'format');
@@ -32,6 +33,7 @@ foreach ([
     fn() => $rc->getMethod(method: 'format'),
     fn() => $rc->getMethod('format', name: 'getName'),
     fn() => $rm->invoke(object: new DateTime(), bogus: 1),
+    fn() => $rc->newInstance(nope: 1),
 ] as $call) {
     try { $call(); } catch (Throwable $ex) { echo get_class($ex), ': ', $ex->getMessage(), "\n"; }
 }

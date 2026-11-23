@@ -3086,10 +3086,11 @@ public final class ReflectionClasses {
             return;
         }
         if (root == null) {
-            throw new PhpError("Unknown named parameter $" + named.keySet().iterator().next());
+            CallArgHelper.RawCallArgs raw = rawCallArgs(positional, named);
+            ctor.callTarget().call(CallArgHelper.bindToInternal(prefix, raw, ctor, null));
+            return;
         }
-        CallArgHelper.RawCallArgs raw = rawCallArgs(positional, named);
-        Object[] callArgs = CallArgHelper.bindToFunction(prefix, raw, root, null);
+        Object[] callArgs = CallArgHelper.bindForwardedToFunction(ctx, root, prefix, positional, named, null);
         ctor.callTarget().call(callArgs);
     }
 
@@ -3148,7 +3149,7 @@ public final class ReflectionClasses {
             return CallArgHelper.unwrapReturn(entry.callTarget().call(
                     CallArgHelper.bindToInternal(prefix, raw, entry, null)));
         }
-        Object[] callArgs = CallArgHelper.bindToFunction(prefix, raw, root, null);
+        Object[] callArgs = CallArgHelper.bindForwardedToFunction(ctx, root, prefix, positional, named, null);
         return CallArgHelper.unwrapReturn(entry.callTarget().call(callArgs));
     }
 
@@ -3183,11 +3184,11 @@ public final class ReflectionClasses {
                 Object[] prefix = new Object[]{state.callable.boundThis(), state.callable.calledClass(),
                         state.callable.closureObj()};
                 return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
-                        CallArgHelper.bindToFunction(prefix, raw, state.root, null)));
+                        CallArgHelper.bindForwardedToFunction(ctx, state.root, prefix, positional, named, null)));
             }
             case USER_FUNCTION -> {
                 return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
-                        CallArgHelper.bindToFunction(new Object[0], raw, state.root, null)));
+                        CallArgHelper.bindForwardedToFunction(ctx, state.root, new Object[0], positional, named, null)));
             }
             case METHOD -> {
                 Object[] prefix = state.callable.traitSelf() != null
@@ -3199,7 +3200,7 @@ public final class ReflectionClasses {
                             CallArgHelper.bindToInternal(prefix, raw, state.callable.methodEntry(), null)));
                 }
                 return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
-                        CallArgHelper.bindToFunction(prefix, raw, state.root, null)));
+                        CallArgHelper.bindForwardedToFunction(ctx, state.root, prefix, positional, named, null)));
             }
             case MAGIC_CALL -> {
                 throw new PhpError("Cannot reflect a magic call");
