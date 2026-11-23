@@ -107,8 +107,7 @@ public final class WorkerPool implements AutoCloseable {
     public void start() {
         for (int i = 0; i < workerCount; i++) {
             int index = i;
-            Thread t = new Thread(() -> runWorker(index), "blitz-worker-" + i);
-            t.setDaemon(true);
+            Thread t = PhpThreads.newThread(() -> runWorker(index), "blitz-worker-" + i, true);
             threads.add(t);
             t.start();
         }

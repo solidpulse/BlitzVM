@@ -31,6 +31,26 @@ public final class Main {
     }
 
     public static void main(String[] args) throws Exception {
+        // Run on a thread with PHP's stack size; the launcher's main thread has the JVM default.
+        Throwable[] failure = new Throwable[1];
+        Thread t = PhpThreads.newThread(() -> {
+            try {
+                run(args);
+            } catch (Throwable e) {
+                failure[0] = e;
+            }
+        }, "main", false);
+        t.start();
+        t.join();
+        if (failure[0] instanceof Exception e) {
+            throw e;
+        }
+        if (failure[0] instanceof Error e) {
+            throw e;
+        }
+    }
+
+    private static void run(String[] args) throws Exception {
         if (args.length == 0) {
             usage();
             System.exit(64);

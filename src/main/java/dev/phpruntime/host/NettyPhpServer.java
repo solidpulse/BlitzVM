@@ -73,11 +73,8 @@ public final class NettyPhpServer implements PhpServer {
     public NettyPhpServer(PhpDispatcher dispatcher, int port, int maxConcurrentRequests) {
         this.dispatcher = dispatcher;
         this.requestedPort = port;
-        this.workers = Executors.newFixedThreadPool(maxConcurrentRequests, r -> {
-            Thread t = new Thread(r, "php-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        this.workers = Executors.newFixedThreadPool(maxConcurrentRequests,
+                r -> PhpThreads.newThread(r, "php-worker", true));
         boolean epoll = Epoll.isAvailable();
         IoHandlerFactory factory = epoll ? EpollIoHandler.newFactory() : NioIoHandler.newFactory();
         this.boss = new MultiThreadIoEventLoopGroup(1, factory);

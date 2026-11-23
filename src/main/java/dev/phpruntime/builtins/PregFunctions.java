@@ -55,6 +55,7 @@ final class PregFunctions {
             case 0 -> "No error";
             case 4 -> "Malformed UTF-8 characters, possibly incorrectly encoded";
             case 5 -> "The offset did not correspond to the beginning of a valid UTF-8 code point";
+            case 6 -> "JIT stack limit exhausted";
             default -> "Internal error";
         });
     }
@@ -92,6 +93,12 @@ final class PregFunctions {
         private PhpStrings.Utf8Offsets offsets;
         private final int byteLength;
         final boolean utf;
+        /**
+         * Set when java.util.regex ran out of stack. It recurses once per iteration of a
+         * repeated group where PCRE uses the heap; php fails such a match with
+         * PREG_JIT_STACKLIMIT_ERROR once its JIT stack is full, so the caller does the same.
+         */
+        boolean limitHit;
 
         Offsets(String s, boolean utf, String text) {
             this.utf = utf;
@@ -139,13 +146,34 @@ final class PregFunctions {
 
     /** Java advances empty matches by UTF-16 units; PCRE /u advances by code points. */
     private static boolean find(Matcher matcher, Offsets off) {
-        while (matcher.find()) {
-            int start = matcher.start();
-            if (!off.utf || start == off.text.length() || !Character.isLowSurrogate(off.text.charAt(start))) {
-                return true;
+        try {
+            while (matcher.find()) {
+                int start = matcher.start();
+                if (!off.utf || start == off.text.length() || !Character.isLowSurrogate(off.text.charAt(start))) {
+                    return true;
+                }
             }
+        } catch (StackOverflowError e) {
+            off.limitHit = true;
         }
         return false;
+    }
+
+    private static boolean lookingAt(Matcher matcher, Offsets off) {
+        try {
+            return matcher.lookingAt();
+        } catch (StackOverflowError e) {
+            off.limitHit = true;
+            return false;
+        }
+    }
+
+    /** php's result for a match that ran out of stack: error 6, and the caller returns its failure value. */
+    private static boolean limitHit(PhpContext ctx, Offsets off) {
+        if (off.limitHit) {
+            ContextState.of(ctx).pregLastError = 6;
+        }
+        return off.limitHit;
     }
 
     /**
@@ -165,8 +193,11 @@ final class PregFunctions {
         }
         for (;;) {
             matcher.region(at, text.length());
-            if (matcher.lookingAt()) {
+            if (lookingAt(matcher, off)) {
                 return true;
+            }
+            if (off.limitHit) {
+                return false;
             }
             at = text.indexOf(re.prefix, at + 1);
             if (at < 0) {
@@ -227,6 +258,9 @@ final class PregFunctions {
             if (a.length > 2) {
                 a[2] = found ? matchArray(re, m, subject, off, offsetCapture, unmatchedNull) : new PhpArray();
             }
+            if (limitHit(ctx, off)) {
+                return false;
+            }
             return found ? 1L : 0L;
         }
         boolean setOrder = (flags & SET_ORDER) != 0;
@@ -283,6 +317,10 @@ final class PregFunctions {
                 }
             }
             a[2] = result;
+        }
+        if (limitHit(ctx, off)) {
+            // php keeps the matches found before the failure.
+            return false;
         }
         return count;
     }
@@ -402,6 +440,9 @@ final class PregFunctions {
             done++;
         }
         count[0] += done;
+        if (limitHit(ctx, off)) {
+            return null;
+        }
         if (sb == null) {
             return original;
         }
@@ -534,6 +575,9 @@ final class PregFunctions {
             done++;
         }
         count[0] += done;
+        if (limitHit(ctx, off)) {
+            return null;
+        }
         if (sb == null) {
             return original;
         }
@@ -645,6 +689,9 @@ final class PregFunctions {
                 last = m.end();
                 pos = last;
             }
+            if (limitHit(ctx, off)) {
+                return false;
+            }
         }
         if (!noEmpty || last < subject.length()) {
             out.append(piece(subject, last, subject.length(), off, offsets));
@@ -709,6 +756,9 @@ final class PregFunctions {
                 found = find(m, off);
             } else {
                 found = next(re, m, off, 0);
+            }
+            if (limitHit(ctx, off)) {
+                return false;
             }
             if (found != invert) {
                 out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));

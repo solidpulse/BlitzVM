@@ -114,11 +114,8 @@ public final class SnapshotServer implements AutoCloseable {
     private final Path bootFile;
     private final String bootPath;
     private final ConcurrentHashMap<Key, StoreEntry> entries = new ConcurrentHashMap<>();
-    private final ExecutorService builds = Executors.newCachedThreadPool(r -> {
-        Thread t = new Thread(r, "blitz-snapshot-build");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ExecutorService builds = Executors.newCachedThreadPool(
+            r -> PhpThreads.newThread(r, "blitz-snapshot-build", true));
     private final boolean report;
     private final boolean verify;
     private final long ttlNanos;

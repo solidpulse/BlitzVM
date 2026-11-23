@@ -26,7 +26,7 @@ final class Warmup {
         Thread[] workers = new Thread[threads];
         for (int t = 0; t < threads; t++) {
             int offset = t;
-            workers[t] = Thread.ofPlatform().name("blitz-warmup-" + t).start(() -> {
+            workers[t] = Thread.ofPlatform().name("blitz-warmup-" + t).stackSize(PhpThreads.STACK_BYTES).start(() -> {
                 for (long i = offset; System.nanoTime() < deadline; i++) {
                     String path = paths.get((int) (i % paths.size()));
                     int q = path.indexOf('?');
