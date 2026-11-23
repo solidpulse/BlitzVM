@@ -19,12 +19,18 @@ public final class ClosureMethodRootNode extends RootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        PhpStrings.checkArguments(frame.getArguments(), "Closure::" + name);
-        return PhpStrings.checkReturn(invoke(PhpContext.get(this), frame.getArguments()), "Closure::" + name);
+        Object[] args = frame.getArguments();
+        dev.phpruntime.runtime.ForwardedNamedArgs forwarded = null;
+        if (args.length > 2 && args[args.length - 1] instanceof dev.phpruntime.runtime.ForwardedNamedArgs bag) {
+            forwarded = bag;
+            args = java.util.Arrays.copyOf(args, args.length - 1);
+        }
+        PhpStrings.checkArguments(args, "Closure::" + name);
+        return PhpStrings.checkReturn(invoke(PhpContext.get(this), args, forwarded), "Closure::" + name);
     }
 
     @TruffleBoundary
-    private Object invoke(PhpContext ctx, Object[] args) {
+    private Object invoke(PhpContext ctx, Object[] args, dev.phpruntime.runtime.ForwardedNamedArgs forwarded) {
         int count = args.length - 2;
         int minimum = name.equals("bind") ? 2 : 1;
         int maximum = name.equals("call") ? Integer.MAX_VALUE : name.equals("bind") ? 3 : name.equals("bindTo") ? 2 : 1;
@@ -124,6 +130,9 @@ public final class ClosureMethodRootNode extends RootNode {
         ctx.copyClosureStatics(object, copy, name.equals("call"));
         if (name.equals("call")) {
             Object[] userArgs = java.util.Arrays.copyOfRange(args, 3, args.length);
+            if (forwarded != null) {
+                return PhpCallable.invokeClosureNamed(ctx, this, copy, bound, userArgs, forwarded.values());
+            }
             return PhpCallable.invokeClosure(ctx, null, this, copy, bound, userArgs);
         }
         return copy;

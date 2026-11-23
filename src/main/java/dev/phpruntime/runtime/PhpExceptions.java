@@ -558,13 +558,32 @@ public final class PhpExceptions {
             Object[] callArgs = raw.length > 2
                     ? java.util.Arrays.copyOfRange(raw, 2, raw.length)
                     : new Object[0];
-            return runBoundary(PhpContext.get(this), self, callArgs);
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = null;
+            if (callArgs.length > 0
+                    && callArgs[callArgs.length - 1] instanceof dev.phpruntime.runtime.ForwardedNamedArgs bag) {
+                forwarded = bag;
+                callArgs = java.util.Arrays.copyOf(callArgs, callArgs.length - 1);
+            }
+            return runBoundary(PhpContext.get(this), self, callArgs, forwarded);
         }
 
         @TruffleBoundary
-        private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs) {
+        private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs,
+                                   dev.phpruntime.runtime.ForwardedNamedArgs forwarded) {
             PhpStrings.checkArguments(callArgs, name + "()");
-            Object value = impl.invoke(ctx, self, callArgs);
+            dev.phpruntime.runtime.ForwardedNamedArgs previous = null;
+            if (forwarded != null) {
+                previous = ctx.forwardedNamed();
+                ctx.setForwardedNamed(forwarded);
+            }
+            Object value;
+            try {
+                value = impl.invoke(ctx, self, callArgs);
+            } finally {
+                if (forwarded != null) {
+                    ctx.setForwardedNamed(previous);
+                }
+            }
             if (PhpStrings.CHECK) {
                 PhpStrings.checkValue(value, (self != null ? self.phpClass().name() + "::" : "static ") + name + "()");
             }

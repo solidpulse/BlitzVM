@@ -393,12 +393,18 @@ final class NamedArgs {
             if (m.entry() == null) {
                 return null;
             }
+            if (spec.firstName() != null && dev.phpruntime.runtime.NamedForwarding.forwardsMethod(m.entry())) {
+                // php lets these methods accept names they do not declare; the generic binder
+                // forwards them to the callable or constructor they invoke.
+                return null;
+            }
             PhpFunctionRootNode fnRoot = m.sigTarget() != null ? rootOf(m.sigTarget()) : null;
             if (fnRoot != null) {
                 return buildUser(fnRoot, spec, 2);
             }
             long refMask = m.sigTarget() != null
                     ? PhpBytecodeRootNode.Ops.refMaskSlow(m.sigTarget().getRootNode()) : 0L;
+            refMask |= m.entry().refMask();
             return buildInternal(m.entry().parameterNames(), spec, 2, refMask);
         }
         if (callee instanceof PhpBytecodeRootNode.ValueCallee v) {
@@ -494,6 +500,10 @@ final class NamedArgs {
     }
 
     private static Plan buildBuiltin(Builtins.Def def, Spec spec, int prefix) {
+        if (spec.firstName() != null && dev.phpruntime.runtime.NamedForwarding.forwardsFunction(def.name())) {
+            // call_user_func forwards names it does not declare to its callback.
+            return null;
+        }
         int argc = spec.length();
         BuiltinParams.Param[] params = BuiltinParams.forName(def.name());
         int[] dest = new int[argc];
@@ -505,9 +515,12 @@ final class NamedArgs {
             }
         }
         if (params == null) {
+            boolean rejectsVariadic = def.maxArgs() < 0;
             return new Plan(spec, KIND_BUILTIN, null, def, prefix, dest, new int[0], null,
                     positional, -1, false, valuesOnly(argc),
-                    "Unknown named parameter $" + spec.firstName(), false);
+                    rejectsVariadic ? def.name() + "() does not accept unknown named parameters"
+                            : "Unknown named parameter $" + spec.firstName(),
+                    rejectsVariadic);
         }
         int normal = params.length;
         while (normal > 0 && params[normal - 1].variadic()) {
@@ -607,6 +620,12 @@ final class NamedArgs {
             }
         }
         if (paramNames.isEmpty()) {
+            if (spec.firstName() != null) {
+                return new Plan(spec, KIND_INTERNAL, null, null, prefix, dest,
+                        positionalSlots(positional), null, positional, -1, false,
+                        internalModes(dest, refMask),
+                        "Unknown named parameter $" + spec.firstName(), false);
+            }
             return new Plan(spec, KIND_INTERNAL, null, null, prefix, dest,
                     positionalSlots(positional), null, positional, -1, false,
                     internalModes(dest, refMask), null, false);
@@ -689,7 +708,7 @@ final class NamedArgs {
 
     private static int internalParamIndex(List<String> names, String name) {
         for (int i = 0; i < names.size(); i++) {
-            if (names.get(i).equalsIgnoreCase(name)) {
+            if (names.get(i).equals(name)) {
                 return i;
             }
         }
@@ -907,7 +926,7 @@ final class NamedArgs {
         }
         if (callee instanceof PhpBytecodeRootNode.MethodCallee m && m.entry() != null
                 && m.sigTarget() != null) {
-            long mask = PhpBytecodeRootNode.Ops.refMaskSlow(m.sigTarget().getRootNode());
+            long mask = PhpBytecodeRootNode.Ops.refMaskSlow(m.sigTarget().getRootNode()) | m.entry().refMask();
             if (mask != 0) {
                 int param = name != null ? internalParamIndex(m.entry().parameterNames(), name) : index;
                 if (param >= 0 && PhpFunctionRootNode.refBit(mask, param)) {
@@ -941,7 +960,7 @@ final class NamedArgs {
         int param = buffer.plan != null ? buffer.plan.refParam(index)
                 : (name != null ? indexOf(fn, name) : index);
         if (kind == 0) {
-            throw CallArgHelper.cannotPassByRef(fn, param, site);
+            throw cannotPassByRef(callee, fn, param, site);
         }
         if (kind == 1) {
             dev.phpruntime.PhpContext.get(site).notice("Only variables should be passed by reference", line);
@@ -967,6 +986,17 @@ final class NamedArgs {
                 ? buffer.plan.fn : PhpBytecodeRootNode.signature(callee);
         int param = buffer.plan != null ? buffer.plan.refParam(index)
                 : (name != null ? indexOf(fn, name) : index);
+        return cannotPassByRef(callee, fn, param, site);
+    }
+
+    /** php's error names the Java method too, not the placeholder "unknown()". */
+    private static PhpError cannotPassByRef(Object callee, PhpFunctionRootNode fn, int param, Node site) {
+        if (fn == null && callee instanceof PhpBytecodeRootNode.MethodCallee m && m.entry() != null) {
+            List<String> names = m.entry().parameterNames();
+            String pName = param >= 0 && param < names.size() ? names.get(param) : null;
+            return CallArgHelper.cannotPassByRef(
+                    m.entry().declaringClass().name() + "::" + m.entry().name(), pName, param, site);
+        }
         return CallArgHelper.cannotPassByRef(fn, param, site);
     }
 }

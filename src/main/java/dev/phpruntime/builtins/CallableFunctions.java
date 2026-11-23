@@ -41,6 +41,14 @@ final class CallableFunctions {
         CallMode previous = ctx.pendingCallMode();
         ctx.setPendingCallMode(CallMode.atBuiltin(ctx.currentBuiltinCallSite(), targetFunction(cb)));
         try {
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = ctx.takeForwardedNamed();
+            if (forwarded != null) {
+                java.util.List<Object> positional = new java.util.ArrayList<>(a.length - 1);
+                for (int i = 1; i < a.length; i++) {
+                    positional.add(a[i]);
+                }
+                return cb.callNamed(ctx, ctx.currentBuiltinCallSite(), positional, forwarded.values());
+            }
             return cb.call(ctx, null, null, Arrays.copyOfRange(a, 1, a.length));
         } finally {
             ctx.setPendingCallMode(previous);

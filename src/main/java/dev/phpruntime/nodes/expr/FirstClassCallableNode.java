@@ -126,7 +126,7 @@ public final class FirstClassCallableNode extends PhpNode {
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
         return ctx.newClosure(PhpClosure.method(
-                entry.callTarget(), thisArg, cls, entry.fromTrait() ? entry.declaringClass() : null));
+                entry.callTarget(), thisArg, cls, entry.fromTrait() ? entry.declaringClass() : null, entry));
     }
 
     @TruffleBoundary
@@ -162,7 +162,7 @@ public final class FirstClassCallableNode extends PhpNode {
                     + "() cannot be called statically", site);
         }
         return ctx.newClosure(PhpClosure.method(
-                entry.callTarget(), thisArg, calledArg, entry.fromTrait() ? entry.declaringClass() : null));
+                entry.callTarget(), thisArg, calledArg, entry.fromTrait() ? entry.declaringClass() : null, entry));
     }
 
     @Override

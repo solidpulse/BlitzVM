@@ -10,6 +10,9 @@ import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.call.CallArgHelper;
 import dev.phpruntime.nodes.call.CallNode;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * Unified runtime representation and invocation helper for all PHP callables:
  * {@code Closure} objects, function name strings, {@code "Class::method"} strings,
@@ -35,17 +38,27 @@ public final class PhpCallable {
     private final String magicMethodName;
     /** A Java-implemented method's declared parameter names (for named arguments); else empty. */
     private final java.util.List<String> parameterNames;
+    /** The linked method when this callable is one, so named binding sees its full metadata. */
+    private final PhpClass.MethodEntry methodEntry;
 
     private PhpCallable(Kind kind, PhpObject closureObj, RootCallTarget callTarget, Builtins.Def builtin,
                         Object boundThis, PhpClass calledClass, PhpClass traitSelf, String magicMethodName) {
         this(kind, closureObj, callTarget, builtin, boundThis, calledClass, traitSelf, magicMethodName,
-                java.util.List.of());
+                java.util.List.of(), null);
     }
 
     private PhpCallable(Kind kind, PhpObject closureObj, RootCallTarget callTarget, Builtins.Def builtin,
                         Object boundThis, PhpClass calledClass, PhpClass traitSelf, String magicMethodName,
                         java.util.List<String> parameterNames) {
+        this(kind, closureObj, callTarget, builtin, boundThis, calledClass, traitSelf, magicMethodName,
+                parameterNames, null);
+    }
+
+    private PhpCallable(Kind kind, PhpObject closureObj, RootCallTarget callTarget, Builtins.Def builtin,
+                        Object boundThis, PhpClass calledClass, PhpClass traitSelf, String magicMethodName,
+                        java.util.List<String> parameterNames, PhpClass.MethodEntry methodEntry) {
         this.parameterNames = parameterNames;
+        this.methodEntry = methodEntry;
         this.kind = kind;
         this.closureObj = closureObj;
         this.callTarget = callTarget;
@@ -68,6 +81,11 @@ public final class PhpCallable {
     /** The parameter names a Java-implemented method declares; empty for guest code. */
     public java.util.List<String> parameterNames() {
         return parameterNames;
+    }
+
+    /** The linked Java method this callable refers to, or null. */
+    public PhpClass.MethodEntry methodEntry() {
+        return methodEntry;
     }
 
     public PhpObject closureObj() {
@@ -121,7 +139,8 @@ public final class PhpCallable {
                 return switch (c.kind()) {
                     case CLOSURE -> new PhpCallable(Kind.CLOSURE, obj, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), null);
                     case USER_FUNCTION -> new PhpCallable(Kind.USER_FUNCTION, null, c.callTarget(), null, PhpNull.INSTANCE, null, null, null);
-                    case METHOD -> new PhpCallable(Kind.METHOD, null, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), null);
+                    case METHOD -> new PhpCallable(Kind.METHOD, null, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), null,
+                            c.methodEntry() == null ? java.util.List.of() : c.methodEntry().parameterNames(), c.methodEntry());
                     case MAGIC_CALL -> new PhpCallable(Kind.MAGIC_CALL, null, c.callTarget(), null, c.boundThis(), c.calledClass(), null, c.magicMethodName());
                     case BUILTIN -> new PhpCallable(Kind.BUILTIN, null, null, c.builtin(), PhpNull.INSTANCE, null, null, null);
                 };
@@ -129,7 +148,8 @@ public final class PhpCallable {
             PhpClass.MethodEntry invoke = obj.phpClass().lookupMethod("__invoke");
             if (invoke != null && invoke.callTarget() != null) {
                 return new PhpCallable(Kind.METHOD, null, invoke.callTarget(), null, obj, obj.phpClass(),
-                        invoke.fromTrait() ? invoke.declaringClass() : null, null);
+                        invoke.fromTrait() ? invoke.declaringClass() : null, null,
+                        invoke.parameterNames(), invoke);
             }
             return null;
         }
@@ -173,7 +193,7 @@ public final class PhpCallable {
                     }
                     Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
                     return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, thisArg, cls,
-                            entry.fromTrait() ? entry.declaringClass() : null, null, entry.parameterNames());
+                            entry.fromTrait() ? entry.declaringClass() : null, null, entry.parameterNames(), entry);
                 }
                 PhpClass.MethodEntry magic = cls.callMethod();
                 if (magic != null && magic.callTarget() != null) {
@@ -214,11 +234,11 @@ public final class PhpCallable {
             PhpClass ts = entry.fromTrait() ? entry.declaringClass() : null;
             if (entry.isStatic()) {
                 return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, PhpNull.INSTANCE, cls, ts, null,
-                        entry.parameterNames());
+                        entry.parameterNames(), entry);
             }
             if (callerThis instanceof PhpObject co && co.phpClass().isInstanceOf(entry.declaringClass())) {
                 return new PhpCallable(Kind.METHOD, null, entry.callTarget(), null, co, co.phpClass(), ts, null,
-                        entry.parameterNames());
+                        entry.parameterNames(), entry);
             }
             return null;
         }
@@ -239,7 +259,7 @@ public final class PhpCallable {
         PhpClosure closure = switch (cb.kind) {
             case CLOSURE -> throw new IllegalStateException();
             case USER_FUNCTION -> PhpClosure.userFunction(cb.callTarget);
-            case METHOD -> PhpClosure.method(cb.callTarget, cb.boundThis, cb.calledClass, cb.traitSelf);
+            case METHOD -> PhpClosure.method(cb.callTarget, cb.boundThis, cb.calledClass, cb.traitSelf, cb.methodEntry);
             case MAGIC_CALL -> PhpClosure.magicCall(cb.callTarget, cb.boundThis, cb.calledClass, cb.magicMethodName);
             case BUILTIN -> PhpClosure.builtin(cb.builtin);
         };
@@ -250,6 +270,57 @@ public final class PhpCallable {
     @TruffleBoundary
     public Object call(PhpContext ctx, IndirectCallNode indirectCall, Node loc, Object... userArgs) {
         return CallArgHelper.unwrapReturn(callRaw(ctx, indirectCall, loc, userArgs));
+    }
+
+    /**
+     * Invokes this callable with named arguments php forwards through a builtin or a
+     * called-through method. A name the callee does not declare follows its own rules:
+     * a variadic parameter collects it, otherwise it is "Unknown named parameter".
+     */
+    @TruffleBoundary
+    public Object callNamed(PhpContext ctx, Node loc, List<Object> positional, Map<String, Object> named) {
+        if (named.isEmpty()) {
+            return call(ctx, null, loc, positional.toArray());
+        }
+        Object res = switch (kind) {
+            case CLOSURE -> invokeTarget(ctx, null, callTarget,
+                    CallArgHelper.bindForwardedToFunction(ctx, rootOf(callTarget),
+                            new Object[]{boundThis, calledClass, closureObj}, positional, named, loc));
+            case USER_FUNCTION -> invokeTarget(ctx, null, callTarget,
+                    CallArgHelper.bindForwardedToFunction(ctx, rootOf(callTarget),
+                            new Object[0], positional, named, loc));
+            case METHOD -> {
+                Object[] prefix = traitSelf != null
+                        ? new Object[]{boundThis, calledClass, traitSelf}
+                        : new Object[]{boundThis, calledClass};
+                PhpFunctionRootNode root = rootOf(callTarget);
+                if (root == null) {
+                    yield invokeTarget(ctx, null, callTarget, CallArgHelper.bindToInternal(prefix,
+                            CallArgHelper.newRawCallArgs(positional, named), methodEntry, loc));
+                }
+                yield invokeTarget(ctx, null, callTarget,
+                        CallArgHelper.bindForwardedToFunction(ctx, root, prefix, positional, named, loc));
+            }
+            case MAGIC_CALL -> invokeTarget(ctx, null, callTarget,
+                    new Object[]{boundThis, calledClass, magicMethodName, namedMagicArray(positional, named)});
+            case BUILTIN -> CallArgHelper.callForwardedBuiltin(ctx, builtin, positional, named, loc);
+        };
+        return CallArgHelper.unwrapReturn(res);
+    }
+
+    private static PhpFunctionRootNode rootOf(RootCallTarget target) {
+        return target != null && PhpFunctionRootNode.of(target.getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
+    }
+
+    private static PhpArray namedMagicArray(List<Object> positional, Map<String, Object> named) {
+        PhpArray arr = new PhpArray();
+        for (Object p : positional) {
+            arr.append(PhpOps.copyOnAssign(p));
+        }
+        for (Map.Entry<String, Object> e : named.entrySet()) {
+            arr.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+        }
+        return arr;
     }
 
     @TruffleBoundary
@@ -265,6 +336,27 @@ public final class PhpCallable {
                     new Object[]{boundThis, calledClass, magicMethodName, buildMagicArray(userArgs)});
             case BUILTIN -> callBuiltin(ctx, builtin, userArgs, loc);
         };
+    }
+
+    /** Invokes a closure with named arguments forwarded by Closure::call. */
+    @TruffleBoundary
+    public static Object invokeClosureNamed(PhpContext ctx, Node loc, PhpObject closureObj, PhpClosure c,
+                                            Object[] userArgs, Map<String, Object> named) {
+        PhpCallable callable = switch (c.kind()) {
+            case CLOSURE -> new PhpCallable(Kind.CLOSURE, closureObj, c.callTarget(), null, c.boundThis(),
+                    c.calledClass(), c.traitSelf(), null);
+            case USER_FUNCTION -> new PhpCallable(Kind.USER_FUNCTION, null, c.callTarget(), null,
+                    PhpNull.INSTANCE, null, null, null);
+            case METHOD -> new PhpCallable(Kind.METHOD, null, c.callTarget(), null, c.boundThis(),
+                    c.calledClass(), c.traitSelf(), null,
+                    c.methodEntry() == null ? java.util.List.of() : c.methodEntry().parameterNames(),
+                    c.methodEntry());
+            case MAGIC_CALL -> new PhpCallable(Kind.MAGIC_CALL, null, c.callTarget(), null, c.boundThis(),
+                    c.calledClass(), null, c.magicMethodName());
+            case BUILTIN -> new PhpCallable(Kind.BUILTIN, null, null, c.builtin(), PhpNull.INSTANCE,
+                    null, null, null);
+        };
+        return callable.callNamed(ctx, loc, java.util.Arrays.asList(userArgs), named);
     }
 
     /** Invokes a {@link PhpClosure} directly without allocating a temporary {@link PhpCallable}. */

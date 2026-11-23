@@ -2085,7 +2085,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return PhpFunctionRootNode.refBit(refMaskOf(fn.callTarget()), param);
         }
         if (callee instanceof MethodCallee m) {
-            return m.entry() != null && PhpFunctionRootNode.refBit(refMaskOf(m.sigTarget()), param);
+            if (m.entry() == null) {
+                return false;
+            }
+            long mask = refMaskOf(m.sigTarget());
+            if (mask == 0) {
+                mask = m.entry().refMask();
+            }
+            return PhpFunctionRootNode.refBit(mask, param);
         }
         if (callee instanceof Builtins.Def def) {
             return def.isRef(param);
@@ -2094,7 +2101,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (v.callable().kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
                 return v.callable().builtin().isRef(param);
             }
-            return v.sig() != null && PhpFunctionRootNode.refBit(v.sig().refMask(), param);
+            if (v.sig() != null) {
+                return PhpFunctionRootNode.refBit(v.sig().refMask(), param);
+            }
+            dev.phpruntime.runtime.PhpClass.MethodEntry entry = v.callable().methodEntry();
+            return entry != null && PhpFunctionRootNode.refBit(entry.refMask(), param);
         }
         return false;
     }
@@ -5131,7 +5142,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return fnRoot != null
                     ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                     : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
-                            m.entry().parameterNames(), location);
+                            m.entry(), location);
         }
     }
 
@@ -5221,9 +5232,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 default -> new Object[0];
             };
             CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
-            if (fnRoot == null && method != null && !method.parameterNames().isEmpty()) {
+            if (fnRoot == null && method != null && method.methodEntry() != null) {
                 // A Java-implemented method has no guest signature; it declares its names instead.
-                return CallArgHelper.bindToInternal(prefixArgs, raw, method.parameterNames(), location);
+                return CallArgHelper.bindToInternal(prefixArgs, raw, method.methodEntry(), location);
             }
             return CallArgHelper.bindToFunction(prefixArgs, raw, fnRoot, location);
         }
@@ -5338,7 +5349,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             Object[] args = fnRoot != null
                     ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                     : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
-                            m.entry().parameterNames(), location);
+                            m.entry(), location);
             return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
         }
     }
@@ -5358,7 +5369,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 Object[] args = fnRoot != null
                         ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                         : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
-                                m.entry().parameterNames(), location);
+                                m.entry(), location);
                 dispatch.callMethod(m.entry(), args);
             } else if (raw.named() != null && !raw.named().isEmpty()) {
                 CompilerDirectives.transferToInterpreter();

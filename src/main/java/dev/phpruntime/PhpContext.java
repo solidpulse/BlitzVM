@@ -1850,6 +1850,24 @@ public final class PhpContext {
         this.pendingCallMode = mode;
     }
 
+    /** Named arguments a forwarding builtin or method received, read by its implementation. */
+    private dev.phpruntime.runtime.ForwardedNamedArgs forwardedNamed;
+
+    public dev.phpruntime.runtime.ForwardedNamedArgs forwardedNamed() {
+        return forwardedNamed;
+    }
+
+    public void setForwardedNamed(dev.phpruntime.runtime.ForwardedNamedArgs named) {
+        this.forwardedNamed = named;
+    }
+
+    /** Takes and clears the forwarded named arguments, so a nested call cannot see them. */
+    public dev.phpruntime.runtime.ForwardedNamedArgs takeForwardedNamed() {
+        dev.phpruntime.runtime.ForwardedNamedArgs named = forwardedNamed;
+        forwardedNamed = null;
+        return named;
+    }
+
     /**
      * An error raised by the script itself (trigger_error/user_error), routed through
      * set_error_handler. Returns whether a handler accepted it (and so execution continues).

@@ -178,6 +178,8 @@ floor	num:0:!
 flush
 fmod	num1:0:!	num2:0:!
 fopen	filename:0:!	mode:0:!	use_include_path:0:false	context:0:NULL
+forward_static_call	callback:0:!	args:1:?
+forward_static_call_array	callback:0:!	args:0:!
 fpassthru	stream:0:!
 fputs	stream:0:!	data:0:!	length:0:NULL
 fread	stream:0:!	length:0:!

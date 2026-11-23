@@ -677,7 +677,14 @@ public final class ReflectionClasses {
             return attributes(ctx, state.cls().template().attributes(), args, TARGET_CLASS);
         });
         addMethod(language, methods, "newInstance", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
-            return instantiate(ctx, classState(self).cls(), positionalArray(args), false, null);
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = ctx.takeForwardedNamed();
+            PhpArray values = positionalArray(args);
+            if (forwarded != null) {
+                for (var entry : forwarded.values().entrySet()) {
+                    values.put(entry.getKey(), entry.getValue());
+                }
+            }
+            return instantiate(ctx, classState(self).cls(), values, false, null);
         });
         addMethod(language, methods, "newInstanceArgs", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PhpArray values = args.length > 0 && args[0] instanceof PhpArray a ? a : new PhpArray();
@@ -1514,7 +1521,9 @@ public final class ReflectionClasses {
         });
         addMethod(language, methods, "invoke", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             FunctionState state = functionState(self);
-            return invokeCallable(ctx, state, positionalArgs(args), new LinkedHashMap<>());
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = ctx.takeForwardedNamed();
+            return invokeCallable(ctx, state, positionalArgs(args),
+                    forwarded == null ? new LinkedHashMap<>() : new LinkedHashMap<>(forwarded.values()));
         });
         addMethod(language, methods, "invokeArgs", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionFunction::invokeArgs", args, 1, 1);
@@ -1585,7 +1594,9 @@ public final class ReflectionClasses {
             for (int i = 1; i < args.length; i++) {
                 values.add(args[i]);
             }
-            return invokeMethod(ctx, state, object, values, new LinkedHashMap<>());
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = ctx.takeForwardedNamed();
+            return invokeMethod(ctx, state, object, values,
+                    forwarded == null ? new LinkedHashMap<>() : new LinkedHashMap<>(forwarded.values()));
         });
         addMethod(language, methods, "invokeArgs", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionMethod::invokeArgs", args, 2, 2);
@@ -1617,7 +1628,7 @@ public final class ReflectionClasses {
             }
             PhpClosure closure = PhpClosure.method(entry.callTarget(), thisArg,
                     thisArg instanceof PhpObject instance ? instance.phpClass() : state.reflected(),
-                    entry.fromTrait() ? entry.declaringClass() : null);
+                    entry.fromTrait() ? entry.declaringClass() : null, entry);
             return ctx.newClosure(closure);
         });
         addMethod(language, methods, "isStatic", Visibility.PUBLIC, false, false,
@@ -3132,10 +3143,11 @@ public final class ReflectionClasses {
             return CallArgHelper.unwrapReturn(entry.callTarget().call(callArgs));
         }
         PhpFunctionRootNode root = PhpFunctionRootNode.of(entry.callTarget().getRootNode());
-        if (root == null) {
-            throw new PhpError("Unknown named parameter $" + named.keySet().iterator().next());
-        }
         CallArgHelper.RawCallArgs raw = rawCallArgs(positional, named);
+        if (root == null) {
+            return CallArgHelper.unwrapReturn(entry.callTarget().call(
+                    CallArgHelper.bindToInternal(prefix, raw, entry, null)));
+        }
         Object[] callArgs = CallArgHelper.bindToFunction(prefix, raw, root, null);
         return CallArgHelper.unwrapReturn(entry.callTarget().call(callArgs));
     }
@@ -3178,13 +3190,14 @@ public final class ReflectionClasses {
                         CallArgHelper.bindToFunction(new Object[0], raw, state.root, null)));
             }
             case METHOD -> {
-                if (state.root == null) {
-                    throw new PhpError("Unknown named parameter $" + named.keySet().iterator().next());
-                }
                 Object[] prefix = state.callable.traitSelf() != null
                         ? new Object[]{state.callable.boundThis(), state.callable.calledClass(),
                                 state.callable.traitSelf()}
                         : new Object[]{state.callable.boundThis(), state.callable.calledClass()};
+                if (state.root == null) {
+                    return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
+                            CallArgHelper.bindToInternal(prefix, raw, state.callable.methodEntry(), null)));
+                }
                 return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
                         CallArgHelper.bindToFunction(prefix, raw, state.root, null)));
             }
@@ -3264,7 +3277,9 @@ public final class ReflectionClasses {
     private static void splitArguments(PhpArray values, List<Object> positional, Map<String, Object> named) {
         boolean seenNamed = false;
         for (Object key : values.keys()) {
-            Object value = values.get(key);
+            Object raw = values.getRaw(key);
+            Object value = raw instanceof dev.phpruntime.runtime.PhpReference ref
+                    ? ref : PhpOps.copyOnAssign(values.get(key));
             if (key instanceof String name) {
                 seenNamed = true;
                 named.put(name, value);
