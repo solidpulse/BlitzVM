@@ -32,7 +32,10 @@ public final class CallArgHelper {
     private CallArgHelper() {
     }
 
-    /** {@link #findParamIndex} lookups: the generic named-binding path, exposed for tests. */
+    /**
+     * {@link #findParamIndex} lookups: the generic named-binding path, exposed for tests. Counted
+     * only with assertions enabled (the test runs), so serving threads do not share the line.
+     */
     private static final java.util.concurrent.atomic.AtomicLong GENERIC_NAMED_BINDINGS =
             new java.util.concurrent.atomic.AtomicLong();
 
@@ -42,6 +45,11 @@ public final class CallArgHelper {
 
     public static void resetGenericNamedBindingCount() {
         GENERIC_NAMED_BINDINGS.set(0);
+    }
+
+    private static boolean countGenericNamedBinding() {
+        GENERIC_NAMED_BINDINGS.incrementAndGet();
+        return true;
     }
 
     public static Object unwrapReturn(Object res) {
@@ -112,7 +120,7 @@ public final class CallArgHelper {
 
     @TruffleBoundary
     public static int findParamIndex(PhpFunctionRootNode fnRoot, String name) {
-        GENERIC_NAMED_BINDINGS.incrementAndGet();
+        assert countGenericNamedBinding();
         String[] names = fnRoot.paramNames();
         int normal = fnRoot.normalParamCount();
         for (int i = 0; i < normal; i++) {
