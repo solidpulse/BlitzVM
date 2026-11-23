@@ -79,20 +79,35 @@ public class LoadGen {
      * TEXT in the body).
      */
     private static void preflight(String url) throws Exception {
-        HttpResponse<String> r;
+        // Sent like the load phase (raw connection, same -Dhost Host header), so a site that
+        // redirects unless it sees its configured host passes here exactly when the run would.
+        URI uri = URI.create(url);
+        int port = uri.getPort() < 0 ? 80 : uri.getPort();
+        String target = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        String hostHeader = System.getProperty("host", uri.getHost() + ":" + port);
+        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + hostHeader
+                + "\r\nUser-Agent: loadgen\r\nConnection: close\r\n\r\n")
+                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        int status;
+        String text;
+        RawConnection conn = null;
         try {
-            r = CLIENT.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60)).build(),
-                    HttpResponse.BodyHandlers.ofString());
+            conn = new RawConnection(uri.getHost(), port);
+            conn.body = new java.io.ByteArrayOutputStream();
+            status = conn.exchange(request);
+            text = conn.body.toString(java.nio.charset.StandardCharsets.UTF_8);
         } catch (Exception e) {
             System.out.println("PREFLIGHT FAILED " + url + ": " + e);
             System.exit(2);
             return;
+        } finally {
+            if (conn != null) { conn.close(); }
         }
         String expect = System.getProperty("expect");
-        if (r.statusCode() != 200 || (expect != null && !r.body().contains(expect))) {
-            String body = r.body().length() > 200 ? r.body().substring(0, 200) + "..." : r.body();
-            System.out.println("PREFLIGHT FAILED " + url + ": status " + r.statusCode() + ", "
-                    + r.body().length() + " bytes: " + body.replace('\n', ' '));
+        if (status != 200 || (expect != null && !text.contains(expect))) {
+            String body = text.length() > 200 ? text.substring(0, 200) + "..." : text;
+            System.out.println("PREFLIGHT FAILED " + url + ": status " + status + ", "
+                    + text.length() + " bytes: " + body.replace('\n', ' '));
             System.exit(2);
         }
     }
@@ -187,6 +202,8 @@ public class LoadGen {
         private final java.io.OutputStream out;
         private final java.io.BufferedInputStream in;
         boolean closed;
+        /** When set, the response body is kept here instead of skipped. */
+        java.io.ByteArrayOutputStream body;
         java.util.Map<String, String> jar;
         boolean jarChanged;
 
@@ -237,6 +254,8 @@ public class LoadGen {
                 line();
             } else if (length > 0) {
                 skip(length);
+            } else if (length < 0 && closed && body != null) {
+                in.transferTo(body); // no length on a closing connection: the body runs to EOF
             }
             if (closed) {
                 socket.close();
@@ -258,6 +277,18 @@ public class LoadGen {
         }
 
         private void skip(long n) throws java.io.IOException {
+            if (body != null) {
+                byte[] buf = new byte[8192];
+                while (n > 0) {
+                    int k = in.read(buf, 0, (int) Math.min(buf.length, n));
+                    if (k < 0) {
+                        throw new java.io.EOFException();
+                    }
+                    body.write(buf, 0, k);
+                    n -= k;
+                }
+                return;
+            }
             while (n > 0) {
                 long k = in.skip(n);
                 if (k <= 0) {
