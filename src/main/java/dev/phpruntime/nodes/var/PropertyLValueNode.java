@@ -637,20 +637,26 @@ public final class PropertyLValueNode extends LValueNode {
                 owner != null ? owner : obj.phpClass().name(), name);
     }
 
-    /** The last owner name this site resolved, and its engine-wide class id. */
-    private String cachedOwner;
-    private int cachedOwnerId = -1;
+    /** An owner name and its engine-wide class id, published together. */
+    private record OwnerId(String owner, int id) {
+    }
+
+    /**
+     * The last owner this site resolved. One immutable pair, as the AST is shared by concurrent
+     * requests: two separate fields could pair one thread's name with another's id.
+     */
+    private OwnerId cachedOwner;
 
     /** The declaring class of a typed property through the context's id table, not a name lookup. */
     @TruffleBoundary
     private PhpClass ownerClass(PhpContext ctx, String owner) {
+        OwnerId cached = cachedOwner;
         int id;
-        if (owner == cachedOwner) {
-            id = cachedOwnerId;
+        if (cached != null && cached.owner() == owner) {
+            id = cached.id();
         } else {
             id = ctx.language().classId(owner.startsWith("\\") ? owner.substring(1) : owner);
-            cachedOwnerId = id;
-            cachedOwner = owner;
+            cachedOwner = new OwnerId(owner, id);
         }
         PhpClass cls = ctx.classById(id);
         return cls != null ? cls : ctx.lookupClass(owner);
