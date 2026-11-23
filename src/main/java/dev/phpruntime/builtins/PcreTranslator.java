@@ -50,11 +50,13 @@ final class PcreTranslator {
         final String decodedPattern;
         /** A literal string every match must start with, or null. Used to skip start positions. */
         final String prefix;
+        /** When there is no prefix: a literal that follows a short lead of bounded width, or null. */
+        final Lead lead;
         /** PCRE (*MARK:name) verbs, as the Java group that marks their position. */
         final java.util.LinkedHashMap<Integer, String> marks;
 
         Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names, boolean utf, String decodedPattern,
-                 String prefix, java.util.LinkedHashMap<Integer, String> marks) {
+                 String prefix, Lead lead, java.util.LinkedHashMap<Integer, String> marks) {
             this.pattern = pattern;
             this.groupCount = groupCount;
             this.javaGroups = javaGroups;
@@ -62,6 +64,7 @@ final class PcreTranslator {
             this.utf = utf;
             this.decodedPattern = decodedPattern;
             this.prefix = prefix;
+            this.lead = lead;
             this.marks = marks;
         }
 
@@ -348,7 +351,8 @@ final class PcreTranslator {
             map[g] = userToJava.get(g).stream().mapToInt(Integer::intValue).toArray();
             names[g] = userNames.get(g);
         }
-        return new Compiled(pattern, userGroups, map, names, utf, src, prefix, marks);
+        Lead lead = anchored || prefix != null ? null : leadLiteral(body, caseless, utf);
+        return new Compiled(pattern, userGroups, map, names, utf, src, prefix, lead, marks);
     }
 
     // ------------------------------------------------------------------ structure
@@ -907,6 +911,159 @@ final class PcreTranslator {
     private static String literalPrefix(String body, boolean caseless) {
         Prefix prefix = scanPrefix(body, caseless);
         return prefix == null ? null : prefix.text();
+    }
+
+    /**
+     * Every match contains {@code literal} starting between {@code minLead} and {@code maxLead}
+     * chars after the match start. The matcher finds the literal with indexOf and tries only
+     * those start positions, where java.util.regex would try every index of the subject; PCRE
+     * gets the same effect from its required-character and start-bitmap optimisations. For
+     * example spatie/yaml-front-matter splits whole files with {@code ^[\s\r\n]?---[\s\r\n]?$}.
+     */
+    record Lead(String literal, int minLead, int maxLead) {
+    }
+
+    private static final int MAX_LEAD = 8;
+
+    /**
+     * The lead and literal of a pattern that starts with zero-width assertions and single-char
+     * atoms of bounded repetition, followed by at least two literal chars; null otherwise.
+     */
+    static Lead leadLiteral(String body, boolean caseless, boolean utf) {
+        if (caseless || body.contains("\\G") || hasTopLevelAlternation(body)) {
+            return null;
+        }
+        int n = body.length();
+        int min = 0;
+        int max = 0;
+        StringBuilder lit = new StringBuilder();
+        int i = 0;
+        while (i < n) {
+            char c = body.charAt(i);
+            String single = null; // the literal char of this atom, or null for a class
+            int end;
+            if (c == '^' && lit.length() == 0) {
+                i++;
+                continue;
+            }
+            if (c == '\\') {
+                char e = i + 1 < n ? body.charAt(i + 1) : 0;
+                if (lit.length() == 0 && (e == 'b' || e == 'B' || e == 'A')) {
+                    i += 2;
+                    continue;
+                }
+                if (e == 'Q') {
+                    if (lit.length() > 0) {
+                        break;
+                    }
+                    return null;
+                }
+                Literal l = literal(body, i);
+                if (l != null) {
+                    single = l.text();
+                    end = l.end();
+                } else if ("sSdDwWhHvV".indexOf(e) >= 0) {
+                    end = i + 2;
+                } else if ((e == 'p' || e == 'P') && i + 2 < n) {
+                    end = body.charAt(i + 2) == '{' ? body.indexOf('}', i + 2) + 1 : i + 3;
+                    if (end <= 0) {
+                        return null;
+                    }
+                } else if (lit.length() > 0) {
+                    break; // an assertion or backreference after the literal ends it
+                } else {
+                    return null; // backreference, \R, \X, \z and the like
+                }
+            } else if (c == '[') {
+                end = skipClass(body, i);
+            } else if (c == '.') {
+                end = i + 1;
+            } else if ("()|?*+{}$]".indexOf(c) >= 0 || (c == '^')) {
+                break;
+            } else {
+                single = String.valueOf(c);
+                end = i + 1;
+            }
+            // Repetition of this atom.
+            int lo = 1;
+            int hi = 1;
+            int next = end;
+            if (next < n) {
+                char q = body.charAt(next);
+                if (q == '?') {
+                    lo = 0;
+                    next++;
+                } else if (q == '*' || q == '+') {
+                    break;
+                } else if (q == '{') {
+                    Matcher m = QUANTIFIER.matcher(body).region(next, n);
+                    if (!m.lookingAt()) {
+                        break;
+                    }
+                    String g = m.group();
+                    int comma = g.indexOf(',');
+                    lo = Integer.parseInt(g.substring(1, comma < 0 ? g.length() - 1 : comma));
+                    if (comma < 0) {
+                        hi = lo;
+                    } else if (comma == g.length() - 2) {
+                        break; // {n,} is unbounded
+                    } else {
+                        hi = Integer.parseInt(g.substring(comma + 1, g.length() - 1));
+                    }
+                    next = m.end();
+                }
+                if (next > end && next < n && (body.charAt(next) == '?' || body.charAt(next) == '+')) {
+                    next++; // lazy or possessive
+                }
+            }
+            boolean plain = single != null && single.length() == 1 && lo == 1 && hi == 1;
+            if (plain) {
+                lit.append(single);
+                i = next;
+                continue;
+            }
+            if (lit.length() > 0) {
+                break; // the literal run ends here
+            }
+            // Part of the lead. Under /u a class or an escape may match a surrogate pair.
+            int width = single != null ? single.length() : (utf ? 2 : 1);
+            min += lo * (single != null ? single.length() : 1);
+            max += hi * width;
+            if (max > MAX_LEAD) {
+                return null;
+            }
+            i = next;
+        }
+        if (lit.length() < 2) {
+            return null;
+        }
+        return new Lead(lit.toString(), min, max);
+    }
+
+    private static boolean hasTopLevelAlternation(String body) {
+        int depth = 0;
+        for (int i = 0; i < body.length(); ) {
+            char c = body.charAt(i);
+            if (c == '\\') {
+                i += 2;
+                continue;
+            }
+            if (c == '[') {
+                i = skipClass(body, i);
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (c == '|' && depth == 0) {
+                return true;
+            }
+            i++;
+        }
+        return false;
     }
 
     /** The literal prefix of a sequence, and whether it consumed the whole sequence. */

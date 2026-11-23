@@ -182,6 +182,9 @@ final class PregFunctions {
      * try every index in the subject. A failed test resumes at the following occurrence.
      */
     private static boolean next(PcreTranslator.Compiled re, Matcher matcher, Offsets off, int from) {
+        if (re.lead != null) {
+            return nextByLead(re.lead, matcher, off, from);
+        }
         if (re.prefix == null) {
             // No prefix: the matcher keeps its own position between find() calls.
             return find(matcher, off);
@@ -204,6 +207,36 @@ final class PregFunctions {
                 return false;
             }
         }
+    }
+
+    /**
+     * Finds the next match by its required literal: every match starts between
+     * {@code maxLead} and {@code minLead} chars before an occurrence. Starts are tried in
+     * increasing order and each at most once, so the first success is the leftmost match.
+     */
+    private static boolean nextByLead(PcreTranslator.Lead lead, Matcher matcher, Offsets off, int from) {
+        String text = off.text;
+        int n = text.length();
+        int untried = from;
+        int at = text.indexOf(lead.literal(), from + lead.minLead());
+        while (at >= 0) {
+            int last = at - lead.minLead();
+            for (int start = Math.max(untried, at - lead.maxLead()); start <= last; start++) {
+                if (off.utf && start < n && Character.isLowSurrogate(text.charAt(start))) {
+                    continue;
+                }
+                matcher.region(start, n);
+                if (lookingAt(matcher, off)) {
+                    return true;
+                }
+                if (off.limitHit) {
+                    return false;
+                }
+            }
+            untried = Math.max(untried, last + 1);
+            at = text.indexOf(lead.literal(), at + 1);
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ preg_match(_all)
