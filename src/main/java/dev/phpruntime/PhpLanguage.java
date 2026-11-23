@@ -311,6 +311,32 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
     }
 
     /**
+     * The hierarchy id every class of one name has had so far, valid while no context declares
+     * that name with a different parent chain. Compiled code reads it as a constant instead of
+     * looking the class up in the running context's table.
+     */
+    public record StableHierarchy(long id, com.oracle.truffle.api.Assumption valid) {
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<Integer, StableHierarchy> stableHierarchies =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Records that a class of name id {@code classId} with hierarchy {@code hierarchyId} exists. */
+    public void noteHierarchy(int classId, long hierarchyId) {
+        StableHierarchy seen = stableHierarchies.computeIfAbsent(classId, k -> new StableHierarchy(hierarchyId,
+                com.oracle.truffle.api.Truffle.getRuntime().createAssumption("stable hierarchy")));
+        if (seen.id() != hierarchyId) {
+            seen.valid().invalidate();
+        }
+    }
+
+    /** The stable hierarchy of a class name, or null if no class of that name was created yet. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public StableHierarchy stableHierarchy(int classId) {
+        return stableHierarchies.get(classId);
+    }
+
+    /**
      * An include path already resolved to a parsed file: what {@code include} would find for
      * this path string from this directory, checked at {@code checkedAt} (System.nanoTime).
      */

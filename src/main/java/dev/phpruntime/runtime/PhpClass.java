@@ -405,6 +405,7 @@ public final class PhpClass {
         }
         this.hierarchyId = language.hierarchyId(chain);
         this.classId = language.classId(template.lowerName());
+        language.noteHierarchy(classId, hierarchyId);
 
         // Inherit methods from parent, compose traits, then overlay this class's declared methods.
         int maxMethodId = parent != null ? parent.methodsById.length : 0;

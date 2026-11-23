@@ -57,6 +57,12 @@ public final class PropertyLValueNode extends LValueNode {
     @CompilationFinal(dimensions = 1) private Resolution[] cache;
     /** Language-wide class id of {@link #callingClassLower}, resolved on first use; -1 until then. */
     @CompilationFinal private int callerClassId = -1;
+    /** The caller class's hierarchy across contexts, looked up once ({@link #callerStableLooked}). */
+    @CompilationFinal private dev.phpruntime.PhpLanguage.StableHierarchy callerStable;
+    @CompilationFinal private boolean callerStableLooked;
+    /** A reference cell holding a {@code .=} append buffer; until seen, compiled reads skip flattening. */
+    private final com.oracle.truffle.api.profiles.BranchProfile bufferSeen =
+            com.oracle.truffle.api.profiles.BranchProfile.create();
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
         this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1, false);
@@ -140,7 +146,11 @@ public final class PropertyLValueNode extends LValueNode {
             return readUninitialized(obj, name, effectiveCallerLower(frame, keys));
         }
         if (v instanceof PhpReference ref) {
-            v = ref.getValue();
+            v = ref.rawValue();
+            if (v instanceof dev.phpruntime.runtime.PhpStringBuffer buffer) {
+                bufferSeen.enter();
+                v = buffer.asString();
+            }
         }
         if (v != null) {
             return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
@@ -924,6 +934,17 @@ public final class PropertyLValueNode extends LValueNode {
             CompilerDirectives.transferToInterpreterAndInvalidate();
             id = dev.phpruntime.PhpLanguage.get(this).classId(callingClassLower);
             callerClassId = id;
+        }
+        if (!callerStableLooked) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            callerStable = dev.phpruntime.PhpLanguage.get(this).stableHierarchy(id);
+            callerStableLooked = true;
+        }
+        // Running code's class is declared in this context, and while every context has the same
+        // hierarchy for it the id is a constant: no context lookup or class table read.
+        dev.phpruntime.PhpLanguage.StableHierarchy stable = callerStable;
+        if (stable != null && stable.valid().isValid()) {
+            return stable.id();
         }
         // An array read in this request's class table instead of a name lookup behind a boundary.
         PhpClass caller = PhpContext.get(this).classById(id);
