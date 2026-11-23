@@ -510,7 +510,7 @@ public final class CallArgHelper {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             if (def.maxArgs() < 0) {
                 throw new PhpError(PhpError.ARGUMENT_COUNT,
-                        def.name() + "() does not accept unknown named parameters", site);
+                        "Internal function " + def.name() + "() does not accept named variadic arguments", site);
             }
             throw new PhpError("Unknown named parameter $" + firstKey(named), site);
         }
@@ -537,7 +537,7 @@ public final class CallArgHelper {
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 if (variadic) {
                     throw new PhpError(PhpError.ARGUMENT_COUNT,
-                            def.name() + "() does not accept unknown named parameters", site);
+                            "Internal function " + def.name() + "() does not accept named variadic arguments", site);
                 }
                 throw new PhpError("Unknown named parameter $" + name, site);
             }

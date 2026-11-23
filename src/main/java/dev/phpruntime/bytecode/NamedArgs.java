@@ -518,7 +518,7 @@ final class NamedArgs {
             boolean rejectsVariadic = def.maxArgs() < 0;
             return new Plan(spec, KIND_BUILTIN, null, def, prefix, dest, new int[0], null,
                     positional, -1, false, valuesOnly(argc),
-                    rejectsVariadic ? def.name() + "() does not accept unknown named parameters"
+                    rejectsVariadic ? "Internal function " + def.name() + "() does not accept named variadic arguments"
                             : "Unknown named parameter $" + spec.firstName(),
                     rejectsVariadic);
         }
@@ -546,7 +546,7 @@ final class NamedArgs {
                 dest[i] = -2;
                 if (error == null) {
                     if (variadic) {
-                        error = def.name() + "() does not accept unknown named parameters";
+                        error = "Internal function " + def.name() + "() does not accept named variadic arguments";
                         errorCount = true;
                     } else {
                         error = "Unknown named parameter $" + name;
