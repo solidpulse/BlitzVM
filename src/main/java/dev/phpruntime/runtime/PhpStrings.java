@@ -207,6 +207,9 @@ public final class PhpStrings {
 
     /** Decode with an explicit substitute for invalid bytes (mbstring's default is "?"). */
     public static String decodeUtf8(String s, String substitute) {
+        if (isAscii(s)) {
+            return s;
+        }
         StringBuilder out = new StringBuilder(s.length());
         for (int i = 0; i < s.length();) {
             int width = utf8SequenceLength(s, i);
@@ -240,6 +243,9 @@ public final class PhpStrings {
 
     /** JSON/HTML use the charset decoder's malformed-sequence grouping, including surrogates. */
     public static String decodeUtf8Replacing(String s, boolean ignore) {
+        if (isAscii(s)) {
+            return s;
+        }
         try {
             return StandardCharsets.UTF_8.newDecoder().onMalformedInput(ignore ? CodingErrorAction.IGNORE : CodingErrorAction.REPLACE)
                     .onUnmappableCharacter(ignore ? CodingErrorAction.IGNORE : CodingErrorAction.REPLACE)
