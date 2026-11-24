@@ -36,6 +36,9 @@ public final class SplBuiltinNode extends Node {
         return execute(args, this);
     }
 
+    /** Marks a call the fast path does not answer, so the builtin's own implementation runs. */
+    public static final Object UNHANDLED = new Object();
+
     /** Bytecode call sites: the cached node has no line of its own, so they pass the instruction's. */
     public Object execute(Object[] args, Node location) {
         if (!dev.phpruntime.runtime.PhpStrings.CHECK) { return executeBuiltin(args, location); }
@@ -43,19 +46,22 @@ public final class SplBuiltinNode extends Node {
         return dev.phpruntime.runtime.PhpStrings.checkReturn(executeBuiltin(args, location), name);
     }
 
-    private Object executeBuiltin(Object[] args, Node location) {
+    /**
+     * The fast path's answer, or {@link #UNHANDLED}. intdiv answers only the division that
+     * cannot fail; its errors go through the builtin call, which records the internal frame.
+     */
+    public Object executeOrUnhandled(Object[] args, Node location) {
         if (name.equals("intdiv")) {
-            long x = args[0] instanceof Long l ? l : PhpOps.toLong(args[0]);
-            long y = args[1] instanceof Long l ? l : PhpOps.toLong(args[1]);
-            if (y == 0) {
-                throw new PhpError(PhpError.DIVISION_BY_ZERO, "Division by zero", location);
+            if (args.length == 2 && args[0] instanceof Long x && args[1] instanceof Long y
+                    && y != 0 && !(x == Long.MIN_VALUE && y == -1)) {
+                return x / y;
             }
-            if (x == Long.MIN_VALUE && y == -1) {
-                throw new PhpError(PhpError.ARITHMETIC_ERROR,
-                        "Division of PHP_INT_MIN by -1 is not an integer", location);
-            }
-            return x / y;
+            return UNHANDLED;
         }
+        return execute(args, location);
+    }
+
+    private Object executeBuiltin(Object[] args, Node location) {
         Object subject = args[0];
         if (name.equals("count") || name.equals("sizeof")) {
             long mode = args.length > 1 ? args[1] instanceof Long n ? n : PhpOps.toLong(args[1]) : 0;

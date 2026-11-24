@@ -3066,7 +3066,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                               @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl) {
             if (spl != null) {
                 CallNode.checkArity(def, args.length, location);
-                return spl.execute(args, location);
+                Object fast = spl.executeOrUnhandled(args, location);
+                if (fast != SplBuiltinNode.UNHANDLED) {
+                    return fast;
+                }
             }
             if (def.refMask() != 0) {
                 return Ops.callBuiltinValue(def, args, location);
