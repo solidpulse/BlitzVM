@@ -53,6 +53,8 @@ public final class PhpFunctionRootNode extends PhpRootNode {
      * time before the root is shared, so it is read without a guard.
      */
     @CompilationFinal private dev.phpruntime.runtime.PhpSignature signature = dev.phpruntime.runtime.PhpSignature.EMPTY;
+    /** {@link #qualifiedCallableName()}: fixed for the root, and built from the source path. */
+    private volatile String qualifiedName;
     /** Parameter names whose type is made nullable by a {@code null} default (php 8.4 deprecation). */
     @CompilationFinal(dimensions = 1) private String[] implicitNullable = new String[0];
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
@@ -467,6 +469,15 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     }
 
     public String qualifiedCallableName() {
+        String cached = qualifiedName;
+        if (cached == null) {
+            cached = buildQualifiedCallableName();
+            qualifiedName = cached;
+        }
+        return cached;
+    }
+
+    private String buildQualifiedCallableName() {
         if (isClosure()) {
             String f = source() != null && source().getPath() != null && !source().getPath().isEmpty()
                     ? source().getPath()

@@ -531,6 +531,7 @@ public final class PhpExceptions {
     }
 
     public static final class BuiltinMethodRootNode extends RootNode {
+        private static final Object[] NO_ARGS = new Object[0];
         private final String name;
         private final BuiltinMethod impl;
         private final long refMask;
@@ -557,7 +558,7 @@ public final class PhpExceptions {
             PhpObject self = raw[0] instanceof PhpObject o ? o : null;
             Object[] callArgs = raw.length > 2
                     ? java.util.Arrays.copyOfRange(raw, 2, raw.length)
-                    : new Object[0];
+                    : NO_ARGS;
             dev.phpruntime.runtime.ForwardedNamedArgs forwarded = null;
             if (callArgs.length > 0
                     && callArgs[callArgs.length - 1] instanceof dev.phpruntime.runtime.ForwardedNamedArgs bag) {
