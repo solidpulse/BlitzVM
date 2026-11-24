@@ -411,12 +411,13 @@ public final class PhpArray implements TruffleObject {
         }
         Object[] snapshot = new Object[size];
         int n = 0;
+        long chars = (long) glue.length() * (size - 1);
         for (int pos = firstPos(); pos >= 0 && n < size; pos = nextPos(pos)) {
             Object v = values[pos];
-            snapshot[n++] = v instanceof PhpReference ref ? ref.getValue() : v;
-        }
-        long chars = (long) glue.length() * (n - 1);
-        for (Object v : snapshot) {
+            if (v instanceof PhpReference ref) {
+                v = ref.getValue();
+            }
+            snapshot[n++] = v;
             chars += v instanceof String s ? s.length() : 12;
         }
         if (chars > Integer.MAX_VALUE - 16) {
