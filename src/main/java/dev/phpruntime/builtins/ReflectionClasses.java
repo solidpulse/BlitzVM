@@ -185,6 +185,8 @@ public final class ReflectionClasses {
         private PhpClass.InstanceProp instanceProp;
         private boolean instancePropResolved;
         private String storageKey;
+        private PhpClass.StaticSlot staticSlot;
+        private boolean staticSlotResolved;
         private DynamicObject.GetNode getNode;
         private DynamicObject.PutNode putNode;
 
@@ -255,6 +257,15 @@ public final class ReflectionClasses {
                 storageKey = key;
             }
             return key;
+        }
+
+        /** The request's storage for a static property; the slot, unlike its value, never moves. */
+        PhpClass.StaticSlot staticSlot(PhpContext ctx) {
+            if (!staticSlotResolved) {
+                staticSlot = declaring.lookupStaticProperty(ctx, name());
+                staticSlotResolved = true;
+            }
+            return staticSlot;
         }
 
         DynamicObject.GetNode getNode() {
@@ -2448,7 +2459,7 @@ public final class ReflectionClasses {
                 return getObjectProperty(object, state.dynamicName());
             }
             if (state.decl().isStatic()) {
-                PhpClass.StaticSlot slot = state.declaring().lookupStaticProperty(ctx, state.name());
+                PhpClass.StaticSlot slot = state.staticSlot(ctx);
                 if (slot == null) {
                     return PhpNull.INSTANCE;
                 }
@@ -2540,7 +2551,7 @@ public final class ReflectionClasses {
                     throw new PhpError(PhpError.ARGUMENT_COUNT,
                             "ReflectionProperty::setValue() expects 1 or 2 arguments, " + args.length + " given", null);
                 }
-                PhpClass.StaticSlot slot = state.declaring().lookupStaticProperty(ctx, state.name());
+                PhpClass.StaticSlot slot = state.staticSlot(ctx);
                 if (slot == null) {
                     throw reflectionError("Property " + state.declaring().name() + "::$" + state.name() + " does not exist");
                 }
@@ -2585,7 +2596,7 @@ public final class ReflectionClasses {
         addMethod(language, methods, "isInitialized", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PropertyState state = propertyState(self);
             if (state.decl() != null && state.decl().isStatic()) {
-                PhpClass.StaticSlot slot = state.declaring().lookupStaticProperty(ctx, state.name());
+                PhpClass.StaticSlot slot = state.staticSlot(ctx);
                 return slot != null && staticPropertyInitialized(slot,
                         new PropertyInfo(state.reflected(), state.declaring(), state.decl()));
             }
