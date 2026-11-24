@@ -26,6 +26,12 @@ public final class DispatchCallNode extends Node {
     @Child private DirectCallNode directCall;
     @Child private IndirectCallNode indirectCall;
 
+    /** The last trait call site wrapped for the backtrace, so a call site does not allocate one per call. */
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal private TraitSiteCache traitSiteCache;
+
+    private record TraitSiteCache(dev.phpruntime.runtime.PhpBacktrace.TraceSite traceSite, Object site, PhpClass traitSelf) {
+    }
+
     public RootCallTarget cachedTarget() {
         DirectCallNode direct = directCall;
         return direct != null ? (RootCallTarget) direct.getCallTarget() : null;
@@ -98,11 +104,33 @@ public final class DispatchCallNode extends Node {
         }
     }
 
-    private static Object traceSite(RootCallTarget target, Object site, PhpClass traitSelf) {
+    private Object traceSite(RootCallTarget target, Object site, PhpClass traitSelf) {
         if (traitSelf == null || target == null || !isTraitMethod(target) || !(site instanceof Node node)) {
             return site;
         }
-        return new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
+        TraitSiteCache cached = traitSiteCache;
+        if (cached != null && cached.site == site && cached.traitSelf == traitSelf) {
+            return cached.traceSite;
+        }
+        return traceSiteSlow(node, site, traitSelf);
+    }
+
+    /** The first call of a site, or a call whose trait class changed (a rebind); entry is rare. */
+    @TruffleBoundary
+    private Object traceSiteSlow(Node node, Object site, PhpClass traitSelf) {
+        java.util.concurrent.locks.Lock lock = getLock();
+        lock.lock();
+        try {
+            TraitSiteCache cached = traitSiteCache;
+            if (cached != null && cached.site == site && cached.traitSelf == traitSelf) {
+                return cached.traceSite;
+            }
+            dev.phpruntime.runtime.PhpBacktrace.TraceSite fresh = new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
+            traitSiteCache = new TraitSiteCache(fresh, site, traitSelf);
+            return fresh;
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
