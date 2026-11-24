@@ -361,6 +361,13 @@ public final class WorkerPool implements AutoCloseable {
         private Job currentJob;
         private ByteArrayOutputStream currentOut;
         private ByteArrayOutputStream currentErr;
+        /**
+         * The response streams of this worker, reused by every request it handles. A fresh pair
+         * per request allocated the stream, its first buffer and every growth step; a worker
+         * runs one request at a time and the response body is copied out in {@link #finish}.
+         */
+        private final ByteArrayOutputStream responseOut = new ByteArrayOutputStream();
+        private final ByteArrayOutputStream responseErr = new ByteArrayOutputStream();
         /** Why the worker script is ending, when it is not a plain MAX_REQUESTS return. */
         private String restartReason;
 
@@ -424,8 +431,10 @@ public final class WorkerPool implements AutoCloseable {
 
         private void runOne(Job job, PhpContext ctx, PhpCallable callback) {
             PhpRequest request = job.request();
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            ByteArrayOutputStream err = new ByteArrayOutputStream();
+            ByteArrayOutputStream out = responseOut;
+            ByteArrayOutputStream err = responseErr;
+            out.reset();
+            err.reset();
             currentOut = out;
             currentErr = err;
             wc.installStreams(out, err);
