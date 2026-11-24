@@ -530,7 +530,9 @@ public final class ReflectionClasses {
         void write(PhpObject object, PhpClass cls) {
             Object[] values = constantValues != null ? constantValues : cls.defaultValues();
             for (int i = 0; i < puts.length; i++) {
-                puts[i].execute(object, keys[i], PhpOps.copyOnAssign(values[i]));
+                Object value = values[i];
+                // Only arrays need php's copy-on-assign; scalars and objects are stored as is.
+                puts[i].execute(object, keys[i], value instanceof PhpArray array ? array.share() : value);
             }
         }
     }
