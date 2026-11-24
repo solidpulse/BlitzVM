@@ -8,6 +8,20 @@ import dev.phpruntime.runtime.PhpObject;
 /** Read-only {@code expr[key]} on an arbitrary expression, e.g. {@code f()[0]}. */
 public final class IndexReadNode extends PhpNode {
 
+    /**
+     * One-character strings for the first 256 code points, so {@code $s[$i]} does not allocate
+     * the result. Strings are immutable, so sharing one instance is invisible to the guest.
+     */
+    private static final String[] SINGLE_CHARS = singleChars();
+
+    private static String[] singleChars() {
+        String[] table = new String[256];
+        for (int i = 0; i < table.length; i++) {
+            table[i] = String.valueOf((char) i);
+        }
+        return table;
+    }
+
     @Child private PhpNode target;
     @Child private PhpNode key;
 
@@ -45,7 +59,8 @@ public final class IndexReadNode extends PhpNode {
             if (i < 0 || i >= s.length()) {
                 return null;
             }
-            return String.valueOf(s.charAt((int) i));
+            char c = s.charAt((int) i);
+            return c < 256 ? SINGLE_CHARS[c] : String.valueOf(c);
         }
         if (container instanceof PhpObject obj) {
             throw new dev.phpruntime.runtime.PhpError("Cannot use object of type " + obj.phpClass().name() + " as array");
