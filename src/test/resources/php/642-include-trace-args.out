@@ -1,0 +1,4 @@
+["642-include-trace-args.php:3 include"]
+["642-b.php:1 mk642","642-include-trace-args.php:4 include(642-b.php)"]
+["642-include-trace-args.php:5 include"]
+["642-include-trace-args.php:6 include","642-include-trace-args.php:7 f642"]

@@ -818,9 +818,9 @@ public final class PropertyLValueNode extends LValueNode {
     @TruffleBoundary
     private Object callMagic1(PhpClass.MethodEntry entry, PhpObject obj, String name) {
         if (entry.fromTrait()) {
-            return entry.callTarget().call(obj, obj.phpClass(), entry.declaringClass(), name);
+            return dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), obj, obj.phpClass(), entry.declaringClass(), name);
         }
-        return entry.callTarget().call(obj, obj.phpClass(), name);
+        return dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), obj, obj.phpClass(), name);
     }
 
     @TruffleBoundary
@@ -830,9 +830,9 @@ public final class PropertyLValueNode extends LValueNode {
             obj.enterMagic(name, PhpObject.GUARD_SET);
             try {
                 if (set.fromTrait()) {
-                    set.callTarget().call(obj, obj.phpClass(), set.declaringClass(), name, value);
+                    dev.phpruntime.runtime.PhpBacktrace.callUnsited(set.callTarget(), obj, obj.phpClass(), set.declaringClass(), name, value);
                 } else {
-                    set.callTarget().call(obj, obj.phpClass(), name, value);
+                    dev.phpruntime.runtime.PhpBacktrace.callUnsited(set.callTarget(), obj, obj.phpClass(), name, value);
                 }
             } finally {
                 obj.exitMagic(name, PhpObject.GUARD_SET);

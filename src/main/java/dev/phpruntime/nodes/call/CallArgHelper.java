@@ -669,13 +669,13 @@ public final class CallArgHelper {
     private static Object invokeBuiltin(Builtins.Def def, Object[] values, Node site) {
         PhpContext ctx = PhpContext.get(site);
         Node prev = ctx.currentBuiltinCallSite();
-        ctx.setCurrentBuiltinCallSite(site);
+        String prevName = ctx.enterBuiltin(site, def.name());
         try {
             return def.call(ctx, values);
         } catch (PhpError e) {
             throw e.withTrace(dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(site, def.name())).at(site);
         } finally {
-            ctx.setCurrentBuiltinCallSite(prev);
+            ctx.exitBuiltin(prev, prevName);
         }
     }
 }

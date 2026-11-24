@@ -131,9 +131,9 @@ public final class CloneNode extends PhpNode {
                     && obj.phpClass().setMethod() != null && obj.phpClass().setMethod().callTarget() != null) {
                 PhpClass.MethodEntry set = obj.phpClass().setMethod();
                 if (set.fromTrait()) {
-                    set.callTarget().call(obj, obj.phpClass(), set.declaringClass(), name, checked);
+                    dev.phpruntime.runtime.PhpBacktrace.callUnsited(set.callTarget(), obj, obj.phpClass(), set.declaringClass(), name, checked);
                 } else {
-                    set.callTarget().call(obj, obj.phpClass(), name, checked);
+                    dev.phpruntime.runtime.PhpBacktrace.callUnsited(set.callTarget(), obj, obj.phpClass(), name, checked);
                 }
             } else {
                 put.execute(obj, storageKey, checked);

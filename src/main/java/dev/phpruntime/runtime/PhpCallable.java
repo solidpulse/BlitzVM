@@ -491,7 +491,11 @@ public final class PhpCallable {
      */
     private static Object traceSiteOf(PhpContext ctx, CallMode pending) {
         if (pending == null) {
-            return dev.phpruntime.runtime.PhpBacktrace.INTERNAL_SITE;
+            Node builtinSite = ctx.currentBuiltinCallSite();
+            String builtin = ctx.currentBuiltinName();
+            return builtinSite != null && builtin != null
+                    ? new dev.phpruntime.runtime.PhpBacktrace.InternalSite(builtinSite, builtin)
+                    : dev.phpruntime.runtime.PhpBacktrace.INTERNAL_SITE;
         }
         Node site = ctx.currentBuiltinCallSite();
         return site != null ? site : dev.phpruntime.runtime.PhpBacktrace.INTERNAL_SITE;
@@ -509,8 +513,9 @@ public final class PhpCallable {
         }
         Object result;
         Node previousSite = ctx.currentBuiltinCallSite();
+        String previousName = ctx.currentBuiltinName();
         if (loc != null) {
-            ctx.setCurrentBuiltinCallSite(loc);
+            ctx.enterBuiltin(loc, def.name());
         }
         try {
             result = def.call(ctx, args);
@@ -518,7 +523,7 @@ public final class PhpCallable {
             throw loc != null ? e.at(loc) : e;
         } finally {
             if (loc != null) {
-                ctx.setCurrentBuiltinCallSite(previousSite);
+                ctx.exitBuiltin(previousSite, previousName);
             }
         }
         for (int i = 0; i < userArgs.length; i++) {

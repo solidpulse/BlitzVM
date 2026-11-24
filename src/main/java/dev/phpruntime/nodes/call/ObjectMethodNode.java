@@ -51,10 +51,21 @@ public final class ObjectMethodNode extends Node {
         RootCallTarget cached = dispatch.cachedTarget();
         if (cached == entry.callTarget()) {
             adaptArgs(cached, args);
-            return site == null ? dispatch.callMethod(entry, args) : dispatch.callMethod(entry, args, site);
+            return site == null ? callUnsited(entry, args) : dispatch.callMethod(entry, args, site);
         }
         adaptArgs(entry.callTarget(), args);
-        return site == null ? dispatch.callMethod(entry, args) : dispatch.callMethod(entry, args, site);
+        return site == null ? callUnsited(entry, args) : dispatch.callMethod(entry, args, site);
+    }
+
+    /** An engine call without a guest location (ArrayAccess, Countable): see UNKNOWN_SITE. */
+    private Object callUnsited(PhpClass.MethodEntry entry, Object[] args) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        int depth = ctx.pushTraceFrame(dev.phpruntime.runtime.PhpBacktrace.UNKNOWN_SITE);
+        try {
+            return dispatch.callMethod(entry, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
     }
 
     private static void adaptArgs(RootCallTarget target, Object[] args) {

@@ -534,7 +534,7 @@ public final class RandomClasses {
         Object[] args = entry.fromTrait()
                 ? new Object[]{engine, cls, entry.declaringClass()}
                 : new Object[]{engine, cls};
-        Object value = CallArgHelper.unwrapReturn(entry.callTarget().call(args));
+        Object value = CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), args));
         if (!(value instanceof String s)) {
             throw new PhpError(PhpError.TYPE_ERROR,
                     cls.name() + "::generate(): Return value must be of type string, "

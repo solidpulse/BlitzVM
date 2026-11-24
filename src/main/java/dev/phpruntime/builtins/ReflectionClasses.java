@@ -3414,7 +3414,7 @@ public final class ReflectionClasses {
                 ? new Object[]{object, calledClass, ctor.declaringClass()}
                 : new Object[]{object, calledClass};
         if (arguments.size() == 0) {
-            ctor.callTarget().call(prefix);
+            dev.phpruntime.runtime.PhpBacktrace.callUnsited(ctor.callTarget(), prefix);
             return;
         }
         if (arguments.isList()) {
@@ -3429,7 +3429,7 @@ public final class ReflectionClasses {
                 callArgs[prefix.length + i] = raw instanceof PhpReference ref ? ref
                         : PhpOps.copyOnAssign(arguments.get(key));
             }
-            ctor.callTarget().call(callArgs);
+            dev.phpruntime.runtime.PhpBacktrace.callUnsited(ctor.callTarget(), callArgs);
             return;
         }
         List<Object> positional = new ArrayList<>();
@@ -3441,16 +3441,16 @@ public final class ReflectionClasses {
             for (int i = 0; i < positional.size(); i++) {
                 callArgs[prefix.length + i] = positional.get(i);
             }
-            ctor.callTarget().call(callArgs);
+            dev.phpruntime.runtime.PhpBacktrace.callUnsited(ctor.callTarget(), callArgs);
             return;
         }
         if (root == null) {
             CallArgHelper.RawCallArgs raw = rawCallArgs(positional, named);
-            ctor.callTarget().call(CallArgHelper.bindToInternal(prefix, raw, ctor, null));
+            dev.phpruntime.runtime.PhpBacktrace.callUnsited(ctor.callTarget(), CallArgHelper.bindToInternal(prefix, raw, ctor, null));
             return;
         }
         Object[] callArgs = CallArgHelper.bindForwardedToFunction(ctx, root, prefix, positional, named, null);
-        ctor.callTarget().call(callArgs);
+        dev.phpruntime.runtime.PhpBacktrace.callUnsited(ctor.callTarget(), callArgs);
     }
 
     private static Object invokeMethod(PhpContext ctx, MethodState state, Object objectValue) {
@@ -3500,16 +3500,16 @@ public final class ReflectionClasses {
             for (int i = 0; i < positional.size(); i++) {
                 callArgs[prefix.length + i] = positional.get(i);
             }
-            return CallArgHelper.unwrapReturn(entry.callTarget().call(callArgs));
+            return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), callArgs));
         }
         PhpFunctionRootNode root = PhpFunctionRootNode.of(entry.callTarget().getRootNode());
         CallArgHelper.RawCallArgs raw = rawCallArgs(positional, named);
         if (root == null) {
-            return CallArgHelper.unwrapReturn(entry.callTarget().call(
+            return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), 
                     CallArgHelper.bindToInternal(prefix, raw, entry, null)));
         }
         Object[] callArgs = CallArgHelper.bindForwardedToFunction(ctx, root, prefix, positional, named, null);
-        return CallArgHelper.unwrapReturn(entry.callTarget().call(callArgs));
+        return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), callArgs));
     }
 
     private static Object invokeCallable(PhpContext ctx, FunctionState state, Object[] positional,
@@ -3542,11 +3542,11 @@ public final class ReflectionClasses {
             case CLOSURE -> {
                 Object[] prefix = new Object[]{state.callable.boundThis(), state.callable.calledClass(),
                         state.callable.closureObj()};
-                return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
+                return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(state.callable.callTarget(), 
                         CallArgHelper.bindForwardedToFunction(ctx, state.root, prefix, positional, named, null)));
             }
             case USER_FUNCTION -> {
-                return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
+                return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(state.callable.callTarget(), 
                         CallArgHelper.bindForwardedToFunction(ctx, state.root, new Object[0], positional, named, null)));
             }
             case METHOD -> {
@@ -3555,10 +3555,10 @@ public final class ReflectionClasses {
                                 state.callable.traitSelf()}
                         : new Object[]{state.callable.boundThis(), state.callable.calledClass()};
                 if (state.root == null) {
-                    return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
+                    return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(state.callable.callTarget(), 
                             CallArgHelper.bindToInternal(prefix, raw, state.callable.methodEntry(), null)));
                 }
-                return CallArgHelper.unwrapReturn(state.callable.callTarget().call(
+                return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(state.callable.callTarget(), 
                         CallArgHelper.bindForwardedToFunction(ctx, state.root, prefix, positional, named, null)));
             }
             case MAGIC_CALL -> {

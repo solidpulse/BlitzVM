@@ -3935,13 +3935,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             CallNode.checkArity(def, args.length, site);
             PhpContext ctx = PhpContext.get(site);
             Node prev = ctx.currentBuiltinCallSite();
-            ctx.setCurrentBuiltinCallSite(site);
+            String prevName = ctx.enterBuiltin(site, def.name());
             try {
                 return def.call(ctx, args);
             } catch (PhpError e) {
                 throw e.withTrace(PhpBacktrace.captureFromBuiltin(site, def.name())).at(site);
             } finally {
-                ctx.setCurrentBuiltinCallSite(prev);
+                ctx.exitBuiltin(prev, prevName);
             }
         }
     }
@@ -4634,7 +4634,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     frameArgs[2] = cb.closureObj();
                     System.arraycopy(args, 0, frameArgs, 3, args.length);
                     yield dispatch.call(cb.callTarget(), frameArgs,
-                            dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject));
+                            dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject, cb.calledClass()));
                 }
                 case USER_FUNCTION -> dispatch.call(cb.callTarget(), args, location);
                 case METHOD -> {
@@ -5356,7 +5356,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 default -> throw CompilerDirectives.shouldNotReachHere();
             };
             return Ops.ret(keepRef, dispatch.call(cb.callTarget(), args,
-                    dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject)));
+                    dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject, cb.calledClass())));
         }
 
         /** {@code method} is the callable when it is a method (it may be Java-implemented), else null. */
@@ -5545,7 +5545,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             Object result = switch (cb.kind()) {
                 case CLOSURE -> dispatch.call(cb.callTarget(), CallArgHelper.bindToFunction(
                         new Object[]{cb.boundThis(), cb.calledClass(), cb.closureObj()}, raw, fnRoot, location),
-                        dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, fnRoot, cb.boundThis() instanceof PhpObject));
+                        dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, fnRoot, cb.boundThis() instanceof PhpObject, cb.calledClass()));
                 case USER_FUNCTION -> dispatch.call(cb.callTarget(),
                         CallArgHelper.bindToFunction(new Object[0], raw, fnRoot, location), location);
                 case METHOD -> {

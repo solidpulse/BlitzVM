@@ -306,6 +306,26 @@ public final class PhpContext {
         return handles;
     }
 
+    /** The name of the builtin running at {@link #currentBuiltinCallSite}, for its trace frame. */
+    private String currentBuiltinName;
+
+    public String currentBuiltinName() {
+        return currentBuiltinName;
+    }
+
+    /** Sets the running builtin's call site and name; returns the previous name to restore. */
+    public String enterBuiltin(Node site, String name) {
+        String previous = currentBuiltinName;
+        currentBuiltinCallSite = site;
+        currentBuiltinName = name;
+        return previous;
+    }
+
+    public void exitBuiltin(Node site, String name) {
+        currentBuiltinCallSite = site;
+        currentBuiltinName = name;
+    }
+
     public Node currentBuiltinCallSite() {
         return currentBuiltinCallSite;
     }

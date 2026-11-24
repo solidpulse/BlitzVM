@@ -1568,7 +1568,7 @@ public final class PhpClass {
             } else {
                 args = java.util.Arrays.copyOf(args, at);
             }
-            return hook.callTarget().call(args);
+            return PhpBacktrace.callUnsited(hook.callTarget(), args);
         } finally {
             if (!already) {
                 obj.exitMagic(prop.name(), kind);

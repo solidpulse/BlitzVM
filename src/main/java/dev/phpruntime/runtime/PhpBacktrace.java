@@ -69,7 +69,11 @@ public final class PhpBacktrace {
     /** Captures a guest stack trace whose frame #0 is the active builtin call {@code builtinName}. */
     @TruffleBoundary
     public static LazyTrace captureFromBuiltin(Node callSite, String builtinName) {
-        FrameEntry[] callerFrames = walkFrames(callSite, false, false, 0);
+        FrameEntry[] callerFrames = callSite == null ? null
+                : framesFromContext(PhpContext.get(callSite), callSite, 0);
+        if (callerFrames == null) {
+            callerFrames = walkFrames(callSite, false, false, 0);
+        }
         String file = sourcePath(callSite);
         int line = sourceLine(callSite);
         FrameEntry[] all = new FrameEntry[callerFrames.length + 1];
@@ -97,35 +101,84 @@ public final class PhpBacktrace {
      */
     @TruffleBoundary
     public static LazyTrace captureFromContext(PhpContext ctx, Node location) {
-        return new LazyTrace(framesFromContext(ctx, location, 0));
+        FrameEntry[] frames = framesFromContext(ctx, location, 0);
+        if (frames == null) {
+            return capture(location, false);
+        }
+        return new LazyTrace(frames);
     }
 
-    /** The innermost {@code limit} frames of the call-site stack (all of them for 0). */
+    /**
+     * Marks a guest call the runtime makes on its own (a magic method, a property hook, an
+     * ArrayAccess or iterator method): php gives that frame the caller's current line, which
+     * the call-site stack does not know, so a trace that reaches it walks the frames instead.
+     */
+    public static final Object UNKNOWN_SITE = new Object();
+
+    /** {@code target.call(args)} as a runtime-initiated guest call ({@link #UNKNOWN_SITE}). */
+    public static Object callUnsited(com.oracle.truffle.api.CallTarget target, Object... args) {
+        PhpContext ctx = PhpContext.get(null);
+        int depth = ctx.pushTraceFrame(UNKNOWN_SITE);
+        try {
+            return target.call(args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
+    /**
+     * The innermost {@code limit} frames of the call-site stack (all of them for 0), or null
+     * when they include a runtime-initiated call the stack cannot describe.
+     */
     private static FrameEntry[] framesFromContext(PhpContext ctx, Node location, int limit) {
         int depth = ctx.traceDepth();
         if (depth == 0) {
             return new FrameEntry[0];
         }
-        FrameEntry[] out = new FrameEntry[limit > 0 ? Math.min(limit, depth) : depth];
+        // A callback run by a builtin adds the builtin's own frame as well.
+        int max = limit > 0 ? limit : Integer.MAX_VALUE;
+        FrameEntry[] out = new FrameEntry[Math.min(max, depth * 2)];
         int n = 0;
         Object callee = frameOfRoot(location == null ? null : location.getRootNode());
-        for (int i = depth - 1; i >= 0 && n < out.length; i--) {
+        for (int i = depth - 1; i >= 0 && n < max; i--) {
             Object site = ctx.traceSite(i);
+            if (site == UNKNOWN_SITE) {
+                return null;
+            }
             FrameEntry entry = traceEntry(site, callee);
             if (entry != null) {
                 out[n++] = entry;
             }
+            if (site instanceof InternalSite is && n < max) {
+                out[n++] = new FrameEntry(sourcePath(is.site()), sourceLine(is.site()), is.builtin(),
+                        null, null, null, null);
+            }
             callee = frameOfSite(site);
+        }
+        // php gives an include frame its file as the argument, except the innermost frame.
+        if (n > 0 && out[0].args() != null && isIncludeName(out[0].function())) {
+            FrameEntry f = out[0];
+            out[0] = new FrameEntry(f.file(), f.line(), f.function(), f.className(), f.type(), f.object(), null);
         }
         return n == out.length ? out : Arrays.copyOf(out, n);
     }
 
     /** A file's top-level code, which has no function metadata of its own. */
-    private static final Object MAIN = new Object();
+    private record MainFrame(RootNode root) {
+    }
+
+    /**
+     * The site of a callback a builtin runs from an internal frame: php reports the callback
+     * without a location, then the builtin itself at its call site.
+     */
+    public record InternalSite(Node site, String builtin) {
+    }
 
     private static Object frameOfSite(Object site) {
         if (site instanceof TraceSite ts) {
             site = ts.site();
+        } else if (site instanceof InternalSite is) {
+            site = is.site();
         }
         if (site instanceof Node node) {
             return frameOfRoot(node.getRootNode());
@@ -135,21 +188,21 @@ public final class PhpBacktrace {
 
     private static Object frameOfRoot(RootNode root) {
         if (root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b) {
-            return b.function() != null ? b.function() : MAIN;
+            return b.function() != null ? b.function() : new MainFrame(root);
         }
         if (root instanceof PhpFunctionRootNode fn) {
             return fn;
         }
         if (root instanceof PhpMainRootNode) {
-            return MAIN;
+            return new MainFrame(root);
         }
         return null;
     }
 
     /** A site that also carries what a method's class or a closure's binding is at run time. */
-    public record TraceSite(Node site, PhpClass traitSelf, Boolean boundThis) {
+    public record TraceSite(Node site, PhpClass traitSelf, Boolean boundThis, PhpClass scope) {
         public TraceSite(Node site, PhpClass traitSelf) {
-            this(site, traitSelf, null);
+            this(site, traitSelf, null, null);
         }
     }
 
@@ -157,18 +210,25 @@ public final class PhpBacktrace {
      * {@code site}, wrapped when a closure runs with a different {@code $this} binding than its
      * declaration implies ({@code Closure::bind}, {@code Closure::call}).
      */
-    public static Object bindingSite(Object site, PhpFunctionRootNode fn, boolean boundThis) {
-        if (fn != null && fn.isClosure() && fn.closureBoundThis() != boundThis && site instanceof Node node) {
-            return new TraceSite(node, null, boundThis);
+    public static Object bindingSite(Object site, PhpFunctionRootNode fn, boolean boundThis, PhpClass scope) {
+        if (fn != null && fn.isClosure() && site instanceof Node node
+                && (fn.closureBoundThis() != boundThis || (fn.declaringClass() == null && scope != null))) {
+            // Rebound (Closure::bind, bindTo, call): php reports the scope it now runs in.
+            return new TraceSite(node, null, boundThis, fn.declaringClass() == null ? scope : null);
         }
         return site;
     }
 
     private static FrameEntry traceEntry(Object site, Object callee) {
-        if (callee == MAIN) {
+        if (callee instanceof MainFrame main) {
             if (site instanceof dev.phpruntime.nodes.expr.IncludeNode include) {
+                // php reports the included file as the include frame's only argument, even
+                // when arguments are otherwise omitted.
+                com.oracle.truffle.api.source.SourceSection section = main.root().getSourceSection();
+                Object[] args = section == null || section.getSource().getPath() == null ? null
+                        : new Object[]{PhpStrings.fromJava(section.getSource().getPath())};
                 return new FrameEntry(sourcePath(include), sourceLine(include),
-                        include.kind().name().toLowerCase(java.util.Locale.ROOT), null, null, null, null);
+                        include.kind().name().toLowerCase(java.util.Locale.ROOT), null, null, null, args);
             }
             if (site instanceof Node node) {
                 return new FrameEntry(sourcePath(node), sourceLine(node), "eval", null, null, null, null);
@@ -182,20 +242,24 @@ public final class PhpBacktrace {
         int line = 0;
         PhpClass traitSelf = null;
         Boolean boundThis = null;
+        PhpClass scope = null;
         Object node = site;
         if (site instanceof TraceSite ts) {
             traitSelf = ts.traitSelf();
             boundThis = ts.boundThis();
+            scope = ts.scope();
             node = ts.site();
         }
         if (node instanceof Node n) {
             file = sourcePath(n);
             line = sourceLine(n);
         }
+        boolean scoped = fn.declaringClass() != null || scope != null;
         String type = boundThis != null
-                ? (fn.declaringClass() == null ? null : (boundThis ? "->" : "::"))
+                ? (scoped ? (boundThis ? "->" : "::") : null)
                 : traceType(fn);
-        return new FrameEntry(file, line, traceName(fn), traceClass(fn, traitSelf), type, null, null);
+        String cls = scope != null ? scope.name() : traceClass(fn, traitSelf);
+        return new FrameEntry(file, line, traceName(fn), cls, type, null, null);
     }
 
     /** The function name php prints for a frame: closures carry their declaration site. */
@@ -224,7 +288,8 @@ public final class PhpBacktrace {
      */
     @TruffleBoundary
     public static FrameEntry[] captureDebugFromContext(PhpContext ctx, int limit) {
-        return framesFromContext(ctx, ctx.currentBuiltinCallSite(), limit);
+        FrameEntry[] frames = framesFromContext(ctx, ctx.currentBuiltinCallSite(), limit);
+        return frames != null ? frames : captureDebug(IGNORE_ARGS, limit);
     }
 
     /** Captures frames for {@code debug_backtrace($options, $limit)} and {@code debug_print_backtrace()}. */
@@ -359,7 +424,7 @@ public final class PhpBacktrace {
                 row.put("line", (long) f.line());
             }
             boolean isInclude = isIncludeName(f.function());
-            if (isInclude && !omitFunctionArgs && f.args() != null) {
+            if (isInclude && f.args() != null) {
                 row.put("args", argsToPhpArray(f.args()));
                 row.put("function", f.function());
             } else {
