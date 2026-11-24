@@ -3068,7 +3068,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object builtin(CallSite site, Builtins.Def def, Object[] args, SiteNode location,
                               @Bind Node node,
-                              @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl) {
+                              @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl,
+                              @Cached(value = "intrinsicDef(site)", neverDefault = false) Builtins.Def intrinsicDef,
+                              @Cached(value = "intrinsicKind(site)", neverDefault = false) int intrinsicKind) {
+            if (def == intrinsicDef && args.length == CallNode.intrinsicArgc(intrinsicKind)) {
+                // A call the compiler could not make an intrinsic because the name was resolved
+                // at run time (unqualified, inside a namespace): it reached the builtin.
+                Object fast = Ops.inlineBuiltin(intrinsicKind, args);
+                if (fast != SplBuiltinNode.UNHANDLED) {
+                    return fast;
+                }
+            }
             if (spl != null) {
                 CallNode.checkArity(def, args.length, location);
                 Object fast = spl.executeOrUnhandled(args, location);
@@ -3080,6 +3090,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 return Ops.callBuiltinValue(def, args, location);
             }
             return Ops.callBuiltin(def, args, location);
+        }
+
+        /** The builtin a site may reach that has an intrinsic form, or null. */
+        static Builtins.Def intrinsicDef(CallSite site) {
+            return CallNode.intrinsicForName(site.name()) != 0 ? Builtins.lookup(site.name()) : null;
+        }
+
+        static int intrinsicKind(CallSite site) {
+            return CallNode.intrinsicForName(site.name());
         }
 
         static SplBuiltinNode createSpl(Node node, CallSite site) {
@@ -3983,6 +4002,24 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         static Object cursorValue(YieldFromCursor cursor) {
             return cursor.entries.get(cursor.index).getValue();
+        }
+
+        /**
+         * The intrinsic forms of {@link CallNode} for a call that resolved to the builtin at run
+         * time; {@link SplBuiltinNode#UNHANDLED} when the arguments need the builtin itself
+         * (strlen of a non-string, array_key_exists on an object), which raises any diagnostic.
+         */
+        static Object inlineBuiltin(int kind, Object[] args) {
+            if (kind == CallNode.ARRAY_KEY_EXISTS) {
+                // Only plain keys: the function form words an invalid key's TypeError differently
+                // from the global-name intrinsic.
+                return args[1] instanceof PhpArray array && (args[0] instanceof String || args[0] instanceof Long)
+                        ? (Object) arrayHas(array, args[0]) : SplBuiltinNode.UNHANDLED;
+            }
+            if (kind == CallNode.STRLEN) {
+                return args[0] instanceof String s ? (Object) (long) s.length() : SplBuiltinNode.UNHANDLED;
+            }
+            return TypeTest.test(kind, args[0]);
         }
 
         @TruffleBoundary

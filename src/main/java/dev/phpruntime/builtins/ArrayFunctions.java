@@ -36,6 +36,19 @@ final class ArrayFunctions {
         throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeDescription(a[i]) + " given", null);
     }
 
+    /**
+     * The function form of array_key_exists. Its message for an array or object key differs from
+     * the global-name intrinsic's ("Cannot access offset of type ..."), as php's function and its
+     * ZEND_ARRAY_KEY_EXISTS opcode do.
+     */
+    private static boolean keyExists(Object[] a, String fn) {
+        PhpArray array = arr(a, 1, fn);
+        if (a[0] instanceof PhpArray || a[0] instanceof PhpObject) {
+            throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($key) must be a valid array offset type", null);
+        }
+        return array.containsKey(a[0]);
+    }
+
     /** Forced copy for the sort family and any builtin that runs a user callback, which must never see a half-modified array. */
     private static PhpArray writable(Object[] a) {
         if (a[0] instanceof PhpArray x) {
@@ -80,8 +93,8 @@ final class ArrayFunctions {
             Object k = search(a[0], arr(a, 1, "array_search"), a.length > 2 && PhpOps.toBool(a[2]));
             return k == null ? false : k;
         });
-        Builtins.def("array_key_exists", 2, 2, (ctx, a) -> arr(a, 1, "array_key_exists").containsKey(a[0]));
-        Builtins.def("key_exists", 2, 2, (ctx, a) -> arr(a, 1, "key_exists").containsKey(a[0]));
+        Builtins.def("array_key_exists", 2, 2, (ctx, a) -> keyExists(a, "array_key_exists"));
+        Builtins.def("key_exists", 2, 2, (ctx, a) -> keyExists(a, "key_exists"));
         Builtins.def("array_key_first", 1, 1, (ctx, a) -> {
             List<Object> keys = arr(a, 0, "array_key_first").keys();
             return keys.isEmpty() ? PhpNull.INSTANCE : keys.get(0);
