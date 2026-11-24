@@ -479,15 +479,15 @@ public final class PropertyLValueNode extends LValueNode {
             checkIndirect(obj, name, fast.res(), frame, keys);
             return;
         }
-        checkNotReadonlyBoundary(obj, name, effectiveCallerLower(frame, keys), frame, keys);
+        checkNotReadonlySlow(obj, name, effectiveCallerLower(frame, keys), frame, keys);
     }
 
     /**
      * The slow path for a site with no cached resolution: the cache miss already paid for the
      * caller, so it is passed in. Ordinary accesses never reach this.
      */
-    private void checkNotReadonlyBoundary(PhpObject obj, String name, String callerLower,
-                                          VirtualFrame frame, Object[] keys) {
+    private void checkNotReadonlySlow(PhpObject obj, String name, String callerLower,
+                                      VirtualFrame frame, Object[] keys) {
         checkIndirect(obj, name, resolveFull(obj, name, callerLower), frame, keys);
     }
 
