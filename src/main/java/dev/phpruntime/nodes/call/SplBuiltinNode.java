@@ -29,7 +29,7 @@ public final class SplBuiltinNode extends Node {
 
     public static boolean supports(String name) {
         return name.equals("count") || name.equals("sizeof") || name.equals("iterator_to_array")
-                || name.equals("iterator_count");
+                || name.equals("iterator_count") || name.equals("intdiv");
     }
 
     public Object execute(Object[] args) {
@@ -44,6 +44,18 @@ public final class SplBuiltinNode extends Node {
     }
 
     private Object executeBuiltin(Object[] args, Node location) {
+        if (name.equals("intdiv")) {
+            long x = args[0] instanceof Long l ? l : PhpOps.toLong(args[0]);
+            long y = args[1] instanceof Long l ? l : PhpOps.toLong(args[1]);
+            if (y == 0) {
+                throw new PhpError(PhpError.DIVISION_BY_ZERO, "Division by zero", location);
+            }
+            if (x == Long.MIN_VALUE && y == -1) {
+                throw new PhpError(PhpError.ARITHMETIC_ERROR,
+                        "Division of PHP_INT_MIN by -1 is not an integer", location);
+            }
+            return x / y;
+        }
         Object subject = args[0];
         if (name.equals("count") || name.equals("sizeof")) {
             long mode = args.length > 1 ? args[1] instanceof Long n ? n : PhpOps.toLong(args[1]) : 0;

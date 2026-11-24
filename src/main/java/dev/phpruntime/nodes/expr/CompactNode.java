@@ -56,8 +56,15 @@ public final class CompactNode extends PhpNode {
         PhpArray result = new PhpArray();
         PhpSymbolTable symbols = table instanceof PhpSymbolTable t ? t : null;
         for (int i = 0; i < names.length; i++) {
-            if (names[i] != null) {
-                put(result, names[i], defined(values[i]));
+            String name = names[i];
+            if (name != null) {
+                // The literal-name fast path, without the per-name boundary of put().
+                Object value = defined(values[i]);
+                if (value != null) {
+                    result.put(name, PhpOps.copyOnAssign(value));
+                } else if (!name.equals("this")) {
+                    PhpContext.get(this).warning("compact(): Undefined variable $" + name, line());
+                }
             } else {
                 collect(result, values[i], symbols, values, i + 1);
             }
