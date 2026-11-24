@@ -281,10 +281,11 @@ public final class PhpCallable {
     /**
      * One-argument call from a builtin callback (array_map, array_filter, ...). Avoids the
      * varargs array of {@link #call}: the callee's argument array is built once instead of
-     * copying a temporary.
+     * copying a temporary. Named {@code call1} so a four-argument {@code call} with two nulls
+     * cannot bind here by overload resolution.
      */
     @TruffleBoundary
-    public Object call(PhpContext ctx, Node loc, Object arg) {
+    public Object call1(PhpContext ctx, Node loc, Object arg) {
         if (kind == Kind.CLOSURE) {
             return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, callTarget, closureArgs(ctx, loc, arg)));
         }
@@ -294,9 +295,9 @@ public final class PhpCallable {
         return CallArgHelper.unwrapReturn(callRaw(ctx, null, loc, arg));
     }
 
-    /** Two-argument call, as {@link #call(PhpContext, Node, Object)}. */
+    /** Two-argument call, as {@link #call1}. */
     @TruffleBoundary
-    public Object call(PhpContext ctx, Node loc, Object first, Object second) {
+    public Object call2(PhpContext ctx, Node loc, Object first, Object second) {
         if (kind == Kind.CLOSURE) {
             return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, callTarget, closureArgs(ctx, loc, first, second)));
         }

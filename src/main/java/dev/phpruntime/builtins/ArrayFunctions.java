@@ -855,7 +855,7 @@ final class ArrayFunctions {
                 PhpArray view = src.walkView();
                 try {
                     for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
-                        out.put(view.keyAt(pos), cb.call(ctx, null, view.valueAt(pos)));
+                        out.put(view.keyAt(pos), cb.call1(ctx, null, view.valueAt(pos)));
                     }
                 } finally {
                     view.releaseShare();
@@ -914,11 +914,11 @@ final class ArrayFunctions {
                 Object value = unwrap(raw);
                 boolean keep;
                 if (mode == 2L) { // ARRAY_FILTER_USE_KEY
-                    keep = PhpOps.toBool(cb.call(ctx, null, key));
+                    keep = PhpOps.toBool(cb.call1(ctx, null, key));
                 } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
-                    keep = PhpOps.toBool(cb.call(ctx, null, value, key));
+                    keep = PhpOps.toBool(cb.call2(ctx, null, value, key));
                 } else {
-                    keep = PhpOps.toBool(cb.call(ctx, null, value));
+                    keep = PhpOps.toBool(cb.call1(ctx, null, value));
                 }
                 if (keep) {
                     // php copies the zval, so a reference cell stays a reference in the result.
@@ -938,7 +938,7 @@ final class ArrayFunctions {
         PhpArray view = src.walkView();
         try {
             for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
-                acc = cb.call(ctx, null, acc, view.valueAt(pos));
+                acc = cb.call2(ctx, null, acc, view.valueAt(pos));
             }
         } finally {
             view.releaseShare();
@@ -1004,8 +1004,8 @@ final class ArrayFunctions {
         List<Map.Entry<Object, Object>> entries = new ArrayList<>(writable(a).entries());
         entries.sort((e1, e2) -> {
             Object res = byKey
-                    ? cb.call(ctx, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
-                    : cb.call(ctx, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
+                    ? cb.call2(ctx, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
+                    : cb.call2(ctx, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
             return PhpOps.compare(res, 0L);
         });
         if (keepKeys) {
@@ -1028,7 +1028,7 @@ final class ArrayFunctions {
             for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
                 Object value = view.valueAt(pos);
                 Object key = view.keyAt(pos);
-                if (PhpOps.toBool(cb.call(ctx, null, value, key))) {
+                if (PhpOps.toBool(cb.call2(ctx, null, value, key))) {
                     return returnKey ? key : PhpOps.copyOnAssign(value);
                 }
             }
@@ -1046,7 +1046,7 @@ final class ArrayFunctions {
             for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
                 Object value = view.valueAt(pos);
                 Object key = view.keyAt(pos);
-                boolean matched = PhpOps.toBool(cb.call(ctx, null, value, key));
+                boolean matched = PhpOps.toBool(cb.call2(ctx, null, value, key));
                 if (isAny && matched) {
                     return true;
                 }
