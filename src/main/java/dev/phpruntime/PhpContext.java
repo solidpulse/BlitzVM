@@ -80,6 +80,13 @@ public final class PhpContext {
     /** Null until a class's static properties or constants are used. */
     private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
+    /**
+     * Names that {@link #hasConstant} has already found. A found constant never becomes
+     * undefined and php does not allow redefining one, so a hit stays valid for the request;
+     * missing names are not stored because define() can add them later. Keyed as given minus a
+     * leading backslash.
+     */
+    private final HashMap<String, Boolean> foundConstants = new HashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
     private long nextEnumObjectId = 1L << 32;
@@ -1669,11 +1676,18 @@ public final class PhpContext {
             PhpClass cls = lookupClass(n.substring(0, sep));
             return cls != null && cls.lookupConstant(this, n.substring(sep + 2)) != null;
         }
+        if (foundConstants.containsKey(n)) {
+            return true;
+        }
         // User code cannot define a constant whose name equals a built-in one: define() refuses
         // it (php 8.5 warns, this runtime returns false) and true/false/null are reserved in any
         // case. Checking the user table first therefore cannot change the answer, and it skips
         // the lowercase-then-map lookup of lookupBuiltin for WordPress's own constants.
-        return constants.containsKey(n) || PhpConstants.lookupBuiltin(n) != null;
+        boolean found = constants.containsKey(n) || PhpConstants.lookupBuiltin(n) != null;
+        if (found) {
+            foundConstants.put(n, Boolean.TRUE);
+        }
+        return found;
     }
 
     /** A user-defined global constant (no namespace separator handling, no built-ins), or null. */
