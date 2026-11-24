@@ -3276,7 +3276,7 @@ public final class ReflectionClasses {
                 throw new PhpError("Class \"" + filter + "\" not found");
             }
         }
-        PhpArray out = new PhpArray();
+        PhpArray out = PhpArray.withCapacity(attributes.size(), false);
         for (PhpAttribute attribute : attributes) {
             if (filter != null && !matchesAttribute(ctx, attribute.name(), filter, instanceOf, filterClass)) {
                 continue;
