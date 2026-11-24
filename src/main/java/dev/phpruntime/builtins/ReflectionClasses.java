@@ -185,6 +185,8 @@ public final class ReflectionClasses {
         private PhpClass.InstanceProp instanceProp;
         private boolean instancePropResolved;
         private String storageKey;
+        private DynamicObject.GetNode getNode;
+        private DynamicObject.PutNode putNode;
 
         PropertyState(PhpClass reflected, PhpClass declaring, PhpClassTemplate.PropertyDecl decl,
                       boolean dynamic, String dynamicName) {
@@ -253,6 +255,24 @@ public final class ReflectionClasses {
                 storageKey = key;
             }
             return key;
+        }
+
+        DynamicObject.GetNode getNode() {
+            DynamicObject.GetNode node = getNode;
+            if (node == null) {
+                node = DynamicObject.GetNode.create();
+                getNode = node;
+            }
+            return node;
+        }
+
+        DynamicObject.PutNode putNode() {
+            DynamicObject.PutNode node = putNode;
+            if (node == null) {
+                node = DynamicObject.PutNode.create();
+                putNode = node;
+            }
+            return node;
         }
     }
 
@@ -861,8 +881,9 @@ public final class ReflectionClasses {
         addMethod(language, methods, "getProperties", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             ClassState state = classState(self);
             Integer filter = args.length > 0 && args[0] != PhpNull.INSTANCE ? (int) toLong(args[0]) : null;
-            PhpArray result = new PhpArray();
-            for (PropertyInfo info : handles(ctx).properties(state.cls())) {
+            List<PropertyInfo> properties = handles(ctx).properties(state.cls());
+            PhpArray result = PhpArray.withCapacity(properties.size(), false);
+            for (PropertyInfo info : properties) {
                 if (filter != null) {
                     PhpClass.InstanceProp effective = info.declaring() == null ? null
                             : info.declaring().findVisibleProp(info.decl().name());
@@ -1263,7 +1284,43 @@ public final class ReflectionClasses {
 
     // ---------------------------------------------------------------- property metadata
 
-    private record PropertyInfo(PhpClass reflected, PhpClass declaring, PhpClassTemplate.PropertyDecl decl) {
+    /**
+     * One property of one reflected class, shared by every ReflectionProperty object for it.
+     * The state is immutable class metadata, so the object-model nodes and the resolved key
+     * stay warm across the objects php requires to be new each call.
+     */
+    private static final class PropertyInfo {
+        private final PhpClass reflected;
+        private final PhpClass declaring;
+        private final PhpClassTemplate.PropertyDecl decl;
+        private PropertyState state;
+
+        PropertyInfo(PhpClass reflected, PhpClass declaring, PhpClassTemplate.PropertyDecl decl) {
+            this.reflected = reflected;
+            this.declaring = declaring;
+            this.decl = decl;
+        }
+
+        PhpClass reflected() {
+            return reflected;
+        }
+
+        PhpClass declaring() {
+            return declaring;
+        }
+
+        PhpClassTemplate.PropertyDecl decl() {
+            return decl;
+        }
+
+        PropertyState state(PhpClass reflectedClass) {
+            PropertyState current = state;
+            if (current == null || current.reflected() != reflectedClass) {
+                current = new PropertyState(reflectedClass, declaring, decl, false, decl.name());
+                state = current;
+            }
+            return current;
+        }
     }
 
     private static List<PropertyInfo> collectProperties(PhpClass cls) {
@@ -1328,8 +1385,7 @@ public final class ReflectionClasses {
     }
 
     private static PhpObject propertyObject(PhpContext ctx, PhpClass reflected, PropertyInfo info) {
-        return newReflectionObject(ctx, Kind.REFLECTION_PROPERTY,
-                new PropertyState(reflected, info.declaring(), info.decl(), false, info.decl().name()));
+        return newReflectionObject(ctx, Kind.REFLECTION_PROPERTY, info.state(reflected));
     }
 
     private static int propertyModifiers(PhpClassTemplate.PropertyDecl decl) {
@@ -1493,20 +1549,14 @@ public final class ReflectionClasses {
 
     // ---------------------------------------------------------------- parameter metadata
 
-    private record ParameterInfo(PhpObject owner, PhpParameter parameter, int position, PhpClass declaringClass,
-                                 PhpFunctionRootNode root, int requiredCount, boolean internal) {
-    }
-
     private static PhpArray parametersForSignature(PhpContext ctx, PhpObject owner, PhpSignature signature,
                                                    PhpClass declaringClass, PhpFunctionRootNode root,
                                                    int requiredCount, boolean internal) {
-        PhpArray out = new PhpArray();
-        for (int i = 0; i < signature.parameters().size(); i++) {
-            ParameterInfo info = new ParameterInfo(owner, signature.parameters().get(i), i, declaringClass, root,
-                    requiredCount, internal);
+        List<PhpParameter> parameters = signature.parameters();
+        PhpArray out = PhpArray.withCapacity(parameters.size(), false);
+        for (int i = 0; i < parameters.size(); i++) {
             out.append(newReflectionObject(ctx, Kind.REFLECTION_PARAMETER,
-                    new ParameterState(info.parameter(), info.position(), info.declaringClass(), info.root(),
-                            info.requiredCount(), info.internal(), info.owner())));
+                    new ParameterState(parameters.get(i), i, declaringClass, root, requiredCount, internal, owner)));
         }
         return out;
     }
@@ -2613,7 +2663,7 @@ public final class ReflectionClasses {
 
     private static Object rawInstanceProperty(PhpContext ctx, PhpObject object, PropertyState state) {
         String key = state.storageKey(ctx);
-        Object value = DynamicObject.GetNode.getUncached().execute(object, key, PhpNull.INSTANCE);
+        Object value = state.getNode().execute(object, key, PhpNull.INSTANCE);
         return value == null ? PhpNull.INSTANCE : value;
     }
 
@@ -2631,7 +2681,7 @@ public final class ReflectionClasses {
             }
         }
         String key = state.storageKey(ctx);
-        DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
+        state.putNode().execute(object, key, PhpOps.copyOnAssign(value));
     }
 
     /**
@@ -2706,7 +2756,7 @@ public final class ReflectionClasses {
                     false, object.phpClass(), state.declaring().name(), state.name());
         }
         String key = state.storageKey(ctx);
-        DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
+        state.putNode().execute(object, key, PhpOps.copyOnAssign(value));
         return PhpNull.INSTANCE;
     }
 
@@ -3286,6 +3336,21 @@ public final class ReflectionClasses {
                 : new Object[]{object, calledClass};
         if (arguments.size() == 0) {
             ctor.callTarget().call(prefix);
+            return;
+        }
+        if (arguments.isList()) {
+            // A positional argument list is the common case: bind it straight from the array
+            // instead of splitting it into an ArrayList and a LinkedHashMap.
+            int count = arguments.size();
+            Object[] callArgs = new Object[prefix.length + count];
+            System.arraycopy(prefix, 0, callArgs, 0, prefix.length);
+            for (int i = 0; i < count; i++) {
+                Object key = (long) i;
+                Object raw = arguments.getRaw(key);
+                callArgs[prefix.length + i] = raw instanceof PhpReference ref ? ref
+                        : PhpOps.copyOnAssign(arguments.get(key));
+            }
+            ctor.callTarget().call(callArgs);
             return;
         }
         List<Object> positional = new ArrayList<>();
