@@ -2838,6 +2838,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         static Object incDec(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine, Object[] keys,
                              boolean increment, boolean prefix) {
+            if (engine instanceof dev.phpruntime.nodes.var.StaticPropertyLValueNode sp) {
+                return sp.increment(frame, keys, increment, prefix);
+            }
             PhpReference overloaded = engine instanceof dev.phpruntime.nodes.var.IndexLValueNode il
                     && il.usesArrayAccess(frame, keys) ? il.obtainCell(frame, keys) : null;
             Object old = overloaded != null ? overloaded.getValue() : engine.read(frame, keys);

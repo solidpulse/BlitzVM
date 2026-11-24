@@ -258,6 +258,51 @@ public final class StaticPropertyLValueNode extends LValueNode {
         throw new PhpError("Attempt to unset static property " + cls.name() + "::$" + name, this);
     }
 
+    /**
+     * {@code Cls::$p++} / {@code --}: one resolution and one slot lookup instead of the read
+     * and the write resolving the property again.
+     */
+    public Object increment(VirtualFrame frame, Object[] keys, boolean increment, boolean prefix) {
+        PhpClass cls = (PhpClass) keys[0];
+        String name = (String) keys[1];
+        PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
+        Resolution res = resolution(cls, name, caller);
+        if (res.decl() == null) {
+            CompilerDirectives.transferToInterpreter();
+            throw undeclared(cls, name);
+        }
+        if (!res.accessible()) {
+            CompilerDirectives.transferToInterpreter();
+            throw inaccessible(res.decl(), name);
+        }
+        if (!setAccessible(res.decl(), caller)) {
+            CompilerDirectives.transferToInterpreter();
+            throw cannotModifySet(res.decl(), name, caller, "modify");
+        }
+        PhpClass.StaticSlot slot = res.decl().slot(PhpContext.get(this));
+        Object old = slot.get();
+        if (old == PhpClass.UNINITIALIZED) {
+            throw uninitialized(cls, name);
+        }
+        Object updated;
+        if (old instanceof Long l && l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
+            updated = increment ? Long.valueOf(l + 1) : Long.valueOf(l - 1);
+        } else if (old == null || old == PhpNull.INSTANCE) {
+            updated = increment ? (Object) 1L : PhpNull.INSTANCE;
+        } else if (old instanceof String str && !PhpOps.isNumericString(str)) {
+            updated = increment ? dev.phpruntime.nodes.var.IncDecNode.incrementString(str) : str;
+        } else {
+            updated = increment ? dev.phpruntime.runtime.PhpArith.add(old, 1L)
+                    : dev.phpruntime.runtime.PhpArith.sub(old, 1L);
+        }
+        if (res.decl().declaredType() != null) {
+            updated = res.decl().declaredType().checkProperty(updated, PhpContext.get(this), this, CallMode.strictAt(this),
+                    res.decl().declaringClass(), res.decl().declaringClass().name(), name);
+        }
+        slot.set(updated);
+        return prefix ? updated : (old == null ? PhpNull.INSTANCE : old);
+    }
+
     private PhpClass.StaticSlot requireSlot(PhpClass cls, String name, PhpClass traitCaller) {
         Resolution res = resolution(cls, name, traitCaller);
         if (res.decl() == null) {
