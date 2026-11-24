@@ -2912,6 +2912,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         private static final Object DYNAMIC = new Object();
 
         /**
+         * An enum case: the canonical object is per request, so the site keeps only the case's
+         * declaration index and reads the object from the class, which is one array access.
+         */
+        @Specialization(guards = {"cls == cachedCls", "caseIndex >= 0"}, limit = "4")
+        static Object readEnumCase(String constName, PhpClass cls, @Bind Node node,
+                                   @Cached("cls") PhpClass cachedCls,
+                                   @Cached("enumCaseIndex(cls, constName)") int caseIndex) {
+            return cls.enumCaseAt(PhpContext.get(node), caseIndex);
+        }
+
+        static int enumCaseIndex(PhpClass cls, String name) {
+            return cls.template().enumCaseIndex(name);
+        }
+
+        /**
          * A constant that is a literal or {@code ::class} never changes for a class, so the site
          * keeps the value for the classes it has seen. Four classes are enough for a method of a
          * base class run on a few subclasses; beyond that the slow path takes over.

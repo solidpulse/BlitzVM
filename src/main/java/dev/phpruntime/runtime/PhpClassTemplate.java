@@ -3,6 +3,7 @@ package dev.phpruntime.runtime;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.object.Shape;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -189,6 +190,8 @@ public final class PhpClassTemplate {
     private final boolean isEnum;
     private final PhpType enumBackingType;
     private final List<EnumCaseDecl> enumCases;
+    /** Case name to position in {@link #enumCases}, built on first lookup. */
+    private volatile Map<String, Integer> enumCaseIndexes;
     /** A {@code readonly class}: no dynamic properties, all instance properties readonly. */
     private final boolean isReadonly;
     private final Shape rootShape;
@@ -353,12 +356,26 @@ public final class PhpClassTemplate {
 
     /** The enum case declared as {@code name}, or null. */
     public EnumCaseDecl enumCase(String name) {
-        for (EnumCaseDecl c : enumCases) {
-            if (c.name().equals(name)) {
-                return c;
-            }
+        int index = enumCaseIndex(name);
+        return index < 0 ? null : enumCases.get(index);
+    }
+
+    /** The position of a case in {@link #enumCases()}, or -1: a stable per-request slot number. */
+    public int enumCaseIndex(String name) {
+        if (enumCases.isEmpty()) {
+            return -1;
         }
-        return null;
+        Map<String, Integer> index = enumCaseIndexes;
+        if (index == null) {
+            Map<String, Integer> built = new HashMap<>();
+            for (int i = 0; i < enumCases.size(); i++) {
+                built.putIfAbsent(enumCases.get(i).name(), i);
+            }
+            index = built;
+            enumCaseIndexes = built;
+        }
+        Integer found = index.get(name);
+        return found == null ? -1 : found;
     }
 
     public Shape rootShape() {

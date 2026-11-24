@@ -187,12 +187,20 @@ public final class PhpClass {
 
     /** One request's state of one class: static property values, evaluated constants and defaults. */
     public static final class RequestState {
+        /** The class whose state this is, for stable declaration indexes, and its request. */
+        private final PhpClass cls;
+        private final PhpContext ctx;
         private final HashMap<String, StaticSlot> statics = new HashMap<>();
         private HashMap<String, Object> constants;
         private HashSet<String> evaluatingConstants;
         private Object[] defaultValues;
-        /** Canonical enum case objects for this request, so repeated lookups return one object. */
-        private HashMap<String, Object> enumCases;
+        /** Canonical enum case objects by declaration index, so repeated lookups return one. */
+        private PhpObject[] enumCaseObjects;
+
+        public RequestState(PhpClass cls, PhpContext ctx) {
+            this.cls = cls;
+            this.ctx = ctx;
+        }
 
         /** A captured static property: whether its initializer ran and the raw stored value. */
         public record StaticValue(boolean initialized, Object value) {
@@ -229,20 +237,69 @@ public final class PhpClass {
             return new StateSnapshot(slots,
                     constants == null ? null : new LinkedHashMap<>(constants),
                     defaultValues == null ? null : defaultValues.clone(),
-                    enumCases == null ? null : new LinkedHashMap<>(enumCases));
+                    snapshotEnumCases());
         }
 
-        /** The canonical enum case object for {@code caseName}, or null before it is created. */
+        /** The canonical case object already created in this request, or null. */
         public Object enumCase(String caseName) {
-            return enumCases == null ? null : enumCases.get(caseName);
+            int index = cls.template().enumCaseIndex(caseName);
+            PhpObject[] cases = enumCaseObjects;
+            return index < 0 || cases == null || index >= cases.length ? null : cases[index];
+        }
+
+        /** The case at a declaration index, created on first use. */
+        public PhpObject enumCaseAt(int index) {
+            PhpObject[] cases = enumCaseObjects;
+            if (cases == null) {
+                cases = enumCaseObjects = new PhpObject[cls.template().enumCases().size()];
+            }
+            PhpObject existing = cases[index];
+            if (existing != null) {
+                return existing;
+            }
+            PhpClassTemplate.EnumCaseDecl decl = cls.template().enumCases().get(index);
+            String caseName = decl.name();
+            Object value = decl.constValue();
+            if (decl.valueTarget() != null) {
+                value = cls.evalExpr(decl.constValue(), decl.valueTarget(), cls);
+            }
+            PhpObject obj = new PhpObject(cls, ctx.nextEnumObjectId());
+            DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+            put.execute(obj, "name", caseName);
+            boolean backed = cls.template().enumBackingType() != null;
+            if (backed) {
+                put.execute(obj, "value", value == null ? PhpNull.INSTANCE : value);
+            }
+            obj.setNativeState(new EnumCaseState(cls.template().name(), caseName, backed, value));
+            cases[index] = obj;
+            return obj;
         }
 
         /** Installs a restored canonical enum case object. */
         public void putEnumCase(String caseName, Object value) {
-            if (enumCases == null) {
-                enumCases = new HashMap<>();
+            int index = cls.template().enumCaseIndex(caseName);
+            if (index >= 0 && value instanceof PhpObject obj) {
+                if (enumCaseObjects == null) {
+                    enumCaseObjects = new PhpObject[cls.template().enumCases().size()];
+                }
+                enumCaseObjects[index] = obj;
             }
-            enumCases.put(caseName, value);
+        }
+
+        /** The created case objects by name, for snapshots; null when none has been created. */
+        private Map<String, Object> snapshotEnumCases() {
+            PhpObject[] cases = enumCaseObjects;
+            if (cases == null) {
+                return null;
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            List<PhpClassTemplate.EnumCaseDecl> decls = cls.template().enumCases();
+            for (int i = 0; i < cases.length && i < decls.size(); i++) {
+                if (cases[i] != null) {
+                    out.put(decls.get(i).name(), cases[i]);
+                }
+            }
+            return out.isEmpty() ? null : out;
         }
 
     }
@@ -1158,32 +1215,13 @@ public final class PhpClass {
     /** The canonical object for an enum case in this request, or null if the case is unknown. */
     @TruffleBoundary
     public Object enumCaseValue(PhpContext ctx, String caseName) {
-        PhpClassTemplate.EnumCaseDecl decl = template.enumCase(caseName);
-        if (decl == null) {
-            return null;
-        }
-        RequestState state = ctx.classState(this);
-        if (state.enumCases == null) {
-            state.enumCases = new HashMap<>();
-        }
-        Object existing = state.enumCases.get(caseName);
-        if (existing != null) {
-            return existing;
-        }
-        Object value = decl.constValue();
-        if (decl.valueTarget() != null) {
-            value = evalExpr(decl.constValue(), decl.valueTarget(), this);
-        }
-        PhpObject obj = new PhpObject(this, ctx.nextEnumObjectId());
-        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
-        put.execute(obj, "name", caseName);
-        boolean backed = template.enumBackingType() != null;
-        if (backed) {
-            put.execute(obj, "value", value == null ? PhpNull.INSTANCE : value);
-        }
-        obj.setNativeState(new EnumCaseState(template.name(), caseName, backed, value));
-        state.enumCases.put(caseName, obj);
-        return obj;
+        int index = template.enumCaseIndex(caseName);
+        return index < 0 ? null : ctx.classState(this).enumCaseAt(index);
+    }
+
+    /** The case object at a declaration index, created on first use (one per request). */
+    public PhpObject enumCaseAt(PhpContext ctx, int index) {
+        return ctx.classState(this).enumCaseAt(index);
     }
 
     /**

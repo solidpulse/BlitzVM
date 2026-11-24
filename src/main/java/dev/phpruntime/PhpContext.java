@@ -77,7 +77,7 @@ public final class PhpContext {
     /** Bumped whenever a class or alias is added to {@link #classes}. */
     private int classGeneration;
     private int missingClassEntries;
-    /** Null until a class's static properties or constants are used. */
+    /** Null until a class's static properties or constants are used; the by-id array mirrors it. */
     private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
     /**
@@ -1284,9 +1284,24 @@ public final class PhpContext {
         return cls;
     }
 
+    /** Per-class request state by class id, the fast path of {@link #classState}. */
+    private PhpClass.RequestState[] classStatesById = new PhpClass.RequestState[16];
+
     /** This request's state of a shared class (static property values, evaluated constants). */
-    @TruffleBoundary
     public PhpClass.RequestState classState(PhpClass cls) {
+        int id = cls.classId();
+        PhpClass.RequestState[] byId = classStatesById;
+        if (id < byId.length) {
+            PhpClass.RequestState state = byId[id];
+            if (state != null) {
+                return state;
+            }
+        }
+        return classStateSlow(cls);
+    }
+
+    @TruffleBoundary
+    private PhpClass.RequestState classStateSlow(PhpClass cls) {
         IdentityHashMap<PhpClass, PhpClass.RequestState> states = classStates;
         if (states == null) {
             states = new IdentityHashMap<>();
@@ -1294,9 +1309,15 @@ public final class PhpContext {
         }
         PhpClass.RequestState state = states.get(cls);
         if (state == null) {
-            state = new PhpClass.RequestState();
+            state = new PhpClass.RequestState(cls, this);
             states.put(cls, state);
         }
+        int id = cls.classId();
+        if (id >= classStatesById.length) {
+            classStatesById = java.util.Arrays.copyOf(classStatesById,
+                    Math.max(id + 1, classStatesById.length * 2));
+        }
+        classStatesById[id] = state;
         return state;
     }
 

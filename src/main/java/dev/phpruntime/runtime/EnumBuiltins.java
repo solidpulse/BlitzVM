@@ -35,17 +35,65 @@ public final class EnumBuiltins {
         private volatile java.util.Map<Object, String> backingIndex;
         private static final java.util.Map<Object, String> NO_INDEX = java.util.Map.of();
 
+        private final boolean intBacked;
+        private final boolean stringBacked;
+
         EnumMethodRootNode(PhpLanguage language, PhpClass enumClass, String name) {
             super(language);
             this.enumClass = enumClass;
             this.name = name;
+            PhpType backing = enumClass.template().enumBackingType();
+            this.intBacked = backing instanceof PhpType.Named named && "int".equalsIgnoreCase(named.name());
+            this.stringBacked = backing != null && !intBacked;
         }
 
         @Override
         public Object execute(VirtualFrame frame) {
             Object[] raw = frame.getArguments();
+            PhpContext ctx = PhpContext.get(this);
+            // The common calls: a backing value of the enum's own type, one argument.
+            if (raw.length == 3 && (name.equals("tryFrom") || name.equals("from"))) {
+                Object arg = raw[2];
+                if (stringBacked && arg instanceof String s) {
+                    Object found = caseFor(ctx, s);
+                    if (found == null && name.equals("tryFrom")) {
+                        return PhpNull.INSTANCE;
+                    }
+                    if (found != null && found != SCAN) {
+                        return found;
+                    }
+                } else if (intBacked && arg instanceof Long l) {
+                    Object found = caseFor(ctx, l);
+                    if (found == null && name.equals("tryFrom")) {
+                        return PhpNull.INSTANCE;
+                    }
+                    if (found != null && found != SCAN) {
+                        return found;
+                    }
+                }
+            }
             Object[] args = raw.length > 2 ? java.util.Arrays.copyOfRange(raw, 2, raw.length) : new Object[0];
-            return invoke(PhpContext.get(this), args);
+            return invoke(ctx, args);
+        }
+
+        /** Marks an enum whose case values are expressions and need the scanning path. */
+        private static final Object SCAN = new Object();
+
+        /** The case object for a backing value from the literal-case index, or null. */
+        private Object caseFor(PhpContext ctx, Object value) {
+            java.util.Map<Object, String> index = backingIndex;
+            if (index == null) {
+                index = backingIndex();
+            }
+            if (index == NO_INDEX) {
+                return SCAN;
+            }
+            String caseName = index.get(value);
+            if (caseName == null) {
+                return null;
+            }
+            int position = enumClass.template().enumCaseIndex(caseName);
+            return position < 0 ? null : enumClass.enumCaseAt(ctx, position);
         }
 
         @TruffleBoundary
