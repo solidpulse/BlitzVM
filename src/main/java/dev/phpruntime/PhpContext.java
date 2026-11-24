@@ -1837,6 +1837,55 @@ public final class PhpContext {
         }
     }
 
+    /**
+     * Matchers of preg calls, one per pattern this context has seen. A Matcher is only a cursor
+     * over a subject plus the capture slots; reusing it saves an object and the capture array on
+     * every call. The busy flags make a nested preg call (a replace callback that matches again)
+     * take another slot instead of disturbing the outer loop. Fresh matchers beyond the table
+     * are simply not pooled.
+     */
+    private static final int MATCHER_POOL = 8;
+    private java.util.regex.Pattern[] matcherPatterns;
+    private java.util.regex.Matcher[] matcherPool;
+    private boolean[] matcherBusy;
+
+    @TruffleBoundary
+    public java.util.regex.Matcher acquireMatcher(java.util.regex.Pattern pattern, String subject) {
+        if (matcherPool == null) {
+            matcherPatterns = new java.util.regex.Pattern[MATCHER_POOL];
+            matcherPool = new java.util.regex.Matcher[MATCHER_POOL];
+            matcherBusy = new boolean[MATCHER_POOL];
+        }
+        for (int i = 0; i < MATCHER_POOL; i++) {
+            if (matcherPatterns[i] == pattern && !matcherBusy[i]) {
+                matcherBusy[i] = true;
+                return matcherPool[i].reset(subject);
+            }
+        }
+        for (int i = 0; i < MATCHER_POOL; i++) {
+            if (matcherPatterns[i] == null) {
+                matcherPatterns[i] = pattern;
+                matcherBusy[i] = true;
+                matcherPool[i] = pattern.matcher(subject);
+                return matcherPool[i];
+            }
+        }
+        return pattern.matcher(subject);
+    }
+
+    /** Returns a matcher from {@link #acquireMatcher}; a matcher that was not pooled is ignored. */
+    @TruffleBoundary
+    public void releaseMatcher(java.util.regex.Matcher matcher) {
+        for (int i = 0; i < MATCHER_POOL; i++) {
+            if (matcherPool[i] == matcher) {
+                matcherBusy[i] = false;
+                // Drop the subject, which can be large; the Pattern stays (it is shared anyway).
+                matcher.reset("");
+                return;
+            }
+        }
+    }
+
     /** A builder for a new output buffer, keeping the capacity a previous one reached. */
     @TruffleBoundary
     public StringBuilder newOutputBufferText() {
