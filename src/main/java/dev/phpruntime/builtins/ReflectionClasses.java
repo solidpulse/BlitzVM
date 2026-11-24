@@ -948,7 +948,10 @@ public final class ReflectionClasses {
             return instantiate(ctx, classState(self).cls(), values, false, null);
         });
         addMethod(language, methods, "newInstanceWithoutConstructor", Visibility.PUBLIC, false, false,
-                (ctx, self, args) -> instantiate(ctx, classState(self).cls(), new PhpArray(), true, null));
+                (ctx, self, args) -> {
+                    requireArgCount("ReflectionClass::newInstanceWithoutConstructor", args, 0, 0);
+                    return instantiate(ctx, classState(self).cls(), new PhpArray(), true, null);
+                });
         addMethod(language, methods, "isInstance", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionClass::isInstance", args, 1, 1);
             if (!(args[0] instanceof PhpObject object)) {
@@ -2505,6 +2508,10 @@ public final class ReflectionClasses {
                 if (slot == null) {
                     throw reflectionError("Property " + state.declaring().name() + "::$" + state.name() + " does not exist");
                 }
+                if (slot.declaredType() != null) {
+                    value = slot.declaredType().checkProperty(value == null ? PhpNull.INSTANCE : value, ctx, null,
+                            false, state.declaring(), state.declaring().name(), state.name());
+                }
                 slot.set(PhpOps.copyOnAssign(value));
                 return PhpNull.INSTANCE;
             }
@@ -2679,6 +2686,10 @@ public final class ReflectionClasses {
                 throw new PhpError("Cannot write to get-only virtual property "
                         + state.declaring().name() + "::$" + state.name());
             }
+        }
+        if (prop != null && prop.declaredType() != null) {
+            value = prop.declaredType().checkProperty(value == null ? PhpNull.INSTANCE : value, ctx, null,
+                    false, object.phpClass(), state.declaring().name(), state.name());
         }
         String key = state.storageKey(ctx);
         state.putNode().execute(object, key, PhpOps.copyOnAssign(value));
