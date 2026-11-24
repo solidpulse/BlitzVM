@@ -431,15 +431,18 @@ public final class PhpArray implements TruffleObject {
         }
     }
 
-    /** True when an element is an object, so converting it to a string can run PHP. */
+    /**
+     * True when converting an element to a string can run PHP: an object's __toString(), or the
+     * "Array to string conversion" warning of a nested array reaching a user error handler.
+     */
     @TruffleBoundary
-    public boolean hasObjectValue() {
+    public boolean hasValueThatCanRunPhp() {
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
             Object v = values[pos];
             if (v instanceof PhpReference ref) {
                 v = ref.getValue();
             }
-            if (v instanceof PhpObject) {
+            if (v instanceof PhpObject || v instanceof PhpArray) {
                 return true;
             }
         }
@@ -448,8 +451,8 @@ public final class PhpArray implements TruffleObject {
 
     /**
      * implode(). With one element the result is the element itself, so no builder and no copy
-     * (php returns the string unchanged). With no object value, converting to string cannot run
-     * PHP, so the array cannot change during the walk and no snapshot is needed; object values
+     * (php returns the string unchanged). With no object or array value, converting to string cannot
+     * run PHP, so the array cannot change during the walk and no snapshot is needed; object values
      * keep a snapshot because a __toString() method may modify the array, which is php's
      * by-value behaviour. One boundary call covers the whole walk, and the builder is sized
      * from the element lengths to avoid growth copies.
@@ -462,7 +465,7 @@ public final class PhpArray implements TruffleObject {
         if (size == 1) {
             return PhpOps.toStr(valueAt(firstPos()));
         }
-        if (!hasObjectValue()) {
+        if (!hasValueThatCanRunPhp()) {
             long chars = (long) glue.length() * (size - 1);
             for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
                 chars += estimateText(values[pos]);

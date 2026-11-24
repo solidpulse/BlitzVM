@@ -811,7 +811,7 @@ final class StringFunctions {
     private static String strtrPairs(dev.phpruntime.PhpContext ctx, String str, PhpArray map) {
         java.util.HashMap<String, String> pairs = new java.util.HashMap<>();
         int[] lengths = {Integer.MAX_VALUE, 0};
-        if (!map.hasObjectValue()) {
+        if (!map.hasValueThatCanRunPhp()) {
             map.forEachEntry((key, value) -> addStrtrPair(ctx, pairs, lengths, key, value));
         } else {
             for (Map.Entry<Object, Object> e : map.entries()) {

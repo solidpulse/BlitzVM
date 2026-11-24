@@ -696,9 +696,9 @@ final class ArrayFunctions {
             }
         }
         PhpArray out = new PhpArray();
-        boolean direct = !first.hasObjectValue();
+        boolean direct = !first.hasValueThatCanRunPhp();
         for (PhpArray other : others) {
-            if (other.hasObjectValue()) {
+            if (other.hasValueThatCanRunPhp()) {
                 direct = false;
                 break;
             }
