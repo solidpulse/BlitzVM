@@ -71,11 +71,20 @@ public final class PhpOps {
         throw new PhpError(PhpError.TYPE_ERROR, "Unsupported operand type " + typeName(v), null);
     }
 
-    @TruffleBoundary
     public static long toLong(Object v) {
         if (v instanceof Long l) {
             return l;
         }
+        return toLongSlow(v);
+    }
+
+    /**
+     * Everything except the common Long argument. Kept behind a boundary so the coercion code
+     * (string parsing in particular) is not copied into every caller; the Long check above is
+     * the one every loop with an integer argument takes.
+     */
+    @TruffleBoundary
+    private static long toLongSlow(Object v) {
         if (v instanceof Double d) {
             return doubleToLong(d);
         }
@@ -105,7 +114,6 @@ public final class PhpOps {
         return (long) d;
     }
 
-    @TruffleBoundary
     public static double toDouble(Object v) {
         if (v instanceof Double d) {
             return d;
@@ -113,6 +121,11 @@ public final class PhpOps {
         if (v instanceof Long l) {
             return l;
         }
+        return toDoubleSlow(v);
+    }
+
+    @TruffleBoundary
+    private static double toDoubleSlow(Object v) {
         if (v instanceof String s) {
             Object n = parseNumericPrefix(s);
             if (n == null) {
