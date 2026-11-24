@@ -25,8 +25,11 @@ public final class ClosureMethodRootNode extends RootNode {
             forwarded = bag;
             args = java.util.Arrays.copyOf(args, args.length - 1);
         }
-        PhpStrings.checkArguments(args, "Closure::" + name);
-        return PhpStrings.checkReturn(invoke(PhpContext.get(this), args, forwarded), "Closure::" + name);
+        if (PhpStrings.CHECK) {
+            PhpStrings.checkArguments(args, "Closure::" + name);
+        }
+        Object result = invoke(PhpContext.get(this), args, forwarded);
+        return PhpStrings.CHECK ? PhpStrings.checkReturn(result, "Closure::" + name) : result;
     }
 
     @TruffleBoundary

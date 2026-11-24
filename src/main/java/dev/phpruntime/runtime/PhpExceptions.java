@@ -570,7 +570,9 @@ public final class PhpExceptions {
         @TruffleBoundary
         private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs,
                                    dev.phpruntime.runtime.ForwardedNamedArgs forwarded) {
-            PhpStrings.checkArguments(callArgs, name + "()");
+            if (PhpStrings.CHECK) {
+                PhpStrings.checkArguments(callArgs, name + "()");
+            }
             dev.phpruntime.runtime.ForwardedNamedArgs previous = null;
             if (forwarded != null) {
                 previous = ctx.forwardedNamed();
