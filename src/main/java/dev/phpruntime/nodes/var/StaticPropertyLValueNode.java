@@ -284,6 +284,23 @@ public final class StaticPropertyLValueNode extends LValueNode {
         if (old == PhpClass.UNINITIALIZED) {
             throw uninitialized(cls, name);
         }
+        if (old instanceof Long l
+                && res.decl().declaredType() != null
+                && isIntType(res.decl().declaredType().type())) {
+            // php refuses to turn a typed int past its range into a float.
+            if (increment && l == Long.MAX_VALUE) {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError(PhpError.TYPE_ERROR, "Cannot increment property "
+                        + res.decl().declaringClass().name() + "::$" + name
+                        + " of type int past its maximal value", this);
+            }
+            if (!increment && l == Long.MIN_VALUE) {
+                CompilerDirectives.transferToInterpreter();
+                throw new PhpError(PhpError.TYPE_ERROR, "Cannot decrement property "
+                        + res.decl().declaringClass().name() + "::$" + name
+                        + " of type int past its minimal value", this);
+            }
+        }
         Object updated;
         if (old instanceof Long l && l != Long.MAX_VALUE && l != Long.MIN_VALUE) {
             updated = increment ? Long.valueOf(l + 1) : Long.valueOf(l - 1);
@@ -301,6 +318,13 @@ public final class StaticPropertyLValueNode extends LValueNode {
         }
         slot.set(updated);
         return prefix ? updated : (old == null ? PhpNull.INSTANCE : old);
+    }
+
+    private static boolean isIntType(dev.phpruntime.runtime.PhpType type) {
+        if (type instanceof dev.phpruntime.runtime.PhpType.Named named) {
+            return "int".equalsIgnoreCase(named.name());
+        }
+        return type instanceof dev.phpruntime.runtime.PhpType.Nullable nullable && isIntType(nullable.inner());
     }
 
     private PhpClass.StaticSlot requireSlot(PhpClass cls, String name, PhpClass traitCaller) {
