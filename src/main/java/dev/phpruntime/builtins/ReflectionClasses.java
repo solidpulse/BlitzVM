@@ -402,6 +402,7 @@ public final class ReflectionClasses {
         private final IdentityHashMap<PhpClass, List<MethodState>> methodLists = new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, IdentityHashMap<PhpClass.MethodEntry, MethodState>> methodStates =
                 new IdentityHashMap<>();
+        private final IdentityHashMap<PhpClass, AttributeInfo> attributeInfos = new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, DefaultsWriter> defaultsWriters = new IdentityHashMap<>();
 
         private Handle handle(PhpContext ctx, Kind kind) {
@@ -481,6 +482,15 @@ public final class ReflectionClasses {
             if (cached == null) {
                 cached = collectMethods(cls);
                 methodLists.put(cls, cached);
+            }
+            return cached;
+        }
+
+        private AttributeInfo attributeInfo(PhpContext ctx, PhpClass cls) {
+            AttributeInfo cached = attributeInfos.get(cls);
+            if (cached == null) {
+                cached = new AttributeInfo(hasAttributeMarker(cls), attributeFlags(ctx, cls));
+                attributeInfos.put(cls, cached);
             }
             return cached;
         }
@@ -3126,11 +3136,11 @@ public final class ReflectionClasses {
             if (cls == null) {
                 throw new PhpError("Attribute class \"" + attribute.name() + "\" not found");
             }
-            boolean isAttribute = hasAttributeMarker(cls);
-            if (!isAttribute) {
+            AttributeInfo info = handles(ctx).attributeInfo(ctx, cls);
+            if (!info.marker()) {
                 throw new PhpError("Attempting to use non-attribute class \"" + attribute.name() + "\" as attribute");
             }
-            long flags = attributeFlags(ctx, cls);
+            long flags = info.flags();
             if ((flags & state.target()) == 0) {
                 throw new PhpError("Attribute \"" + attribute.name() + "\" cannot target "
                         + targetName(state.target()) + " (allowed targets: " + allowedTargets(flags) + ")");
@@ -3159,6 +3169,10 @@ public final class ReflectionClasses {
             return state;
         }
         throw new PhpError("ReflectionAttribute object is not initialized");
+    }
+
+    /** The {@code #[Attribute]} marker and target flags of a class, fixed once it is linked. */
+    private record AttributeInfo(boolean marker, long flags) {
     }
 
     private static boolean hasAttributeMarker(PhpClass cls) {
