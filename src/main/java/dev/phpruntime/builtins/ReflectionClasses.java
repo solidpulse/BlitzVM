@@ -2459,7 +2459,7 @@ public final class ReflectionClasses {
                 }
                 throw reflectionError("Property " + cls.name() + "::$" + name + " does not exist");
             }
-            attach(ctx, self, new PropertyState(cls, info.declaring(), info.decl(), false, name));
+            attach(ctx, self, info.state(cls));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
