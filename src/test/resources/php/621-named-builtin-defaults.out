@@ -1,0 +1,70 @@
+ello
+ello
+&lt;a&gt;
+&lt;a&gt;
+array(1) {
+  ["a"]=>
+  int(1)
+}
+array(1) {
+  ["a"]=>
+  int(1)
+}
+object(stdClass)#1 (1) {
+  ["a"]=>
+  int(1)
+}
+array(3) {
+  [1]=>
+  string(3) "def"
+  [2]=>
+  string(3) "ghi"
+  [3]=>
+  string(3) "jkl"
+}
+array(2) {
+  [0]=>
+  string(3) "def"
+  [1]=>
+  string(3) "ghi"
+}
+array(2) {
+  [2]=>
+  string(3) "ghi"
+  [3]=>
+  string(3) "jkl"
+}
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "c"
+}
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "c"
+}
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+string(3) "x  "
+string(3) "x  "
+int(1)
+int(1)
+string(5) "1,235"
+float(1)
+string(3) "abc"
+string(5) "HeLLo"
+array(1) {
+  [0]=>
+  int(1)
+}
+string(11) "{"a":[1,2]}"
+string(11) "{"a":[1,2]}"

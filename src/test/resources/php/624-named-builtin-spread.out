@@ -1,0 +1,47 @@
+x   
+x   
+x   
+&lt;a&gt;
+array(2) {
+  [1]=>
+  string(3) "Def"
+  [2]=>
+  string(3) "abX"
+}
+array(1) {
+  ["a"]=>
+  int(1)
+}
+bool(true)
+x  
+x  
+x--
+y   
+array(2) {
+  [0]=>
+  string(3) "Def"
+  [1]=>
+  string(3) "abX"
+}
+string(9) "&lt;a&gt;"
+bool(true)
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+string(5) "HeLLo"
+int(2)
+z....
+bool(true)
+int(1)
+array(1) {
+  [0]=>
+  string(1) "l"
+}
+0: Error: Named parameter $length overwrites previous argument
+1: Error: Cannot use positional argument after named argument
+2: Error: Unknown named parameter $wat
