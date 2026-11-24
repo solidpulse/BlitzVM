@@ -67,9 +67,14 @@ public final class PropertyLValueNode extends LValueNode {
     /** The caller class's hierarchy across contexts, looked up once ({@link #callerStableLooked}). */
     @CompilationFinal private dev.phpruntime.PhpLanguage.StableHierarchy callerStable;
     @CompilationFinal private boolean callerStableLooked;
-    /** A reference cell holding a {@code .=} append buffer; until seen, compiled reads skip flattening. */
-    private final com.oracle.truffle.api.profiles.BranchProfile bufferSeen =
-            com.oracle.truffle.api.profiles.BranchProfile.create();
+    /**
+     * Stored-value shapes this site has seen. A plain value carries none of them, so until one
+     * appears the compiled read is a field load and a null check; the first reference, append
+     * buffer or lazy backtrace deoptimizes once and adds the branch for good.
+     */
+    @CompilationFinal private boolean refSeen;
+    @CompilationFinal private boolean bufferSeen;
+    @CompilationFinal private boolean lazySeen;
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
         this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1, false);
@@ -155,15 +160,9 @@ public final class PropertyLValueNode extends LValueNode {
         if (v == PhpClass.UNINITIALIZED) {
             return readUninitialized(obj, name, effectiveCallerLower(frame, keys));
         }
-        if (v instanceof PhpReference ref) {
-            v = ref.rawValue();
-            if (v instanceof dev.phpruntime.runtime.PhpStringBuffer buffer) {
-                bufferSeen.enter();
-                v = buffer.asString();
-            }
-        }
+        v = unwrapStored(v);
         if (v != null) {
-            return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
+            return v;
         }
         return readFallback(obj, name, false, true, effectiveCallerLower(frame, keys));
     }
@@ -185,13 +184,41 @@ public final class PropertyLValueNode extends LValueNode {
         if (v == PhpClass.UNINITIALIZED) {
             return readUninitialized(obj, name, callerLower);
         }
-        if (v instanceof PhpReference ref) {
-            v = ref.getValue();
-        }
+        v = unwrapStored(v);
         if (v != null) {
-            return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
+            return v;
         }
         return readFallback(obj, name, false, warnMissing, callerLower);
+    }
+
+    /**
+     * A stored value as a read exposes it. Ordinary values come back unchanged; a reference, an
+     * append buffer and a lazy backtrace are each seen at most once before the site adds their
+     * branch, so compiled reads of a plain stored value contain none of them.
+     */
+    private Object unwrapStored(Object v) {
+        if (v instanceof PhpReference ref) {
+            if (!refSeen) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                refSeen = true;
+            }
+            v = ref.rawValue();
+            if (v instanceof dev.phpruntime.runtime.PhpStringBuffer buffer) {
+                if (!bufferSeen) {
+                    CompilerDirectives.transferToInterpreterAndInvalidate();
+                    bufferSeen = true;
+                }
+                v = buffer.asString();
+            }
+        }
+        if (v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt) {
+            if (!lazySeen) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                lazySeen = true;
+            }
+            v = lt.toPhpArray();
+        }
+        return v;
     }
 
     @TruffleBoundary
@@ -226,11 +253,9 @@ public final class PropertyLValueNode extends LValueNode {
             if (v == PhpClass.UNINITIALIZED) {
                 return readUninitialized(obj, name, effectiveCallerLower(frame, keys));
             }
-            if (v instanceof PhpReference ref) {
-                v = ref.getValue();
-            }
+            v = unwrapStored(v);
             if (v != null) {
-                return v instanceof dev.phpruntime.runtime.PhpBacktrace.LazyTrace lt ? lt.toPhpArray() : v;
+                return v;
             }
             return readFallback(obj, name, false, false, effectiveCallerLower(frame, keys));
         }
@@ -272,9 +297,7 @@ public final class PropertyLValueNode extends LValueNode {
             if (v == PhpClass.UNINITIALIZED) {
                 return checkMagicIsset(obj, name);
             }
-            if (v instanceof PhpReference ref) {
-                v = ref.getValue();
-            }
+            v = unwrapStored(v);
             if (v != null) {
                 return v != PhpNull.INSTANCE;
             }
@@ -312,9 +335,7 @@ public final class PropertyLValueNode extends LValueNode {
                 }
                 return null;
             }
-            if (v instanceof PhpReference ref) {
-                v = ref.getValue();
-            }
+            v = unwrapStored(v);
             if (v != null) {
                 return v;
             }
