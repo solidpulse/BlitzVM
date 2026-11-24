@@ -75,6 +75,8 @@ public final class PropertyLValueNode extends LValueNode {
     @CompilationFinal private boolean refSeen;
     @CompilationFinal private boolean bufferSeen;
     @CompilationFinal private boolean lazySeen;
+    /** A write through a stored reference; plain declared properties never have one. */
+    @CompilationFinal private boolean refWriteSeen;
 
     public PropertyLValueNode(PhpNode targetExpr, String staticName, PhpNode dynamicNameExpr, String callingClassLower) {
         this(targetExpr, staticName, dynamicNameExpr, callingClassLower, -1, false);
@@ -164,7 +166,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (v != null) {
             return v;
         }
-        return readFallback(obj, name, false, true, effectiveCallerLower(frame, keys));
+        return readFallback(obj, name, false, true, null);
     }
 
     private Object readSlow(VirtualFrame frame, PhpObject obj, String name, Object[] keys, boolean warnMissing) {
@@ -182,7 +184,7 @@ public final class PropertyLValueNode extends LValueNode {
         }
         Object v = getNode.execute(obj, res.storageKey(), null);
         if (v == PhpClass.UNINITIALIZED) {
-            return readUninitialized(obj, name, callerLower);
+            return readUninitialized(obj, name, effectiveCallerLower(frame, keys));
         }
         v = unwrapStored(v);
         if (v != null) {
@@ -257,7 +259,7 @@ public final class PropertyLValueNode extends LValueNode {
             if (v != null) {
                 return v;
             }
-            return readFallback(obj, name, false, false, effectiveCallerLower(frame, keys));
+            return readFallback(obj, name, false, false, null);
         }
         if (arrayProperties(obj, name)) {
             return arrayAccess().get(obj, name);
@@ -313,7 +315,7 @@ public final class PropertyLValueNode extends LValueNode {
         String callerLower;
         if (fast != null) {
             res = fast.res();
-            callerLower = effectiveCallerLower(frame, keys);
+            callerLower = null;
         } else {
             callerLower = effectiveCallerLower(frame, keys);
             res = obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower);
@@ -381,20 +383,20 @@ public final class PropertyLValueNode extends LValueNode {
         }
         checkEnumDynamicProperty(obj, name);
         if (fast != null) {
-            writeResolved(obj, name, value, fast.res(), effectiveCallerLower(frame, keys));
+            writeResolved(obj, name, value, fast.res(), frame, keys);
             return;
         }
-        writeDynamic(obj, name, value, effectiveCallerLower(frame, keys));
+        writeDynamic(obj, name, value, frame, keys);
     }
 
-    private void writeDynamic(PhpObject obj, String name, Object value, String callerLower) {
-        writeResolved(obj, name, value, resolveFull(obj, name, callerLower), callerLower);
+    private void writeDynamic(PhpObject obj, String name, Object value, VirtualFrame frame, Object[] keys) {
+        writeResolved(obj, name, value, resolveFull(obj, name, effectiveCallerLower(frame, keys)), frame, keys);
     }
 
     private void writeResolved(PhpObject obj, String name, Object value, PhpClass.PropertyResolution res,
-                               String callerLower) {
+                               VirtualFrame frame, Object[] keys) {
         if (!res.accessible()) {
-            writeFallback(obj, name, value, true, callerLower);
+            writeFallback(obj, name, value, true, effectiveCallerLower(frame, keys));
             return;
         }
         if (res.writeBlocked()) {
@@ -409,7 +411,8 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         if (!res.writable()) {
-            throw cannotModifySet(obj, name, res.setVisibility(), res.setDeclaringClass(), callerLower, "modify");
+            throw cannotModifySet(obj, name, res.setVisibility(), res.setDeclaringClass(),
+                    effectiveCallerLower(frame, keys), "modify");
         }
         PhpClass.PropertyHook setHook = res.setHook();
         if (setHook != null && !obj.inMagic(name, PhpObject.GUARD_HOOK_ANY)) {
@@ -423,6 +426,10 @@ public final class PropertyLValueNode extends LValueNode {
         value = checkType(res.type(), obj, name, res.declaringClass(), value);
         Object existing = getNode.execute(obj, storageKey, null);
         if (existing instanceof PhpReference ref) {
+            if (!refWriteSeen) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                refWriteSeen = true;
+            }
             ref.setValue(value);
             return;
         }
@@ -430,7 +437,7 @@ public final class PropertyLValueNode extends LValueNode {
             putNode.execute(obj, storageKey, value);
             return;
         }
-        writeFallback(obj, name, value, false, callerLower);
+        writeFallback(obj, name, value, false, null);
     }
 
     /** Enum cases have no dynamic properties: a write to any name they do not declare fails. */
@@ -463,18 +470,23 @@ public final class PropertyLValueNode extends LValueNode {
         String name = (String) keys[1];
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
-            checkIndirect(obj, name, fast.res(), effectiveCallerLower(frame, keys));
+            checkIndirect(obj, name, fast.res(), frame, keys);
             return;
         }
-        checkNotReadonlyBoundary(obj, name, effectiveCallerLower(frame, keys));
+        checkNotReadonlyBoundary(obj, name, effectiveCallerLower(frame, keys), frame, keys);
     }
 
-    @TruffleBoundary
-    private void checkNotReadonlyBoundary(PhpObject obj, String name, String callerLower) {
-        checkIndirect(obj, name, obj.phpClass().resolveProperty(PhpContext.get(this), name, callerLower), callerLower);
+    /**
+     * The slow path for a site with no cached resolution: the cache miss already paid for the
+     * caller, so it is passed in. Ordinary accesses never reach this.
+     */
+    private void checkNotReadonlyBoundary(PhpObject obj, String name, String callerLower,
+                                          VirtualFrame frame, Object[] keys) {
+        checkIndirect(obj, name, resolveFull(obj, name, callerLower), frame, keys);
     }
 
-    private void checkIndirect(PhpObject obj, String name, PhpClass.PropertyResolution res, String callerLower) {
+    private void checkIndirect(PhpObject obj, String name, PhpClass.PropertyResolution res,
+                               VirtualFrame frame, Object[] keys) {
         if (res.isReadonly()) {
             String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
             CompilerDirectives.transferToInterpreter();
@@ -487,7 +499,8 @@ public final class PropertyLValueNode extends LValueNode {
             return;
         }
         if (!res.writable()) {
-            throw cannotModifySet(obj, name, res.setVisibility(), res.setDeclaringClass(), callerLower, "indirectly modify");
+            throw cannotModifySet(obj, name, res.setVisibility(), res.setDeclaringClass(),
+                    effectiveCallerLower(frame, keys), "indirectly modify");
         }
         if (hooked) {
             PhpClass.PropertyHook getHook = res.getHook();
@@ -527,11 +540,11 @@ public final class PropertyLValueNode extends LValueNode {
             }
         }
         checkEnumDynamicProperty(obj, name);
-        String callerLower = effectiveCallerLower(frame, keys);
-        PhpClass.PropertyResolution res = fast != null ? fast.res() : resolveFull(obj, name, callerLower);
-        checkIndirect(obj, name, res, callerLower);
+        PhpClass.PropertyResolution res = fast != null ? fast.res()
+                : resolveFull(obj, name, effectiveCallerLower(frame, keys));
+        checkIndirect(obj, name, res, frame, keys);
         if (!res.accessible()) {
-            throw inaccessibleError(obj, name, callerLower);
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
         PhpClass.PropertyHook getHook = res.getHook();
         if (getHook != null && getHook.byRef() && !obj.inMagic(name, PhpObject.GUARD_HOOK_ANY)) {
@@ -620,11 +633,11 @@ public final class PropertyLValueNode extends LValueNode {
             }
         }
         checkEnumDynamicProperty(obj, name);
-        String callerLower = effectiveCallerLower(frame, keys);
-        PhpClass.PropertyResolution res = fast != null ? fast.res() : resolveFull(obj, name, callerLower);
-        checkIndirect(obj, name, res, callerLower);
+        PhpClass.PropertyResolution res = fast != null ? fast.res()
+                : resolveFull(obj, name, effectiveCallerLower(frame, keys));
+        checkIndirect(obj, name, res, frame, keys);
         if (!res.accessible()) {
-            throw inaccessibleError(obj, name, callerLower);
+            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
         }
         if (res.virtual() || res.hasHooks()) {
             throw indirectModification(obj, name);
@@ -692,13 +705,16 @@ public final class PropertyLValueNode extends LValueNode {
     }
 
     private Object checkType(DeclaredType type, PhpObject obj, String name, String owner, Object value) {
-        if (type == null) {
-            return value;
-        }
-        if (type.matchesFast(value)) {
+        if (type == null || type.matchesFast(value)) {
             // Scalars, null and untyped-enough values pass without resolving the owner class.
             return value;
         }
+        return checkTypeSlow(type, obj, name, owner, value);
+    }
+
+    /** Coercion or rejection of a value that did not match its declared type. */
+    @TruffleBoundary
+    private Object checkTypeSlow(DeclaredType type, PhpObject obj, String name, String owner, Object value) {
         PhpContext ctx = PhpContext.get(this);
         return type.checkProperty(value, ctx, this, CallMode.strictAt(this),
                 owner == null ? null : ownerClass(ctx, owner),
