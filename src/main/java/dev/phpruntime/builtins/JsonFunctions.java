@@ -78,7 +78,7 @@ final class JsonFunctions {
             throw new PhpError("ValueError", "json_encode(): Argument #3 ($depth) must be greater than 0", null);
         }
         Encoder e = new Encoder(ctx, flags, depth,
-                a[0] instanceof PhpArray top ? 16 + top.size() * 8 : 64);
+                a[0] instanceof PhpArray top ? (int) Math.min(1 << 20, 16L + top.size() * 8L) : 64);
         e.value(a[0], 0);
         if ((flags & THROW_ON_ERROR) != 0) {
             if (e.error != ERROR_NONE) {
