@@ -272,7 +272,8 @@ final class FileFunctions {
                     }
                 }
             }
-            String javaPath = PhpStrings.toJava(path);
+            String fsPath = path.regionMatches(true, 0, "file://", 0, 7) ? path.substring(7) : path;
+            String javaPath = PhpStrings.toJava(fsPath);
             File host = HostFiles.file(ctx, javaPath);
             if (host != null) {
                 try {
@@ -284,7 +285,7 @@ final class FileFunctions {
                     return readFailure(ctx, "file_get_contents", path, host);
                 }
             }
-            TruffleFile f = file(ctx, path);
+            TruffleFile f = file(ctx, fsPath);
             try {
                 if (f == null || !isFile(ctx, javaPath, f)) {
                     throw new IOException();

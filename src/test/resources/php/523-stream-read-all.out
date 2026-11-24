@@ -1,0 +1,29 @@
+int(20022)
+string(4) "
+end"
+bool(true)
+string(0) ""
+string(9) "line one
+"
+int(20013)
+string(9) "line two
+"
+string(4) "
+end"
+int(5022)
+string(5) "one
+l"
+string(12) "xxxxxxxx
+end"
+int(20019)
+string(10) "
+end+grown"
+string(0) ""
+string(3) "abc"
+string(6) "abcdef"
+bool(true)
+string(0) ""
+bool(true)
+string(4) "3456"
+string(4) "6789"
+bool(true)
