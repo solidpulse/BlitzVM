@@ -96,3 +96,19 @@ echo 'keys-filter=', json_encode(array_filter($keys, fn ($v) => $v !== 'b')), "\
 echo 'keys-any=', var_export(array_any($keys, fn ($v) => $v === 'c'), true), "\n";
 echo 'keys-all=', var_export(array_all($keys, fn ($v) => is_string($v)), true), "\n";
 echo 'keys-find=', var_export(array_find_key($keys, fn ($v) => $v === 'd'), true), "\n";
+
+// Multi-array map and non-closure callables take the other callback paths.
+echo 'multi=', json_encode(array_map(fn ($a, $b) => $a . $b, [1, 2, 3], [4, 5])), "\n";
+echo 'multi-null=', json_encode(array_map(null, ['a', 'b'], [1, 2])), "\n";
+
+final class Doubler
+{
+    public function __invoke($value)
+    {
+        return $value * 2;
+    }
+}
+echo 'invoke=', json_encode(array_map(new Doubler(), [1, 2])), "\n";
+echo 'invoke-filter=', json_encode(array_filter([1, 2, 3, 4], new Doubler())), "\n";
+echo 'strfn=', json_encode(array_reduce([1, 2, 3], 'max', 0)), "\n";
+echo 'any-key=', var_export(array_any(['a' => 1], fn ($v, $k) => $k === 'a'), true), "\n";
