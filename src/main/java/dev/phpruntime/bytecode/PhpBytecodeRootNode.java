@@ -3576,18 +3576,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            dev.phpruntime.nodes.var.LValueNode ref, Object[] keys, Node site) {
             if (name != null) {
                 CallArgHelper.checkDuplicateNamed(raw.named(), name, site);
-                raw.named().put(name, value);
-                if (ref != null) {
-                    raw.namedRefTargets().put(name, ref);
-                    raw.namedRefKeys().put(name, keys);
-                }
-                raw.namedNodes().put(name, null);
+                raw.putNamed(name, value, ref, keys);
                 return;
             }
-            raw.positional().add(value);
-            raw.posRefTargets().add(ref);
-            raw.posRefKeys().add(keys);
-            raw.posNodes().add(null);
+            raw.addPositional(value, ref, keys);
         }
 
         static Object byRefValue(Object value, int kind, PhpFunctionRootNode fnRoot, int param, Node site) {
@@ -3618,8 +3610,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             Builtins.Def builtin = builtinCallee(callee);
             if (spread) {
-                CallArgHelper.unpackCallArg(value, null, raw.positional(), raw.posRefTargets(), raw.posRefKeys(),
-                        raw.posNodes(), raw.named(), !raw.named().isEmpty(), site);
+                CallArgHelper.unpackCallArg(value, null, raw, site);
                 return;
             }
             if (builtin != null) {
@@ -3677,8 +3668,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 } else {
                     unpacked = ReadVar.read(frame, acc, info, bytecode, bci, node);
                 }
-                CallArgHelper.unpackCallArg(unpacked, writable, raw.positional(), raw.posRefTargets(),
-                        raw.posRefKeys(), raw.posNodes(), raw.named(), !raw.named().isEmpty(), site);
+                CallArgHelper.unpackCallArg(unpacked, writable, raw, site);
                 return;
             }
             boolean byRef;
@@ -3733,8 +3723,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 } else {
                     unpacked = engine.readValue(frame, keys);
                 }
-                CallArgHelper.unpackCallArg(unpacked, writable, raw.positional(), raw.posRefTargets(),
-                        raw.posRefKeys(), raw.posNodes(), raw.named(), !raw.named().isEmpty(), site);
+                CallArgHelper.unpackCallArg(unpacked, writable, raw, site);
                 return;
             }
             boolean byRef;
@@ -4514,8 +4503,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object clone(Object value, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                            @Cached("create()") DispatchCallNode dispatch) {
-            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch);
+                            @Cached("create()") DispatchCallNode dispatch,
+                            @Cached("create()") DynamicObject.GetKeyArrayNode keyArray,
+                            @Cached("create()") DynamicObject.GetNode propGet,
+                            @Cached("create()") DynamicObject.PutNode propPut) {
+            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch,
+                    keyArray, propGet, propPut);
         }
     }
 
@@ -4528,10 +4521,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object clone(VirtualFrame frame, String callingClass, int traitSelfSlot, Object value, Object with,
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                            @Cached("create()") DispatchCallNode dispatch) {
+                            @Cached("create()") DispatchCallNode dispatch,
+                            @Cached("create()") DynamicObject.GetKeyArrayNode keyArray,
+                            @Cached("create()") DynamicObject.GetNode propGet,
+                            @Cached("create()") DynamicObject.PutNode propPut) {
             Object traitSelf = traitSelfSlot >= 0 ? frame.getObject(traitSelfSlot) : null;
             return dev.phpruntime.nodes.expr.CloneNode.cloneValueWith(value, with, location, dispatch,
-                    callingClass.isEmpty() ? null : callingClass, traitSelf);
+                    callingClass.isEmpty() ? null : callingClass, traitSelf, keyArray, propGet, propPut);
         }
     }
 

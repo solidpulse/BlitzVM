@@ -3622,14 +3622,11 @@ public final class ReflectionClasses {
 
     private static CallArgHelper.RawCallArgs rawCallArgs(List<Object> positional, Map<String, Object> named) {
         CallArgHelper.RawCallArgs raw = CallArgHelper.newRawCallArgs();
-        raw.positional().addAll(positional);
-        for (int i = 0; i < positional.size(); i++) {
-            raw.posRefTargets().add(null);
-            raw.posRefKeys().add(null);
-            raw.posNodes().add(null);
+        for (Object value : positional) {
+            raw.addPositional(value, null, null);
         }
         for (Map.Entry<String, Object> entry : named.entrySet()) {
-            raw.named().put(entry.getKey(), entry.getValue());
+            raw.putNamed(entry.getKey(), entry.getValue(), null, null);
         }
         return raw;
     }

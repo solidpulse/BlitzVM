@@ -130,7 +130,7 @@ final class CallableFunctions {
                     default -> new Object[0];
                 };
                 dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs rawArgs =
-                        new dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs(pos, List.of(), List.of(), List.of(), named, null, null, null);
+                        new dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs(pos, null, null, named, null, null);
                 Object[] frameArgs = dev.phpruntime.nodes.call.CallArgHelper.bindToFunction(prefix, rawArgs, fnRoot, ctx.currentBuiltinCallSite());
                 Object site = ctx.currentBuiltinCallSite() != null ? ctx.currentBuiltinCallSite()
                         : dev.phpruntime.runtime.PhpBacktrace.UNKNOWN_SITE;

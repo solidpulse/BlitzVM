@@ -913,17 +913,9 @@ final class NamedArgs {
             LValueNode ref = buffer.ref(i);
             Object[] keys = buffer.refKeys(i);
             if (name != null) {
-                raw.named().put(name, value);
-                if (ref != null) {
-                    raw.namedRefTargets().put(name, ref);
-                    raw.namedRefKeys().put(name, keys);
-                }
-                raw.namedNodes().put(name, null);
+                raw.putNamed(name, value, ref, keys);
             } else {
-                raw.positional().add(value);
-                raw.posRefTargets().add(ref);
-                raw.posRefKeys().add(keys);
-                raw.posNodes().add(null);
+                raw.addPositional(value, ref, keys);
             }
         }
         return raw;

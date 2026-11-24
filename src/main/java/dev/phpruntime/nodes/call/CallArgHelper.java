@@ -88,22 +88,96 @@ public final class CallArgHelper {
      * Evaluates a call site that has spread ({@code ...$x}) or named ({@code k: v}) arguments
      * for a target {@link RootCallTarget}, packing prefix slots + resolved parameter values.
      */
-    public record RawCallArgs(List<Object> positional, List<LValueNode> posRefTargets,
-                              List<Object[]> posRefKeys, List<PhpNode> posNodes,
-                              Map<String, Object> named, Map<String, LValueNode> namedRefTargets,
-                              Map<String, Object[]> namedRefKeys, Map<String, PhpNode> namedNodes) {
+    /**
+     * The arguments of a call with spread or named arguments, built one at a time. The
+     * positional values are the only part every call needs; the by-reference side tables are
+     * created on the first by-reference argument, which is rare, and stay null otherwise.
+     */
+    public static final class RawCallArgs {
+        private final List<Object> positional;
+        private List<LValueNode> posRefTargets;
+        private List<Object[]> posRefKeys;
+        private final Map<String, Object> named;
+        private Map<String, LValueNode> namedRefTargets;
+        private Map<String, Object[]> namedRefKeys;
+
+        public RawCallArgs(List<Object> positional, List<LValueNode> posRefTargets,
+                           List<Object[]> posRefKeys, Map<String, Object> named,
+                           Map<String, LValueNode> namedRefTargets, Map<String, Object[]> namedRefKeys) {
+            this.positional = positional;
+            this.posRefTargets = posRefTargets;
+            this.posRefKeys = posRefKeys;
+            this.named = named;
+            this.namedRefTargets = namedRefTargets;
+            this.namedRefKeys = namedRefKeys;
+        }
+
+        public List<Object> positional() {
+            return positional;
+        }
+
+        public List<LValueNode> posRefTargets() {
+            return posRefTargets;
+        }
+
+        public List<Object[]> posRefKeys() {
+            return posRefKeys;
+        }
+
+        public Map<String, Object> named() {
+            return named;
+        }
+
+        public Map<String, LValueNode> namedRefTargets() {
+            return namedRefTargets;
+        }
+
+        public Map<String, Object[]> namedRefKeys() {
+            return namedRefKeys;
+        }
+
+        /** Appends a positional value; a null ref keeps the side tables absent while unused. */
+        public void addPositional(Object value, LValueNode ref, Object[] keys) {
+            int index = positional.size();
+            positional.add(value);
+            if (posRefTargets != null) {
+                posRefTargets.add(ref);
+                posRefKeys.add(keys);
+            } else if (ref != null || keys != null) {
+                posRefTargets = new ArrayList<>(index + 1);
+                posRefKeys = new ArrayList<>(index + 1);
+                for (int i = 0; i < index; i++) {
+                    posRefTargets.add(null);
+                    posRefKeys.add(null);
+                }
+                posRefTargets.add(ref);
+                posRefKeys.add(keys);
+            }
+        }
+
+        /** Adds one named argument, with its by-reference place when it has one. */
+        public void putNamed(String name, Object value, LValueNode ref, Object[] keys) {
+            named.put(name, value);
+            if (ref != null) {
+                if (namedRefTargets == null) {
+                    namedRefTargets = new LinkedHashMap<>();
+                    namedRefKeys = new LinkedHashMap<>();
+                }
+                namedRefTargets.put(name, ref);
+                namedRefKeys.put(name, keys);
+            }
+        }
     }
 
     /** An empty mutable argument list for bytecode, which evaluates one argument per operation. */
     public static RawCallArgs newRawCallArgs() {
-        return new RawCallArgs(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
-                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+        return new RawCallArgs(new ArrayList<>(), null, null, new LinkedHashMap<>(), null, null);
     }
 
     /** Already-evaluated arguments, with the reference side tables left to the caller. */
     public static RawCallArgs newRawCallArgs(List<Object> positional, Map<String, Object> named) {
-        return new RawCallArgs(new ArrayList<>(positional), List.of(), List.of(), List.of(),
-                new LinkedHashMap<>(named), null, null, null);
+        return new RawCallArgs(new ArrayList<>(positional), null, null,
+                new LinkedHashMap<>(named), null, null);
     }
 
     /** Exploded so each argument and ref-target node is a PE constant (no virtual calls, no frame escape). */
@@ -144,29 +218,26 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    public static void unpackCallArg(Object unpacked, PhpArray writableRefSource,
-                                      List<Object> positional, List<LValueNode> posRefs,
-                                      List<Object[]> posKeys, List<PhpNode> posNodes,
-                                      Map<String, Object> named, boolean alreadySeenNamed, Node site) {
+    public static void unpackCallArg(Object unpacked, PhpArray writableRefSource, RawCallArgs raw, Node site) {
+        List<Object> positional = raw.positional();
+        Map<String, Object> named = raw.named();
+        boolean alreadySeenNamed = !named.isEmpty();
         if (unpacked instanceof dev.phpruntime.runtime.PhpObject obj
                 && dev.phpruntime.runtime.SplInterfaces.has(obj, dev.phpruntime.runtime.SplInterfaces.TRAVERSABLE)) {
-            boolean seenNamed = alreadySeenNamed || !named.isEmpty();
+            boolean seenNamed = alreadySeenNamed;
             for (var entry : dev.phpruntime.runtime.SplIterators.entries(obj, site)) {
                 Object key = entry.getKey();
                 Object value = PhpOps.copyOnAssign(entry.getValue());
                 if (key instanceof String s) {
                     seenNamed = true;
                     checkDuplicateNamed(named, s, site);
-                    named.put(s, value);
+                    raw.putNamed(s, value, null, null);
                 } else if (key instanceof Long) {
                     if (seenNamed) {
                         com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                         throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
                     }
-                    positional.add(value);
-                    posRefs.add(null);
-                    posKeys.add(null);
-                    posNodes.add(null);
+                    raw.addPositional(value, null, null);
                 } else {
                     com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "Keys must be of type int|string during argument unpacking", site);
@@ -179,8 +250,10 @@ public final class CallArgHelper {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "Only arrays and Traversables can be unpacked, " + given + " given", site);
         }
-        boolean seenNamed = alreadySeenNamed || !named.isEmpty();
-        for (Object k : src.keys()) {
+        boolean seenNamed = alreadySeenNamed;
+        // Walk the array's positions: a key list would allocate one entry per element.
+        for (int pos = src.firstPos(); pos >= 0; pos = src.nextPos(pos)) {
+            Object k = src.keyAt(pos);
             if (k instanceof String s) {
                 seenNamed = true;
                 if (named.containsKey(s)) {
@@ -188,19 +261,18 @@ public final class CallArgHelper {
                     throw new PhpError("Named parameter $" + s + " overwrites previous argument", site);
                 }
                 Object val = writableRefSource != null ? writableRefSource.obtainElementRef(k)
-                        : (src.getRaw(k) instanceof PhpReference ref ? ref : PhpOps.copyOnAssign(src.get(k)));
-                named.put(s, val);
+                        : (src.rawValueAt(pos) instanceof PhpReference ref ? ref
+                                : PhpOps.copyOnAssign(src.valueAt(pos)));
+                raw.putNamed(s, val, null, null);
             } else {
                 if (seenNamed) {
                     com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
                 }
                 Object val = writableRefSource != null ? writableRefSource.obtainElementRef(k)
-                        : (src.getRaw(k) instanceof PhpReference ref ? ref : PhpOps.copyOnAssign(src.get(k)));
-                positional.add(val);
-                posRefs.add(null);
-                posKeys.add(null);
-                posNodes.add(null);
+                        : (src.rawValueAt(pos) instanceof PhpReference ref ? ref
+                                : PhpOps.copyOnAssign(src.valueAt(pos)));
+                raw.addPositional(val, null, null);
             }
         }
     }
@@ -360,7 +432,7 @@ public final class CallArgHelper {
                 e.setValue(new PhpReference(PhpOps.copyOnAssign(e.getValue())));
             }
         }
-        RawCallArgs raw = new RawCallArgs(pos, List.of(), List.of(), List.of(), forwarded, null, null, null);
+        RawCallArgs raw = new RawCallArgs(pos, null, null, forwarded, null, null);
         return bindToFunction(prefix, raw, fnRoot, site);
     }
 
@@ -401,7 +473,7 @@ public final class CallArgHelper {
         }
         LValueNode[] noRefs = null;
         Object[][] noKeys = null;
-        RawCallArgs raw = new RawCallArgs(pos, List.of(), List.of(), List.of(), forwarded, null, null, null);
+        RawCallArgs raw = new RawCallArgs(pos, null, null, forwarded, null, null);
         BuiltinBound bound = bindNamedBuiltin(def, raw, site);
         if (def.refMask() != 0) {
             noRefs = new LValueNode[bound.values().length];
@@ -490,8 +562,8 @@ public final class CallArgHelper {
     @TruffleBoundary
     private static BuiltinBound positionalBuiltinBound(RawCallArgs raw) {
         Object[] values = toObjectArray(raw.positional());
-        return new BuiltinBound(values, values.clone(), toLValueArray(raw.posRefTargets()),
-                toKeysArray(raw.posRefKeys()));
+        return new BuiltinBound(values, values.clone(), toLValueArray(raw.posRefTargets(), values.length),
+                toKeysArray(raw.posRefKeys(), values.length));
     }
 
     /**
@@ -641,13 +713,25 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    private static LValueNode[] toLValueArray(List<LValueNode> list) {
-        return list.toArray(new LValueNode[0]);
+    private static LValueNode[] toLValueArray(List<LValueNode> list, int length) {
+        LValueNode[] out = new LValueNode[length];
+        if (list != null) {
+            for (int i = 0; i < length && i < list.size(); i++) {
+                out[i] = list.get(i);
+            }
+        }
+        return out;
     }
 
     @TruffleBoundary
-    private static Object[][] toKeysArray(List<Object[]> list) {
-        return list.toArray(new Object[0][]);
+    private static Object[][] toKeysArray(List<Object[]> list, int length) {
+        Object[][] out = new Object[length][];
+        if (list != null) {
+            for (int i = 0; i < length && i < list.size(); i++) {
+                out[i] = list.get(i);
+            }
+        }
+        return out;
     }
 
     private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, Object[] values,
