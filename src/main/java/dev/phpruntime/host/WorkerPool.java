@@ -365,9 +365,12 @@ public final class WorkerPool implements AutoCloseable {
          * The response streams of this worker, reused by every request it handles. A fresh pair
          * per request allocated the stream, its first buffer and every growth step; a worker
          * runs one request at a time and the response body is copied out in {@link #finish}.
+         * A stream that grew past {@link #RESPONSE_RETAIN} is replaced, so one large response
+         * does not pin its buffer for the life of the worker.
          */
-        private final ByteArrayOutputStream responseOut = new ByteArrayOutputStream();
-        private final ByteArrayOutputStream responseErr = new ByteArrayOutputStream();
+        private ByteArrayOutputStream responseOut = new ByteArrayOutputStream();
+        private ByteArrayOutputStream responseErr = new ByteArrayOutputStream();
+        private static final int RESPONSE_RETAIN = 1 << 22;
         /** Why the worker script is ending, when it is not a plain MAX_REQUESTS return. */
         private String restartReason;
 
@@ -431,6 +434,12 @@ public final class WorkerPool implements AutoCloseable {
 
         private void runOne(Job job, PhpContext ctx, PhpCallable callback) {
             PhpRequest request = job.request();
+            if (responseOut.size() > RESPONSE_RETAIN) {
+                responseOut = new ByteArrayOutputStream();
+            }
+            if (responseErr.size() > RESPONSE_RETAIN) {
+                responseErr = new ByteArrayOutputStream();
+            }
             ByteArrayOutputStream out = responseOut;
             ByteArrayOutputStream err = responseErr;
             out.reset();
