@@ -909,15 +909,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                 String name, PhpObject value) {
         }
 
-        @Specialization(guards = "type.hasFastClass()")
+        @Specialization(guards = {"type.hasFastClass()", "type.fastClassMatches(value)"})
         static void classValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
-                               String name, PhpObject value, @Bind Node node, @Bind BytecodeNode bytecode) {
-            // A trait's unresolved self/parent is the only fast case needing the self class; it
-            // is rare, so it takes the slow path instead of resolving self on every call.
-            if (type.fastClassMatches(value, PhpContext.get(node), null)) {
-                return;
-            }
-            slow(frame, type, acc, info, param, name, value, node, bytecode);
+                               String name, PhpObject value) {
+            // The class name id is in the value class's ancestor set: nothing to coerce or store.
         }
 
         @Fallback
@@ -1011,13 +1006,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return value;
         }
 
-        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.hasFastClass()"})
-        static Object classValue(VirtualFrame frame, DeclaredType type, boolean implicit, PhpObject value,
-                                 @Bind Node node) {
-            if (type.fastClassMatches(value, PhpContext.get(node), null)) {
-                return value;
-            }
-            return slowReturn(frame, type, implicit, value, node);
+        @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.hasFastClass()",
+                "type.fastClassMatches(value)"})
+        static PhpObject classValue(VirtualFrame frame, DeclaredType type, boolean implicit, PhpObject value) {
+            return value;
         }
 
         @Fallback
@@ -2871,6 +2863,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return template.headless();
         }
 
+        /**
+         * The constant name id for a literal class name, else -1. {@code self}, {@code parent}
+         * and the dynamic forms need the context or the frame, so they keep the resolving path.
+         */
+        public int instanceofNameId() {
+            return template.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.NAMED ? template.classId() : -1;
+        }
+
         @Override
         public String toString() {
             return String.valueOf(template.staticName());
@@ -4433,9 +4433,29 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     @ConstantOperand(type = ClassRefSpec.class)
     public static final class Instanceof {
+        /**
+         * A literal class name: the name id answers from the value class's ancestor set without
+         * the context or the class table. A miss still resolves, because a {@code class_alias}
+         * name points at a class whose own name id is different.
+         */
+        @Specialization(guards = "spec.instanceofNameId() >= 0")
+        static boolean named(ClassRefSpec spec, Object value, Object operand,
+                             @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
+            if (value instanceof PhpObject obj && obj.phpClass().matchesNameId(spec.instanceofNameId())) {
+                return true;
+            }
+            return resolveAndTest(spec, value, operand, engine);
+        }
+
         @Specialization
         static boolean test(ClassRefSpec spec, Object value, Object operand,
                             @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
+            return resolveAndTest(spec, value, operand, engine);
+        }
+
+        @TruffleBoundary
+        private static boolean resolveAndTest(ClassRefSpec spec, Object value, Object operand,
+                                              dev.phpruntime.nodes.expr.ClassRefNode engine) {
             PhpClass target = engine.resolveForInstanceof(operand);
             return value instanceof PhpObject obj && target != null && obj.phpClass().isInstanceOf(target);
         }

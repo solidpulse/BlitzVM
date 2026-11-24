@@ -152,6 +152,11 @@ public final class ClassRefNode extends PhpNode {
         return name;
     }
 
+    /** The engine-wide name id the reference was built with; -1 for dynamic and trait refs. */
+    public int classId() {
+        return classId;
+    }
+
     private PhpClass throwMissing(String clsName) {
         CompilerDirectives.transferToInterpreter();
         throw new PhpError("Class \"" + clsName + "\" not found", this);

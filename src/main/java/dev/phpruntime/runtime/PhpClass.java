@@ -1,5 +1,6 @@
 package dev.phpruntime.runtime;
 
+import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.object.DynamicObject;
@@ -339,6 +340,17 @@ public final class PhpClass {
     private final PhpLanguage language;
     private final PhpClass parent;
     private final List<PhpClass> interfaces;
+    /**
+     * The engine-wide name ids of this class and every ancestor: itself, its parent chain, every
+     * implemented interface and the interfaces those extend, including interfaces added
+     * implicitly ({@code Stringable}, {@code UnitEnum}, {@code BackedEnum}). Sorted ascending
+     * and immutable, built once when the class is linked. Lets a class check membership by name
+     * id without a request's class table; {@link #isInstanceOf} and the declared type guards use
+     * it.
+     */
+    @CompilationFinal(dimensions = 1)
+    private final int[] ancestorIds;
+
     private final List<PhpClass> usedTraits;
     private final List<PhpClassTemplate.PropertyDecl> traitProperties;
     private final List<PhpClassTemplate.ConstantDecl> traitConstants;
@@ -511,7 +523,41 @@ public final class PhpClass {
                         Visibility.PUBLIC, true, false, false, EnumBuiltins.callTarget(language, this, "tryFrom")));
             }
         }
+        this.ancestorIds = ancestryIds(this);
     }
+
+    /**
+     * The sorted, deduplicated name ids of {@code self}, its parent chain, and every interface
+     * those implement, directly or through other interfaces. Each parent and interface already
+     * has its own complete set, so this is an assembly rather than a walk of the hierarchy.
+     */
+    private static int[] ancestryIds(PhpClass self) {
+        int[] parentIds = self.parent == null ? EMPTY_IDS : self.parent.ancestorIds;
+        List<PhpClass> ifaces = self.interfaces;
+        int size = 1 + parentIds.length;
+        for (int i = 0; i < ifaces.size(); i++) {
+            size += ifaces.get(i).ancestorIds.length;
+        }
+        int[] ids = new int[size];
+        ids[0] = self.classId;
+        System.arraycopy(parentIds, 0, ids, 1, parentIds.length);
+        int n = 1 + parentIds.length;
+        for (int i = 0; i < ifaces.size(); i++) {
+            int[] ifaceIds = ifaces.get(i).ancestorIds;
+            System.arraycopy(ifaceIds, 0, ids, n, ifaceIds.length);
+            n += ifaceIds.length;
+        }
+        java.util.Arrays.sort(ids, 0, n);
+        int unique = 0;
+        for (int i = 0; i < n; i++) {
+            if (unique == 0 || ids[unique - 1] != ids[i]) {
+                ids[unique++] = ids[i];
+            }
+        }
+        return unique == n ? ids : java.util.Arrays.copyOf(ids, unique);
+    }
+
+    private static final int[] EMPTY_IDS = new int[0];
 
     private void addEnumProperty(String name) {
         InstanceProp prop = new InstanceProp(name, name, Visibility.PUBLIC, true, this,
@@ -1025,20 +1071,28 @@ public final class PhpClass {
         return getMethod != null || setMethod != null || issetMethod != null || unsetMethod != null;
     }
 
-    @TruffleBoundary
-    public boolean isInstanceOf(PhpClass target) {
-        if (target == null) {
-            return false;
-        }
-        if (this == target) {
-            return true;
-        }
-        for (PhpClass iface : interfaces) {
-            if (iface.isInstanceOf(target)) {
+    /**
+     * Whether this class is the class of name id {@code targetId} or a descendant or
+     * implementor of it. Name ids are engine-wide and unique per lower-case class name, and a
+     * request has at most one class per name, so the set is exact for values of this request.
+     * {@code class_alias} names are not in any set: the declared type guard falls through to
+     * the exact lookup for those.
+     */
+    public boolean matchesNameId(int targetId) {
+        int[] ids = ancestorIds;
+        for (int i = 0; i < ids.length; i++) {
+            if (ids[i] == targetId) {
                 return true;
             }
+            if (ids[i] > targetId) {
+                return false;
+            }
         }
-        return parent != null && parent.isInstanceOf(target);
+        return false;
+    }
+
+    public boolean isInstanceOf(PhpClass target) {
+        return target != null && matchesNameId(target.classId);
     }
 
     /** This request's slot for a static property, or null if the class has none by that name. */
