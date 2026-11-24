@@ -29,12 +29,19 @@ final class MbConvertFunctions {
         }
     }
 
+    private static final Encoding UTF8 = new Encoding("UTF-8", StandardCharsets.UTF_8);
+    private static final Encoding ASCII = new Encoding("ASCII", StandardCharsets.US_ASCII);
+    private static final Encoding LATIN1 = new Encoding("ISO-8859-1", StandardCharsets.ISO_8859_1);
+
     static Encoding encoding(String name) {
+        if (name.length() == 5 && name.equalsIgnoreCase("UTF-8")) {
+            return UTF8;
+        }
         String n = PhpStrings.upper(name.trim()).replace('_', '-');
         return switch (n) {
-            case "UTF-8", "UTF8" -> new Encoding("UTF-8", StandardCharsets.UTF_8);
-            case "ASCII", "US-ASCII" -> new Encoding("ASCII", StandardCharsets.US_ASCII);
-            case "ISO-8859-1", "ISO8859-1", "LATIN1", "LATIN-1", "8BIT", "BINARY" -> new Encoding("ISO-8859-1", StandardCharsets.ISO_8859_1);
+            case "UTF-8", "UTF8" -> UTF8;
+            case "ASCII", "US-ASCII" -> ASCII;
+            case "ISO-8859-1", "ISO8859-1", "LATIN1", "LATIN-1", "8BIT", "BINARY" -> LATIN1;
             case "WINDOWS-1252", "CP1252" -> new Encoding("Windows-1252", Charset.forName("windows-1252"));
             case "UTF-16", "UTF-16BE" -> new Encoding(n, StandardCharsets.UTF_16BE);
             case "UTF-16LE" -> new Encoding("UTF-16LE", StandardCharsets.UTF_16LE);
@@ -304,8 +311,12 @@ final class MbConvertFunctions {
             return encode(ctx, decode(ctx, PhpOps.toStr(a[0]), e).toUpperCase(Locale.ROOT), e);
         });
         Builtins.def("mb_strtolower", 1, 2, (ctx, a) -> {
+            String str = PhpOps.toStr(a[0]);
             Encoding e = argumentEncoding(ctx, a, 1, "mb_strtolower");
-            return encode(ctx, decode(ctx, PhpOps.toStr(a[0]), e).toLowerCase(Locale.ROOT), e);
+            if (StandardCharsets.UTF_8.equals(e.charset()) && PhpStrings.isAscii(str)) {
+                return PhpStrings.lower(str);
+            }
+            return encode(ctx, decode(ctx, str, e).toLowerCase(Locale.ROOT), e);
         });
         Builtins.def("mb_ord", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_ord");
