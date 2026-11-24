@@ -1,0 +1,23 @@
+int(42)
+int(3)
+float(1.5)
+float(4)
+string(3) "123"
+bool(true)
+int(5)
+NULL
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+int(7)
+string(2) "xy"
+string(2) "xy"
+string(3) "xyz"
+string(3) "xy!"
+string(3) "xy!"
+string(4) "xy!?"
+Error: Typed property Typed::$late must not be accessed before initialization
+int(8)
