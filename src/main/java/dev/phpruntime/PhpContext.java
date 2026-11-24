@@ -1779,14 +1779,55 @@ public final class PhpContext {
 
     /** One ob_start() level: its buffered text and, for ob_list_handlers, its handler. */
     public static final class OutputBuffer {
-        public final StringBuilder text = new StringBuilder();
+        public final StringBuilder text;
         public Object handler;
         public String handlerName = "default output handler";
+
+        public OutputBuffer(StringBuilder text) {
+            this.text = text;
+        }
     }
 
     /** ob_start() levels, innermost last. Null means echo goes straight to the response. */
     private java.util.ArrayList<OutputBuffer> buffers;
     private boolean outputStarted;
+    /**
+     * Builders of finished output buffers, reused by the next ob_start() of this request or the
+     * next request on this worker. A view render opens one per component, and each fresh
+     * builder grew from 16 bytes, allocating every step of the growth.
+     */
+    private java.util.ArrayDeque<StringBuilder> bufferPool;
+
+    private static final int BUFFER_POOL_SIZE = 8;
+    private static final int BUFFER_POOL_MAX_CAPACITY = 1 << 20;
+
+    /** A builder for a new output buffer, keeping the capacity a previous one reached. */
+    @TruffleBoundary
+    public StringBuilder newOutputBufferText() {
+        if (bufferPool != null) {
+            StringBuilder reused = bufferPool.pollLast();
+            if (reused != null) {
+                reused.setLength(0);
+                return reused;
+            }
+        }
+        return new StringBuilder();
+    }
+
+    /** Returns a finished output buffer's builder for reuse. Its text must be consumed already. */
+    @TruffleBoundary
+    public void releaseOutputBufferText(StringBuilder text) {
+        if (text.capacity() > BUFFER_POOL_MAX_CAPACITY) {
+            return; // one huge render must not pin its buffer for the life of the worker
+        }
+        if (bufferPool == null) {
+            bufferPool = new java.util.ArrayDeque<>();
+        }
+        if (bufferPool.size() < BUFFER_POOL_SIZE) {
+            text.setLength(0);
+            bufferPool.addLast(text);
+        }
+    }
 
     public java.util.List<OutputBuffer> outputBuffers() {
         if (buffers == null) {
@@ -1824,7 +1865,9 @@ public final class PhpContext {
     public void flush() {
         while (buffers != null && !buffers.isEmpty()) {
             OutputBuffer top = buffers.remove(buffers.size() - 1);
-            echo(applyObHandler(top, top.text.toString(), 9L));
+            String text = top.text.toString();
+            releaseOutputBufferText(top.text);
+            echo(applyObHandler(top, text, 9L));
         }
         flushOutput();
     }
