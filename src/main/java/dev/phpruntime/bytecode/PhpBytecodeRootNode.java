@@ -1452,6 +1452,28 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return (a == b) != negate;
         }
 
+        @Specialization
+        static boolean eqString(boolean negate, String a, String b) {
+            if (couldBeNumeric(a) || couldBeNumeric(b)) {
+                // "1e1" == "10": two numeric strings compare as numbers.
+                return Ops.looseEquals(a, b) != negate;
+            }
+            return a.equals(b) != negate;
+        }
+
+        /** Whether the text has only characters a numeric string may contain; conservative. */
+        static boolean couldBeNumeric(String s) {
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if ((c < '0' || c > '9') && c != '.' && c != 'e' && c != 'E' && c != '+'
+                        && c != '-' && c != ' ' && c != '\t' && c != '\n' && c != '\r'
+                        && c != '\f' && c != 0x0B) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         @Fallback
         static boolean generic(boolean negate, Object a, Object b) {
             return Ops.looseEquals(a, b) != negate;
@@ -1469,6 +1491,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static boolean idBoolean(boolean negate, boolean a, boolean b) {
             return (a == b) != negate;
+        }
+
+        @Specialization
+        static boolean idString(boolean negate, String a, String b) {
+            return a.equals(b) != negate;
         }
 
         @Fallback
