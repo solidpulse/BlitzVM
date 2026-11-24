@@ -4861,6 +4861,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                            @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached("create(root)") ArrayAccessNode access) {
+            // The common step: a value from a plain array into a local. No item or cell is made.
+            if (!byRef && !state.ref() && state.source() instanceof PhpArray array) {
+                Object fetched = Ops.destructureGet(array, sourceKey, location);
+                if (fetched == null) {
+                    Ops.warnDestructureMissing(sourceKey, lineOf(bytecode, bci), location);
+                    store(frame, acc, info, bytecode, PhpNull.INSTANCE);
+                } else {
+                    store(frame, acc, info, bytecode, PhpOps.copyOnAssign(fetched));
+                }
+                return state;
+            }
             DestructureItem item = Ops.destructureItem(frame, state, sourceKey, byRef, access, location,
                     lineOf(bytecode, bci));
             if (item.cell() != null) {
