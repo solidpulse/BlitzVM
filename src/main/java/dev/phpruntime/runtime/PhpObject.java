@@ -23,8 +23,18 @@ public final class PhpObject extends DynamicObject {
     /** Set once at creation; the snapshot copier fills it in after the object exists (cycles). */
     private PhpClosure closure;
     private boolean cloning;
-    /** php's property guards: name -> bits of the magic methods running for it (zend_get_property_guard). */
-    private java.util.HashMap<String, Integer> magicGuards;
+    /**
+     * php's property guards: the magic methods currently running for a property
+     * (zend_get_property_guard). A stack of the active entries, newest last; it is almost
+     * always empty, so a read is a null check and an enter is two array stores.
+     */
+    private MagicGuardStack magicGuards;
+
+    private static final class MagicGuardStack {
+        String[] names = new String[4];
+        int[] kinds = new int[4];
+        int depth;
+    }
 
     public static final int GUARD_GET = 1;
     public static final int GUARD_SET = 2;
@@ -37,26 +47,61 @@ public final class PhpObject extends DynamicObject {
 
     /** True while the magic method {@code kind} runs for property {@code name} on this object. */
     public boolean inMagic(String name, int kind) {
-        return magicGuards != null && (magicGuards.getOrDefault(name, 0) & kind) != 0;
+        MagicGuardStack g = magicGuards;
+        if (g == null) {
+            return false;
+        }
+        for (int i = g.depth - 1; i >= 0; i--) {
+            if ((g.kinds[i] & kind) != 0 && g.names[i].equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void enterMagic(String name, int kind) {
-        if (magicGuards == null) {
-            magicGuards = new java.util.HashMap<>();
+        MagicGuardStack g = magicGuards;
+        if (g == null) {
+            g = magicGuards = new MagicGuardStack();
         }
-        magicGuards.merge(name, kind, (a, b) -> a | b);
+        if (g.depth == g.names.length) {
+            g.names = java.util.Arrays.copyOf(g.names, g.depth * 2);
+            g.kinds = java.util.Arrays.copyOf(g.kinds, g.depth * 2);
+        }
+        g.names[g.depth] = name;
+        g.kinds[g.depth] = kind;
+        g.depth++;
     }
 
     public void exitMagic(String name, int kind) {
-        Integer bits = magicGuards.get(name);
-        if (bits != null) {
-            int rest = bits & ~kind;
-            if (rest == 0) {
-                magicGuards.remove(name);
-            } else {
-                magicGuards.put(name, rest);
+        MagicGuardStack g = magicGuards;
+        if (g == null) {
+            return;
+        }
+        int last = g.depth - 1;
+        if (last < 0) {
+            return;
+        }
+        int at = last;
+        if (g.kinds[at] != kind || !g.names[at].equals(name)) {
+            // A mismatched exit (nested calls with different properties): drop the newest match.
+            at = -1;
+            for (int i = last; i >= 0; i--) {
+                if (g.kinds[i] == kind && g.names[i].equals(name)) {
+                    at = i;
+                    break;
+                }
+            }
+            if (at < 0) {
+                return;
             }
         }
+        if (at != last) {
+            System.arraycopy(g.names, at + 1, g.names, at, last - at);
+            System.arraycopy(g.kinds, at + 1, g.kinds, at, last - at);
+        }
+        g.names[last] = null;
+        g.depth = last;
     }
     private PhpNativeState nativeState;
 

@@ -69,6 +69,20 @@ public final class DispatchCallNode extends Node {
         }
     }
 
+    /**
+     * A magic method the runtime calls on its own: php gives its frame the caller's current
+     * line, which no call site here knows, so the frame is an unknown site.
+     */
+    public Object callUnsitedMethod(PhpClass.MethodEntry entry, Object[] args) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        int depth = ctx.pushTraceFrame(dev.phpruntime.runtime.PhpBacktrace.UNKNOWN_SITE);
+        try {
+            return callMethod(entry, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
     /** {@link #callMethod} with the call site pushed for the callee's exception traces. */
     public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site) {
         return callMethod(entry, args, site, null);

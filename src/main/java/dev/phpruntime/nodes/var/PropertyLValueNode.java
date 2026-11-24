@@ -800,12 +800,10 @@ public final class PropertyLValueNode extends LValueNode {
     }
 
     /** A magic method applies unless it is already running for this property (php's guards). */
-    @TruffleBoundary
     private static boolean magicUsable(PhpClass.MethodEntry entry, PhpObject obj, String name, int kind) {
         return entry != null && entry.callTarget() != null && !obj.inMagic(name, kind);
     }
 
-    @TruffleBoundary
     private Object callMagicGuarded(PhpClass.MethodEntry entry, PhpObject obj, String name, int kind) {
         obj.enterMagic(name, kind);
         try {
@@ -815,12 +813,20 @@ public final class PropertyLValueNode extends LValueNode {
         }
     }
 
-    @TruffleBoundary
+    /** The magic call site: a direct call to the method's target when the class does not change. */
+    @Child private dev.phpruntime.nodes.call.DispatchCallNode magicDispatch;
+
     private Object callMagic1(PhpClass.MethodEntry entry, PhpObject obj, String name) {
-        if (entry.fromTrait()) {
-            return dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), obj, obj.phpClass(), entry.declaringClass(), name);
+        dev.phpruntime.nodes.call.DispatchCallNode dispatch = magicDispatch;
+        if (dispatch == null) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreterAndInvalidate();
+            dispatch = insert(dev.phpruntime.nodes.call.DispatchCallNode.create());
+            magicDispatch = dispatch;
         }
-        return dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), obj, obj.phpClass(), name);
+        Object[] args = entry.fromTrait()
+                ? new Object[]{obj, obj.phpClass(), entry.declaringClass(), name}
+                : new Object[]{obj, obj.phpClass(), name};
+        return dispatch.callUnsitedMethod(entry, args);
     }
 
     @TruffleBoundary
