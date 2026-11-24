@@ -394,6 +394,17 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
+     * An owner of this array for a walk that can run PHP, so iterating with {@link #firstPos}
+     * is as safe as {@link #entries}: a callback that writes the array copies it first and the
+     * cursor keeps php's by-value view. Release with {@link #releaseShare} when the walk ends.
+     * The view must be the array the walk holds; do not keep it after the release.
+     */
+    @TruffleBoundary
+    public PhpArray walkView() {
+        return share();
+    }
+
+    /**
      * Iterates entries in array order without building a snapshot. Only for loops that cannot
      * modify this array and cannot run PHP, because a modification would move the cursor.
      */
@@ -402,6 +413,21 @@ public final class PhpArray implements TruffleObject {
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
             Object v = values[pos];
             action.accept(keyAt(pos), v instanceof PhpReference ref ? ref.getValue() : v);
+        }
+    }
+
+    /**
+     * Room for entries about to be appended to a packed array, so building a known size does not
+     * grow by doubling. No semantic change; a shared array is never modified in place.
+     */
+    @TruffleBoundary
+    public void reserve(int additional) {
+        if (keys != null || additional <= 0 || shared != 0 || immutable) {
+            return;
+        }
+        int needed = size + additional;
+        if (needed > values.length) {
+            values = Arrays.copyOf(values, needed);
         }
     }
 
@@ -421,8 +447,10 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
-     * implode() over a snapshot of the values. The snapshot keeps a __toString() method that
-     * modifies the array from changing what the loop still has to visit, which is php's
+     * implode(). With one element the result is the element itself, so no builder and no copy
+     * (php returns the string unchanged). With no object value, converting to string cannot run
+     * PHP, so the array cannot change during the walk and no snapshot is needed; object values
+     * keep a snapshot because a __toString() method may modify the array, which is php's
      * by-value behaviour. One boundary call covers the whole walk, and the builder is sized
      * from the element lengths to avoid growth copies.
      */
@@ -430,6 +458,28 @@ public final class PhpArray implements TruffleObject {
     public String join(String glue) {
         if (size == 0) {
             return "";
+        }
+        if (size == 1) {
+            return PhpOps.toStr(valueAt(firstPos()));
+        }
+        if (!hasObjectValue()) {
+            long chars = (long) glue.length() * (size - 1);
+            for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
+                chars += estimateText(values[pos]);
+            }
+            if (chars > Integer.MAX_VALUE - 16) {
+                chars = Integer.MAX_VALUE - 16;
+            }
+            StringBuilder sb = new StringBuilder((int) chars);
+            boolean first = true;
+            for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
+                if (!first) {
+                    sb.append(glue);
+                }
+                first = false;
+                sb.append(PhpOps.toStr(valueAt(pos)));
+            }
+            return sb.toString();
         }
         Object[] snapshot = new Object[size];
         int n = 0;
@@ -454,6 +504,16 @@ public final class PhpArray implements TruffleObject {
             sb.append(v instanceof String str ? str : PhpOps.toStr(v));
         }
         return sb.toString();
+    }
+
+    private static long estimateText(Object v) {
+        if (v instanceof String s) {
+            return s.length();
+        }
+        if (v instanceof PhpReference ref) {
+            return ref.getValue() instanceof String s ? s.length() : 12;
+        }
+        return 12;
     }
 
     @TruffleBoundary

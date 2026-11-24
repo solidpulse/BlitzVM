@@ -206,22 +206,28 @@ final class ArrayFunctions {
             boolean numeric = base == 1L;
             PhpArray out = new PhpArray();
             List<Object> seen = new ArrayList<>();
-            for (Map.Entry<Object, Object> e : src.entries()) {
-                Object value = unwrap(e.getValue());
-                boolean dup = false;
-                for (Object s : seen) {
-                    boolean equal = natural
-                            ? StringFunctions.natCompare(PhpOps.toStr(s), PhpOps.toStr(value), foldCase) == 0
-                            : numeric ? numericEquals(s, value) : PhpOps.looseEquals(s, value);
-                    if (equal) {
-                        dup = true;
-                        break;
+            PhpArray view = src.walkView();
+            try {
+                for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                    Object raw = view.rawValueAt(pos);
+                    Object value = unwrap(raw);
+                    boolean dup = false;
+                    for (Object s : seen) {
+                        boolean equal = natural
+                                ? StringFunctions.natCompare(PhpOps.toStr(s), PhpOps.toStr(value), foldCase) == 0
+                                : numeric ? numericEquals(s, value) : PhpOps.looseEquals(s, value);
+                        if (equal) {
+                            dup = true;
+                            break;
+                        }
+                    }
+                    if (!dup) {
+                        seen.add(value);
+                        out.put(view.keyAt(pos), PhpOps.copyOnAssign(raw));
                     }
                 }
-                if (!dup) {
-                    seen.add(value);
-                    out.put(e.getKey(), PhpOps.copyOnAssign(value));
-                }
+            } finally {
+                view.releaseShare();
             }
             return out;
         });
@@ -846,8 +852,13 @@ final class ArrayFunctions {
             if (cb == null) {
                 src.forEachEntry((key, value) -> out.put(key, PhpOps.copyOnAssign(value)));
             } else {
-                for (Map.Entry<Object, Object> e : src.entries()) {
-                    out.put(e.getKey(), cb.call(ctx, null, null, e.getValue()));
+                PhpArray view = src.walkView();
+                try {
+                    for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                        out.put(view.keyAt(pos), cb.call(ctx, null, view.valueAt(pos)));
+                    }
+                } finally {
+                    view.releaseShare();
                 }
             }
             return out;
@@ -895,18 +906,27 @@ final class ArrayFunctions {
             });
             return out;
         }
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            boolean keep;
-            if (mode == 2L) { // ARRAY_FILTER_USE_KEY
-                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getKey()));
-            } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
-                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
-            } else {
-                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue()));
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object key = view.keyAt(pos);
+                Object raw = view.rawValueAt(pos);
+                Object value = unwrap(raw);
+                boolean keep;
+                if (mode == 2L) { // ARRAY_FILTER_USE_KEY
+                    keep = PhpOps.toBool(cb.call(ctx, null, key));
+                } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
+                    keep = PhpOps.toBool(cb.call(ctx, null, value, key));
+                } else {
+                    keep = PhpOps.toBool(cb.call(ctx, null, value));
+                }
+                if (keep) {
+                    // php copies the zval, so a reference cell stays a reference in the result.
+                    out.put(key, PhpOps.copyOnAssign(raw));
+                }
             }
-            if (keep) {
-                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
-            }
+        } finally {
+            view.releaseShare();
         }
         return out;
     }
@@ -915,8 +935,13 @@ final class ArrayFunctions {
         PhpArray src = arr(a, 0, "array_reduce");
         PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
         Object acc = a.length > 2 ? PhpOps.copyOnAssign(a[2]) : PhpNull.INSTANCE;
-        for (Object v : src.values()) {
-            acc = cb.call(ctx, null, null, acc, v);
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                acc = cb.call(ctx, null, acc, view.valueAt(pos));
+            }
+        } finally {
+            view.releaseShare();
         }
         return acc;
     }
@@ -979,8 +1004,8 @@ final class ArrayFunctions {
         List<Map.Entry<Object, Object>> entries = new ArrayList<>(writable(a).entries());
         entries.sort((e1, e2) -> {
             Object res = byKey
-                    ? cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
-                    : cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
+                    ? cb.call(ctx, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
+                    : cb.call(ctx, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
             return PhpOps.compare(res, 0L);
         });
         if (keepKeys) {
@@ -998,10 +1023,17 @@ final class ArrayFunctions {
     private static Object findEntry(PhpContext ctx, Object[] a, String fn, boolean returnKey) {
         PhpArray src = arr(a, 0, fn);
         PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            if (PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()))) {
-                return returnKey ? e.getKey() : PhpOps.copyOnAssign(e.getValue());
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object value = view.valueAt(pos);
+                Object key = view.keyAt(pos);
+                if (PhpOps.toBool(cb.call(ctx, null, value, key))) {
+                    return returnKey ? key : PhpOps.copyOnAssign(value);
+                }
             }
+        } finally {
+            view.releaseShare();
         }
         return PhpNull.INSTANCE;
     }
@@ -1009,14 +1041,21 @@ final class ArrayFunctions {
     private static boolean anyOrAll(PhpContext ctx, Object[] a, boolean isAny) {
         PhpArray src = arr(a, 0, isAny ? "array_any" : "array_all");
         PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            boolean matched = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
-            if (isAny && matched) {
-                return true;
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object value = view.valueAt(pos);
+                Object key = view.keyAt(pos);
+                boolean matched = PhpOps.toBool(cb.call(ctx, null, value, key));
+                if (isAny && matched) {
+                    return true;
+                }
+                if (!isAny && !matched) {
+                    return false;
+                }
             }
-            if (!isAny && !matched) {
-                return false;
-            }
+        } finally {
+            view.releaseShare();
         }
         return !isAny;
     }
@@ -1028,30 +1067,24 @@ final class ArrayFunctions {
      */
     private static PhpArray uniqueByString(PhpArray src, boolean foldCase) {
         PhpArray out = new PhpArray();
-        Object[] packed = src.hasObjectValue() ? null : src.packedValues();
-        if (packed != null) {
+        // toStr on an object runs __toString, which can write the array: the view keeps the walk
+        // on php's by-value snapshot without an entries() list.
+        PhpArray view = src.walkView();
+        try {
             java.util.HashSet<String> seen = new java.util.HashSet<>();
-            for (int i = 0; i < packed.length; i++) {
-                String key = PhpOps.toStr(packed[i]);
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object raw = view.rawValueAt(pos);
+                Object value = unwrap(raw);
+                String key = PhpOps.toStr(value);
                 if (foldCase) {
                     key = dev.phpruntime.runtime.PhpStrings.lower(key);
                 }
                 if (seen.add(key)) {
-                    out.put((long) i, PhpOps.copyOnAssign(packed[i]));
+                    out.put(view.keyAt(pos), PhpOps.copyOnAssign(raw));
                 }
             }
-            return out;
-        }
-        java.util.HashSet<String> seen = new java.util.HashSet<>();
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            Object value = unwrap(e.getValue());
-            String key = PhpOps.toStr(value);
-            if (foldCase) {
-                key = dev.phpruntime.runtime.PhpStrings.lower(key);
-            }
-            if (seen.add(key)) {
-                out.put(e.getKey(), PhpOps.copyOnAssign(value));
-            }
+        } finally {
+            view.releaseShare();
         }
         return out;
     }

@@ -3422,12 +3422,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         private static void arraySpreadArray(PhpArray dest, PhpArray src) {
-            for (Map.Entry<Object, Object> e : src.entries()) {
-                Object v = PhpOps.copyOnAssign(e.getValue());
-                if (e.getKey() instanceof Long) {
+            // No PHP runs here, so the cursor cannot move; the entries() snapshot and its
+            // KeyValueHolder per element were pure garbage.
+            int n = src.size();
+            dest.reserve(n);
+            for (int pos = src.firstPos(); pos >= 0; pos = src.nextPos(pos)) {
+                // php's unpacking keeps a reference cell: both arrays then point at the same
+                // cell, so a write through either is visible through the other.
+                Object v = PhpOps.copyOnAssign(src.rawValueAt(pos));
+                Object key = src.keyAt(pos);
+                if (key instanceof Long) {
                     dest.append(v);
                 } else {
-                    dest.put(e.getKey(), v);
+                    dest.put(key, v);
                 }
             }
         }

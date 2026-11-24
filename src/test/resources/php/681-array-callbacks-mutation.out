@@ -1,0 +1,12 @@
+map=[10,20,30] seen=[1,2,3] source=[100,3,99]
+filter={"a":1,"c":3} order=["a1","b2","c3"] source={"a":50,"c":3,"d":4}
+reduce=10 steps=[1,2,3,4] source=[1,2,3,40,5]
+any=true visited=[1,2] source=[10,2,3,4]
+all=true visited=[1,2,3] source=[1,20]
+find=6 find_key=1
+refs=[1,2,1] [7,2,7]
+keys-map={"x":"A","3":"B","y":"C","0":"D"}
+keys-filter={"x":"a","y":"c","0":"d"}
+keys-any=true
+keys-all=true
+keys-find=0
