@@ -1509,6 +1509,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         @TruffleBoundary
         static String strings(String a, String b) {
+            // php shares the other operand when one side is empty; String.concat only skips an
+            // empty right side.
+            if (a.isEmpty()) {
+                return b;
+            }
             return a.concat(b);
         }
 
