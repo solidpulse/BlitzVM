@@ -860,14 +860,14 @@ public final class PropertyLValueNode extends LValueNode {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
+            Resolution[] entries = cache;
+            if (entries == MEGAMORPHIC) {
+                return null;
+            }
             Resolution front = lastResolution;
             if (front != null && h == front.hierarchyId()
                     && (!front.callerSensitive() || front.callerHierarchyId() == callerHierarchyId(frame, keys))) {
                 return front;
-            }
-            Resolution[] entries = cache;
-            if (entries == MEGAMORPHIC) {
-                return null;
             }
             Resolution hit = lookup(entries, h, frame, keys);
             if (hit != null) {
@@ -940,7 +940,9 @@ public final class PropertyLValueNode extends LValueNode {
                     // Readers take the array without the lock: its elements must be visible first.
                     java.lang.invoke.VarHandle.storeStoreFence();
                     cache = next;
-                    lastResolution = entry;
+                    if (next != MEGAMORPHIC) {
+                        lastResolution = entry;
+                    }
                 }
             }
         } finally {
