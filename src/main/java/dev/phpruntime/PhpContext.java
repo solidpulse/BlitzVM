@@ -1980,7 +1980,7 @@ public final class PhpContext {
      * frame is the function owning the site of the next inner frame, which keeps the entry to
      * one reference.
      */
-    private Object[] traceSites = new Object[8];
+    private Object[] traceSites = new Object[64];
     private int traceDepth;
 
     public int traceDepth() {
@@ -1996,12 +1996,19 @@ public final class PhpContext {
         int depth = traceDepth;
         Object[] sites = traceSites;
         if (depth == sites.length) {
-            sites = java.util.Arrays.copyOf(sites, depth * 2);
-            traceSites = sites;
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreterAndInvalidate();
+            growTraceSites(depth);
+            sites = traceSites;
         }
         sites[depth] = site;
         traceDepth = depth + 1;
         return depth;
+    }
+
+    /** The rare deep-recursion path: keeping the copy out of every call site's compiled code. */
+    @TruffleBoundary
+    private void growTraceSites(int depth) {
+        traceSites = java.util.Arrays.copyOf(traceSites, depth * 2);
     }
 
     public void popTraceFrame(int depth) {
