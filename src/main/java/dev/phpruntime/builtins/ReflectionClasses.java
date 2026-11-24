@@ -330,40 +330,34 @@ public final class ReflectionClasses {
 
     /**
      * The Reflector classes the engine creates. Every object of one of these classes has the
-     * same small set of declared properties, so the handle for it caches the class lookup, one
-     * PutNode per php-visible property and a shape in which those properties already exist.
+     * same small set of declared properties, so the handle for it caches the class lookup and
+     * one PutNode per php-visible property.
      *
      * <p>This used to be a by-name {@link PhpContext#lookupClass} plus an uncached
      * {@code DynamicObject.PutNode} per object, which is most of the cost of the reflection
      * hot path: the container creates thousands of these per request.
      */
     private enum Kind {
-        REFLECTION_CLASS("reflectionclass", "ReflectionClass", true, false),
-        REFLECTION_OBJECT("reflectionobject", "ReflectionObject", true, false),
-        REFLECTION_METHOD("reflectionmethod", "ReflectionMethod", true, true),
-        REFLECTION_FUNCTION("reflectionfunction", "ReflectionFunction", true, false),
-        REFLECTION_PARAMETER("reflectionparameter", "ReflectionParameter", true, false),
-        REFLECTION_PROPERTY("reflectionproperty", "ReflectionProperty", true, true),
-        REFLECTION_CLASS_CONSTANT("reflectionclassconstant", "ReflectionClassConstant", true, true),
-        REFLECTION_ATTRIBUTE("reflectionattribute", "ReflectionAttribute", false, false),
-        REFLECTION_NAMED_TYPE("reflectionnamedtype", "ReflectionNamedType", false, false),
-        REFLECTION_UNION_TYPE("reflectionuniontype", "ReflectionUnionType", false, false),
-        REFLECTION_INTERSECTION_TYPE("reflectionintersectiontype", "ReflectionIntersectionType", false, false),
-        REFLECTION_ENUM("reflectionenum", "ReflectionEnum", true, false),
-        REFLECTION_ENUM_UNIT_CASE("reflectionenumunitcase", "ReflectionEnumUnitCase", true, true),
-        REFLECTION_ENUM_BACKED_CASE("reflectionenumbackedcase", "ReflectionEnumBackedCase", true, true),
-        REFLECTION_REFERENCE("reflectionreference", "ReflectionReference", false, false);
+        REFLECTION_CLASS("ReflectionClass"),
+        REFLECTION_OBJECT("ReflectionObject"),
+        REFLECTION_METHOD("ReflectionMethod"),
+        REFLECTION_FUNCTION("ReflectionFunction"),
+        REFLECTION_PARAMETER("ReflectionParameter"),
+        REFLECTION_PROPERTY("ReflectionProperty"),
+        REFLECTION_CLASS_CONSTANT("ReflectionClassConstant"),
+        REFLECTION_ATTRIBUTE("ReflectionAttribute"),
+        REFLECTION_NAMED_TYPE("ReflectionNamedType"),
+        REFLECTION_UNION_TYPE("ReflectionUnionType"),
+        REFLECTION_INTERSECTION_TYPE("ReflectionIntersectionType"),
+        REFLECTION_ENUM("ReflectionEnum"),
+        REFLECTION_ENUM_UNIT_CASE("ReflectionEnumUnitCase"),
+        REFLECTION_ENUM_BACKED_CASE("ReflectionEnumBackedCase"),
+        REFLECTION_REFERENCE("ReflectionReference");
 
-        final String lowerName;
         final String className;
-        final boolean hasName;
-        final boolean hasClass;
 
-        Kind(String lowerName, String className, boolean hasName, boolean hasClass) {
-            this.lowerName = lowerName;
+        Kind(String className) {
             this.className = className;
-            this.hasName = hasName;
-            this.hasClass = hasClass;
         }
     }
 
@@ -392,6 +386,9 @@ public final class ReflectionClasses {
         private final IdentityHashMap<PhpClass, Handle> byClass = new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, List<PropertyInfo>> propertyLists = new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, Map<String, PropertyInfo>> propertyMaps = new IdentityHashMap<>();
+        private final IdentityHashMap<PhpClass, List<MethodState>> methodLists = new IdentityHashMap<>();
+        private final IdentityHashMap<PhpClass, IdentityHashMap<PhpClass.MethodEntry, MethodState>> methodStates =
+                new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, DefaultsWriter> defaultsWriters = new IdentityHashMap<>();
 
         private Handle handle(PhpContext ctx, Kind kind) {
@@ -442,6 +439,29 @@ public final class ReflectionClasses {
                     cached.putIfAbsent(info.decl().name(), info);
                 }
                 propertyMaps.put(cls, cached);
+            }
+            return cached;
+        }
+
+        private MethodState methodState(PhpClass reflected, PhpClass.MethodEntry entry) {
+            IdentityHashMap<PhpClass.MethodEntry, MethodState> states = methodStates.get(reflected);
+            if (states == null) {
+                states = new IdentityHashMap<>();
+                methodStates.put(reflected, states);
+            }
+            MethodState state = states.get(entry);
+            if (state == null) {
+                state = ReflectionClasses.methodState(reflected, entry);
+                states.put(entry, state);
+            }
+            return state;
+        }
+
+        private List<MethodState> methods(PhpClass cls) {
+            List<MethodState> cached = methodLists.get(cls);
+            if (cached == null) {
+                cached = collectMethods(cls);
+                methodLists.put(cls, cached);
             }
             return cached;
         }
@@ -850,7 +870,7 @@ public final class ReflectionClasses {
             PhpClass cls = classState(self).cls();
             Integer filter = args.length > 0 && args[0] != PhpNull.INSTANCE ? (int) toLong(args[0]) : null;
             PhpArray result = new PhpArray();
-            for (MethodState method : collectMethods(cls)) {
+            for (MethodState method : handles(ctx).methods(cls)) {
                 if (filter != null && (methodModifiers(method) & filter) == 0) {
                     continue;
                 }
@@ -1100,10 +1120,6 @@ public final class ReflectionClasses {
     }
 
     /**
-     * Internal classes whose engine clone handler is absent. A user subclass inherits that
-     * unless it declares a public {@code __clone}, which is how php reports it.
-     */
-    /**
      * Internal classes the engine constructs with dedicated state, which php refuses to make
      * with {@code newInstanceWithoutConstructor()}. A final internal class with a plain object
      * layout (Attribute, Exception, DateTime, ...) is allowed, as in php.
@@ -1111,6 +1127,10 @@ public final class ReflectionClasses {
     private static final Set<String> NO_CONSTRUCTORLESS_INTERNAL = Set.of(
             "closure", "generator", "reflectionreference");
 
+    /**
+     * Internal classes whose engine clone handler is absent. A user subclass inherits that
+     * unless it declares a public {@code __clone}, which is how php reports it.
+     */
     private static final Set<String> NON_CLONEABLE_INTERNAL = Set.of(
             "generator", "fiber", "weakreference", "directory", "pdo", "pdostatement", "collator",
             "random\\randomizer", "reflectionreference",
@@ -1683,7 +1703,7 @@ public final class ReflectionClasses {
     }
 
     private static PhpObject reflectionMethodObject(PhpContext ctx, PhpClass reflected, PhpClass.MethodEntry entry) {
-        return newReflectionObject(ctx, Kind.REFLECTION_METHOD, methodState(reflected, entry));
+        return newReflectionObject(ctx, Kind.REFLECTION_METHOD, handles(ctx).methodState(reflected, entry));
     }
 
     private static PhpObject methodObject(PhpContext ctx, MethodState state) {
@@ -1868,7 +1888,7 @@ public final class ReflectionClasses {
             if (entry == null) {
                 throw reflectionError("Method " + cls.name() + "::" + methodName + "() does not exist");
             }
-            MethodState state = methodState(cls, entry);
+            MethodState state = handles(ctx).methodState(cls, entry);
             attach(ctx, self, state);
             return PhpNull.INSTANCE;
         });
