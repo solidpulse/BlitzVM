@@ -364,6 +364,12 @@ public final class PhpClass {
 
     private final boolean isThrowable;
     private final int splInterfaces;
+    /**
+     * Whether an instance may carry an {@link SplArrayState} (ArrayObject, ArrayIterator and their
+     * subclasses). A property access can only reach the array behind such an object, so every
+     * other class skips checking the native state.
+     */
+    private final boolean splArrayState;
 
     public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent, List<PhpClass> interfaces) {
         this(language, template, parent, interfaces, Map.of());
@@ -383,6 +389,9 @@ public final class PhpClass {
             interfaceBits |= iface.splInterfaces;
         }
         this.splInterfaces = interfaceBits;
+        this.splArrayState = "arrayobject".equals(template.lowerName())
+                || "arrayiterator".equals(template.lowerName())
+                || (parent != null && parent.splArrayState);
         this.isThrowable = (parent != null && parent.isThrowable)
                 || "exception".equals(template.lowerName())
                 || "error".equals(template.lowerName());
@@ -956,6 +965,11 @@ public final class PhpClass {
 
     public boolean hasSplInterface(int bit) {
         return (splInterfaces & bit) != 0;
+    }
+
+    /** Whether instances may carry an ArrayObject-style {@link SplArrayState}. */
+    public boolean mayHaveSplArrayState() {
+        return splArrayState;
     }
 
     public MethodEntry methodById(int id) {

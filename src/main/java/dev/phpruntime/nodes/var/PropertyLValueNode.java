@@ -30,8 +30,6 @@ public final class PropertyLValueNode extends LValueNode {
     private final int traitSelfSlot;
     /** Bytecode headless copies take the using class from keys[2] instead of the frame. */
     private final boolean traitCallerInKeys;
-    private final com.oracle.truffle.api.profiles.CountingConditionProfile arrayPropertyProfile =
-            com.oracle.truffle.api.profiles.CountingConditionProfile.create();
 
     @Child private DynamicObject.GetNode getNode = DynamicObject.GetNode.create();
     @Child private DynamicObject.PutNode putNode = DynamicObject.PutNode.create();
@@ -41,9 +39,18 @@ public final class PropertyLValueNode extends LValueNode {
     /**
      * How {@link #staticName} resolves for one class hierarchy. Published as a single immutable
      * object so a request reading it while another installs it never sees half an entry. The
-     * nested resolution carries the hook targets a monomorphic site calls directly.
+     * nested resolution carries the hook targets a monomorphic site calls directly, and the
+     * booleans that would otherwise be recomputed from it on every access.
      */
-    private record Resolution(long hierarchyId, long callerHierarchyId, PhpClass.PropertyResolution res) {
+    private record Resolution(long hierarchyId, long callerHierarchyId, boolean callerSensitive,
+                              boolean arrayProps, PhpClass.PropertyResolution res) {
+        static Resolution of(long hierarchyId, long callerHierarchyId, PhpClass cls, PhpClass.PropertyResolution res,
+                             boolean traitCaller) {
+            boolean sensitive = traitCaller || res.visibility() != Visibility.PUBLIC
+                    || res.setVisibility() != Visibility.PUBLIC || res.isReadonly()
+                    || res.getHook() != null || res.setHook() != null;
+            return new Resolution(hierarchyId, callerHierarchyId, sensitive, cls.mayHaveSplArrayState(), res);
+        }
     }
 
     /** Most class hierarchies (or hierarchy and caller pairs) one site caches before going megamorphic. */
@@ -119,12 +126,15 @@ public final class PropertyLValueNode extends LValueNode {
             warnNonObject(target, name);
             return PhpNull.INSTANCE;
         }
-        if (arrayProperties(obj, name)) {
-            return arrayAccess().get(obj, name);
-        }
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
+            if (fast.arrayProps() && arrayProperties(obj, name)) {
+                return arrayAccess().get(obj, name);
+            }
             return readResolved(frame, obj, name, fast.res(), keys);
+        }
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().get(obj, name);
         }
         return readSlow(frame, obj, name, keys, true);
     }
@@ -196,11 +206,11 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
-        if (arrayProperties(obj, name)) {
-            return arrayAccess().get(obj, name);
-        }
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
+            if (fast.arrayProps() && arrayProperties(obj, name)) {
+                return arrayAccess().get(obj, name);
+            }
             if (!fast.res().accessible()) {
                 return null;
             }
@@ -224,6 +234,9 @@ public final class PropertyLValueNode extends LValueNode {
             }
             return readFallback(obj, name, false, false, effectiveCallerLower(frame, keys));
         }
+        if (arrayProperties(obj, name)) {
+            return arrayAccess().get(obj, name);
+        }
         return readSlow(frame, obj, name, keys, false);
     }
 
@@ -233,10 +246,19 @@ public final class PropertyLValueNode extends LValueNode {
             return false;
         }
         String name = (String) keys[1];
-        if (arrayProperties(obj, name)) {
-            return arrayAccess().isSet(obj, name);
+        PhpClass.PropertyResolution res;
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null) {
+            if (fast.arrayProps() && arrayProperties(obj, name)) {
+                return arrayAccess().isSet(obj, name);
+            }
+            res = fast.res();
+        } else {
+            if (arrayProperties(obj, name)) {
+                return arrayAccess().isSet(obj, name);
+            }
+            res = obj.phpClass().resolveProperty(PhpContext.get(this), name, effectiveCallerLower(frame, keys));
         }
-        PhpClass.PropertyResolution res = resolveFor(frame, obj, name, keys);
         if (res.accessible()) {
             PhpClass.PropertyHook getHook = res.getHook();
             if (getHook != null && !obj.inMagic(name, PhpObject.GUARD_HOOK_ANY)) {
@@ -263,16 +285,7 @@ public final class PropertyLValueNode extends LValueNode {
     /** Marker for "hooked property whose get hook returned nothing usable", distinct from null. */
     private static final Object NO_ISSET = new Object();
 
-    private PhpClass.PropertyResolution resolveFor(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
-        Resolution fast = fastResolution(frame, obj, name, keys);
-        if (fast != null) {
-            return fast.res();
-        }
-        return obj.phpClass().resolveProperty(PhpContext.get(this), name, effectiveCallerLower(frame, keys));
-    }
-
-    private Object readIfSetInternal(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
-        Resolution fast = fastResolution(frame, obj, name, keys);
+    private Object readIfSetInternal(VirtualFrame frame, PhpObject obj, String name, Object[] keys, Resolution fast) {
         PhpClass.PropertyResolution res;
         String callerLower;
         if (fast != null) {
@@ -320,10 +333,13 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
-        if (arrayProperties(obj, name)) {
-            return arrayAccess().readIfSet(obj, name);
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null ? fast.arrayProps() : true) {
+            if (arrayProperties(obj, name)) {
+                return arrayAccess().readIfSet(obj, name);
+            }
         }
-        Object v = readIfSetInternal(frame, obj, name, keys);
+        Object v = readIfSetInternal(frame, obj, name, keys, fast);
         return v == NO_ISSET ? PhpNull.INSTANCE : v;
     }
 
@@ -335,12 +351,14 @@ public final class PropertyLValueNode extends LValueNode {
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
-        if (arrayProperties(obj, name)) {
-            arrayAccess().set(obj, name, value);
-            return;
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null ? fast.arrayProps() : true) {
+            if (arrayProperties(obj, name)) {
+                arrayAccess().set(obj, name, value);
+                return;
+            }
         }
         checkEnumDynamicProperty(obj, name);
-        Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null) {
             writeResolved(obj, name, value, fast.res(), effectiveCallerLower(frame, keys));
             return;
@@ -478,14 +496,18 @@ public final class PropertyLValueNode extends LValueNode {
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
-        if (arrayProperties(obj, name)) {
-            return arrayAccess().cell(obj, name);
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null ? fast.arrayProps() : true) {
+            if (arrayProperties(obj, name)) {
+                return arrayAccess().cell(obj, name);
+            }
         }
         checkEnumDynamicProperty(obj, name);
-        checkNotReadonlyForIndirectWrite(frame, keys);
-        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
+        String callerLower = effectiveCallerLower(frame, keys);
+        PhpClass.PropertyResolution res = fast != null ? fast.res() : resolveFull(obj, name, callerLower);
+        checkIndirect(obj, name, res, callerLower);
         if (!res.accessible()) {
-            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
+            throw inaccessibleError(obj, name, callerLower);
         }
         PhpClass.PropertyHook getHook = res.getHook();
         if (getHook != null && getHook.byRef() && !obj.inMagic(name, PhpObject.GUARD_HOOK_ANY)) {
@@ -539,10 +561,14 @@ public final class PropertyLValueNode extends LValueNode {
             return null;
         }
         String name = (String) keys[1];
-        if (arrayProperties(obj, name)) {
-            return null;
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null ? fast.arrayProps() : true) {
+            if (arrayProperties(obj, name)) {
+                return null;
+            }
         }
-        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
+        PhpClass.PropertyResolution res = fast != null ? fast.res()
+                : resolveFull(obj, name, effectiveCallerLower(frame, keys));
         if (!res.accessible() || !res.hasHooks()) {
             return null;
         }
@@ -562,15 +588,19 @@ public final class PropertyLValueNode extends LValueNode {
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
-        if (arrayProperties(obj, name)) {
-            arrayAccess().bindCell(obj, name, cell);
-            return;
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null ? fast.arrayProps() : true) {
+            if (arrayProperties(obj, name)) {
+                arrayAccess().bindCell(obj, name, cell);
+                return;
+            }
         }
         checkEnumDynamicProperty(obj, name);
-        checkNotReadonlyForIndirectWrite(frame, keys);
-        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
+        String callerLower = effectiveCallerLower(frame, keys);
+        PhpClass.PropertyResolution res = fast != null ? fast.res() : resolveFull(obj, name, callerLower);
+        checkIndirect(obj, name, res, callerLower);
         if (!res.accessible()) {
-            throw inaccessibleError(obj, name, effectiveCallerLower(frame, keys));
+            throw inaccessibleError(obj, name, callerLower);
         }
         if (res.virtual() || res.hasHooks()) {
             throw indirectModification(obj, name);
@@ -596,11 +626,15 @@ public final class PropertyLValueNode extends LValueNode {
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
         }
-        if (arrayProperties(obj, name)) {
-            arrayAccess().unset(obj, name);
-            return;
+        Resolution fast = fastResolution(frame, obj, name, keys);
+        if (fast != null ? fast.arrayProps() : true) {
+            if (arrayProperties(obj, name)) {
+                arrayAccess().unset(obj, name);
+                return;
+            }
         }
-        PhpClass.PropertyResolution res = resolveCached(frame, obj, name, keys);
+        PhpClass.PropertyResolution res = fast != null ? fast.res()
+                : resolveFull(obj, name, effectiveCallerLower(frame, keys));
         if (res.hasHooks()) {
             throw new PhpError("Cannot unset hooked property " + obj.phpClass().name() + "::$" + name, this);
         }
@@ -687,18 +721,6 @@ public final class PropertyLValueNode extends LValueNode {
         String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
         CompilerDirectives.transferToInterpreter();
         throw new PhpError("Typed property " + owner + "::$" + name + " must not be accessed before initialization", this);
-    }
-
-    /**
-     * The site's cached resolution when it has one, else the full lookup. Visibility is only
-     * approximate on the cached path; callers rebuild it for errors through inaccessibleError.
-     */
-    private PhpClass.PropertyResolution resolveCached(VirtualFrame frame, PhpObject obj, String name, Object[] keys) {
-        Resolution fast = fastResolution(frame, obj, name, keys);
-        if (fast != null) {
-            return fast.res();
-        }
-        return resolveFull(obj, name, effectiveCallerLower(frame, keys));
     }
 
     @TruffleBoundary
@@ -814,7 +836,8 @@ public final class PropertyLValueNode extends LValueNode {
         }
         for (int i = 0; i < entries.length; i++) {
             Resolution c = entries[i];
-            if (h == c.hierarchyId() && (!callerSensitive(c) || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
+            if (h == c.hierarchyId()
+                    && (!c.callerSensitive() || c.callerHierarchyId() == callerHierarchyId(frame, keys))) {
                 return c;
             }
         }
@@ -846,11 +869,11 @@ public final class PropertyLValueNode extends LValueNode {
         try {
             Resolution[] entries = cache;
             if (entries != MEGAMORPHIC) {
-                Resolution entry = new Resolution(h, callerH, res);
+                Resolution entry = Resolution.of(h, callerH, cls, res, traitSelfSlot >= 0 || traitCallerInKeys);
                 boolean present = false;
                 if (entries != null) {
                     for (Resolution c : entries) {
-                        present |= c.hierarchyId() == h && (!callerSensitive(c) || c.callerHierarchyId() == callerH);
+                        present |= c.hierarchyId() == h && (!c.callerSensitive() || c.callerHierarchyId() == callerH);
                     }
                 }
                 if (!present) {
@@ -874,13 +897,6 @@ public final class PropertyLValueNode extends LValueNode {
         return res;
     }
 
-    /** Whether a cached resolution depends on the caller (inside a trait method it varies by using class). */
-    private boolean callerSensitive(Resolution c) {
-        return traitSelfSlot >= 0 || traitCallerInKeys || c.res().visibility() != Visibility.PUBLIC
-                || c.res().setVisibility() != Visibility.PUBLIC || c.res().isReadonly()
-                || c.res().getHook() != null || c.res().setHook() != null;
-    }
-
     private String effectiveCallerLower(VirtualFrame frame, Object[] keys) {
         if (traitCallerInKeys) {
             PhpClass c = keys != null && keys.length > 2 && keys[2] instanceof PhpClass pc ? pc : null;
@@ -894,11 +910,9 @@ public final class PropertyLValueNode extends LValueNode {
     }
 
     private boolean arrayProperties(PhpObject obj, String name) {
-        if (arrayPropertyProfile.profile(obj.nativeState() instanceof SplArrayState state
-                && (state.flags & SplArrayState.ARRAY_AS_PROPS) != 0)) {
-            return !obj.phpClass().hasDeclaredProperty(name);
-        }
-        return false;
+        return obj.nativeState() instanceof SplArrayState state
+                && (state.flags & SplArrayState.ARRAY_AS_PROPS) != 0
+                && !obj.phpClass().hasDeclaredProperty(name);
     }
 
     private ArrayAccessNode arrayAccess() {
