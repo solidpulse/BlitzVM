@@ -1208,9 +1208,19 @@ public final class BytecodeEmitter {
             b.beginStoreLocal(prepared);
             place(refTarget, PhpBytecodeRootNode.P_KEYS, 0, null);
             b.endStoreLocal();
-            b.beginNamedPlaceArg(placeSpec(refTarget), index, n, callee, argsLocal);
+            Form f = form(refTarget);
+            if (f.local() != null) {
+                b.beginNamedVarPlaceArg(placeSpec(refTarget), index, n, callee, argsLocal,
+                        accessor(f.local()), info(f.local()));
+            } else {
+                b.beginNamedPlaceArg(placeSpec(refTarget), index, n, callee, argsLocal);
+            }
             b.emitLoadLocal(prepared);
-            b.endNamedPlaceArg();
+            if (f.local() != null) {
+                b.endNamedVarPlaceArg();
+            } else {
+                b.endNamedPlaceArg();
+            }
             return;
         }
         b.beginNamedValueArg(index, n, namedValueKind(arg), callee, argsLocal);

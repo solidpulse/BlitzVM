@@ -4934,8 +4934,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class StartNamedArgs {
         @Specialization
         static Object start(NamedArgs.Spec spec, Object callee,
-                            @Cached("create()") NamedArgs.Cache cache) {
-            return new NamedArgs.Buffer(spec, cache.planFor(callee, spec));
+                            @Cached("create()") NamedArgs.Cache cache,
+                            @Cached("create()") NamedArgs.PlanProfile profile) {
+            return new NamedArgs.Buffer(spec, profile.profile(cache.planFor(callee, spec)));
         }
     }
 
@@ -4962,14 +4963,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (mode < 0) {
                 mode = NamedArgs.genericMode(callee, name.isEmpty() ? null : name, index);
             }
-            if (mode == NamedArgs.MODE_REF) {
+            if (mode == NamedArgs.MODE_REF || (mode == NamedArgs.MODE_BUILTIN_REF && plan != null)) {
                 Object cell = "this".equals(info.name())
                         ? new PhpReference(ReadVar.read(frame, acc, info, bytecode, bci, node))
                         : ObtainVarCell.obtain(frame, acc, info, bytecode);
                 if (duplicate) {
                     NamedArgs.throwDuplicate(name, location);
                 }
-                args.values[index] = cell;
+                args.setValue(index, cell);
                 return;
             }
             if (mode == NamedArgs.MODE_MAGIC) {
@@ -4977,7 +4978,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 if (duplicate) {
                     NamedArgs.throwDuplicate(name, location);
                 }
-                args.values[index] = PhpOps.copyOnAssign(v);
+                args.setValue(index, PhpOps.copyOnAssign(v));
                 return;
             }
             Object v = current(frame, acc, bytecode);
@@ -4985,13 +4986,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (duplicate) {
                 NamedArgs.throwDuplicate(name, location);
             }
-            args.values[index] = v;
+            args.setValue(index, v);
             if (mode == NamedArgs.MODE_BUILTIN_REF) {
                 args.setRef(index, localLValue(acc, info, bytecode), dev.phpruntime.nodes.var.LValueNode.NO_KEYS);
             }
         }
 
-        /** Built behind a boundary: the plan is not a constant, so this branch stays in the graph. */
+        /** Built behind a boundary: a megamorphic site's callee is not a constant. */
         @TruffleBoundary
         private static LocalLValue localLValue(LocalAccessor acc, VarInfo info, BytecodeNode bytecode) {
             return new LocalLValue(acc, info, bytecode);
@@ -5013,44 +5014,100 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                         @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
                         @Cached("create()") NamedArgs.PlanProfile profile) {
-            Object callee = calleeLocal.getObject(bytecode, frame);
-            NamedArgs.Buffer args = (NamedArgs.Buffer) argsLocal.getObject(bytecode, frame);
-            Object[] keys = ((PreparedPlace) prepared).keys();
-            NamedArgs.Plan plan = profile.profile(args.plan);
-            int mode = plan == null ? -1 : plan.mode[index];
-            boolean duplicate = (plan != null ? plan.spec : args.spec).duplicate(index);
-            if (mode < 0) {
-                mode = NamedArgs.genericMode(callee, name.isEmpty() ? null : name, index);
+            addPlaceArg(frame, spec, index, name, calleeLocal, argsLocal, prepared, bytecode, bci, node,
+                    location, engine, profile, null, null);
+        }
+    }
+
+    /**
+     * A place argument whose base is a local variable. An index path copies the array value out
+     * of the local, so a write that creates the element reports the updated array in the
+     * prepared place's holder; it has to be stored back, as the positional path does.
+     */
+    @Operation
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "index")
+    @ConstantOperand(type = String.class, name = "name")
+    @ConstantOperand(type = LocalAccessor.class, name = "callee")
+    @ConstantOperand(type = LocalAccessor.class, name = "args")
+    @ConstantOperand(type = LocalAccessor.class, name = "local")
+    @ConstantOperand(type = VarInfo.class, name = "localInfo")
+    public static final class NamedVarPlaceArg {
+        @Specialization
+        static void add(VirtualFrame frame, PlaceSpec spec, int index, String name, LocalAccessor calleeLocal,
+                        LocalAccessor argsLocal, LocalAccessor local, VarInfo localInfo, Object prepared,
+                        @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
+                        @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                        @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
+                        @Cached("create()") NamedArgs.PlanProfile profile) {
+            addPlaceArg(frame, spec, index, name, calleeLocal, argsLocal, prepared, bytecode, bci, node,
+                    location, engine, profile, local, localInfo);
+        }
+    }
+
+    private static void addPlaceArg(VirtualFrame frame, PlaceSpec spec, int index, String name,
+                                    LocalAccessor calleeLocal, LocalAccessor argsLocal, Object prepared,
+                                    BytecodeNode bytecode, int bci, Node node, SiteNode location,
+                                    dev.phpruntime.nodes.var.LValueNode engine, NamedArgs.PlanProfile profile,
+                                    LocalAccessor local, VarInfo localInfo) {
+        Object callee = calleeLocal.getObject(bytecode, frame);
+        NamedArgs.Buffer args = (NamedArgs.Buffer) argsLocal.getObject(bytecode, frame);
+        PreparedPlace p = (PreparedPlace) prepared;
+        Object[] keys = p.keys();
+        NamedArgs.Plan plan = profile.profile(args.plan);
+        int mode = plan == null ? -1 : plan.mode[index];
+        boolean duplicate = (plan != null ? plan.spec : args.spec).duplicate(index);
+        if (mode < 0) {
+            mode = NamedArgs.genericMode(callee, name.isEmpty() ? null : name, index);
+        }
+        if (mode == NamedArgs.MODE_REF) {
+            if (spec.template() instanceof dev.phpruntime.nodes.var.GlobalVarNode gv
+                    && gv.isGlobalsSuperglobal()) {
+                throw NamedArgs.globalsByRef(args, callee, index, name.isEmpty() ? null : name, location);
             }
-            if (mode == NamedArgs.MODE_REF) {
-                if (spec.template() instanceof dev.phpruntime.nodes.var.GlobalVarNode gv
-                        && gv.isGlobalsSuperglobal()) {
-                    throw NamedArgs.globalsByRef(args, callee, index, name.isEmpty() ? null : name, location);
-                }
-                Object cell = engine.obtainCell(frame, keys);
-                if (duplicate) {
-                    NamedArgs.throwDuplicate(name, location);
-                }
-                args.values[index] = cell;
-                return;
-            }
-            if (mode == NamedArgs.MODE_MAGIC) {
-                Object v = engine.readValue(frame, keys);
-                if (duplicate) {
-                    NamedArgs.throwDuplicate(name, location);
-                }
-                args.values[index] = PhpOps.copyOnAssign(v);
-                return;
-            }
-            Object v = engine.read(frame, keys);
-            v = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
+            Object cell = engine.obtainCell(frame, keys);
+            storeHolder(frame, local, localInfo, p, bytecode);
             if (duplicate) {
                 NamedArgs.throwDuplicate(name, location);
             }
-            args.values[index] = v;
-            if (mode == NamedArgs.MODE_BUILTIN_REF) {
-                args.setRef(index, engine, keys);
+            args.setValue(index, cell);
+            return;
+        }
+        if (mode == NamedArgs.MODE_BUILTIN_REF && plan != null) {
+            Object cell = engine.obtainCell(frame, keys);
+            storeHolder(frame, local, localInfo, p, bytecode);
+            if (duplicate) {
+                NamedArgs.throwDuplicate(name, location);
             }
+            args.setValue(index, cell);
+            return;
+        }
+        if (mode == NamedArgs.MODE_MAGIC) {
+            Object v = engine.readValue(frame, keys);
+            storeHolder(frame, local, localInfo, p, bytecode);
+            if (duplicate) {
+                NamedArgs.throwDuplicate(name, location);
+            }
+            args.setValue(index, PhpOps.copyOnAssign(v));
+            return;
+        }
+        Object v = engine.read(frame, keys);
+        storeHolder(frame, local, localInfo, p, bytecode);
+        v = v == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(v);
+        if (duplicate) {
+            NamedArgs.throwDuplicate(name, location);
+        }
+        args.setValue(index, v);
+        if (mode == NamedArgs.MODE_BUILTIN_REF) {
+            args.setRef(index, engine, keys);
+        }
+    }
+
+    /** Writes an index path's updated array back into the local it was read from. */
+    private static void storeHolder(VirtualFrame frame, LocalAccessor local, VarInfo localInfo,
+                                    PreparedPlace prepared, BytecodeNode bytecode) {
+        if (local != null && prepared.holder() != null && prepared.holder()[0] != HOLDER_EMPTY) {
+            store(frame, local, localInfo, bytecode, prepared.holder()[0]);
         }
     }
 
@@ -5097,16 +5154,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     v = NamedArgs.valueToRef(value, kind, args, callee, index,
                             name.isEmpty() ? null : name, location, lineOf(bytecode, bci));
                 }
-            } else {
-                if (mode == NamedArgs.MODE_BUILTIN_TEMP && kind == NamedArgs.VALUE_CALL) {
+            } else if (mode == NamedArgs.MODE_BUILTIN_TEMP) {
+                if (kind == NamedArgs.VALUE_CALL) {
                     NamedArgs.onlyVariablesNotice(location, lineOf(bytecode, bci));
                 }
+                v = new PhpReference(PhpOps.copyOnAssign(value));
+            } else {
                 v = PhpOps.copyOnAssign(value);
             }
             if (duplicate) {
                 NamedArgs.throwDuplicate(name, location);
             }
-            args.values[index] = v;
+            args.setValue(index, v);
         }
     }
 
@@ -5115,24 +5174,29 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = boolean.class, name = "keepRef")
     public static final class DoNamedFunction {
         @Specialization
-        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object argsObj,
+        static Object builtin(VirtualFrame frame, boolean keepRef, Builtins.Def builtin, Object argsObj,
+                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                              @Cached("create()") NamedArgs.PlanProfile profile) {
+            NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
+            NamedArgs.Plan plan = profile.profile(buffer.plan);
+            if (plan != null) {
+                if (plan.hasError()) {
+                    plan.throwError(location);
+                }
+                return NamedArgs.callBuiltin(builtin, buffer, plan, location);
+            }
+            return Ops.callComplexBuiltinBoundary(frame.materialize(), builtin, NamedArgs.toRaw(buffer), location);
+        }
+
+        @Specialization
+        static Object call(VirtualFrame frame, boolean keepRef, PhpFunction fn, Object argsObj,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached("create()") DispatchCallNode dispatch,
                            @Cached("create()") NamedArgs.PlanProfile profile) {
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
-            Builtins.Def builtin = builtinCallee(callee);
             NamedArgs.Plan plan = profile.profile(buffer.plan);
-            if (builtin != null) {
-                if (plan != null) {
-                    if (plan.hasError()) {
-                        plan.throwError(location);
-                    }
-                    return NamedArgs.callBuiltin(frame, builtin, buffer, plan, location);
-                }
-                return Ops.callComplexBuiltinBoundary(frame.materialize(), builtin, NamedArgs.toRaw(buffer), location);
-            }
-            PhpFunction fn = (PhpFunction) callee;
             Object[] args;
             if (plan != null) {
                 if (plan.hasError()) {
@@ -5244,7 +5308,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 if (plan.hasError()) {
                     plan.throwError(location);
                 }
-                return Ops.ret(keepRef, NamedArgs.callBuiltin(frame, cb.builtin(), buffer, plan, location));
+                return Ops.ret(keepRef, NamedArgs.callBuiltin(cb.builtin(), buffer, plan, location));
             }
             // Every guest kind builds its argument array first and then shares one dispatch,
             // so the callee is not inlined once per kind.

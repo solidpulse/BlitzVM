@@ -562,8 +562,10 @@ public final class CallArgHelper {
         for (int i = 0; i < passed; i++) {
             values[i] = pos.get(i);
             originals[i] = values[i];
-            lvs[i] = raw.posRefTargets().get(i);
-            keys[i] = raw.posRefKeys().get(i);
+            lvs[i] = raw.posRefTargets() != null && i < raw.posRefTargets().size()
+                    ? raw.posRefTargets().get(i) : null;
+            keys[i] = raw.posRefKeys() != null && i < raw.posRefKeys().size()
+                    ? raw.posRefKeys().get(i) : null;
         }
         for (int i = passed; i < length; i++) {
             String name = namedAt.get(i);

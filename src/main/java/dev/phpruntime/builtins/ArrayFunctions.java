@@ -114,7 +114,23 @@ final class ArrayFunctions {
     }
 
     private static void construction() {
-        Builtins.def("array_keys", 1, 1, (ctx, a) -> PhpArray.ofList(arr(a, 0, "array_keys").keys()));
+        Builtins.def("array_keys", 1, 3, (ctx, a) -> {
+            PhpArray array = arr(a, 0, "array_keys");
+            PhpArray out = new PhpArray();
+            boolean filter = a.length > 1;
+            boolean strict = a.length > 2 && PhpOps.toBool(a[2]);
+            for (int pos = array.firstPos(); pos >= 0; pos = array.nextPos(pos)) {
+                Object v = array.rawValueAt(pos);
+                if (v instanceof PhpReference ref) {
+                    v = ref.getValue();
+                }
+                if (filter && !(strict ? PhpOps.strictEquals(a[1], v) : PhpOps.looseEquals(a[1], v))) {
+                    continue;
+                }
+                out.append(array.keyAt(pos));
+            }
+            return out;
+        });
         Builtins.def("array_values", 1, 1, (ctx, a) -> PhpArray.ofList(shared(arr(a, 0, "array_values").values())));
         Builtins.def("array_merge", 0, -1, (ctx, a) -> {
             int total = 0;

@@ -119,18 +119,34 @@ final class NamedArgs {
         }
     }
 
-    /** One call's evaluated arguments, in call-site order. */
+    /**
+     * One call's evaluated arguments, in call-site order, or, when a builtin plan is already
+     * known, directly in parameter slots with the skipped defaults prefilled. The direct layout
+     * lets the call pass this array to the builtin unchanged, exactly as a positional call does.
+     */
     static final class Buffer {
         final Spec spec;
         final Plan plan;
         final Object[] values;
+        /** Whether {@link #values} is indexed by parameter slot instead of call-site index. */
+        final boolean slots;
         private LValueNode[] refs;
         private Object[][] refKeys;
 
         Buffer(Spec spec, Plan plan) {
             this.spec = spec;
             this.plan = plan;
-            this.values = new Object[spec.length()];
+            this.slots = plan != null && plan.kind == KIND_BUILTIN && !plan.hasError();
+            this.values = slots ? builtinSlots(plan) : new Object[spec.length()];
+        }
+
+        /** The array index an argument at call-site index {@code index} uses. */
+        private int slotOf(int index) {
+            return slots ? plan.dest[index] : index;
+        }
+
+        void setValue(int index, Object value) {
+            values[slotOf(index)] = value;
         }
 
         /** The by-reference mode of an argument; -1 when only the generic path can decide. */
@@ -139,20 +155,21 @@ final class NamedArgs {
         }
 
         void setRef(int index, LValueNode ref, Object[] keys) {
+            int slot = slotOf(index);
             if (refs == null) {
                 refs = new LValueNode[values.length];
                 refKeys = new Object[values.length][];
             }
-            refs[index] = ref;
-            refKeys[index] = keys;
+            refs[slot] = ref;
+            refKeys[slot] = keys;
         }
 
         LValueNode ref(int index) {
-            return refs == null ? null : refs[index];
+            return refs == null ? null : refs[slotOf(index)];
         }
 
         Object[] refKeys(int index) {
-            return refKeys == null ? null : refKeys[index];
+            return refKeys == null ? null : refKeys[slotOf(index)];
         }
     }
 
@@ -559,7 +576,7 @@ final class NamedArgs {
                 error = "Named parameter $" + name + " overwrites previous argument";
             }
             if (error == null && def.isRef(idx) && spec.kind(i) == ARG_VALUE
-                    && spec.valueKind(i) == VALUE_PLAIN) {
+                    && spec.valueKind(i) != VALUE_CALL) {
                 error = def.name() + "(): Argument #" + (idx + 1) + " ($" + params[idx].name()
                         + ") could not be passed by reference";
             }
@@ -780,11 +797,11 @@ final class NamedArgs {
     /**
      * {@link #bind} for a plan that is a compilation constant: the loops unroll over the call
      * site's arguments, so the argument array can stay virtual into an inlined callee. Plans with
-     * a named-variadic entry or a builtin callee go through {@link #bind}.
+     * a named-variadic entry go through {@link #bind}.
      */
     static Object[] bindArgs(Plan plan, Object a, Object b, Object c, Object[] values) {
         if (CompilerDirectives.inCompiledCode() && CompilerDirectives.isPartialEvaluationConstant(plan)
-                && plan.variadicSlot < 0 && plan.kind != KIND_BUILTIN) {
+                && plan.variadicSlot < 0) {
             return bindConstant(plan, a, b, c, values);
         }
         return bind(plan, plan.prefixLength, a, b, c, values);
@@ -813,6 +830,13 @@ final class NamedArgs {
                     out[base + dest[i]] = values[i];
                 }
             }
+        } else if (plan.kind == KIND_BUILTIN) {
+            Object[] defaults = plan.defaults;
+            int[] slotArg = plan.slotArg;
+            for (int s = 0; s < plan.totalSlots; s++) {
+                int arg = slotArg[s];
+                out[base + s] = arg >= 0 ? values[arg] : builtinDefault(defaults, s);
+            }
         } else {
             int[] slotArg = plan.slotArg;
             for (int s = 0; s < plan.totalSlots; s++) {
@@ -823,38 +847,53 @@ final class NamedArgs {
         return out;
     }
 
-    /**
-     * A builtin with named arguments: places defaults, then invokes and writes by-reference
-     * results back through the cell or lvalue the argument captured. The frame is materialized
-     * only for a builtin that has by-reference parameters.
-     */
-    static Object callBuiltin(VirtualFrame frame, Builtins.Def def, Buffer buffer, Plan plan, Node site) {
-        if (def.refMask() == 0) {
-            return callBuiltin((com.oracle.truffle.api.frame.MaterializedFrame) null, def, buffer, plan, site, false);
-        }
-        return callBuiltin(frame.materialize(), def, buffer, plan, site, true);
+    /** The value a skipped slot gets: the declared default, or "not passed" as null. */
+    private static Object builtinDefault(Object[] defaults, int slot) {
+        Object value = defaults == null ? null : defaults[slot];
+        return value == null || value == NO_DEFAULT ? PhpNull.INSTANCE : PhpOps.copyOnAssign(value);
     }
 
-    @TruffleBoundary
-    private static Object callBuiltin(com.oracle.truffle.api.frame.MaterializedFrame frame, Builtins.Def def,
-                                      Buffer buffer, Plan plan, Node site, boolean refs) {
-        Object[] values = bind(plan, 0, null, null, null, buffer.values);
-        Object[] originals = null;
-        LValueNode[] lvs = null;
-        Object[][] keys = null;
-        if (refs) {
-            originals = values.clone();
-            lvs = new LValueNode[values.length];
-            keys = new Object[values.length][];
-            for (int s = 0; s < plan.totalSlots; s++) {
-                int arg = plan.slotArg[s];
-                if (arg >= 0) {
-                    lvs[s] = buffer.ref(arg);
-                    keys[s] = buffer.refKeys(arg);
-                }
-            }
+    /**
+     * A direct-layout builtin buffer's argument array, prefilled with the declared defaults. The
+     * fill explodes when the plan is a compilation constant, so a monomorphic site stores each
+     * default as a constant and the array stays virtual.
+     */
+    static Object[] builtinSlots(Plan plan) {
+        Object[] out = new Object[plan.totalSlots];
+        if (CompilerDirectives.inCompiledCode() && CompilerDirectives.isPartialEvaluationConstant(plan)) {
+            fillSlots(out, plan);
+        } else {
+            fillSlotsSlow(out, plan);
         }
-        return CallArgHelper.callBoundBuiltin(frame, def, values, originals, lvs, keys, site);
+        return out;
+    }
+
+    @ExplodeLoop
+    private static void fillSlots(Object[] out, Plan plan) {
+        for (int s = 0; s < plan.totalSlots; s++) {
+            out[s] = builtinDefault(plan.defaults, s);
+        }
+    }
+
+    private static void fillSlotsSlow(Object[] out, Plan plan) {
+        for (int s = 0; s < plan.totalSlots; s++) {
+            out[s] = builtinDefault(plan.defaults, s);
+        }
+    }
+
+    /**
+     * A builtin with named arguments: places defaults, then calls the builtin exactly as the
+     * positional path does. A monomorphic site builds the argument array directly in parameter
+     * slots, so the array the builtin receives is the one the call site filled; megamorphic
+     * sites fall back to {@link #bind}. By-reference arguments arrive as cells, as they do from
+     * the positional path, so the writeback needs no frame or lvalue side table.
+     */
+    static Object callBuiltin(Builtins.Def def, Buffer buffer, Plan plan, PhpBytecodeRootNode.SiteNode site) {
+        Object[] values = buffer.slots ? buffer.values : bindArgs(plan, null, null, null, buffer.values);
+        if (def.refMask() == 0) {
+            return PhpBytecodeRootNode.Ops.callBuiltin(def, values, site);
+        }
+        return PhpBytecodeRootNode.Ops.callBuiltinValue(def, values, site);
     }
 
     // ------------------------------------------------------------------ generic fallback

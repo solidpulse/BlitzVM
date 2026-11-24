@@ -135,6 +135,27 @@ final class CallableFunctions {
                 return dev.phpruntime.nodes.call.CallArgHelper.unwrapReturn(cb.callTarget().call(frameArgs));
             }
         }
+        if (arr.hasStringKey()) {
+            // php passes string-keyed entries to a builtin as named arguments, in array order.
+            java.util.List<Object> pos = new java.util.ArrayList<>();
+            java.util.Map<String, Object> named = new java.util.LinkedHashMap<>();
+            boolean seenNamed = false;
+            for (Object k : arr.keys()) {
+                Object rawVal = arr.getRaw(k);
+                Object v = rawVal instanceof dev.phpruntime.runtime.PhpReference ref
+                        ? ref : PhpOps.copyOnAssign(arr.get(k));
+                if (k instanceof String s) {
+                    seenNamed = true;
+                    named.put(s, v);
+                } else {
+                    if (seenNamed) {
+                        throw new PhpError("Cannot use positional argument after named argument", ctx.currentBuiltinCallSite());
+                    }
+                    pos.add(v);
+                }
+            }
+            return cb.callNamed(ctx, ctx.currentBuiltinCallSite(), pos, named);
+        }
         return cb.call(ctx, null, ctx.currentBuiltinCallSite(), arr.rawValueArray());
     }
 
