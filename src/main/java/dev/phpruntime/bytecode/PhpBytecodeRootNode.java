@@ -3303,7 +3303,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         static String join(Object[] parts) {
-            StringBuilder sb = new StringBuilder();
+            // Size the builder from the parts that are already strings, so a rope of a few
+            // dozen characters does not allocate and copy three growing buffers.
+            long chars = 0;
+            for (Object v : parts) {
+                chars += v instanceof String s ? s.length() : 12;
+            }
+            if (chars > Integer.MAX_VALUE - 16) {
+                chars = Integer.MAX_VALUE - 16;
+            }
+            StringBuilder sb = new StringBuilder((int) chars);
             for (Object v : parts) {
                 sb.append(PhpOps.toStr(v));
             }

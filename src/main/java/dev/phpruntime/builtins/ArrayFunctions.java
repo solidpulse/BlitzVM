@@ -3,8 +3,10 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpCallable;
+import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 
@@ -845,17 +847,20 @@ final class ArrayFunctions {
     }
 
     private static PhpArray arrayMap(PhpContext ctx, Object[] a) {
-        PhpCallable cb = a[0] == PhpNull.INSTANCE ? null : PhpCallable.resolve(ctx, a[0], null);
+        Object cbValue = a[0];
+        PhpObject closureObj = cbValue instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = cbValue == PhpNull.INSTANCE || closure != null ? null : PhpCallable.resolve(ctx, cbValue, null);
         if (a.length == 2) {
             PhpArray src = arr(a, 1, "array_map");
             PhpArray out = new PhpArray();
-            if (cb == null) {
+            if (cb == null && closure == null) {
                 src.forEachEntry((key, value) -> out.put(key, PhpOps.copyOnAssign(value)));
             } else {
                 PhpArray view = src.walkView();
                 try {
                     for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
-                        out.put(view.keyAt(pos), cb.call1(ctx, null, view.valueAt(pos)));
+                        out.put(view.keyAt(pos), callback1(ctx, closureObj, closure, cb, view.valueAt(pos)));
                     }
                 } finally {
                     view.releaseShare();
@@ -880,14 +885,16 @@ final class ArrayFunctions {
                 List<Object> list = lists.get(j);
                 callArgs[j] = idx < list.size() ? list.get(idx) : PhpNull.INSTANCE;
             }
-            if (cb == null) {
+            if (cb == null && closure == null) {
                 PhpArray row = new PhpArray();
                 for (Object v : callArgs) {
                     row.append(PhpOps.copyOnAssign(v));
                 }
                 out.append(row);
             } else {
-                out.append(cb.call(ctx, null, null, callArgs));
+                out.append(closure != null
+                        ? PhpCallable.invokeClosure(ctx, null, null, closureObj, closure, callArgs)
+                        : cb.call(ctx, null, null, callArgs));
             }
         }
         return out;
@@ -895,10 +902,13 @@ final class ArrayFunctions {
 
     private static PhpArray arrayFilter(PhpContext ctx, Object[] a) {
         PhpArray src = arr(a, 0, "array_filter");
-        PhpCallable cb = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpCallable.resolve(ctx, a[1], null) : null;
+        Object cbValue = a.length > 1 ? a[1] : PhpNull.INSTANCE;
+        PhpObject closureObj = cbValue instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = cbValue == PhpNull.INSTANCE || closure != null ? null : PhpCallable.resolve(ctx, cbValue, null);
         long mode = a.length > 2 ? PhpOps.toLong(a[2]) : 0L;
         PhpArray out = new PhpArray();
-        if (cb == null) {
+        if (cb == null && closure == null) {
             src.forEachEntry((key, value) -> {
                 if (PhpOps.toBool(value)) {
                     out.put(key, PhpOps.copyOnAssign(value));
@@ -914,11 +924,11 @@ final class ArrayFunctions {
                 Object value = unwrap(raw);
                 boolean keep;
                 if (mode == 2L) { // ARRAY_FILTER_USE_KEY
-                    keep = PhpOps.toBool(cb.call1(ctx, null, key));
+                    keep = PhpOps.toBool(callback1(ctx, closureObj, closure, cb, key));
                 } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
-                    keep = PhpOps.toBool(cb.call2(ctx, null, value, key));
+                    keep = PhpOps.toBool(callback2(ctx, closureObj, closure, cb, value, key));
                 } else {
-                    keep = PhpOps.toBool(cb.call1(ctx, null, value));
+                    keep = PhpOps.toBool(callback1(ctx, closureObj, closure, cb, value));
                 }
                 if (keep) {
                     // php copies the zval, so a reference cell stays a reference in the result.
@@ -933,12 +943,15 @@ final class ArrayFunctions {
 
     private static Object arrayReduce(PhpContext ctx, Object[] a) {
         PhpArray src = arr(a, 0, "array_reduce");
-        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        Object cbValue = a[1];
+        PhpObject closureObj = cbValue instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = closure == null ? PhpCallable.resolve(ctx, cbValue, null) : null;
         Object acc = a.length > 2 ? PhpOps.copyOnAssign(a[2]) : PhpNull.INSTANCE;
         PhpArray view = src.walkView();
         try {
             for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
-                acc = cb.call2(ctx, null, acc, view.valueAt(pos));
+                acc = callback2(ctx, closureObj, closure, cb, acc, view.valueAt(pos));
             }
         } finally {
             view.releaseShare();
@@ -1022,13 +1035,15 @@ final class ArrayFunctions {
 
     private static Object findEntry(PhpContext ctx, Object[] a, String fn, boolean returnKey) {
         PhpArray src = arr(a, 0, fn);
-        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        PhpObject closureObj = a[1] instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = closure == null ? PhpCallable.resolve(ctx, a[1], null) : null;
         PhpArray view = src.walkView();
         try {
             for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
                 Object value = view.valueAt(pos);
                 Object key = view.keyAt(pos);
-                if (PhpOps.toBool(cb.call2(ctx, null, value, key))) {
+                if (PhpOps.toBool(callback2(ctx, closureObj, closure, cb, value, key))) {
                     return returnKey ? key : PhpOps.copyOnAssign(value);
                 }
             }
@@ -1040,13 +1055,15 @@ final class ArrayFunctions {
 
     private static boolean anyOrAll(PhpContext ctx, Object[] a, boolean isAny) {
         PhpArray src = arr(a, 0, isAny ? "array_any" : "array_all");
-        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        PhpObject closureObj = a[1] instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = closure == null ? PhpCallable.resolve(ctx, a[1], null) : null;
         PhpArray view = src.walkView();
         try {
             for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
                 Object value = view.valueAt(pos);
                 Object key = view.keyAt(pos);
-                boolean matched = PhpOps.toBool(cb.call2(ctx, null, value, key));
+                boolean matched = PhpOps.toBool(callback2(ctx, closureObj, closure, cb, value, key));
                 if (isAny && matched) {
                     return true;
                 }
@@ -1058,6 +1075,17 @@ final class ArrayFunctions {
             view.releaseShare();
         }
         return !isAny;
+    }
+
+    /** A builtin callback resolved once: a closure object runs through its call target. */
+    private static Object callback1(PhpContext ctx, PhpObject closureObj, PhpClosure closure, PhpCallable cb, Object arg) {
+        return closure != null ? PhpCallable.invokeClosure1(ctx, null, closureObj, closure, arg) : cb.call1(ctx, null, arg);
+    }
+
+    private static Object callback2(PhpContext ctx, PhpObject closureObj, PhpClosure closure, PhpCallable cb,
+                                    Object first, Object second) {
+        return closure != null ? PhpCallable.invokeClosure2(ctx, null, closureObj, closure, first, second)
+                : cb.call2(ctx, null, first, second);
     }
 
     /**

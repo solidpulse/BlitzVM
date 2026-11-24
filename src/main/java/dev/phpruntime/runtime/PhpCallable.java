@@ -447,6 +447,41 @@ public final class PhpCallable {
         return CallArgHelper.unwrapReturn(res);
     }
 
+    /**
+     * One-argument call of a closure object that skips the {@link PhpCallable} wrapper. Builtin
+     * callbacks (array_map and friends) hold the closure object anyway; resolving it into a
+     * callable allocated a wrapper per call that only forwarded here.
+     */
+    @TruffleBoundary
+    public static Object invokeClosure1(PhpContext ctx, Node loc, PhpObject closureObj, PhpClosure c, Object arg) {
+        if (c.kind() != dev.phpruntime.runtime.PhpClosure.Kind.CLOSURE) {
+            return invokeClosure(ctx, null, loc, closureObj, c, new Object[]{arg});
+        }
+        Object[] args = new Object[4];
+        args[0] = c.boundThis();
+        args[1] = c.calledClass();
+        args[2] = closureObj;
+        args[3] = adaptUserArg(rootOf(c.callTarget()), 0, arg, ctx, loc);
+        return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, c.callTarget(), args));
+    }
+
+    /** Two-argument variant of {@link #invokeClosure1}. */
+    @TruffleBoundary
+    public static Object invokeClosure2(PhpContext ctx, Node loc, PhpObject closureObj, PhpClosure c,
+                                        Object first, Object second) {
+        if (c.kind() != dev.phpruntime.runtime.PhpClosure.Kind.CLOSURE) {
+            return invokeClosure(ctx, null, loc, closureObj, c, new Object[]{first, second});
+        }
+        PhpFunctionRootNode fnRoot = rootOf(c.callTarget());
+        Object[] args = new Object[5];
+        args[0] = c.boundThis();
+        args[1] = c.calledClass();
+        args[2] = closureObj;
+        args[3] = adaptUserArg(fnRoot, 0, first, ctx, loc);
+        args[4] = adaptUserArg(fnRoot, 1, second, ctx, loc);
+        return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, c.callTarget(), args));
+    }
+
     public static Object[] buildClosureArgs(Object boundThis, PhpClass calledClass, PhpObject closureObj, Object[] userArgs) {
         return buildClosureArgs(null, boundThis, calledClass, closureObj, userArgs, null, null);
     }
