@@ -1,0 +1,12 @@
+classParam(): Argument #1 ($x) must be of type A, B given
+ifaceParam(): Argument #1 ($x) must be of type IA, B given
+unionParam(): Argument #1 ($x) must be of type A|B, C given
+intersectionParam(): Argument #1 ($x) must be of type IA&IB, A given
+classParam(): Argument #1 ($x) must be of type A, int given
+classParam(): Argument #1 ($x) must be of type A, null given
+classReturn(): Return value must be of type A, B returned
+ifaceReturn(): Return value must be of type IA, B returned
+unionReturn(): Return value must be of type A|B, C returned
+Cannot assign B to property Holder::$item of type A
+Cannot assign C to property Holder::$iface of type IA
+Cannot assign C to property Holder::$staticItem of type A

@@ -1,0 +1,10 @@
+Square
+Square
+4
+Square
+Square
+Deep
+NULL
+badBase(): Return value must be of type Base, Other returned
+badShape(): Return value must be of type Shape, Other returned
+badSquare(): Return value must be of type Square, Other returned

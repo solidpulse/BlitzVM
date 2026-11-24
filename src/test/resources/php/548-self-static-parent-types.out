@@ -1,0 +1,26 @@
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(false)
+Base::selfParam(): Argument #1 ($x) must be of type Base, Other given
+Child::parentParam(): Argument #1 ($x) must be of type Base, Other given
+Child::badStatic(): Return value must be of type Child, Base returned
+Cannot assign Other to property Base::$selfProp of type Base

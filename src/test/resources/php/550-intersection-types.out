@@ -1,0 +1,19 @@
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+NULL
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
+takeAB(): Argument #1 ($x) must be of type IA&IB, OnlyA given
+takeBaseA(): Argument #1 ($x) must be of type Base&IA, ThroughInterface given
+Cannot assign OnlyA to property Holder::$both of type IA&IB
+Cannot assign Other to property Holder::$base of type Base&IA
+badReturn(): Return value must be of type IA&IB, OnlyA returned

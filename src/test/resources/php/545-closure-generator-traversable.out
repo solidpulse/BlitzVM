@@ -1,0 +1,22 @@
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+bool(false)
+takeGen(): Argument #1 ($g) must be of type Generator, ArrayIterator given
+takeClosure(): Argument #1 ($c) must be of type Closure, Generator given
+takeIt(): Argument #1 ($i) must be of type Iterator, stdClass given
