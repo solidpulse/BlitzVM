@@ -36,7 +36,9 @@ public final class CloneNode extends PhpNode {
                                     DynamicObject.PutNode propPut) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
-            throw new PhpError("__clone method called on non-object", site);
+            throw new PhpError(PhpError.TYPE_ERROR,
+                    "clone(): Argument #1 ($object) must be of type object, "
+                            + PhpOps.typeName(val) + " given", site);
         }
         if (obj.nativeState() instanceof dev.phpruntime.runtime.EnumCaseState) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
