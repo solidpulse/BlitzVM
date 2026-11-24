@@ -386,37 +386,30 @@ final class StringFunctions {
         String glue;
         PhpArray arr;
         if (a.length == 1) {
+            if (!(a[0] instanceof PhpArray only)) {
+                // implode("...") with no array: php names the missing second argument as null.
+                throw new PhpError(PhpError.TYPE_ERROR, "implode(): If argument #1 ($separator) is of type string,"
+                        + " argument #2 ($array) must be of type array, null given", null);
+            }
             glue = "";
-            arr = (PhpArray) a[0];
-        } else if (a[0] instanceof PhpArray x) {
-            arr = x;
-            glue = s(a, 1);
-        } else if (a[1] instanceof PhpArray y) {
-            arr = y;
-            glue = s(a, 0);
+            arr = only;
         } else {
-            throw new PhpError(PhpError.TYPE_ERROR, "implode(): Argument #2 ($array) must be of type ?array, " + PhpOps.typeName(a[1]) + " given", null);
-        }
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        if (!arr.hasObjectValue()) {
-            for (int pos = arr.firstPos(); pos >= 0; pos = arr.nextPos(pos)) {
-                if (!first) {
-                    sb.append(glue);
+            if (a[0] instanceof PhpArray) {
+                throw new PhpError(PhpError.TYPE_ERROR,
+                        "implode(): Argument #1 ($separator) must be of type string, array given", null);
+            }
+            if (!(a[1] instanceof PhpArray pair)) {
+                if (a[1] == PhpNull.INSTANCE) {
+                    throw new PhpError(PhpError.TYPE_ERROR, "implode(): If argument #1 ($separator) is of type string,"
+                            + " argument #2 ($array) must be of type array, null given", null);
                 }
-                sb.append(PhpOps.toStr(arr.valueAt(pos)));
-                first = false;
+                throw new PhpError(PhpError.TYPE_ERROR,
+                        "implode(): Argument #2 ($array) must be of type ?array, " + PhpOps.typeName(a[1]) + " given", null);
             }
-            return sb.toString();
+            glue = s(a, 0);
+            arr = pair;
         }
-        for (Object v : arr.values()) {
-            if (!first) {
-                sb.append(glue);
-            }
-            sb.append(PhpOps.toStr(v));
-            first = false;
-        }
-        return sb.toString();
+        return arr.join(glue);
     }
 
     private static String digest(String algorithm, String str, boolean raw) {

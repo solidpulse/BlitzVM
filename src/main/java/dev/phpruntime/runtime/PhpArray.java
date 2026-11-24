@@ -381,6 +381,41 @@ public final class PhpArray implements TruffleObject {
         return false;
     }
 
+    /**
+     * implode() over a snapshot of the values. The snapshot keeps a __toString() method that
+     * modifies the array from changing what the loop still has to visit, which is php's
+     * by-value behaviour. One boundary call covers the whole walk, and the builder is sized
+     * from the element lengths to avoid growth copies.
+     */
+    @TruffleBoundary
+    public String join(String glue) {
+        if (size == 0) {
+            return "";
+        }
+        Object[] snapshot = new Object[size];
+        int n = 0;
+        for (int pos = firstPos(); pos >= 0 && n < size; pos = nextPos(pos)) {
+            Object v = values[pos];
+            snapshot[n++] = v instanceof PhpReference ref ? ref.getValue() : v;
+        }
+        long chars = (long) glue.length() * (n - 1);
+        for (Object v : snapshot) {
+            chars += v instanceof String s ? s.length() : 12;
+        }
+        if (chars > Integer.MAX_VALUE - 16) {
+            chars = Integer.MAX_VALUE - 16;
+        }
+        StringBuilder sb = new StringBuilder((int) chars);
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                sb.append(glue);
+            }
+            Object v = snapshot[i];
+            sb.append(v instanceof String str ? str : PhpOps.toStr(v));
+        }
+        return sb.toString();
+    }
+
     @TruffleBoundary
     public Object removeLast() {
         if (size == 0) {
