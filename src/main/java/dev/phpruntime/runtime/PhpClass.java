@@ -202,6 +202,11 @@ public final class PhpClass {
             this.ctx = ctx;
         }
 
+        /** The class whose state this is. */
+        public PhpClass owner() {
+            return cls;
+        }
+
         /** A captured static property: whether its initializer ran and the raw stored value. */
         public record StaticValue(boolean initialized, Object value) {
         }

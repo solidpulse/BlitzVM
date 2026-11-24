@@ -1293,7 +1293,8 @@ public final class PhpContext {
         PhpClass.RequestState[] byId = classStatesById;
         if (id < byId.length) {
             PhpClass.RequestState state = byId[id];
-            if (state != null) {
+            // Ids come from class names; the identity check keeps two classes of one name apart.
+            if (state != null && state.owner() == cls) {
                 return state;
             }
         }
