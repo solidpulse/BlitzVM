@@ -62,6 +62,12 @@ public final class PropertyLValueNode extends LValueNode {
      * run on several subclasses (WP_Dependencies on WP_Styles and WP_Scripts) needs several.
      */
     @CompilationFinal(dimensions = 1) private Resolution[] cache;
+    /**
+     * The most recently installed entry, tried before the array: one operation on an object
+     * (a {@code $this->items[] = v} write, for example) resolves the same property several
+     * times, and the repeats then cost a field compare instead of an array scan.
+     */
+    @CompilationFinal private Resolution lastResolution;
     /** Language-wide class id of {@link #callingClassLower}, resolved on first use; -1 until then. */
     @CompilationFinal private int callerClassId = -1;
     /** The caller class's hierarchy across contexts, looked up once ({@link #callerStableLooked}). */
@@ -854,6 +860,11 @@ public final class PropertyLValueNode extends LValueNode {
         if (staticName != null) {
             PhpClass cls = obj.phpClass();
             long h = cls.hierarchyId();
+            Resolution front = lastResolution;
+            if (front != null && h == front.hierarchyId()
+                    && (!front.callerSensitive() || front.callerHierarchyId() == callerHierarchyId(frame, keys))) {
+                return front;
+            }
             Resolution[] entries = cache;
             if (entries == MEGAMORPHIC) {
                 return null;
@@ -929,6 +940,7 @@ public final class PropertyLValueNode extends LValueNode {
                     // Readers take the array without the lock: its elements must be visible first.
                     java.lang.invoke.VarHandle.storeStoreFence();
                     cache = next;
+                    lastResolution = entry;
                 }
             }
         } finally {
