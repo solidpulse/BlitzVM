@@ -459,13 +459,16 @@ public final class PropertyLValueNode extends LValueNode {
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Cannot indirectly modify readonly property " + owner + "::$" + name, this);
         }
-        if (obj.inMagic(name, PhpObject.GUARD_HOOK_GET) || obj.inMagic(name, PhpObject.GUARD_HOOK_SET)) {
+        // Only a hooked or virtual property can have its own hook running; a plain property has
+        // no guard to honour, so the resolution decides the rest without touching the object.
+        boolean hooked = res.virtual() || res.hasHooks();
+        if (hooked && (obj.inMagic(name, PhpObject.GUARD_HOOK_GET) || obj.inMagic(name, PhpObject.GUARD_HOOK_SET))) {
             return;
         }
         if (!res.writable()) {
             throw cannotModifySet(obj, name, res.setVisibility(), res.setDeclaringClass(), callerLower, "indirectly modify");
         }
-        if (res.virtual() || res.hasHooks()) {
+        if (hooked) {
             PhpClass.PropertyHook getHook = res.getHook();
             if (getHook == null || !getHook.byRef()) {
                 if (!res.virtual()) {
