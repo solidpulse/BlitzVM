@@ -22,6 +22,8 @@ public final class PhpObject extends DynamicObject {
     private final long id;
     /** Set once at creation; the snapshot copier fills it in after the object exists (cycles). */
     private PhpClosure closure;
+    /** The callable a closure object stands for, resolved once per request. */
+    private PhpCallable callable;
     private boolean cloning;
     /**
      * php's property guards: the magic methods currently running for a property
@@ -129,8 +131,17 @@ public final class PhpObject extends DynamicObject {
     }
 
     /** Used by the snapshot copier, which must register the object before copying its closure. */
+    public PhpCallable cachedCallable() {
+        return callable;
+    }
+
+    public void cacheCallable(PhpCallable resolved) {
+        this.callable = resolved;
+    }
+
     public void setClosure(PhpClosure closure) {
         this.closure = closure;
+        this.callable = null;
     }
 
     public boolean isCloning() {

@@ -135,8 +135,12 @@ public final class PhpCallable {
     public static PhpCallable resolveOrNull(PhpContext ctx, Object val, Object callerThis) {
         if (val instanceof PhpObject obj) {
             if (obj.closure() != null) {
+                PhpCallable cached = obj.cachedCallable();
+                if (cached != null) {
+                    return cached;
+                }
                 PhpClosure c = obj.closure();
-                return switch (c.kind()) {
+                PhpCallable resolved = switch (c.kind()) {
                     case CLOSURE -> new PhpCallable(Kind.CLOSURE, obj, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), null);
                     case USER_FUNCTION -> new PhpCallable(Kind.USER_FUNCTION, null, c.callTarget(), null, PhpNull.INSTANCE, null, null, null);
                     case METHOD -> new PhpCallable(Kind.METHOD, null, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), null,
@@ -144,6 +148,8 @@ public final class PhpCallable {
                     case MAGIC_CALL -> new PhpCallable(Kind.MAGIC_CALL, null, c.callTarget(), null, c.boundThis(), c.calledClass(), null, c.magicMethodName());
                     case BUILTIN -> new PhpCallable(Kind.BUILTIN, null, null, c.builtin(), PhpNull.INSTANCE, null, null, null);
                 };
+                obj.cacheCallable(resolved);
+                return resolved;
             }
             PhpClass.MethodEntry invoke = obj.phpClass().lookupMethod("__invoke");
             if (invoke != null && invoke.callTarget() != null) {

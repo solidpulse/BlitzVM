@@ -4609,8 +4609,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, Object targetValue, Object callerThis,
                             @Bind BytecodeNode bytecode, @Bind Node node) {
+            // A closure object's callable is fixed for the request. Resolving it here keeps the
+            // common $closure(...) call out of the resolver's boundary.
+            dev.phpruntime.runtime.PhpObject closure = targetValue instanceof dev.phpruntime.runtime.PhpObject obj
+                    && obj.closure() != null ? obj : null;
             dev.phpruntime.runtime.PhpCallable callable =
-                    Ops.resolveCallable(PhpContext.get(node), targetValue, callerThis);
+                    closure != null ? closure.cachedCallable() : null;
+            if (callable == null) {
+                callable = Ops.resolveCallable(PhpContext.get(node), targetValue, callerThis);
+                if (closure != null) {
+                    closure.cacheCallable(callable);
+                }
+            }
             // A magic call collects its arguments into an array, so its target's parameters do
             // not describe the call site (the AST evaluates those arguments as plain values).
             PhpFunctionRootNode sig = callable.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL
