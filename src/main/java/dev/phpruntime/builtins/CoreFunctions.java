@@ -110,8 +110,9 @@ final class CoreFunctions {
             int limit = a.length >= 2 ? (int) PhpOps.toLong(a[1]) : 0;
             boolean provideObj = (options & dev.phpruntime.runtime.PhpBacktrace.PROVIDE_OBJECT) != 0;
             boolean omitArgs = (options & dev.phpruntime.runtime.PhpBacktrace.IGNORE_ARGS) != 0;
-            dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames =
-                    dev.phpruntime.runtime.PhpBacktrace.captureDebug(options, limit);
+            dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames = omitArgs && !provideObj
+                    ? dev.phpruntime.runtime.PhpBacktrace.captureDebugFromContext(ctx, limit)
+                    : dev.phpruntime.runtime.PhpBacktrace.captureDebug(options, limit);
             return dev.phpruntime.runtime.PhpBacktrace.buildTraceArray(frames, provideObj, omitArgs);
         });
         Builtins.def("debug_print_backtrace", 0, 2, (ctx, a) -> {

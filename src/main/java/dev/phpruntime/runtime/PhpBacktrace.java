@@ -97,14 +97,19 @@ public final class PhpBacktrace {
      */
     @TruffleBoundary
     public static LazyTrace captureFromContext(PhpContext ctx, Node location) {
+        return new LazyTrace(framesFromContext(ctx, location, 0));
+    }
+
+    /** The innermost {@code limit} frames of the call-site stack (all of them for 0). */
+    private static FrameEntry[] framesFromContext(PhpContext ctx, Node location, int limit) {
         int depth = ctx.traceDepth();
         if (depth == 0) {
-            return new LazyTrace(new FrameEntry[0]);
+            return new FrameEntry[0];
         }
-        FrameEntry[] out = new FrameEntry[depth];
+        FrameEntry[] out = new FrameEntry[limit > 0 ? Math.min(limit, depth) : depth];
         int n = 0;
         Object callee = frameOfRoot(location == null ? null : location.getRootNode());
-        for (int i = depth - 1; i >= 0; i--) {
+        for (int i = depth - 1; i >= 0 && n < out.length; i--) {
             Object site = ctx.traceSite(i);
             FrameEntry entry = traceEntry(site, callee);
             if (entry != null) {
@@ -112,7 +117,7 @@ public final class PhpBacktrace {
             }
             callee = frameOfSite(site);
         }
-        return new LazyTrace(n == depth ? out : Arrays.copyOf(out, n));
+        return n == out.length ? out : Arrays.copyOf(out, n);
     }
 
     /** A file's top-level code, which has no function metadata of its own. */
@@ -210,6 +215,16 @@ public final class PhpBacktrace {
             return fn.isStaticMethod() ? "::" : "->";
         }
         return null;
+    }
+
+    /**
+     * {@code debug_backtrace()} frames without arguments or objects, read from the call-site
+     * stack instead of a Truffle frame walk: the same frames an exception created at the
+     * builtin's call site records, which is what php returns.
+     */
+    @TruffleBoundary
+    public static FrameEntry[] captureDebugFromContext(PhpContext ctx, int limit) {
+        return framesFromContext(ctx, ctx.currentBuiltinCallSite(), limit);
     }
 
     /** Captures frames for {@code debug_backtrace($options, $limit)} and {@code debug_print_backtrace()}. */
