@@ -53,6 +53,44 @@ public final class DispatchCallNode extends Node {
         return callDynamic(target, args);
     }
 
+    /** {@link #call} with the call site pushed for the callee's exception traces. */
+    public Object call(RootCallTarget target, Object[] args, Object site) {
+        return call(target, args, site, null);
+    }
+
+    /** With the class a trait method runs for, which php reports as the frame's class. */
+    public Object call(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        int depth = ctx.pushTraceFrame(traceSite(target, site, traitSelf));
+        try {
+            return call(target, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
+    /** {@link #callMethod} with the call site pushed for the callee's exception traces. */
+    public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site) {
+        return callMethod(entry, args, site, null);
+    }
+
+    public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site, PhpClass traitSelf) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        int depth = ctx.pushTraceFrame(traceSite(entry.callTarget(), site, traitSelf));
+        try {
+            return callMethod(entry, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
+    private static Object traceSite(RootCallTarget target, Object site, PhpClass traitSelf) {
+        if (traitSelf == null || target == null || !isTraitMethod(target) || !(site instanceof Node node)) {
+            return site;
+        }
+        return new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
+    }
+
     /**
      * Calls a method given the usual {@code [this, calledClass, args...]} layout. Trait methods
      * also need the using class at index 2; whether the target is one is a compile-time

@@ -84,6 +84,8 @@ public final class PhpGenerator implements PhpNativeState {
             // Resume the continuation; the yield (or the start yield) receives this
             // generator, and a yield sets the key and value before suspending.
             com.oracle.truffle.api.bytecode.ContinuationResult c = continuation;
+            // The trace frame of a generator is the call that resumed it, which its caller
+            // pushed already; the internal Generator method itself never appears in a trace.
             Object result = dispatch.call(c.getContinuationCallTarget(), new Object[]{c.getFrame(), this});
             if (result instanceof com.oracle.truffle.api.bytecode.ContinuationResult next) {
                 continuation = next;

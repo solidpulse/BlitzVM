@@ -47,6 +47,10 @@ public final class Parser {
     private final List<PhpClassTemplate> topLevelClasses;
     private Scope scope;
     private String currentFunction;
+    /** The name php gives a closure declared here: a file path, {@code f()} or {@code C::m()}. */
+    private String currentFunctionDisplay;
+    /** Whether {@code $this} exists in the scope being parsed, which decides closure binding. */
+    private boolean currentThisAvailable;
     private String currentClass;
     private String currentParentClass;
     private boolean currentIsTrait;
@@ -97,6 +101,9 @@ public final class Parser {
         this.topLevelClasses = topLevelClasses;
         this.currentFunction = currentFunction;
         this.currentClass = currentClass;
+        this.currentFunctionDisplay = source.getPath() != null && !source.getPath().isEmpty()
+                ? dev.phpruntime.runtime.PhpStrings.fromJava(source.getPath())
+                : (source.getName() != null ? dev.phpruntime.runtime.PhpStrings.fromJava(source.getName()) : "");
         this.currentIsTrait = currentIsTrait;
         this.currentNamespace = currentNamespace;
         this.classAliases = classAliases;
@@ -1118,11 +1125,15 @@ public final class Parser {
         String name = qualifyDeclaration(nameTok.text());
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
         String outerClass = currentClass;
         boolean outerIsTrait = currentIsTrait;
         boolean outerReturnsRef = currentReturnsRef;
         scope = new Scope(language, false);
         currentFunction = name;
+        currentFunctionDisplay = name + "()";
+        boolean outerThis = currentThisAvailable;
+        currentThisAvailable = false;
         currentClass = null;
         currentIsTrait = false;
         currentReturnsRef = returnsRef;
@@ -1154,6 +1165,8 @@ public final class Parser {
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentClass = outerClass;
             currentIsTrait = outerIsTrait;
             currentReturnsRef = outerReturnsRef;
@@ -1164,9 +1177,15 @@ public final class Parser {
         boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
+        String display = closureDisplay(line);
+        boolean bound = !isStatic && currentThisAvailable;
+        boolean outerThis = currentThisAvailable;
         boolean outerReturnsRef = currentReturnsRef;
         scope = Scope.forClosure(language, outer, !isStatic, false);
         currentFunction = "{closure}";
+        currentFunctionDisplay = display;
+        currentThisAvailable = bound;
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
@@ -1190,11 +1209,13 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            return finishClosure(outer, !isStatic, returnsRef, params,
-                    signature.withEndLine(lastBlockEndLine), body, line, "{closure}");
+            return finishClosure(outer, !isStatic, bound, returnsRef, params,
+                    signature.withEndLine(lastBlockEndLine), body, line, "{closure}", display);
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
@@ -1203,9 +1224,15 @@ public final class Parser {
         boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
+        String display = closureDisplay(line);
+        boolean bound = !isStatic && currentThisAvailable;
+        boolean outerThis = currentThisAvailable;
         boolean outerReturnsRef = currentReturnsRef;
         scope = Scope.forClosure(language, outer, !isStatic, true);
         currentFunction = "{closure}";
+        currentFunctionDisplay = display;
+        currentThisAvailable = bound;
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
@@ -1218,17 +1245,25 @@ public final class Parser {
                 lv.kind().markCell();
             }
             PhpNode body = new JumpNode(JumpNode.Kind.RETURN, 0, expr, returnsRef).at(line);
-            return finishClosure(outer, !isStatic, returnsRef, params,
-                    signature.withEndLine(expr.line()), body, line, "{closure}");
+            return finishClosure(outer, !isStatic, bound, returnsRef, params,
+                    signature.withEndLine(expr.line()), body, line, "{closure}", display);
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
 
-    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params,
-                                  PhpSignature signature, PhpNode body, int line, String fnName) {
+    /** The name php gives a closure declared at {@code line}, from the enclosing scope. */
+    private String closureDisplay(int line) {
+        return "{closure:" + currentFunctionDisplay + ":" + line + "}";
+    }
+
+    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean boundThis, boolean returnsRef,
+                                  ParsedParams params, PhpSignature signature, PhpNode body, int line, String fnName,
+                                  String displayName) {
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -1253,7 +1288,7 @@ public final class Parser {
                 captureSlots, captureKinds, byRef,
                 params.names(), params.slots(), params.kinds(), params.byRef(),
                 params.defaults(), params.variadic(), body).closureMetadata(bindThis && scope.usesThis())
-                .withSignature(signature));
+                .closureBoundThis(boundThis).withClosureDisplay(displayName).withSignature(signature));
         root.withCaptureNames(captureNames);
         root.setStrictTypes(strictTypes);
         if (scope.isGenerator()) {
@@ -1571,9 +1606,13 @@ public final class Parser {
                                                 boolean inAbstract, int line) {
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
         boolean outerReturnsRef = currentReturnsRef;
         scope = currentIsTrait ? Scope.forTraitMethod(language) : Scope.forMethod(language);
         currentFunction = "$" + propName + "::" + hookName;
+        currentFunctionDisplay = (currentClass != null ? currentClass + "::" : "") + "$" + propName + "::" + hookName + "()";
+        boolean outerThis = currentThisAvailable;
+        currentThisAvailable = true;
         currentReturnsRef = byRef;
         try {
             String paramName = hookName.equals("set") ? "value" : null;
@@ -1685,6 +1724,8 @@ public final class Parser {
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
@@ -1810,9 +1851,13 @@ public final class Parser {
         boolean isCtor = "__construct".equals(lower);
         Scope outerScope = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
         boolean outerReturnsRef = currentReturnsRef;
         scope = currentIsTrait ? Scope.forTraitMethod(language) : Scope.forMethod(language);
         currentFunction = mName;
+        currentFunctionDisplay = (currentClass != null ? currentClass + "::" : "") + mName + "()";
+        boolean outerThis = currentThisAvailable;
+        currentThisAvailable = !isStatic;
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams(isCtor && !isAbstract);
@@ -1874,6 +1919,8 @@ public final class Parser {
         } finally {
             scope = outerScope;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }

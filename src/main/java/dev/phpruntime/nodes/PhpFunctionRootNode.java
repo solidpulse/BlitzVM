@@ -57,6 +57,10 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     private volatile String qualifiedName;
     /** Parameter names whose type is made nullable by a {@code null} default (php 8.4 deprecation). */
     @CompilationFinal(dimensions = 1) private String[] implicitNullable = new String[0];
+    /** What php calls this closure: {@code {closure:<declaration scope>:<line>}}. */
+    @CompilationFinal private String closureDisplay;
+    /** Whether a closure has {@code $this} bound, which a trace shows as {@code ->}. */
+    @CompilationFinal private boolean closureBoundThis;
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
     private final int declaringClassId;
 
@@ -321,6 +325,25 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return this;
     }
 
+    /** Attaches php's closure name; called by the parser before this root is shared. */
+    public PhpFunctionRootNode withClosureDisplay(String display) {
+        this.closureDisplay = display;
+        return this;
+    }
+
+    public String closureDisplay() {
+        return closureDisplay;
+    }
+
+    public PhpFunctionRootNode closureBoundThis(boolean bound) {
+        this.closureBoundThis = bound;
+        return this;
+    }
+
+    public boolean closureBoundThis() {
+        return closureBoundThis;
+    }
+
     /** Attaches the declared signature; called by the parser before this root is shared. */
     public PhpFunctionRootNode withSignature(dev.phpruntime.runtime.PhpSignature signature) {
         this.signature = signature == null ? dev.phpruntime.runtime.PhpSignature.EMPTY : signature;
@@ -479,6 +502,9 @@ public final class PhpFunctionRootNode extends PhpRootNode {
 
     private String buildQualifiedCallableName() {
         if (isClosure()) {
+            if (closureDisplay != null) {
+                return closureDisplay;
+            }
             String f = source() != null && source().getPath() != null && !source().getPath().isEmpty()
                     ? source().getPath()
                     : (source() != null ? source().getName() : "");

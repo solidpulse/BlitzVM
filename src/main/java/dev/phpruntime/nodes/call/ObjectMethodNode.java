@@ -22,18 +22,27 @@ public final class ObjectMethodNode extends Node {
     }
 
     public Object call(PhpObject receiver) {
-        return callRaw(receiver, new Object[]{receiver, receiver.phpClass()});
+        return callRaw(receiver, new Object[]{receiver, receiver.phpClass()}, null);
     }
 
     public Object call(PhpObject receiver, Object arg) {
-        return callRaw(receiver, new Object[]{receiver, receiver.phpClass(), arg});
+        return callRaw(receiver, new Object[]{receiver, receiver.phpClass(), arg}, null);
     }
 
     public Object call(PhpObject receiver, Object arg, Object value) {
-        return callRaw(receiver, new Object[]{receiver, receiver.phpClass(), arg, value});
+        return callRaw(receiver, new Object[]{receiver, receiver.phpClass(), arg, value}, null);
     }
 
-    private Object callRaw(PhpObject receiver, Object[] args) {
+    /** A call the engine makes on behalf of a language construct, attributed to {@code site}. */
+    public Object callAt(PhpObject receiver, Node site) {
+        return callRaw(receiver, new Object[]{receiver, receiver.phpClass()}, site);
+    }
+
+    public Object callAt(PhpObject receiver, Node site, Object arg) {
+        return callRaw(receiver, new Object[]{receiver, receiver.phpClass(), arg}, site);
+    }
+
+    private Object callRaw(PhpObject receiver, Object[] args, Node site) {
         PhpClass.MethodEntry entry = receiver.phpClass().methodById(methodId);
         if (entry == null || entry.callTarget() == null) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
@@ -42,10 +51,10 @@ public final class ObjectMethodNode extends Node {
         RootCallTarget cached = dispatch.cachedTarget();
         if (cached == entry.callTarget()) {
             adaptArgs(cached, args);
-            return dispatch.callMethod(entry, args);
+            return site == null ? dispatch.callMethod(entry, args) : dispatch.callMethod(entry, args, site);
         }
         adaptArgs(entry.callTarget(), args);
-        return dispatch.callMethod(entry, args);
+        return site == null ? dispatch.callMethod(entry, args) : dispatch.callMethod(entry, args, site);
     }
 
     private static void adaptArgs(RootCallTarget target, Object[] args) {

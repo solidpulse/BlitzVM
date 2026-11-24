@@ -54,7 +54,7 @@ public final class IncludeNode extends PhpNode {
     public Object executePath(String path) {
         Object prepared = prepare(path);
         if (prepared instanceof PreparedInclude inc) {
-            Object result = callNode.call(inc.target(), new Object[]{inc.canonicalPath()});
+            Object result = callIncluded(inc.target(), new Object[]{inc.canonicalPath()});
             if (inc.snapshotBoot()) {
                 dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(PhpContext.get(this));
             }
@@ -67,13 +67,27 @@ public final class IncludeNode extends PhpNode {
     public Object executePath(String path, Object table) {
         Object prepared = prepare(path);
         if (prepared instanceof PreparedInclude inc) {
-            Object result = callNode.call(inc.target(), new Object[]{inc.canonicalPath(), table});
+            Object result = callIncluded(inc.target(), new Object[]{inc.canonicalPath(), table});
             if (inc.snapshotBoot()) {
                 dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(PhpContext.get(this));
             }
             return result;
         }
         return prepared;
+    }
+
+    /**
+     * Runs the included file with an {@code include} frame on the trace stack, which php
+     * reports as the file's caller with the name of the include statement.
+     */
+    private Object callIncluded(CallTarget target, Object[] args) {
+        PhpContext ctx = PhpContext.get(this);
+        int depth = ctx.pushTraceFrame(this);
+        try {
+            return callNode.call(target, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
     }
 
     @Override

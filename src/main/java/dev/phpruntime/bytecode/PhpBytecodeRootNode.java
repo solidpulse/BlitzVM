@@ -323,7 +323,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         @TruffleBoundary
-        static SiteNode create(BytecodeNode bytecode, int bci) {
+        public static SiteNode create(BytecodeNode bytecode, int bci) {
             return new SiteNode(bytecode.getSourceLocation(bci));
         }
 
@@ -1838,10 +1838,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @Specialization
         static Object object(PhpObject object, @Bind PhpBytecodeRootNode root,
+                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                              @Cached("create(root)") IteratorNode iterator, @Bind Node node) {
             if (object.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
                 PhpObject it = iterator.resolve(object);
-                iterator.rewind(it);
+                iterator.rewind(it, location);
                 return new Cursor(null, it, null);
             }
             PhpFunctionRootNode fn = root.function;
@@ -1863,6 +1865,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ForeachNext {
         @Specialization
         static boolean next(Object state, @Bind PhpBytecodeRootNode root,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create(root)") IteratorNode iterator, @Bind Node node) {
             if (!(state instanceof Cursor c)) {
                 return false;
@@ -1875,10 +1879,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             if (c.iterator != null) {
                 if (c.started) {
-                    iterator.next(c.iterator);
+                    iterator.next(c.iterator, location);
                 }
                 c.started = true;
-                return iterator.valid(c.iterator);
+                return iterator.valid(c.iterator, location);
             }
             c.pos++;
             return c.pos < c.entryCount;
@@ -1889,12 +1893,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ForeachKey {
         @Specialization
         static Object key(Cursor c, @Bind PhpBytecodeRootNode root,
+                          @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                          @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                           @Cached("create(root)") IteratorNode iterator) {
             if (c.array != null) {
                 return c.array.keyAt(c.pos);
             }
             if (c.iterator != null) {
-                return iterator.key(c.iterator);
+                return iterator.key(c.iterator, location);
             }
             return c.entryKey();
         }
@@ -1904,13 +1910,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ForeachValue {
         @Specialization
         static Object value(Cursor c, @Bind PhpBytecodeRootNode root,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create(root)") IteratorNode iterator,
                             @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile refSeen) {
             Object raw;
             if (c.array != null) {
                 raw = c.array.rawValueAt(c.pos);
             } else if (c.iterator != null) {
-                raw = iterator.current(c.iterator);
+                raw = iterator.current(c.iterator, location);
             } else {
                 raw = c.entryValue();
             }
@@ -2273,17 +2281,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class DoMethodCall {
         @Specialization
         static Object call(VirtualFrame frame, boolean keepRef, LocalAccessor calleeLocal, @Variadic Object[] args,
-                           @Bind BytecodeNode bytecode, @Cached("create()") DispatchCallNode dispatch) {
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
             MethodCallee m = (MethodCallee) calleeLocal.getObject(bytecode, frame);
             if (m.entry() == null) {
                 return Ops.ret(keepRef, dispatch.call(m.magic(),
-                        new Object[]{m.obj(), m.cls(), m.name(), Ops.packArgs(args)}));
+                        new Object[]{m.obj(), m.cls(), m.name(), Ops.packArgs(args)}, location, m.cls()));
             }
             Object[] callArgs = new Object[2 + args.length];
             callArgs[0] = m.thisArg();
             callArgs[1] = m.cls();
             System.arraycopy(args, 0, callArgs, 2, args.length);
-            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), callArgs));
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), callArgs, location, m.cls()));
         }
     }
 
@@ -2536,13 +2546,20 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object eval(Object code, Object table, @Bind Node node, @Bind BytecodeNode bytecode,
                            @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                            @Cached com.oracle.truffle.api.nodes.IndirectCallNode call) {
             boolean local = table != PhpNull.INSTANCE;
             com.oracle.truffle.api.CallTarget target = dev.phpruntime.nodes.expr.EvalNode.prepare(
                     PhpContext.get(node), PhpOps.toStr(code), local, Ops.sourcePathOf(bytecode, bci),
                     lineOf(bytecode, bci), null);
-            return call.call(target, local ? new Object[]{dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE, table}
-                    : new Object[]{dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE});
+            PhpContext ctx = PhpContext.get(node);
+            int depth = ctx.pushTraceFrame(location);
+            try {
+                return call.call(target, local ? new Object[]{dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE, table}
+                        : new Object[]{dev.phpruntime.nodes.expr.EvalNode.EVAL_MODE});
+            } finally {
+                ctx.popTraceFrame(depth);
+            }
         }
     }
 
@@ -2975,14 +2992,27 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization(guards = "fn.callTarget() == cachedTarget", limit = "1")
         static Object direct(CallSite site, PhpFunction fn, Object[] args, SiteNode location,
                              @Cached("fn.callTarget()") RootCallTarget cachedTarget,
-                             @Cached("create(cachedTarget)") DirectCallNode call) {
-            return Ops.ret(site.keepRef(), call.call(args));
+                             @Cached("create(cachedTarget)") DirectCallNode call,
+                             @Bind Node node) {
+            dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(node);
+            int depth = ctx.pushTraceFrame(location);
+            try {
+                return Ops.ret(site.keepRef(), call.call(args));
+            } finally {
+                ctx.popTraceFrame(depth);
+            }
         }
 
         @Specialization(replaces = "direct")
         static Object indirect(CallSite site, PhpFunction fn, Object[] args, SiteNode location,
-                               @Cached IndirectCallNode call) {
-            return Ops.ret(site.keepRef(), call.call(fn.callTarget(), args));
+                               @Cached IndirectCallNode call, @Bind Node node) {
+            dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(node);
+            int depth = ctx.pushTraceFrame(location);
+            try {
+                return Ops.ret(site.keepRef(), call.call(fn.callTarget(), args));
+            } finally {
+                ctx.popTraceFrame(depth);
+            }
         }
 
         @Specialization
@@ -4413,14 +4443,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class DoConstructorCall {
         @Specialization
         static Object call(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj, @Variadic Object[] args,
-                           @Bind BytecodeNode bytecode, @Cached("create()") DispatchCallNode dispatch) {
+                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                           @Cached("create()") DispatchCallNode dispatch) {
             Object callee = calleeLocal.getObject(bytecode, frame);
             if (callee instanceof MethodCallee m) {
                 Object[] callArgs = new Object[2 + args.length];
                 callArgs[0] = m.thisArg();
                 callArgs[1] = m.cls();
                 System.arraycopy(args, 0, callArgs, 2, args.length);
-                dispatch.callMethod(m.entry(), callArgs);
+                dispatch.callMethod(m.entry(), callArgs, location, m.cls());
             }
             return obj;
         }
@@ -4601,9 +4633,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     frameArgs[1] = cb.calledClass();
                     frameArgs[2] = cb.closureObj();
                     System.arraycopy(args, 0, frameArgs, 3, args.length);
-                    yield dispatch.call(cb.callTarget(), frameArgs);
+                    yield dispatch.call(cb.callTarget(), frameArgs,
+                            dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject));
                 }
-                case USER_FUNCTION -> dispatch.call(cb.callTarget(), args);
+                case USER_FUNCTION -> dispatch.call(cb.callTarget(), args, location);
                 case METHOD -> {
                     boolean trait = cb.traitSelf() != null;
                     int prefix = trait ? 3 : 2;
@@ -4614,10 +4647,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         frameArgs[2] = cb.traitSelf();
                     }
                     System.arraycopy(args, 0, frameArgs, prefix, args.length);
-                    yield dispatch.call(cb.callTarget(), frameArgs);
+                    yield dispatch.call(cb.callTarget(), frameArgs, location);
                 }
                 case MAGIC_CALL -> dispatch.call(cb.callTarget(), new Object[]{
-                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)});
+                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)}, location);
                 case BUILTIN -> Ops.callBuiltinValue(cb.builtin(), args, location);
             };
             return Ops.ret(keepRef, result);
@@ -5206,7 +5239,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             } else {
                 args = genericFunctionArgs(fn, buffer, location);
             }
-            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args));
+            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args, location));
         }
 
         @TruffleBoundary
@@ -5230,10 +5263,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             if (m.entry() == null) {
                 return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
-                        m.obj(), m.cls(), m.name(), NamedArgs.magicArray(buffer)}));
+                        m.obj(), m.cls(), m.name(), NamedArgs.magicArray(buffer)}, location));
             }
             Object[] args = methodArgs(m, buffer, profile.profile(buffer.plan), location);
-            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location, m.cls()));
         }
 
         /**
@@ -5274,7 +5307,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpObject obj = (PhpObject) object;
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             if (callee instanceof MethodCallee m) {
-                dispatch.callMethod(m.entry(), DoNamedMethod.methodArgs(m, buffer, profile.profile(buffer.plan), location));
+                dispatch.callMethod(m.entry(), DoNamedMethod.methodArgs(m, buffer, profile.profile(buffer.plan), location), location, m.cls());
             } else {
                 String name = buffer.spec.firstName();
                 if (name != null) {
@@ -5322,7 +5355,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         cb.boundThis(), cb.calledClass(), cb.magicMethodName(), NamedArgs.magicArray(buffer)};
                 default -> throw CompilerDirectives.shouldNotReachHere();
             };
-            return Ops.ret(keepRef, dispatch.call(cb.callTarget(), args));
+            return Ops.ret(keepRef, dispatch.call(cb.callTarget(), args,
+                    dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject)));
         }
 
         /** {@code method} is the callable when it is a method (it may be Java-implemented), else null. */
@@ -5442,7 +5476,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpFunction fn = (PhpFunction) callee;
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
             Object[] args = CallArgHelper.bindToFunction(new Object[0], raw, fnRoot, location);
-            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args));
+            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args, location));
         }
     }
 
@@ -5459,14 +5493,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
             if (m.entry() == null) {
                 return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
-                        m.obj(), m.cls(), m.name(), CallArgHelper.magicArray(raw)}));
+                        m.obj(), m.cls(), m.name(), CallArgHelper.magicArray(raw)}, location));
             }
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
             Object[] args = fnRoot != null
                     ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                     : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
                             m.entry(), location);
-            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args));
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location, m.cls()));
         }
     }
 
@@ -5486,7 +5520,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                         : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
                                 m.entry(), location);
-                dispatch.callMethod(m.entry(), args);
+                dispatch.callMethod(m.entry(), args, location, m.cls());
             } else if (raw.named() != null && !raw.named().isEmpty()) {
                 CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Unknown named parameter $" + CallArgHelper.firstKey(raw.named()), location);
@@ -5510,17 +5544,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpFunctionRootNode fnRoot = v.sig();
             Object result = switch (cb.kind()) {
                 case CLOSURE -> dispatch.call(cb.callTarget(), CallArgHelper.bindToFunction(
-                        new Object[]{cb.boundThis(), cb.calledClass(), cb.closureObj()}, raw, fnRoot, location));
+                        new Object[]{cb.boundThis(), cb.calledClass(), cb.closureObj()}, raw, fnRoot, location),
+                        dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, fnRoot, cb.boundThis() instanceof PhpObject));
                 case USER_FUNCTION -> dispatch.call(cb.callTarget(),
-                        CallArgHelper.bindToFunction(new Object[0], raw, fnRoot, location));
+                        CallArgHelper.bindToFunction(new Object[0], raw, fnRoot, location), location);
                 case METHOD -> {
                     Object[] prefix = cb.traitSelf() != null
                             ? new Object[]{cb.boundThis(), cb.calledClass(), cb.traitSelf()}
                             : new Object[]{cb.boundThis(), cb.calledClass()};
-                    yield dispatch.call(cb.callTarget(), CallArgHelper.bindToFunction(prefix, raw, fnRoot, location));
+                    yield dispatch.call(cb.callTarget(), CallArgHelper.bindToFunction(prefix, raw, fnRoot, location), location);
                 }
                 case MAGIC_CALL -> dispatch.call(cb.callTarget(), new Object[]{
-                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), CallArgHelper.magicArray(raw)});
+                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), CallArgHelper.magicArray(raw)}, location);
                 case BUILTIN -> Ops.callComplexBuiltinBoundary(frame.materialize(), cb.builtin(), raw, location);
             };
             return Ops.ret(keepRef, result);
@@ -5828,19 +5863,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class ForeachRefNext {
         @Specialization
         static boolean next(RefCursor c, @Bind Node node, @Bind PhpBytecodeRootNode root,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create(root)") IteratorNode protocol) {
             TruffleSafepoint.poll(node);
             if (c.generator != null) {
                 if (c.generatorStarted) {
-                    protocol.next(c.generatorObject);
+                    protocol.next(c.generatorObject, location);
                 } else {
                     c.generatorStarted = true;
-                    protocol.rewind(c.generatorObject);
+                    protocol.rewind(c.generatorObject, location);
                 }
-                if (!protocol.valid(c.generatorObject)) {
+                if (!protocol.valid(c.generatorObject, location)) {
                     return false;
                 }
-                c.key = protocol.key(c.generatorObject);
+                c.key = protocol.key(c.generatorObject, location);
                 c.element = c.generator.currentCell();
                 return true;
             }

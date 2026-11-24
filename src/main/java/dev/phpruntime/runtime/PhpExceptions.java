@@ -394,7 +394,9 @@ public final class PhpExceptions {
     public static void initNewThrowable(PhpObject obj, Node newLocation) {
         String file = PhpBacktrace.sourcePath(newLocation);
         long line = PhpBacktrace.sourceLine(newLocation);
-        PhpBacktrace.LazyTrace trace = PhpBacktrace.capture(newLocation, false);
+        PhpBacktrace.LazyTrace trace = newLocation == null
+                ? PhpBacktrace.capture(null, false)
+                : PhpBacktrace.captureFromContext(PhpContext.get(newLocation), newLocation);
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         put.execute(obj, "file", file);
         put.execute(obj, "line", line);

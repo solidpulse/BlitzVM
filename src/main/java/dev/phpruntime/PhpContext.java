@@ -1929,6 +1929,44 @@ public final class PhpContext {
         emitDiagnostic(8192L, "Deprecated", message, line);
     }
 
+    // ---- the call-site stack for PHP stack traces
+
+    /**
+     * The call site of every guest call currently on the stack, oldest first. A call site
+     * pushes before it invokes the callee and restores the depth afterwards (also while
+     * unwinding), so an exception created in a callee reads the frames above it without
+     * walking the Truffle stack, which costs microseconds from compiled code. The callee of a
+     * frame is the function owning the site of the next inner frame, which keeps the entry to
+     * one reference.
+     */
+    private Object[] traceSites = new Object[8];
+    private int traceDepth;
+
+    public int traceDepth() {
+        return traceDepth;
+    }
+
+    public Object traceSite(int index) {
+        return traceSites[index];
+    }
+
+    /** Pushes a frame; returns the depth to give back to {@link #popTraceFrame}. */
+    public int pushTraceFrame(Object site) {
+        int depth = traceDepth;
+        Object[] sites = traceSites;
+        if (depth == sites.length) {
+            sites = java.util.Arrays.copyOf(sites, depth * 2);
+            traceSites = sites;
+        }
+        sites[depth] = site;
+        traceDepth = depth + 1;
+        return depth;
+    }
+
+    public void popTraceFrame(int depth) {
+        traceDepth = depth;
+    }
+
     /** A one-shot mode for the user function a builtin is about to call, or null. */
     private CallMode pendingCallMode;
 

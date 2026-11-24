@@ -473,13 +473,28 @@ public final class PhpCallable {
         if (ctx != null && previous == null) {
             ctx.setPendingCallMode(CallMode.internal(dev.phpruntime.nodes.PhpFunctionRootNode.of(target.getRootNode())));
         }
+        int depth = ctx == null ? 0 : ctx.pushTraceFrame(traceSiteOf(ctx, previous));
         try {
             return indirectCall != null ? indirectCall.call(target, args) : target.call(args);
         } finally {
             if (ctx != null) {
+                ctx.popTraceFrame(depth);
                 ctx.setPendingCallMode(previous);
             }
         }
+    }
+
+    /**
+     * The call site of a callback a builtin invokes: the builtin's own call site when it calls
+     * the callback in its caller's frame ({@code call_user_func}), else no guest location
+     * ({@code array_map} runs the callback from an internal frame).
+     */
+    private static Object traceSiteOf(PhpContext ctx, CallMode pending) {
+        if (pending == null) {
+            return dev.phpruntime.runtime.PhpBacktrace.INTERNAL_SITE;
+        }
+        Node site = ctx.currentBuiltinCallSite();
+        return site != null ? site : dev.phpruntime.runtime.PhpBacktrace.INTERNAL_SITE;
     }
 
     private static Object callBuiltin(PhpContext ctx, Builtins.Def def, Object[] userArgs, Node loc) {

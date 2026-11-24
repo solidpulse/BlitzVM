@@ -9,6 +9,7 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.source.SourceSection;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
+import dev.phpruntime.PhpContext;
 import dev.phpruntime.nodes.PhpMainRootNode;
 import dev.phpruntime.nodes.PhpRootNode;
 import dev.phpruntime.nodes.expr.IncludeNode;
@@ -75,6 +76,140 @@ public final class PhpBacktrace {
         all[0] = new FrameEntry(file, line, builtinName, null, null, null, null);
         System.arraycopy(callerFrames, 0, all, 1, callerFrames.length);
         return new LazyTrace(all);
+    }
+
+    /**
+     * The marker for a frame whose call site is not guest code: a callback invoked by a builtin,
+     * which php reports as {@code [internal function]}.
+     */
+    public static final Object INTERNAL_SITE = new Object();
+
+    /**
+     * Snapshots the frames of {@link PhpContext}'s call-site stack, which every guest call
+     * pushes and pops. This is what an exception created in guest code uses: php records the
+     * call sites at object creation, and reading them from the stack the runtime already keeps
+     * costs a store per call instead of a Truffle frame walk, which costs microseconds from
+     * compiled code.
+     *
+     * <p>Each entry is the call site of one active call. Its callee is the function owning the
+     * next inner entry's site (or, for the innermost entry, the function at {@code location}),
+     * so an entry is one reference.
+     */
+    @TruffleBoundary
+    public static LazyTrace captureFromContext(PhpContext ctx, Node location) {
+        int depth = ctx.traceDepth();
+        if (depth == 0) {
+            return new LazyTrace(new FrameEntry[0]);
+        }
+        FrameEntry[] out = new FrameEntry[depth];
+        int n = 0;
+        Object callee = frameOfRoot(location == null ? null : location.getRootNode());
+        for (int i = depth - 1; i >= 0; i--) {
+            Object site = ctx.traceSite(i);
+            FrameEntry entry = traceEntry(site, callee);
+            if (entry != null) {
+                out[n++] = entry;
+            }
+            callee = frameOfSite(site);
+        }
+        return new LazyTrace(n == depth ? out : Arrays.copyOf(out, n));
+    }
+
+    /** A file's top-level code, which has no function metadata of its own. */
+    private static final Object MAIN = new Object();
+
+    private static Object frameOfSite(Object site) {
+        if (site instanceof TraceSite ts) {
+            site = ts.site();
+        }
+        if (site instanceof Node node) {
+            return frameOfRoot(node.getRootNode());
+        }
+        return null;
+    }
+
+    private static Object frameOfRoot(RootNode root) {
+        if (root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode b) {
+            return b.function() != null ? b.function() : MAIN;
+        }
+        if (root instanceof PhpFunctionRootNode fn) {
+            return fn;
+        }
+        if (root instanceof PhpMainRootNode) {
+            return MAIN;
+        }
+        return null;
+    }
+
+    /** A site that also carries what a method's class or a closure's binding is at run time. */
+    public record TraceSite(Node site, PhpClass traitSelf, Boolean boundThis) {
+        public TraceSite(Node site, PhpClass traitSelf) {
+            this(site, traitSelf, null);
+        }
+    }
+
+    /**
+     * {@code site}, wrapped when a closure runs with a different {@code $this} binding than its
+     * declaration implies ({@code Closure::bind}, {@code Closure::call}).
+     */
+    public static Object bindingSite(Object site, PhpFunctionRootNode fn, boolean boundThis) {
+        if (fn != null && fn.isClosure() && fn.closureBoundThis() != boundThis && site instanceof Node node) {
+            return new TraceSite(node, null, boundThis);
+        }
+        return site;
+    }
+
+    private static FrameEntry traceEntry(Object site, Object callee) {
+        if (callee == MAIN) {
+            if (site instanceof dev.phpruntime.nodes.expr.IncludeNode include) {
+                return new FrameEntry(sourcePath(include), sourceLine(include),
+                        include.kind().name().toLowerCase(java.util.Locale.ROOT), null, null, null, null);
+            }
+            if (site instanceof Node node) {
+                return new FrameEntry(sourcePath(node), sourceLine(node), "eval", null, null, null, null);
+            }
+            return null;
+        }
+        if (!(callee instanceof PhpFunctionRootNode fn)) {
+            return null;
+        }
+        String file = null;
+        int line = 0;
+        PhpClass traitSelf = null;
+        Boolean boundThis = null;
+        Object node = site;
+        if (site instanceof TraceSite ts) {
+            traitSelf = ts.traitSelf();
+            boundThis = ts.boundThis();
+            node = ts.site();
+        }
+        if (node instanceof Node n) {
+            file = sourcePath(n);
+            line = sourceLine(n);
+        }
+        String type = boundThis != null
+                ? (fn.declaringClass() == null ? null : (boundThis ? "->" : "::"))
+                : traceType(fn);
+        return new FrameEntry(file, line, traceName(fn), traceClass(fn, traitSelf), type, null, null);
+    }
+
+    /** The function name php prints for a frame: closures carry their declaration site. */
+    private static String traceName(PhpFunctionRootNode fn) {
+        return fn.isClosure() ? fn.qualifiedCallableName() : fn.rawFunctionName();
+    }
+
+    private static String traceClass(PhpFunctionRootNode fn, PhpClass traitSelf) {
+        return traitSelf != null ? traitSelf.name() : fn.declaringClass();
+    }
+
+    private static String traceType(PhpFunctionRootNode fn) {
+        if (fn.isClosure()) {
+            return fn.declaringClass() == null ? null : (fn.closureBoundThis() ? "->" : "::");
+        }
+        if (fn.isMethod()) {
+            return fn.isStaticMethod() ? "::" : "->";
+        }
+        return null;
     }
 
     /** Captures frames for {@code debug_backtrace($options, $limit)} and {@code debug_print_backtrace()}. */
