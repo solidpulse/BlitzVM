@@ -1801,6 +1801,42 @@ public final class PhpContext {
     private static final int BUFFER_POOL_SIZE = 8;
     private static final int BUFFER_POOL_MAX_CAPACITY = 1 << 20;
 
+    /**
+     * Scratch for file_get_contents(): reading into a buffer that belongs to the context avoids
+     * allocating a fresh array the size of every file on every read. No guest code runs while
+     * the buffer is in use, so one per context is enough.
+     */
+    private byte[] fileReadBuffer;
+    private static final int FILE_READ_BUFFER_START = 8192;
+    private static final int FILE_READ_BUFFER_RETAIN = 1 << 21;
+
+    @TruffleBoundary
+    public byte[] fileReadBuffer() {
+        byte[] buffer = fileReadBuffer;
+        if (buffer == null) {
+            buffer = new byte[FILE_READ_BUFFER_START];
+            fileReadBuffer = buffer;
+        }
+        return buffer;
+    }
+
+    /** Replaces the read buffer with one twice as large, after it filled up. */
+    @TruffleBoundary
+    public byte[] growFileReadBuffer(byte[] current) {
+        byte[] grown = java.util.Arrays.copyOf(current, Math.max(FILE_READ_BUFFER_START, current.length * 2));
+        fileReadBuffer = grown;
+        return grown;
+    }
+
+    /** Drops a buffer grown by one huge file so the worker does not keep that memory forever. */
+    @TruffleBoundary
+    public void trimFileReadBuffer() {
+        byte[] buffer = fileReadBuffer;
+        if (buffer != null && buffer.length > FILE_READ_BUFFER_RETAIN) {
+            fileReadBuffer = new byte[FILE_READ_BUFFER_START];
+        }
+    }
+
     /** A builder for a new output buffer, keeping the capacity a previous one reached. */
     @TruffleBoundary
     public StringBuilder newOutputBufferText() {

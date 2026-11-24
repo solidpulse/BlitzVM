@@ -278,11 +278,15 @@ final class FileFunctions {
             if (host != null) {
                 try {
                     // One open/read/close; a separate is_file() would be a second syscall.
-                    byte[] data = Files.readAllBytes(host.toPath());
+                    // The read reuses the context's buffer instead of allocating the file twice
+                    // (once here, once when the String is built from the bytes).
+                    int length = readIntoBuffer(ctx, host.toPath());
                     StreamFunctions.consumeStreamId(ctx);
-                    return window(data, a);
+                    return window(ctx.fileReadBuffer(), length, a);
                 } catch (IOException | SecurityException e) {
                     return readFailure(ctx, "file_get_contents", path, host);
+                } finally {
+                    ctx.trimFileReadBuffer();
                 }
             }
             TruffleFile f = file(ctx, fsPath);
@@ -290,12 +294,14 @@ final class FileFunctions {
                 if (f == null || !isFile(ctx, javaPath, f)) {
                     throw new IOException();
                 }
-                byte[] data = f.readAllBytes();
+                int length = readIntoBuffer(ctx, f);
                 StreamFunctions.consumeStreamId(ctx);
-                return window(data, a);
+                return window(ctx.fileReadBuffer(), length, a);
             } catch (IOException | SecurityException e) {
                 ctx.warning("file_get_contents(" + path + "): Failed to open stream: No such file or directory", 0);
                 return false;
+            } finally {
+                ctx.trimFileReadBuffer();
             }
         });
         Builtins.def("file_put_contents", 2, 4, (ctx, a) -> {
@@ -467,16 +473,45 @@ final class FileFunctions {
         });
     }
 
+    /** Reads the whole file into the context's buffer and returns its length. */
+    private static int readIntoBuffer(PhpContext ctx, java.nio.file.Path path) throws IOException {
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(path)) {
+            return drainInto(ctx, in);
+        }
+    }
+
+    /** TruffleFile variant, for a path outside the host filesystem. */
+    private static int readIntoBuffer(PhpContext ctx, TruffleFile file) throws IOException {
+        try (java.io.InputStream in = file.newInputStream()) {
+            return drainInto(ctx, in);
+        }
+    }
+
+    private static int drainInto(PhpContext ctx, java.io.InputStream in) throws IOException {
+        byte[] buffer = ctx.fileReadBuffer();
+        int length = 0;
+        for (;;) {
+            if (length == buffer.length) {
+                buffer = ctx.growFileReadBuffer(buffer);
+            }
+            int read = in.read(buffer, length, buffer.length - length);
+            if (read < 0) {
+                return length;
+            }
+            length += read;
+        }
+    }
+
     /**
      * The byte window file_get_contents() returns for the whole file: a negative offset counts
      * from the end of the data and an offset at or past the end gives "".
      */
-    private static String window(byte[] data, Object[] a) {
+    private static String window(byte[] data, int length, Object[] a) {
         long requestedOffset = a.length > 3 ? PhpOps.toLong(a[3]) : 0;
-        int offset = (int) Math.max(0, Math.min(data.length, requestedOffset < 0 ? data.length + requestedOffset : requestedOffset));
-        int end = data.length;
+        int offset = (int) Math.max(0, Math.min(length, requestedOffset < 0 ? length + requestedOffset : requestedOffset));
+        int end = length;
         if (a.length > 4 && a[4] != dev.phpruntime.runtime.PhpNull.INSTANCE) {
-            end = (int) Math.min(data.length, offset + Math.max(0, PhpOps.toLong(a[4])));
+            end = (int) Math.min(length, offset + Math.max(0, PhpOps.toLong(a[4])));
         }
         if (offset >= end) {
             return "";
