@@ -70,13 +70,15 @@ final class JsonFunctions {
 
     // ------------------------------------------------------------------ encode
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private static Object encode(PhpContext ctx, Object[] a) {
         long flags = a.length > 1 ? PhpOps.toLong(a[1]) : 0;
         long depth = a.length > 2 ? PhpOps.toLong(a[2]) : 512;
         if (depth <= 0) {
             throw new PhpError("ValueError", "json_encode(): Argument #3 ($depth) must be greater than 0", null);
         }
-        Encoder e = new Encoder(ctx, flags, depth);
+        Encoder e = new Encoder(ctx, flags, depth,
+                a[0] instanceof PhpArray top ? 16 + top.size() * 8 : 64);
         e.value(a[0], 0);
         if ((flags & THROW_ON_ERROR) != 0) {
             if (e.error != ERROR_NONE) {
@@ -96,22 +98,48 @@ final class JsonFunctions {
     }
 
     private static final class Encoder {
-        final StringBuilder sb = new StringBuilder();
+        final StringBuilder sb;
         final long flags;
         final long maxDepth;
         final PhpContext ctx;
-        final java.util.IdentityHashMap<Object, Boolean> active = new java.util.IdentityHashMap<>();
-        final java.util.IdentityHashMap<Object, Boolean> serializing = new java.util.IdentityHashMap<>();
+        /** Objects being encoded at this point in the recursion, outermost first. */
+        private Object[] ancestors;
+        private int ancestorCount;
+        /** Only allocated when an object implements JsonSerializable. */
+        private java.util.IdentityHashMap<Object, Boolean> serializing;
         int error = ERROR_NONE;
 
-        Encoder(PhpContext ctx, long flags, long maxDepth) {
+        Encoder(PhpContext ctx, long flags, long maxDepth, int initialCapacity) {
             this.ctx = ctx;
             this.flags = flags;
             this.maxDepth = maxDepth;
+            this.sb = new StringBuilder(Math.max(16, initialCapacity));
         }
 
         boolean has(long flag) {
             return (flags & flag) != 0;
+        }
+
+        private boolean isAncestor(Object value) {
+            for (int i = 0; i < ancestorCount; i++) {
+                if (ancestors[i] == value) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void enter(Object value) {
+            if (ancestors == null) {
+                ancestors = new Object[8];
+            } else if (ancestorCount == ancestors.length) {
+                ancestors = java.util.Arrays.copyOf(ancestors, ancestorCount * 2);
+            }
+            ancestors[ancestorCount++] = value;
+        }
+
+        private void leave() {
+            ancestors[--ancestorCount] = null;
         }
 
         void value(Object v, int depth) {
@@ -135,38 +163,39 @@ final class JsonFunctions {
                 }
                 string(s);
             } else if (v instanceof PhpArray arr) {
-                if (active.put(arr, true) != null) {
+                if (isAncestor(arr)) {
                     error = 6;
                     sb.append("null");
                     return;
                 }
-                container(arr.entries(), has(FORCE_OBJECT) || !arr.isList(), depth);
-                active.remove(arr);
+                enter(arr);
+                container(arr, depth);
+                leave();
             } else if (v instanceof dev.phpruntime.runtime.PhpObject obj) {
-                if (active.containsKey(obj)) {
+                if (isAncestor(obj)) {
                     error = 6;
                     sb.append("null");
                     return;
                 }
                 if (obj.phpClass().hasSplInterface(dev.phpruntime.runtime.SplInterfaces.JSON_SERIALIZABLE)
-                        && !serializing.containsKey(obj)) {
-                    serializing.put(obj, true);
+                        && !isSerializing(obj)) {
+                    startSerializing(obj);
                     Object result = dev.phpruntime.runtime.SplIterators.call(obj, "jsonSerialize");
                     if (result == obj) {
                         value(obj, depth);
                     } else {
-                        active.put(obj, true);
+                        enter(obj);
                         value(result, depth);
-                        active.remove(obj);
+                        leave();
                     }
-                    serializing.remove(obj);
+                    stopSerializing(obj);
                     return;
                 }
-                active.put(obj, true);
+                enter(obj);
                 if (obj.nativeState() instanceof dev.phpruntime.runtime.SplArrayState state) {
                     container((state.flags & dev.phpruntime.runtime.SplArrayState.STD_PROP_LIST) == 0
                             ? state.arrayCopy().entries() : dev.phpruntime.runtime.PhpClass.visibleEntries(ctx, obj, null), true, depth);
-                    active.remove(obj);
+                    leave();
                     return;
                 }
                 List<Map.Entry<Object, Object>> entries = new ArrayList<>(
@@ -180,11 +209,26 @@ final class JsonFunctions {
                     }
                 }
                 container(entries, true, depth);
-                active.remove(obj);
+                leave();
             } else {
                 error = 8;
                 sb.append("null");
             }
+        }
+
+        private boolean isSerializing(Object obj) {
+            return serializing != null && serializing.containsKey(obj);
+        }
+
+        private void startSerializing(Object obj) {
+            if (serializing == null) {
+                serializing = new java.util.IdentityHashMap<>();
+            }
+            serializing.put(obj, true);
+        }
+
+        private void stopSerializing(Object obj) {
+            serializing.remove(obj);
         }
 
         void number(double d) {
@@ -198,6 +242,46 @@ final class JsonFunctions {
             if (has(PRESERVE_ZERO_FRACTION) && f.indexOf('.') < 0 && f.indexOf('e') < 0) {
                 sb.append(".0");
             }
+        }
+
+        void container(PhpArray arr, int depth) {
+            boolean list = arr.isList();
+            if (!has(FORCE_OBJECT) && list) {
+                Object[] values = arr.packedValues();
+                if (values != null) {
+                    values(values, depth);
+                    return;
+                }
+            }
+            container(arr.entries(), has(FORCE_OBJECT) || !list, depth);
+        }
+
+        void values(Object[] values, int depth) {
+            if (depth >= maxDepth) {
+                error = ERROR_DEPTH;
+                if (!has(PARTIAL_OUTPUT_ON_ERROR)) {
+                    return;
+                }
+            }
+            if (values.length == 0) {
+                sb.append("[]");
+                return;
+            }
+            boolean pretty = has(PRETTY_PRINT);
+            sb.append('[');
+            for (int i = 0; i < values.length; i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                if (pretty) {
+                    sb.append('\n').append("    ".repeat(depth + 1));
+                }
+                value(values[i], depth + 1);
+            }
+            if (pretty) {
+                sb.append('\n').append("    ".repeat(depth));
+            }
+            sb.append(']');
         }
 
         void container(Iterable<Map.Entry<Object, Object>> entries, boolean object, int depth) {
@@ -241,19 +325,27 @@ final class JsonFunctions {
         }
 
         void string(String s) {
-            if (!PhpStrings.isUtf8(s)) {
-                if (!has(INVALID_UTF8_SUBSTITUTE) && !has(INVALID_UTF8_IGNORE)) {
-                    error = ERROR_UTF8;
-                    sb.append("null");
-                    return;
-                }
-                s = PhpStrings.decodeUtf8Replacing(s, has(INVALID_UTF8_IGNORE));
+            String text;
+            if (PhpStrings.isAscii(s)) {
+                text = s;
             } else {
-                s = PhpStrings.toJava(s);
+                text = PhpStrings.toJavaUtf8OrNull(s);
+                if (text == null) {
+                    if (!has(INVALID_UTF8_SUBSTITUTE) && !has(INVALID_UTF8_IGNORE)) {
+                        error = ERROR_UTF8;
+                        sb.append("null");
+                        return;
+                    }
+                    text = PhpStrings.decodeUtf8Replacing(s, has(INVALID_UTF8_IGNORE));
+                }
+            }
+            if (nothingToEscape(text)) {
+                sb.append('"').append(text).append('"');
+                return;
             }
             sb.append('"');
-            for (int i = 0; i < s.length(); i++) {
-                char c = s.charAt(i);
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
                 switch (c) {
                     case '"' -> sb.append(has(HEX_QUOT) ? "\\u0022" : "\\\"");
                     case '\\' -> sb.append("\\\\");
@@ -280,6 +372,22 @@ final class JsonFunctions {
                 }
             }
             sb.append('"');
+        }
+
+        /** True when appending the Java text unchanged is exactly what the escaping loop would do. */
+        private boolean nothingToEscape(String text) {
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (c < 0x20 || c == '"' || c == '\\' || c == '/' || c == '<' || c == '>'
+                        || c == '&' || c == '\'') {
+                    return false;
+                }
+                if (c >= 0x80 && (!has(UNESCAPED_UNICODE)
+                        || ((c == 0x2028 || c == 0x2029) && !has(UNESCAPED_LINE_TERMINATORS)))) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 

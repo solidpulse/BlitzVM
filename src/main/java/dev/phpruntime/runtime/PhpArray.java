@@ -355,6 +355,23 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
+     * A copy of the values of a packed array (implicit keys 0..size-1), or null when the array
+     * has explicit keys. Callers that only need values then avoid one wrapper per element.
+     */
+    @TruffleBoundary
+    public Object[] packedValues() {
+        if (keys != null) {
+            return null;
+        }
+        Object[] out = new Object[size];
+        for (int i = 0; i < size; i++) {
+            Object v = values[i];
+            out[i] = v instanceof PhpReference ref ? ref.getValue() : v;
+        }
+        return out;
+    }
+
+    /**
      * Iterates entries in array order without building a snapshot. Only for loops that cannot
      * modify this array and cannot run PHP, because a modification would move the cursor.
      */
