@@ -1,0 +1,40 @@
+int(1)
+int(42)
+string(4) "note"
+string(7) "changed"
+array(1) {
+  ["a"]=>
+  int(1)
+}
+TypeError: Cannot assign string to property Access::$hidden of type array
+string(6) "sealed"
+Error: Cannot modify readonly property Access::$sealed
+bool(true)
+int(5)
+int(11)
+int(11)
+int(12)
+string(2) "no"
+string(7) "shared!"
+int(50)
+int(80)
+int(80)
+int(20)
+int(20)
+bool(false)
+int(3)
+Error: Cannot modify readonly property ReadonlyBare::$value
+int(7)
+int(8)
+int(9)
+int(1)
+string(3) "123"
+TypeError: Cannot assign null to property Typed::$count of type int
+string(5) "child"
+string(12) "PrivateChild"
+string(7) "changed"
+string(6) "parent"
+string(7) "changed"
+bool(false)
+string(5) "start"
+string(3) "end"
