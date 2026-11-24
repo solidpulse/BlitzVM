@@ -1,0 +1,27 @@
+regular=i:0=31 i:6= i:7=61 i:8=41 i:12=30 
+numeric=i:0=31 i:6= 
+string=i:0=31 i:1=3031 i:2=312e30 i:6= i:7=61 i:8=41 i:10=30 
+string-explicit=i:0=31 i:1=3031 i:2=312e30 i:6= i:7=61 i:8=41 i:10=30 
+locale=i:0=31 i:1=3031 i:2=312e30 i:6= i:7=61 i:8=41 i:10=30 
+natural=i:0=31 i:2=312e30 i:6= i:7=61 i:8=41 i:10=30 
+string-case=i:0=31 i:1=3031 i:2=312e30 i:6= i:7=61 i:10=30 
+natural-case=i:0=31 i:2=312e30 i:6= i:7=61 i:10=30 
+default=i:0=31 i:1=3031 i:2=312e30 i:6= i:7=61 i:8=41 i:10=30 
+keys=i:5=61 s:x=62 i:9=63 
+keys-regular=i:5=61 s:x=62 i:9=63 
+numeric-strings=i:0=3130 i:4=31302e35 
+floats=i:0=31 i:1=312e35 i:2=302e31 i:4=2d30 i:5=30 
+booleans=i:0=31 i:3= i:4=30 
+nested-regular=i:0=array([1,2]) i:2=array([2,1]) 
+nested-numeric=i:0=array([1]) i:2=array([]) 
+objects-string=i:0=obj(x) i:2=obj(y) 
+objects-case=i:0=obj(X) i:2=obj(y) 
+natural-files=i:0=696d673132 i:1=696d673130 i:2=696d6732 i:3=696d673032 i:4=696d67303031 i:5=696d6731 i:6=696d673031 
+natural-case=i:0=496d6731 i:3=496d6732 i:4=696d673032 
+nan-regular=i:0=NAN i:1=NAN i:2=30 
+nan-numeric=i:0=NAN i:1=NAN 
+empty=
+single=i:0=6f6e6c79 
+case-always=i:0=61 
+locale-case=i:0=61 i:1=41 
+big-ints=i:0=39303037313939323534373430393932 

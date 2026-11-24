@@ -179,19 +179,32 @@ final class ArrayFunctions {
             return out;
         });
         Builtins.def("array_unique", 1, 2, (ctx, a) -> {
+            PhpArray src = arr(a, 0, "array_unique");
+            long flags = a.length > 1 ? PhpOps.toLong(a[1]) : 2; // SORT_STRING
+            long base = flags & ~8L; // ~SORT_FLAG_CASE
+            boolean foldCase = (flags & 8L) != 0;
+            if (base == 2L || base == 5L) {
+                return uniqueByString(src, base == 2L && foldCase);
+            }
+            boolean natural = base == 6L;
+            boolean numeric = base == 1L;
             PhpArray out = new PhpArray();
             List<Object> seen = new ArrayList<>();
-            for (Map.Entry<Object, Object> e : arr(a, 0, "array_unique").entries()) {
+            for (Map.Entry<Object, Object> e : src.entries()) {
+                Object value = unwrap(e.getValue());
                 boolean dup = false;
                 for (Object s : seen) {
-                    if (PhpOps.looseEquals(s, e.getValue())) {
+                    boolean equal = natural
+                            ? StringFunctions.natCompare(PhpOps.toStr(s), PhpOps.toStr(value), foldCase) == 0
+                            : numeric ? numericEquals(s, value) : PhpOps.looseEquals(s, value);
+                    if (equal) {
                         dup = true;
                         break;
                     }
                 }
                 if (!dup) {
-                    seen.add(e.getValue());
-                    out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
+                    seen.add(value);
+                    out.put(e.getKey(), PhpOps.copyOnAssign(value));
                 }
             }
             return out;
@@ -990,5 +1003,49 @@ final class ArrayFunctions {
             }
         }
         return !isAny;
+    }
+
+    /**
+     * array_unique under SORT_STRING and SORT_LOCALE_STRING (the C locale compares bytes). The
+     * string cast is the comparison key, so a hash set replaces php's O(n^2) scan of previous
+     * values; php's own default does the same.
+     */
+    private static PhpArray uniqueByString(PhpArray src, boolean foldCase) {
+        PhpArray out = new PhpArray();
+        Object[] packed = src.hasObjectValue() ? null : src.packedValues();
+        if (packed != null) {
+            java.util.HashSet<String> seen = new java.util.HashSet<>();
+            for (int i = 0; i < packed.length; i++) {
+                String key = PhpOps.toStr(packed[i]);
+                if (foldCase) {
+                    key = dev.phpruntime.runtime.PhpStrings.lower(key);
+                }
+                if (seen.add(key)) {
+                    out.put((long) i, PhpOps.copyOnAssign(packed[i]));
+                }
+            }
+            return out;
+        }
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        for (Map.Entry<Object, Object> e : src.entries()) {
+            Object value = unwrap(e.getValue());
+            String key = PhpOps.toStr(value);
+            if (foldCase) {
+                key = dev.phpruntime.runtime.PhpStrings.lower(key);
+            }
+            if (seen.add(key)) {
+                out.put(e.getKey(), PhpOps.copyOnAssign(value));
+            }
+        }
+        return out;
+    }
+
+    private static Object unwrap(Object value) {
+        return value instanceof PhpReference ref ? ref.getValue() : value;
+    }
+
+    /** SORT_NUMERIC compares every value as a double, so integers beyond 2^53 are not exact. */
+    private static boolean numericEquals(Object x, Object y) {
+        return PhpOps.toDouble(x) == PhpOps.toDouble(y);
     }
 }

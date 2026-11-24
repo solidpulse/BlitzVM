@@ -400,7 +400,17 @@ public final class PhpOps {
             return Long.compare(x, y);
         }
         if ((a instanceof Long || a instanceof Double) && (b instanceof Long || b instanceof Double)) {
-            return Double.compare(toDouble(a), toDouble(b)) == 0 ? 0 : (toDouble(a) < toDouble(b) ? -1 : 1);
+            double x = toDouble(a);
+            double y = toDouble(b);
+            // php: NAN is equal to nothing and sorts after everything (<=> returns 1);
+            // -0.0 == 0.0, unlike Double.compare.
+            if (x < y) {
+                return -1;
+            }
+            if (x > y) {
+                return 1;
+            }
+            return x == y ? 0 : 1;
         }
         if (a instanceof String x && b instanceof String y) {
             if (isNumericString(x) && isNumericString(y)) {
