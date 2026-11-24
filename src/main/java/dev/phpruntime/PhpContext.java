@@ -141,6 +141,8 @@ public final class PhpContext {
     private dev.phpruntime.runtime.WorkerHandler workerHandler;
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
+    /** Reflection class handles and layout caches, built on first reflection use. */
+    private dev.phpruntime.builtins.ReflectionClasses.Handles reflectionHandles;
     private Node currentBuiltinCallSite;
     private String byteStringOrigin;
     private Boolean hostFileSystem;
@@ -285,6 +287,16 @@ public final class PhpContext {
 
     public void setBuiltinState(Object state) {
         builtinState = state;
+    }
+
+    /** Reflection class handles for this request, created on first use. */
+    public dev.phpruntime.builtins.ReflectionClasses.Handles reflectionHandles() {
+        dev.phpruntime.builtins.ReflectionClasses.Handles handles = reflectionHandles;
+        if (handles == null) {
+            handles = new dev.phpruntime.builtins.ReflectionClasses.Handles();
+            reflectionHandles = handles;
+        }
+        return handles;
     }
 
     public Node currentBuiltinCallSite() {

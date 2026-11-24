@@ -31,7 +31,9 @@ import dev.phpruntime.snapshot.RestoredNativeState;
 import dev.phpruntime.snapshot.SnapshotNativeState;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -173,9 +175,46 @@ public final class ReflectionClasses {
         }
     }
 
-    /** A declared (or dynamic) property. */
-    private record PropertyState(PhpClass reflected, PhpClass declaring, PhpClassTemplate.PropertyDecl decl,
-                                 boolean dynamic, String dynamicName) implements PhpNativeState {
+    /** A declared (or dynamic) property, with its immutable layout resolved once. */
+    private static final class PropertyState implements PhpNativeState {
+        private final PhpClass reflected;
+        private final PhpClass declaring;
+        private final PhpClassTemplate.PropertyDecl decl;
+        private final boolean dynamic;
+        private final String dynamicName;
+        private PhpClass.InstanceProp instanceProp;
+        private boolean instancePropResolved;
+        private String storageKey;
+
+        PropertyState(PhpClass reflected, PhpClass declaring, PhpClassTemplate.PropertyDecl decl,
+                      boolean dynamic, String dynamicName) {
+            this.reflected = reflected;
+            this.declaring = declaring;
+            this.decl = decl;
+            this.dynamic = dynamic;
+            this.dynamicName = dynamicName;
+        }
+
+        PhpClass reflected() {
+            return reflected;
+        }
+
+        PhpClass declaring() {
+            return declaring;
+        }
+
+        PhpClassTemplate.PropertyDecl decl() {
+            return decl;
+        }
+
+        boolean dynamic() {
+            return dynamic;
+        }
+
+        String dynamicName() {
+            return dynamicName;
+        }
+
         @Override
         public PhpNativeState copy() {
             return this;
@@ -183,6 +222,37 @@ public final class ReflectionClasses {
 
         String name() {
             return dynamic ? dynamicName : decl.name();
+        }
+
+        /** The declared instance property, resolved once; null for statics and dynamic properties. */
+        PhpClass.InstanceProp instanceProp() {
+            if (decl == null || decl.isStatic()) {
+                return null;
+            }
+            if (!instancePropResolved) {
+                PhpClass.InstanceProp prop = declaring.findVisibleProp(name());
+                if (prop == null) {
+                    prop = declaring.findPrivateProp(name());
+                }
+                instanceProp = prop;
+                instancePropResolved = true;
+            }
+            return instanceProp;
+        }
+
+        /**
+         * The object-model key of the backing store. The class cannot change after linking, so
+         * the first lookup is the only one that walks the property tables.
+         */
+        String storageKey(PhpContext ctx) {
+            String key = storageKey;
+            if (key == null) {
+                PhpClass.InstanceProp prop = instanceProp();
+                key = prop != null ? prop.storageKey()
+                        : declaring.resolveProperty(ctx, name(), declaring.lowerName()).storageKey();
+                storageKey = key;
+            }
+            return key;
         }
     }
 
@@ -234,6 +304,170 @@ public final class ReflectionClasses {
                     argument.target()));
         }
         return new PhpAttribute(attribute.name(), arguments);
+    }
+
+    // ---------------------------------------------------------------- per-request handles
+
+    /**
+     * The Reflector classes the engine creates. Every object of one of these classes has the
+     * same small set of declared properties, so the handle for it caches the class lookup, one
+     * PutNode per php-visible property and a shape in which those properties already exist.
+     *
+     * <p>This used to be a by-name {@link PhpContext#lookupClass} plus an uncached
+     * {@code DynamicObject.PutNode} per object, which is most of the cost of the reflection
+     * hot path: the container creates thousands of these per request.
+     */
+    private enum Kind {
+        REFLECTION_CLASS("reflectionclass", "ReflectionClass", true, false),
+        REFLECTION_OBJECT("reflectionobject", "ReflectionObject", true, false),
+        REFLECTION_METHOD("reflectionmethod", "ReflectionMethod", true, true),
+        REFLECTION_FUNCTION("reflectionfunction", "ReflectionFunction", true, false),
+        REFLECTION_PARAMETER("reflectionparameter", "ReflectionParameter", true, false),
+        REFLECTION_PROPERTY("reflectionproperty", "ReflectionProperty", true, true),
+        REFLECTION_CLASS_CONSTANT("reflectionclassconstant", "ReflectionClassConstant", true, true),
+        REFLECTION_ATTRIBUTE("reflectionattribute", "ReflectionAttribute", false, false),
+        REFLECTION_NAMED_TYPE("reflectionnamedtype", "ReflectionNamedType", false, false),
+        REFLECTION_UNION_TYPE("reflectionuniontype", "ReflectionUnionType", false, false),
+        REFLECTION_INTERSECTION_TYPE("reflectionintersectiontype", "ReflectionIntersectionType", false, false),
+        REFLECTION_ENUM("reflectionenum", "ReflectionEnum", true, false),
+        REFLECTION_ENUM_UNIT_CASE("reflectionenumunitcase", "ReflectionEnumUnitCase", true, true),
+        REFLECTION_ENUM_BACKED_CASE("reflectionenumbackedcase", "ReflectionEnumBackedCase", true, true),
+        REFLECTION_REFERENCE("reflectionreference", "ReflectionReference", false, false);
+
+        final String lowerName;
+        final String className;
+        final boolean hasName;
+        final boolean hasClass;
+
+        Kind(String lowerName, String className, boolean hasName, boolean hasClass) {
+            this.lowerName = lowerName;
+            this.className = className;
+            this.hasName = hasName;
+            this.hasClass = hasClass;
+        }
+    }
+
+    /** One reflection class: its linked PhpClass and one cached PutNode per php-visible property. */
+    private record Handle(PhpClass cls, DynamicObject.PutNode namePut, DynamicObject.PutNode classPut) {
+        void putName(PhpObject object, String name) {
+            if (namePut != null) {
+                namePut.execute(object, "name", name);
+            }
+        }
+
+        void putClass(PhpObject object, String name) {
+            if (classPut != null) {
+                classPut.execute(object, "class", name);
+            }
+        }
+    }
+
+    /**
+     * Per-request caches used by the reflection builtins. The {@link PhpClass} objects are
+     * shared by every request, so the caches must stay in the context: they are layout details
+     * of one request, not php state, and are rebuilt cheaply when the request ends.
+     */
+    public static final class Handles {
+        private final PhpClass[] classes = new PhpClass[Kind.values().length];
+        private final IdentityHashMap<PhpClass, Handle> byClass = new IdentityHashMap<>();
+        private final IdentityHashMap<PhpClass, List<PropertyInfo>> propertyLists = new IdentityHashMap<>();
+        private final IdentityHashMap<PhpClass, Map<String, PropertyInfo>> propertyMaps = new IdentityHashMap<>();
+        private final IdentityHashMap<PhpClass, DefaultsWriter> defaultsWriters = new IdentityHashMap<>();
+
+        private Handle handle(PhpContext ctx, Kind kind) {
+            PhpClass cls = classes[kind.ordinal()];
+            if (cls == null) {
+                cls = ctx.lookupClass(kind.className);
+                if (cls == null) {
+                    throw new PhpError("Reflection class " + kind.className + " is not available");
+                }
+                classes[kind.ordinal()] = cls;
+            }
+            return forClass(cls);
+        }
+
+        /** The handle for an object's class, including a user subclass of a reflector. */
+        private Handle forClass(PhpClass cls) {
+            Handle handle = byClass.get(cls);
+            if (handle == null) {
+                handle = createHandle(cls);
+                byClass.put(cls, handle);
+            }
+            return handle;
+        }
+
+        private static Handle createHandle(PhpClass cls) {
+            DynamicObject.PutNode namePut = cls.findVisibleProp("name") != null
+                    ? DynamicObject.PutNode.create() : null;
+            DynamicObject.PutNode classPut = cls.findVisibleProp("class") != null
+                    ? DynamicObject.PutNode.create() : null;
+            return new Handle(cls, namePut, classPut);
+        }
+
+        private List<PropertyInfo> properties(PhpClass cls) {
+            List<PropertyInfo> cached = propertyLists.get(cls);
+            if (cached == null) {
+                cached = collectProperties(cls);
+                propertyLists.put(cls, cached);
+            }
+            return cached;
+        }
+
+        private Map<String, PropertyInfo> propertyMap(PhpClass cls) {
+            Map<String, PropertyInfo> cached = propertyMaps.get(cls);
+            if (cached == null) {
+                List<PropertyInfo> list = properties(cls);
+                cached = new HashMap<>(list.size() * 2);
+                for (PropertyInfo info : list) {
+                    cached.putIfAbsent(info.decl().name(), info);
+                }
+                propertyMaps.put(cls, cached);
+            }
+            return cached;
+        }
+
+        private DefaultsWriter defaultsWriter(PhpClass cls) {
+            DefaultsWriter cached = defaultsWriters.get(cls);
+            if (cached == null) {
+                cached = new DefaultsWriter(cls);
+                defaultsWriters.put(cls, cached);
+            }
+            return cached;
+        }
+    }
+
+    /**
+     * Writes a class's declared property defaults with one cached PutNode per key, the way a
+     * bytecode {@code new} site does, instead of going through uncached object-model puts.
+     */
+    private static final class DefaultsWriter {
+        private final String[] keys;
+        private final Object[] constantValues;
+        private final DynamicObject.PutNode[] puts;
+
+        DefaultsWriter(PhpClass cls) {
+            this.keys = cls.defaultKeys();
+            this.constantValues = cls.constantDefaultValuesOrNull();
+            this.puts = new DynamicObject.PutNode[keys.length];
+            for (int i = 0; i < puts.length; i++) {
+                puts[i] = DynamicObject.PutNode.create();
+            }
+        }
+
+        boolean isEmpty() {
+            return puts.length == 0;
+        }
+
+        void write(PhpObject object, PhpClass cls) {
+            Object[] values = constantValues != null ? constantValues : cls.defaultValues();
+            for (int i = 0; i < puts.length; i++) {
+                puts[i].execute(object, keys[i], PhpOps.copyOnAssign(values[i]));
+            }
+        }
+    }
+
+    private static Handles handles(PhpContext ctx) {
+        return ctx.reflectionHandles();
     }
 
     // ---------------------------------------------------------------- registration
@@ -425,15 +659,15 @@ public final class ReflectionClasses {
     }
 
     private static PhpObject typeObject(PhpContext ctx, PhpType type) {
-        String className;
+        Kind kind;
         if (type instanceof PhpType.Union) {
-            className = "ReflectionUnionType";
+            kind = Kind.REFLECTION_UNION_TYPE;
         } else if (type instanceof PhpType.Intersection) {
-            className = "ReflectionIntersectionType";
+            kind = Kind.REFLECTION_INTERSECTION_TYPE;
         } else {
-            className = "ReflectionNamedType";
+            kind = Kind.REFLECTION_NAMED_TYPE;
         }
-        return newReflectionObject(ctx, className, new TypeState(type));
+        return newReflectionObject(ctx, kind, new TypeState(type));
     }
 
     private static void buildReflectionException(PhpLanguage language, Map<String, PhpClassTemplate> out) {
@@ -476,7 +710,7 @@ public final class ReflectionClasses {
                     throw reflectionError("Class \"" + name + "\" does not exist");
                 }
             }
-            attach(self, new ClassState(cls, args[0] instanceof PhpObject object ? object : null));
+            attach(ctx, self, new ClassState(cls, args[0] instanceof PhpObject object ? object : null));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
@@ -608,16 +842,16 @@ public final class ReflectionClasses {
             requireArgCount("ReflectionClass::hasProperty", args, 1, 1);
             ClassState state = classState(self);
             String name = PhpOps.toStr(args[0]);
-            return findProperty(state, name) != null || hasDynamicProperty(state, name);
+            return findProperty(ctx, state, name) != null || hasDynamicProperty(state, name);
         });
         addMethod(language, methods, "getProperty", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionClass::getProperty", args, 1, 1);
             ClassState state = classState(self);
             String name = PhpOps.toStr(args[0]);
-            PropertyInfo info = findProperty(state, name);
+            PropertyInfo info = findProperty(ctx, state, name);
             if (info == null) {
                 if (hasDynamicProperty(state, name)) {
-                    return newReflectionObject(ctx, "ReflectionProperty",
+                    return newReflectionObject(ctx, Kind.REFLECTION_PROPERTY,
                             new PropertyState(state.cls(), null, null, true, name));
                 }
                 throw reflectionError("Property " + state.cls().name() + "::$" + name + " does not exist");
@@ -628,11 +862,13 @@ public final class ReflectionClasses {
             ClassState state = classState(self);
             Integer filter = args.length > 0 && args[0] != PhpNull.INSTANCE ? (int) toLong(args[0]) : null;
             PhpArray result = new PhpArray();
-            for (PropertyInfo info : collectProperties(state.cls())) {
-                PhpClass.InstanceProp effective = info.declaring() == null ? null
-                        : info.declaring().findVisibleProp(info.decl().name());
-                if (filter != null && (propertyModifiers(info.decl(), effective) & filter) == 0) {
-                    continue;
+            for (PropertyInfo info : handles(ctx).properties(state.cls())) {
+                if (filter != null) {
+                    PhpClass.InstanceProp effective = info.declaring() == null ? null
+                            : info.declaring().findVisibleProp(info.decl().name());
+                    if ((propertyModifiers(info.decl(), effective) & filter) == 0) {
+                        continue;
+                    }
                 }
                 result.append(propertyObject(ctx, state.cls(), info));
             }
@@ -719,7 +955,7 @@ public final class ReflectionClasses {
             requireArgCount("ReflectionClass::getStaticPropertyValue", args, 1, 2);
             ClassState state = classState(self);
             String name = PhpOps.toStr(args[0]);
-            PropertyInfo info = findProperty(state, name);
+            PropertyInfo info = findProperty(ctx, state, name);
             if (info == null || !info.decl().isStatic()) {
                 if (args.length > 1) {
                     return PhpOps.copyOnAssign(args[1]);
@@ -740,7 +976,7 @@ public final class ReflectionClasses {
             requireArgCount("ReflectionClass::setStaticPropertyValue", args, 2, 2);
             ClassState state = classState(self);
             String name = PhpOps.toStr(args[0]);
-            PropertyInfo info = findProperty(state, name);
+            PropertyInfo info = findProperty(ctx, state, name);
             if (info == null || !info.decl().isStatic()) {
                 throw reflectionError("Class " + state.cls().name() + " does not have a property named " + name);
             }
@@ -753,7 +989,7 @@ public final class ReflectionClasses {
         });
         addMethod(language, methods, "getStaticProperties", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PhpArray result = new PhpArray();
-            for (PropertyInfo info : collectProperties(classState(self).cls())) {
+            for (PropertyInfo info : handles(ctx).properties(classState(self).cls())) {
                 if (!info.decl().isStatic()) {
                     continue;
                 }
@@ -766,7 +1002,7 @@ public final class ReflectionClasses {
         });
         addMethod(language, methods, "getDefaultProperties", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PhpArray result = new PhpArray();
-            List<PropertyInfo> properties = collectProperties(classState(self).cls());
+            List<PropertyInfo> properties = handles(ctx).properties(classState(self).cls());
             for (PropertyInfo info : properties) {
                 if (info.decl().isStatic() && propertyHasDefault(info)) {
                     result.put(info.decl().name(), info.declaring().evaluatePropertyDefault(info.decl()));
@@ -816,7 +1052,7 @@ public final class ReflectionClasses {
                         "ReflectionObject::__construct(): Argument #1 ($object) must be of type object, "
                                 + PhpOps.typeName(args[0]) + " given", null);
             }
-            attach(self, new ClassState(object.phpClass(), object));
+            attach(ctx, self, new ClassState(object.phpClass(), object));
             return PhpNull.INSTANCE;
         });
         register(out, new PhpClassTemplate(language.nextTemplateId(), "ReflectionObject", false, false, false, false,
@@ -1082,13 +1318,8 @@ public final class ReflectionClasses {
         }
     }
 
-    private static PropertyInfo findProperty(ClassState state, String name) {
-        for (PropertyInfo info : collectProperties(state.cls())) {
-            if (info.decl().name().equals(name)) {
-                return info;
-            }
-        }
-        return null;
+    private static PropertyInfo findProperty(PhpContext ctx, ClassState state, String name) {
+        return handles(ctx).propertyMap(state.cls()).get(name);
     }
 
     private static boolean hasDynamicProperty(ClassState state, String name) {
@@ -1097,7 +1328,7 @@ public final class ReflectionClasses {
     }
 
     private static PhpObject propertyObject(PhpContext ctx, PhpClass reflected, PropertyInfo info) {
-        return newReflectionObject(ctx, "ReflectionProperty",
+        return newReflectionObject(ctx, Kind.REFLECTION_PROPERTY,
                 new PropertyState(reflected, info.declaring(), info.decl(), false, info.decl().name()));
     }
 
@@ -1273,7 +1504,7 @@ public final class ReflectionClasses {
         for (int i = 0; i < signature.parameters().size(); i++) {
             ParameterInfo info = new ParameterInfo(owner, signature.parameters().get(i), i, declaringClass, root,
                     requiredCount, internal);
-            out.append(newReflectionObject(ctx, "ReflectionParameter",
+            out.append(newReflectionObject(ctx, Kind.REFLECTION_PARAMETER,
                     new ParameterState(info.parameter(), info.position(), info.declaringClass(), info.root(),
                             info.requiredCount(), info.internal(), info.owner())));
         }
@@ -1297,7 +1528,7 @@ public final class ReflectionClasses {
             BuiltinParams.Param param = params[i];
             PhpParameter phpParam = new PhpParameter(param.name(), null, List.of(), false, param.variadic(),
                     false, param.hasDefault() ? param.defaultValue() : null, null);
-            out.append(newReflectionObject(ctx, "ReflectionParameter",
+            out.append(newReflectionObject(ctx, Kind.REFLECTION_PARAMETER,
                     new ParameterState(phpParam, i, null, null, required, true, owner)));
         }
         return out;
@@ -1346,78 +1577,71 @@ public final class ReflectionClasses {
     }
 
     /** Sets the native state and fills the public {@code $name}/{@code $class} php shows for it. */
-    private static void attach(PhpObject self, PhpNativeState state) {
+    private static void attach(PhpContext ctx, PhpObject self, PhpNativeState state) {
+        attach(handles(ctx).forClass(self.phpClass()), self, state);
+    }
+
+    private static void attach(Handle handle, PhpObject self, PhpNativeState state) {
         self.setNativeState(state);
-        String name = null;
-        String cls = null;
         switch (state) {
-            case ClassState s -> name = s.cls().name();
-            case FunctionState s -> name = s.name;
+            case ClassState s -> handle.putName(self, s.cls().name());
+            case FunctionState s -> handle.putName(self, s.name);
             case MethodState s -> {
-                name = s.entry().name();
-                cls = s.declaring().name();
+                handle.putName(self, s.entry().name());
+                handle.putClass(self, s.declaring().name());
             }
-            case ParameterState s -> name = s.parameter().name();
+            case ParameterState s -> handle.putName(self, s.parameter().name());
             case PropertyState s -> {
-                name = s.name();
-                cls = (s.declaring() == null ? s.reflected() : s.declaring()).name();
+                handle.putName(self, s.name());
+                handle.putClass(self, (s.declaring() == null ? s.reflected() : s.declaring()).name());
             }
             case ConstantState s -> {
-                name = s.decl().name();
-                cls = s.declaring().name();
+                handle.putName(self, s.decl().name());
+                handle.putClass(self, s.declaring().name());
             }
             case EnumCaseRefState s -> {
-                name = s.decl().name();
-                cls = s.enumClass().name();
+                handle.putName(self, s.decl().name());
+                handle.putClass(self, s.enumClass().name());
             }
             default -> {
-                return;
             }
-        }
-        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
-        put.execute(self, "name", name);
-        if (cls != null) {
-            put.execute(self, "class", cls);
         }
     }
 
     // ---------------------------------------------------------------- reflection objects
 
-    private static PhpObject newReflectionObject(PhpContext ctx, String className, PhpNativeState state) {
-        PhpClass cls = ctx.lookupClass(className);
-        if (cls == null) {
-            throw new PhpError("Reflection class " + className + " is not available");
-        }
-        PhpObject object = new PhpObject(cls, ctx.nextObjectId());
-        attach(object, state);
+    private static PhpObject newReflectionObject(PhpContext ctx, Kind kind, PhpNativeState state) {
+        Handle handle = handles(ctx).handle(ctx, kind);
+        PhpObject object = new PhpObject(handle.cls(), ctx.nextObjectId());
+        attach(handle, object, state);
         return object;
     }
 
     private static PhpObject reflectionClassObject(PhpContext ctx, PhpClass cls, PhpObject object) {
-        return newReflectionObject(ctx, "ReflectionClass", new ClassState(cls, object));
+        return newReflectionObject(ctx, Kind.REFLECTION_CLASS, new ClassState(cls, object));
     }
 
     private static PhpObject reflectionMethodObject(PhpContext ctx, PhpClass reflected, PhpClass.MethodEntry entry) {
-        return newReflectionObject(ctx, "ReflectionMethod", methodState(reflected, entry));
+        return newReflectionObject(ctx, Kind.REFLECTION_METHOD, methodState(reflected, entry));
     }
 
     private static PhpObject methodObject(PhpContext ctx, MethodState state) {
-        return newReflectionObject(ctx, "ReflectionMethod", state);
+        return newReflectionObject(ctx, Kind.REFLECTION_METHOD, state);
     }
 
     private static PhpObject propertyObjectFromState(PhpContext ctx, PropertyState state) {
-        return newReflectionObject(ctx, "ReflectionProperty", state);
+        return newReflectionObject(ctx, Kind.REFLECTION_PROPERTY, state);
     }
 
     private static PhpObject constantObject(PhpContext ctx, PhpClass reflected, ConstantInfo info) {
         boolean enumCase = info.declaring().template().isEnum()
                 && info.declaring().template().enumCase(info.decl().name()) != null;
-        return newReflectionObject(ctx, "ReflectionClassConstant",
+        return newReflectionObject(ctx, Kind.REFLECTION_CLASS_CONSTANT,
                 new ConstantState(reflected, info.declaring(), info.decl(), enumCase));
     }
 
     private static PhpObject functionObject(PhpContext ctx, FunctionState state) {
-        return newReflectionObject(ctx, "ReflectionFunction", state);
+        return newReflectionObject(ctx, Kind.REFLECTION_FUNCTION, state);
     }
 
     // ---------------------------------------------------------------- ReflectionFunction and ReflectionMethod
@@ -1516,7 +1740,7 @@ public final class ReflectionClasses {
                 List.of("function"), (ctx, self, args) -> {
             requireArgCount("ReflectionFunction::__construct", args, 1, 1);
             FunctionState state = functionStateFor(ctx, args[0]);
-            attach(self, state);
+            attach(ctx, self, state);
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "invoke", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
@@ -1584,7 +1808,7 @@ public final class ReflectionClasses {
                 throw reflectionError("Method " + cls.name() + "::" + methodName + "() does not exist");
             }
             MethodState state = methodState(cls, entry);
-            attach(self, state);
+            attach(ctx, self, state);
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "invoke", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
@@ -2115,15 +2339,15 @@ public final class ReflectionClasses {
                 clsState = new ClassState(cls, null);
             }
             String name = PhpOps.toStr(args[1]);
-            PropertyInfo info = findProperty(clsState, name);
+            PropertyInfo info = findProperty(ctx, clsState, name);
             if (info == null) {
                 if (hasDynamicProperty(clsState, name)) {
-                    attach(self, new PropertyState(cls, null, null, true, name));
+                    attach(ctx, self, new PropertyState(cls, null, null, true, name));
                     return PhpNull.INSTANCE;
                 }
                 throw reflectionError("Property " + cls.name() + "::$" + name + " does not exist");
             }
-            attach(self, new PropertyState(cls, info.declaring(), info.decl(), false, name));
+            attach(ctx, self, new PropertyState(cls, info.declaring(), info.decl(), false, name));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
@@ -2366,11 +2590,6 @@ public final class ReflectionClasses {
         throw new PhpError("ReflectionProperty object is not initialized");
     }
 
-    private static String propertyStorageKey(PhpContext ctx, PhpClass declaring, String name) {
-        PhpClass.PropertyResolution resolution = declaring.resolveProperty(ctx, name, declaring.lowerName());
-        return resolution.storageKey();
-    }
-
     private static Object getInstanceProperty(PhpContext ctx, PhpObject object, PropertyState state) {
         PhpClass.InstanceProp prop = effectiveInstanceProp(state);
         if (prop != null) {
@@ -2393,7 +2612,7 @@ public final class ReflectionClasses {
     }
 
     private static Object rawInstanceProperty(PhpContext ctx, PhpObject object, PropertyState state) {
-        String key = propertyStorageKey(ctx, state.declaring(), state.name());
+        String key = state.storageKey(ctx);
         Object value = DynamicObject.GetNode.getUncached().execute(object, key, PhpNull.INSTANCE);
         return value == null ? PhpNull.INSTANCE : value;
     }
@@ -2411,7 +2630,7 @@ public final class ReflectionClasses {
                         + state.declaring().name() + "::$" + state.name());
             }
         }
-        String key = propertyStorageKey(ctx, state.declaring(), state.name());
+        String key = state.storageKey(ctx);
         DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
     }
 
@@ -2486,20 +2705,13 @@ public final class ReflectionClasses {
             value = prop.declaredType().checkProperty(value == null ? PhpNull.INSTANCE : value, ctx, null,
                     false, object.phpClass(), state.declaring().name(), state.name());
         }
-        String key = propertyStorageKey(ctx, state.declaring(), state.name());
+        String key = state.storageKey(ctx);
         DynamicObject.PutNode.getUncached().execute(object, key, PhpOps.copyOnAssign(value));
         return PhpNull.INSTANCE;
     }
 
     private static PhpClass.InstanceProp effectiveInstanceProp(PropertyState state) {
-        if (state.decl() == null || state.decl().isStatic()) {
-            return null;
-        }
-        PhpClass.InstanceProp prop = state.declaring().findVisibleProp(state.name());
-        if (prop == null) {
-            prop = state.declaring().findPrivateProp(state.name());
-        }
-        return prop;
+        return state.instanceProp();
     }
 
     private static Visibility effectiveSetVisibility(PropertyState state) {
@@ -2534,7 +2746,7 @@ public final class ReflectionClasses {
                 hookVisibility, false, hook.isFinal(), hook.fromTrait(), hook.callTarget());
         PhpFunctionRootNode root = hook.callTarget() == null ? null
                 : PhpFunctionRootNode.of(hook.callTarget().getRootNode());
-        return newReflectionObject(ctx, "ReflectionMethod",
+        return newReflectionObject(ctx, Kind.REFLECTION_METHOD,
                 new MethodState(state.reflected(), entry, hook.declaringClass(), hook.signature(), root, false));
     }
 
@@ -2584,7 +2796,7 @@ public final class ReflectionClasses {
             }
             boolean enumCase = info.declaring().template().isEnum()
                     && info.declaring().template().enumCase(info.decl().name()) != null;
-            attach(self, new ConstantState(cls, info.declaring(), info.decl(), enumCase));
+            attach(ctx, self, new ConstantState(cls, info.declaring(), info.decl(), enumCase));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
@@ -2646,7 +2858,7 @@ public final class ReflectionClasses {
             if (!cls.template().isEnum()) {
                 throw reflectionError("Class \"" + cls.name() + "\" is not an enum");
             }
-            attach(self, new ClassState(cls, args[0] instanceof PhpObject object ? object : null));
+            attach(ctx, self, new ClassState(cls, args[0] instanceof PhpObject object ? object : null));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "isBacked", Visibility.PUBLIC, false, false,
@@ -2654,7 +2866,7 @@ public final class ReflectionClasses {
         addMethod(language, methods, "getBackingType", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             PhpType backing = classState(self).cls().template().enumBackingType();
             return backing == null ? PhpNull.INSTANCE
-                    : newReflectionObject(ctx, "ReflectionNamedType", new TypeState(backing));
+                    : newReflectionObject(ctx, Kind.REFLECTION_NAMED_TYPE, new TypeState(backing));
         });
         addMethod(language, methods, "hasCase", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
             requireArgCount("ReflectionEnum::hasCase", args, 1, 1);
@@ -2698,7 +2910,7 @@ public final class ReflectionClasses {
             if (decl == null) {
                 throw reflectionError("Constant " + cls.name() + "::" + name + " does not exist");
             }
-            attach(self, new EnumCaseRefState(cls, decl));
+            attach(ctx, self, new EnumCaseRefState(cls, decl));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getName", Visibility.PUBLIC, false, false,
@@ -2711,7 +2923,7 @@ public final class ReflectionClasses {
         addMethod(language, methods, "getDeclaringClass", Visibility.PUBLIC, false, false,
                 (ctx, self, args) -> reflectionClassObject(ctx, enumCaseState(self).enumClass(), null));
         addMethod(language, methods, "getEnum", Visibility.PUBLIC, false, false, (ctx, self, args) ->
-                newReflectionObject(ctx, "ReflectionEnum",
+                newReflectionObject(ctx, Kind.REFLECTION_ENUM,
                         new ClassState(enumCaseState(self).enumClass(), null)));
         addMethod(language, methods, "isPublic", Visibility.PUBLIC, false, false, (ctx, self, args) -> true);
         addMethod(language, methods, "isProtected", Visibility.PUBLIC, false, false, (ctx, self, args) -> false);
@@ -2748,7 +2960,7 @@ public final class ReflectionClasses {
             if (cls.template().enumBackingType() == null) {
                 throw reflectionError("Enum case " + cls.name() + "::" + name + " is not a backed case");
             }
-            attach(self, new EnumCaseRefState(cls, decl));
+            attach(ctx, self, new EnumCaseRefState(cls, decl));
             return PhpNull.INSTANCE;
         });
         addMethod(language, methods, "getBackingValue", Visibility.PUBLIC, false, false, (ctx, self, args) -> {
@@ -2774,9 +2986,9 @@ public final class ReflectionClasses {
 
     private static PhpObject enumCaseObject(PhpContext ctx, PhpClass cls,
                                             PhpClassTemplate.EnumCaseDecl decl) {
-        String reflectionClass = cls.template().enumBackingType() == null
-                ? "ReflectionEnumUnitCase" : "ReflectionEnumBackedCase";
-        return newReflectionObject(ctx, reflectionClass, new EnumCaseRefState(cls, decl));
+        Kind kind = cls.template().enumBackingType() == null
+                ? Kind.REFLECTION_ENUM_UNIT_CASE : Kind.REFLECTION_ENUM_BACKED_CASE;
+        return newReflectionObject(ctx, kind, new EnumCaseRefState(cls, decl));
     }
 
     // ---------------------------------------------------------------- ReflectionAttribute
@@ -2951,7 +3163,7 @@ public final class ReflectionClasses {
                     count++;
                 }
             }
-            out.append(newReflectionObject(ctx, "ReflectionAttribute",
+            out.append(newReflectionObject(ctx, Kind.REFLECTION_ATTRIBUTE,
                     new AttributeState(attribute, target, count > 1)));
         }
         return out;
@@ -3011,7 +3223,7 @@ public final class ReflectionClasses {
             }
             if (array.getRaw(key) instanceof PhpReference reference) {
                 String id = String.format("%020x", System.identityHashCode(reference));
-                return newReflectionObject(ctx, "ReflectionReference", new ReferenceState(reference, id));
+                return newReflectionObject(ctx, Kind.REFLECTION_REFERENCE, new ReferenceState(reference, id));
             }
             return PhpNull.INSTANCE;
         });
@@ -3053,7 +3265,10 @@ public final class ReflectionClasses {
                     + " does not have a constructor, so you cannot pass any constructor arguments");
         }
         PhpObject object = new PhpObject(cls, ctx.nextObjectId());
-        cls.populateDefaults(object);
+        DefaultsWriter defaults = handles(ctx).defaultsWriter(cls);
+        if (!defaults.isEmpty()) {
+            defaults.write(object, cls);
+        }
         if (cls.isThrowable()) {
             PhpExceptions.initNewThrowable(object, null);
         }
