@@ -1668,8 +1668,18 @@ public final class PhpContext {
         return true;
     }
 
-    @TruffleBoundary
     public boolean hasConstant(String name) {
+        // The constant table is per request and found names stay defined, so the common repeat
+        // call is a map hit on the already-normalized name, without a boundary crossing.
+        if (!name.isEmpty() && name.charAt(0) != '\\' && name.indexOf("::") < 0
+                && foundConstants.containsKey(name)) {
+            return true;
+        }
+        return hasConstantSlow(name);
+    }
+
+    @TruffleBoundary
+    private boolean hasConstantSlow(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
         int sep = n.indexOf("::");
         if (sep > 0) {
