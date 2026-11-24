@@ -48,6 +48,9 @@ array(2) {
   [1]=>
   int(2)
 }
+ReflectionException: Class Closure is an internal class marked as final that cannot be instantiated without invoking its constructor
+ReflectionException: Class Generator is an internal class marked as final that cannot be instantiated without invoking its constructor
+ReflectionException: Class ReflectionReference is an internal class marked as final that cannot be instantiated without invoking its constructor
 Error: Cannot instantiate interface NotInstantiable
 Error: Cannot instantiate trait AlsoNot
 Error: Cannot instantiate enum NotEither

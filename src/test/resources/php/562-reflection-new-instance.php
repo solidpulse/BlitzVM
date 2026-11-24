@@ -105,6 +105,15 @@ var_dump($dateTime instanceof DateTime);
 $internalArgs = (new ReflectionClass(ArrayIterator::class))->newInstanceArgs([[1, 2]]);
 var_dump($internalArgs->getArrayCopy());
 
+foreach ([Closure::class, Generator::class, ReflectionReference::class] as $name) {
+    try {
+        (new ReflectionClass($name))->newInstanceWithoutConstructor();
+        echo $name, ": ok\n";
+    } catch (ReflectionException $e) {
+        echo get_class($e), ': ', $e->getMessage(), "\n";
+    }
+}
+
 interface NotInstantiable
 {
 }

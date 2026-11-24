@@ -1103,6 +1103,14 @@ public final class ReflectionClasses {
      * Internal classes whose engine clone handler is absent. A user subclass inherits that
      * unless it declares a public {@code __clone}, which is how php reports it.
      */
+    /**
+     * Internal classes the engine constructs with dedicated state, which php refuses to make
+     * with {@code newInstanceWithoutConstructor()}. A final internal class with a plain object
+     * layout (Attribute, Exception, DateTime, ...) is allowed, as in php.
+     */
+    private static final Set<String> NO_CONSTRUCTORLESS_INTERNAL = Set.of(
+            "closure", "generator", "reflectionreference");
+
     private static final Set<String> NON_CLONEABLE_INTERNAL = Set.of(
             "generator", "fiber", "weakreference", "directory", "pdo", "pdostatement", "collator",
             "random\\randomizer", "reflectionreference",
@@ -3313,6 +3321,11 @@ public final class ReflectionClasses {
         }
         if (cls.isAbstract()) {
             throw new PhpError("Cannot instantiate abstract class " + cls.name());
+        }
+        if (withoutConstructor && cls.isFinal() && cls.template().sourceFile() == null
+                && NO_CONSTRUCTORLESS_INTERNAL.contains(cls.lowerName())) {
+            throw reflectionError("Class " + cls.name() + " is an internal class marked as final that"
+                    + " cannot be instantiated without invoking its constructor");
         }
         if ("Closure".equalsIgnoreCase(cls.name())) {
             throw new PhpError("Instantiation of class Closure is not allowed");
