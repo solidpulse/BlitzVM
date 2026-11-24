@@ -549,7 +549,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
      */
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public static PhpArray packVariadic(Object[] args, int from, boolean varByRef) {
-        PhpArray rest = new PhpArray();
+        PhpArray rest = PhpArray.withCapacity(Math.max(0, args.length - from), false);
         for (int i = from; i < args.length; i++) {
             Object item = args[i];
             if (item instanceof NamedVariadic nv) {

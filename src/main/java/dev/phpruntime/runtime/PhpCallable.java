@@ -279,6 +279,68 @@ public final class PhpCallable {
     }
 
     /**
+     * One-argument call from a builtin callback (array_map, array_filter, ...). Avoids the
+     * varargs array of {@link #call}: the callee's argument array is built once instead of
+     * copying a temporary.
+     */
+    @TruffleBoundary
+    public Object call(PhpContext ctx, Node loc, Object arg) {
+        if (kind == Kind.CLOSURE) {
+            return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, callTarget, closureArgs(ctx, loc, arg)));
+        }
+        if (kind == Kind.USER_FUNCTION) {
+            return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, callTarget, userArgs(ctx, loc, arg)));
+        }
+        return CallArgHelper.unwrapReturn(callRaw(ctx, null, loc, arg));
+    }
+
+    /** Two-argument call, as {@link #call(PhpContext, Node, Object)}. */
+    @TruffleBoundary
+    public Object call(PhpContext ctx, Node loc, Object first, Object second) {
+        if (kind == Kind.CLOSURE) {
+            return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, callTarget, closureArgs(ctx, loc, first, second)));
+        }
+        if (kind == Kind.USER_FUNCTION) {
+            return CallArgHelper.unwrapReturn(invokeTarget(ctx, null, callTarget, userArgs(ctx, loc, first, second)));
+        }
+        return CallArgHelper.unwrapReturn(callRaw(ctx, null, loc, first, second));
+    }
+
+    private Object[] closureArgs(PhpContext ctx, Node loc, Object arg) {
+        Object[] args = new Object[4];
+        args[0] = boundThis;
+        args[1] = calledClass;
+        args[2] = closureObj;
+        args[3] = adaptUserArg(rootOf(callTarget), 0, arg, ctx, loc);
+        return args;
+    }
+
+    private Object[] closureArgs(PhpContext ctx, Node loc, Object first, Object second) {
+        PhpFunctionRootNode fnRoot = rootOf(callTarget);
+        Object[] args = new Object[5];
+        args[0] = boundThis;
+        args[1] = calledClass;
+        args[2] = closureObj;
+        args[3] = adaptUserArg(fnRoot, 0, first, ctx, loc);
+        args[4] = adaptUserArg(fnRoot, 1, second, ctx, loc);
+        return args;
+    }
+
+    private Object[] userArgs(PhpContext ctx, Node loc, Object arg) {
+        Object[] args = new Object[1];
+        args[0] = adaptUserArg(rootOf(callTarget), 0, arg, ctx, loc);
+        return args;
+    }
+
+    private Object[] userArgs(PhpContext ctx, Node loc, Object first, Object second) {
+        PhpFunctionRootNode fnRoot = rootOf(callTarget);
+        Object[] args = new Object[2];
+        args[0] = adaptUserArg(fnRoot, 0, first, ctx, loc);
+        args[1] = adaptUserArg(fnRoot, 1, second, ctx, loc);
+        return args;
+    }
+
+    /**
      * Invokes this callable with named arguments php forwards through a builtin or a
      * called-through method. A name the callee does not declare follows its own rules:
      * a variadic parameter collects it, otherwise it is "Unknown named parameter".
