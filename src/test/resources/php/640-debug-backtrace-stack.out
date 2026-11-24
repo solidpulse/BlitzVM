@@ -45,7 +45,7 @@ limit 0
   640-debug-backtrace-stack.php:39 A->limited [file,line,function,class,type]
 array_map callback
   640-debug-backtrace-stack.php:40 bt640 [file,line,function]
-  -:- {closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/640-debug-backtrace-stack.php:40} [function]
+  -:- {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:40} [function]
   640-debug-backtrace-stack.php:40 array_map [file,line,function]
 instance
   640-debug-backtrace-stack.php:15 bt640 [file,line,function]
@@ -60,14 +60,14 @@ static
   640-debug-backtrace-stack.php:43 A::stat [file,line,function,class,type]
 usort callback
   640-debug-backtrace-stack.php:44 bt640 [file,line,function]
-  -:- {closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/640-debug-backtrace-stack.php:44} [function]
+  -:- {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:44} [function]
   640-debug-backtrace-stack.php:44 usort [file,line,function]
 from include
   640-bt-include.php:2 bt640 [file,line,function]
   640-debug-backtrace-stack.php:45 include [file,line,args,function]
 iife
   640-debug-backtrace-stack.php:46 bt640 [file,line,function]
-  640-debug-backtrace-stack.php:46 {closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/640-debug-backtrace-stack.php:46} [file,line,function]
+  640-debug-backtrace-stack.php:46 {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:46} [file,line,function]
 top level
   640-debug-backtrace-stack.php:47 bt640 [file,line,function]
 after catch
@@ -78,5 +78,5 @@ in catcher
   640-debug-backtrace-stack.php:51 catcher [file,line,function]
 bound closure
   640-debug-backtrace-stack.php:52 bt640 [file,line,function]
-  640-debug-backtrace-stack.php:53 A->{closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/640-debug-backtrace-stack.php:52} [file,line,function,class,type]
+  640-debug-backtrace-stack.php:53 A->{closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:52} [file,line,function,class,type]
 []

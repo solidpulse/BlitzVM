@@ -1,0 +1,14 @@
+thrower:20 | outer:23
+Worker->method:44
+Worker::staticMethod:49
+Worker->__call:54
+{closure}:63
+thrower:69
+{closure}:74
+thrower:79 | {closure}:0 | array_map:79
+MagicBag->__get:91
+deep:100 | deep:100 | deep:100 | deep:103
+4
+bt:113 | btOuter:115
+0
+:0

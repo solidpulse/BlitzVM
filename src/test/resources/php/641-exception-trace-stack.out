@@ -34,7 +34,7 @@ RuntimeException include @2
 #2 {main}
 RuntimeException bound @2
   #0 641-exception-trace-stack.php:23 mk641 [file,line,function]
-  #1 641-exception-trace-stack.php:24 K->{closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/641-exception-trace-stack.php:23} [file,line,function,class,type]
+  #1 641-exception-trace-stack.php:24 K->{closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/641-exception-trace-stack.php:23} [file,line,function,class,type]
 #0 641-exception-trace-stack.php(23): mk641()
 #1 641-exception-trace-stack.php(24): K->{closure}()
 #2 {main}
@@ -58,14 +58,14 @@ DivisionByZeroError Division by zero @29
 #1 {main}
 ArgumentCountError strlen() expects exactly 1 argument, 0 given @30
   #0 641-exception-trace-stack.php:30 strlen [file,line,function]
-  #1 [internal] {closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/641-exception-trace-stack.php:30} [function]
+  #1 [internal] {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/641-exception-trace-stack.php:30} [function]
   #2 641-exception-trace-stack.php:30 array_map [file,line,function]
 #0 641-exception-trace-stack.php(30): strlen()
 #1 [internal function]: {closure}()
 #2 641-exception-trace-stack.php(30): array_map()
 #3 {main}
 Exception in usort @32
-  #0 [internal] {closure:/home/silva/code/java/php-runtime-t61/src/test/resources/php/641-exception-trace-stack.php:32} [function]
+  #0 [internal] {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/641-exception-trace-stack.php:32} [function]
   #1 641-exception-trace-stack.php:32 usort [file,line,function]
 #0 [internal function]: {closure}()
 #1 641-exception-trace-stack.php(32): usort()

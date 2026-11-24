@@ -1,0 +1,21 @@
+string(6) "Hearts"
+string(6) "Spades"
+bool(true)
+Hearts,Spades
+h,s
+1,-7,0
+bool(true)
+bool(true)
+NULL
+bool(true)
+bool(true)
+bool(true)
+NULL
+bool(true)
+bool(true)
+ValueError: "nope" is not a valid backing value for enum Suit
+ValueError: 9 is not a valid backing value for enum Level
+TypeError: Level::from(): Argument #1 ($value) must be of type int, string given
+bool(true)
+bool(false)
+A,B

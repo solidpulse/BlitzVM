@@ -1,0 +1,20 @@
+2 2
+base child grand
+3 3
+s
+100
+105 3
+changed child
+b
+aa
+int(1)
+int(2)
+float(2.5)
+TypeError: Cannot increment property Base::$typed of type int past its maximal value
+int(9223372036854775807)
+TypeError: Cannot decrement property Base::$typed of type int past its minimal value
+int(-9223372036854775808)
+1 2
+Error: Access to undeclared static property Base::$missing
+Error: Cannot access protected property Base::$secret
+123

@@ -1,0 +1,9 @@
+1,2 9,2
+bool(false)
+2
+1,2,3 1,2,3,99
+bool(false)
+5,6 1,2
+1 2
+Error: Trying to clone an uncloneable object of class Colour
+TypeError: clone(): Argument #1 ($object) must be of type object, int given

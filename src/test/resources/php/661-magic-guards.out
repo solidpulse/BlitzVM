@@ -1,0 +1,13 @@
+int(1)
+NULL
+bool(true)
+bool(false)
+bool(false)
+set:a|get:a|get:missing|isset:a|isset:missing|unset:a|isset:a
+int(5)
+set:x|child-get:x|get:x
+warning: Undefined property: Loop::$missing
+NULL
+int(1)
+int(1)
+bool(true)
