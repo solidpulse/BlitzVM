@@ -5941,11 +5941,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     }
                     Object key = c.keys.get(c.pos);
                     PhpArray current = c.cell != null && c.cell.getValue() instanceof PhpArray ca ? ca : c.array;
-                    if (!current.containsKey(key)) {
+                    PhpReference ref = current.elementRefIfPresent(key);
+                    if (ref == null) {
                         continue;
                     }
                     c.key = key;
-                    c.element = current.obtainElementRef(key);
+                    c.element = ref;
                     return true;
                 }
             }

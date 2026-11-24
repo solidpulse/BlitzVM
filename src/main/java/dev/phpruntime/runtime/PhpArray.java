@@ -231,6 +231,28 @@ public final class PhpArray implements TruffleObject {
         store(normalizeKey(key), ref, true);
     }
 
+    /**
+     * The cell for {@code key} when the key is present, creating it in place, or null when the
+     * key is absent. One lookup for foreach by reference, which would otherwise test and then
+     * rewrite the element.
+     */
+    @TruffleBoundary
+    public PhpReference elementRefIfPresent(Object key) {
+        Object k = normalizeKey(key);
+        int pos = find(k);
+        if (pos < 0) {
+            return null;
+        }
+        Object existing = values[pos];
+        if (existing instanceof PhpReference ref) {
+            ref.ensureDefined();
+            return ref;
+        }
+        PhpReference ref = new PhpReference(existing == null ? PhpNull.INSTANCE : existing);
+        values[pos] = ref;
+        return ref;
+    }
+
     @TruffleBoundary
     public PhpReference obtainElementRef(Object key) {
         Object k = normalizeKey(key);
@@ -739,13 +761,14 @@ public final class PhpArray implements TruffleObject {
 
     // ---------------------------------------------------------------- cursor
 
-    /** Cursor positions are valid while the array is held as a shared, by-value snapshot. */
-    @TruffleBoundary
+    /**
+     * Cursor positions are valid while the array is held as a shared, by-value snapshot.
+     * These run inside compiled foreach loops: field reads only, so no boundary.
+     */
     public int firstPos() {
         return nextPos(-1);
     }
 
-    @TruffleBoundary
     public int nextPos(int pos) {
         for (int next = pos + 1; next < used; next++) {
             if (keys == null || keys[next] != null) {
@@ -770,19 +793,16 @@ public final class PhpArray implements TruffleObject {
         return -1;
     }
 
-    @TruffleBoundary
     public Object keyAt(int pos) {
         return keys == null ? (long) pos : keys[pos];
     }
 
     /** Value at a cursor position, unwrapping a reference cell like {@link #entries()}. */
-    @TruffleBoundary
     public Object valueAt(int pos) {
         Object v = values[pos];
         return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
-    @TruffleBoundary
     public Object rawValueAt(int pos) {
         return values[pos];
     }
