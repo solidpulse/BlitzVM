@@ -136,24 +136,7 @@ final class StringFunctions {
             if (sep.isEmpty()) {
                 throw new PhpError(PhpError.VALUE_ERROR, "explode(): Argument #1 ($separator) must not be empty", null);
             }
-            String str = s(a, 1);
-            long limit = a.length > 2 ? l(a, 2) : Long.MAX_VALUE;
-            PhpArray out = new PhpArray();
-            int start = 0;
-            java.util.ArrayList<String> parts = new java.util.ArrayList<>();
-            for (int i = str.indexOf(sep); i >= 0; i = str.indexOf(sep, start)) {
-                if (limit > 0 && parts.size() == limit - 1) {
-                    break;
-                }
-                parts.add(str.substring(start, i));
-                start = i + sep.length();
-            }
-            parts.add(str.substring(start));
-            if (limit < 0) {
-                parts.subList(Math.max(0, parts.size() + (int) limit), parts.size()).clear();
-            }
-            parts.forEach(out::append);
-            return out;
+            return explode(sep, s(a, 1), a.length > 2 ? l(a, 2) : Long.MAX_VALUE);
         });
         Builtins.def("implode", 1, 2, StringFunctions::implode);
         Builtins.def("join", 1, 2, StringFunctions::implode);
@@ -223,6 +206,53 @@ final class StringFunctions {
         }
         long off = l(a, 2);
         return (int) (off < 0 ? Math.max(0, hay.length() + off) : off);
+    }
+
+    /**
+     * explode(): counts the pieces first so the result array is allocated once, then appends
+     * each substring directly. A limit of 0 means 1, as in php; a negative limit keeps every
+     * piece except the last -limit, which needs the total count to know where the result ends.
+     */
+    private static PhpArray explode(String sep, String str, long limit) {
+        if (limit == 0) {
+            limit = 1;
+        }
+        if (limit == 1) {
+            PhpArray only = new PhpArray();
+            only.append(str);
+            return only;
+        }
+        long maxParts = limit > 0 ? limit : Long.MAX_VALUE;
+        long total = 1;
+        int scan = 0;
+        while (total < maxParts) {
+            int i = str.indexOf(sep, scan);
+            if (i < 0) {
+                break;
+            }
+            total++;
+            scan = i + sep.length();
+        }
+        long keep = total;
+        if (limit < 0) {
+            long drop = limit == Long.MIN_VALUE ? Long.MAX_VALUE : -limit;
+            keep = total - drop;
+            if (keep <= 0) {
+                return new PhpArray();
+            }
+        }
+        PhpArray out = PhpArray.withCapacity((int) keep, false);
+        int start = 0;
+        for (long n = 0; n < keep; n++) {
+            if (n == keep - 1 && limit > 0) {
+                out.append(str.substring(start));
+            } else {
+                int i = str.indexOf(sep, start);
+                out.append(str.substring(start, i));
+                start = i + sep.length();
+            }
+        }
+        return out;
     }
 
     static String substr(String str, long start, Long length) {
