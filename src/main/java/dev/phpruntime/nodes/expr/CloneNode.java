@@ -31,7 +31,9 @@ public final class CloneNode extends PhpNode {
     }
 
     /** The semantics of {@code clone $value}; the bytecode operation passes this instruction's site. */
-    public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch) {
+    public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch,
+                                    DynamicObject.GetKeyArrayNode keyArray, DynamicObject.GetNode propGet,
+                                    DynamicObject.PutNode propPut) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("__clone method called on non-object", site);
@@ -40,14 +42,16 @@ public final class CloneNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Trying to clone an uncloneable object of class " + obj.phpClass().name(), site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(site), obj);
+        PhpObject copy = shallowCopy(PhpContext.get(site), obj, keyArray, propGet, propPut);
         runCloneMethod(obj, copy, site, dispatch);
         return copy;
     }
 
     /** {@code clone($obj, $with)}: clone, let {@code __clone} run, then assign the new values. */
     public static Object cloneValueWith(Object val, Object with, Node site, DispatchCallNode dispatch,
-                                        String callingClass, Object traitSelf) {
+                                        String callingClass, Object traitSelf,
+                                        DynamicObject.GetKeyArrayNode keyArray, DynamicObject.GetNode propGet,
+                                        DynamicObject.PutNode propPut) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR,
@@ -63,7 +67,7 @@ public final class CloneNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Trying to clone an uncloneable object of class " + obj.phpClass().name(), site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(site), obj);
+        PhpObject copy = shallowCopy(PhpContext.get(site), obj, keyArray, propGet, propPut);
         runCloneMethod(obj, copy, site, dispatch);
         applyProperties(copy, properties, callingClass,
                 traitSelf instanceof PhpClass c ? c.template().lowerName() : null, site);
@@ -173,8 +177,8 @@ public final class CloneNode extends PhpNode {
         e.builder().endCloneWith();
     }
 
-    @TruffleBoundary
-    private static PhpObject shallowCopy(PhpContext ctx, PhpObject src) {
+    private static PhpObject shallowCopy(PhpContext ctx, PhpObject src, DynamicObject.GetKeyArrayNode keyArray,
+                                         DynamicObject.GetNode propGet, DynamicObject.PutNode propPut) {
         PhpObject copy = new PhpObject(
                 src.phpClass(),
                 ctx.nextObjectId(),
@@ -182,21 +186,20 @@ public final class CloneNode extends PhpNode {
         if (src.nativeState() != null) {
             copy.setNativeState(src.nativeState().copy());
         }
-        Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(src);
-        DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
-        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
-        for (Object k : keys) {
-            Object raw = get.execute(src, k, PhpNull.INSTANCE);
+        Object[] keys = keyArray.execute(src);
+        for (int i = 0; i < keys.length; i++) {
+            Object k = keys[i];
+            Object raw = propGet.execute(src, k, PhpNull.INSTANCE);
             if (raw == PhpClass.UNINITIALIZED) {
-                put.execute(copy, k, PhpClass.UNINITIALIZED);
+                propPut.execute(copy, k, PhpClass.UNINITIALIZED);
                 continue;
             }
             if (raw instanceof dev.phpruntime.runtime.PhpReference ref) {
                 // PHP clone preserves explicit aliases, not a copy of their current values.
-                put.execute(copy, k, ref);
+                propPut.execute(copy, k, ref);
                 continue;
             }
-            put.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
+            propPut.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
         }
         return copy;
     }
