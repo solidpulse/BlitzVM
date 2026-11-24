@@ -235,7 +235,13 @@ final class StringFunctions {
         }
         long end = n;
         if (length != null) {
-            end = length < 0 ? n + length : Math.min(n, start + length);
+            if (length < 0) {
+                end = Math.max(0, n + length);
+            } else {
+                // Compare against the remaining length instead of start + length: the latter
+                // overflows to a negative end for PHP_INT_MAX and would return "".
+                end = length >= n - start ? n : start + length;
+            }
         }
         if (end <= start) {
             return "";
