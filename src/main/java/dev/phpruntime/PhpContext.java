@@ -2205,17 +2205,34 @@ public final class PhpContext {
 
     @TruffleBoundary
     private boolean emitDiagnostic(long errno, String label, String message, int line) {
-        GuestLocation where = currentGuestLocation();
-        String file = PhpStrings.fromJava(where.file());
-        if (line <= 0) {
-            // Builtins pass 0; php reports the line of the call that raised it.
-            int site = currentBuiltinCallSite != null
-                    ? dev.phpruntime.runtime.PhpBacktrace.callSiteLine(currentBuiltinCallSite) : 0;
-            line = site > 0 ? site : where.line();
-        }
         ErrorHandlerEntry handler = errorHandlers == null ? null : errorHandlers.peek();
-        if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
-                && (handler.errorLevels() & errno) != 0) {
+        boolean handlerWants = handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
+                && (handler.errorLevels() & errno) != 0;
+        if (!handlerWants && (errorReporting & errno) == 0) {
+            // Nobody sees it: skip finding the location, which can take a stack walk.
+            return false;
+        }
+        String file = null;
+        if (line <= 0 && currentBuiltinCallSite != null) {
+            // Builtins pass 0; php reports the call that raised it. The call site node knows
+            // its file and line, so no stack walk is needed.
+            int siteLine = dev.phpruntime.runtime.PhpBacktrace.callSiteLine(currentBuiltinCallSite);
+            String sitePath = siteFile(currentBuiltinCallSite);
+            if (siteLine > 0 && sitePath != null) {
+                file = PhpStrings.fromJava(sitePath);
+                line = siteLine;
+            }
+        }
+        if (file == null) {
+            GuestLocation where = currentGuestLocation();
+            file = PhpStrings.fromJava(where.file());
+            if (line <= 0) {
+                int site = currentBuiltinCallSite != null
+                        ? dev.phpruntime.runtime.PhpBacktrace.callSiteLine(currentBuiltinCallSite) : 0;
+                line = site > 0 ? site : where.line();
+            }
+        }
+        if (handlerWants) {
             PhpCallable cb = PhpCallable.resolveOrNull(this, handler.callable());
             if (cb != null) {
                 inErrorHandler = true;
@@ -2239,6 +2256,15 @@ public final class PhpContext {
     }
 
     private record GuestLocation(String file, int line) {
+    }
+
+    /** The source path of the PHP function or file that contains a call site node, or null. */
+    private static String siteFile(Node site) {
+        if (site.getRootNode() instanceof dev.phpruntime.nodes.PhpRootNode root
+                && root.source() != null && root.source().getPath() != null) {
+            return root.source().getPath();
+        }
+        return null;
     }
 
     /** The file and current line of the innermost PHP frame. */
