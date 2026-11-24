@@ -382,8 +382,10 @@ public final class ReflectionClasses {
      * of one request, not php state, and are rebuilt cheaply when the request ends.
      */
     public static final class Handles {
-        private final PhpClass[] classes = new PhpClass[Kind.values().length];
+        private final Handle[] kinds = new Handle[Kind.values().length];
         private final IdentityHashMap<PhpClass, Handle> byClass = new IdentityHashMap<>();
+        private PhpClass lastClass;
+        private Handle lastHandle;
         private final IdentityHashMap<PhpClass, List<PropertyInfo>> propertyLists = new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, Map<String, PropertyInfo>> propertyMaps = new IdentityHashMap<>();
         private final IdentityHashMap<PhpClass, List<MethodState>> methodLists = new IdentityHashMap<>();
@@ -392,24 +394,30 @@ public final class ReflectionClasses {
         private final IdentityHashMap<PhpClass, DefaultsWriter> defaultsWriters = new IdentityHashMap<>();
 
         private Handle handle(PhpContext ctx, Kind kind) {
-            PhpClass cls = classes[kind.ordinal()];
-            if (cls == null) {
-                cls = ctx.lookupClass(kind.className);
+            Handle handle = kinds[kind.ordinal()];
+            if (handle == null) {
+                PhpClass cls = ctx.lookupClass(kind.className);
                 if (cls == null) {
                     throw new PhpError("Reflection class " + kind.className + " is not available");
                 }
-                classes[kind.ordinal()] = cls;
+                handle = forClass(cls);
+                kinds[kind.ordinal()] = handle;
             }
-            return forClass(cls);
+            return handle;
         }
 
         /** The handle for an object's class, including a user subclass of a reflector. */
         private Handle forClass(PhpClass cls) {
+            if (cls == lastClass) {
+                return lastHandle;
+            }
             Handle handle = byClass.get(cls);
             if (handle == null) {
                 handle = createHandle(cls);
                 byClass.put(cls, handle);
             }
+            lastClass = cls;
+            lastHandle = handle;
             return handle;
         }
 
