@@ -4591,12 +4591,20 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
          * name points at a class whose own name id is different.
          */
         @Specialization(guards = "spec.instanceofNameId() >= 0")
-        static boolean named(ClassRefSpec spec, Object value, Object operand,
-                             @Cached("spec.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
-            if (value instanceof PhpObject obj && obj.phpClass().matchesNameId(spec.instanceofNameId())) {
+        static boolean named(ClassRefSpec spec, Object value, Object operand, @Bind Node node) {
+            // A non-object is never an instance, and php does not autoload for instanceof.
+            if (!(value instanceof PhpObject obj)) {
+                return false;
+            }
+            int nameId = spec.instanceofNameId();
+            if (obj.phpClass().matchesNameId(nameId)) {
                 return true;
             }
-            return resolveAndTest(spec, value, operand, engine);
+            // The miss is final unless the name is a class_alias: no class of that name in
+            // this request means false, and a class declared under its own name has that name
+            // id in every descendant's ancestor set. Only an alias needs the class test.
+            PhpClass target = PhpContext.get(node).classById(nameId);
+            return target != null && target.classId() != nameId && obj.phpClass().isInstanceOf(target);
         }
 
         @Specialization
