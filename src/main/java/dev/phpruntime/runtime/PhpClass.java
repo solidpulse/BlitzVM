@@ -255,6 +255,19 @@ public final class PhpClass {
         /** The case at a declaration index, created on first use. */
         public PhpObject enumCaseAt(int index) {
             PhpObject[] cases = enumCaseObjects;
+            if (cases != null) {
+                PhpObject existing = cases[index];
+                if (existing != null) {
+                    return existing;
+                }
+            }
+            return createEnumCase(index);
+        }
+
+        /** The first use of a case in this request: kept out of compiled code at every use. */
+        @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+        private PhpObject createEnumCase(int index) {
+            PhpObject[] cases = enumCaseObjects;
             if (cases == null) {
                 cases = enumCaseObjects = new PhpObject[cls.template().enumCases().size()];
             }
