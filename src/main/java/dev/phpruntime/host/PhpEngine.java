@@ -70,6 +70,8 @@ public final class PhpEngine implements AutoCloseable {
         return Math.max(2, Runtime.getRuntime().availableProcessors() - scheduler.cpus());
     }
 
+    private static final String DEFAULT_INLINING_BUDGET = "4500";
+
     public PhpEngine(Scheduler scheduler) {
         this(scheduler, scheduler == null ? 0 : Math.max(16, scheduler.cpus() * 8));
     }
@@ -85,6 +87,16 @@ public final class PhpEngine implements AutoCloseable {
         Engine.Builder builder = Engine.newBuilder("php", JsLanguage.ID)
                 .allowExperimentalOptions(true)
                 .option("engine.WarnInterpreterOnly", "false");
+        // Smaller inlining budgets than Truffle's 12000: inlining copies a callee into every
+        // caller, and on Tempest /blog the compiled guest code reached 23 MB against a 1 MB L2.
+        // At 4500, 1-2% more instructions run but cycles per request drop 5-11% (L2 misses per
+        // 1000 instructions 22-25 -> 17), 16 connections 492-521 -> 545 rps. A
+        // -Dpolyglot.compiler.Inlining*Budget property still overrides these.
+        for (String option : new String[]{"compiler.InliningExpansionBudget", "compiler.InliningInliningBudget"}) {
+            if (System.getProperty("polyglot." + option) == null) {
+                builder.option(option, DEFAULT_INLINING_BUDGET);
+            }
+        }
         int compilerThreads = defaultCompilerThreads(scheduler);
         if (compilerThreads > 0) {
             builder.option("engine.CompilerThreads", Integer.toString(compilerThreads));
