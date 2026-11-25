@@ -78,3 +78,13 @@ $m = null;
 show('offset-past', [preg_match('/[a-z]+/', 'abc', $m, 0, 4), $m, preg_last_error(), preg_last_error_msg()]);
 $m = null;
 show('offset-negative', [preg_match('/[a-z]+/', 'abc', $m, 0, -2), $m]);
+
+// /A anchors a class run at the search offset.
+$m = null;
+show('anchored-run', [preg_match('/[a-z]+/A', 'xxabc', $m, PREG_OFFSET_CAPTURE, 2), $m]);
+$m = null;
+show('anchored-run-inside', [preg_match('/[a-z]+/A', 'xxabc', $m, PREG_OFFSET_CAPTURE, 1), $m]);
+$m = null;
+show('anchored-class', [preg_match('/&/A', 'x&y', $m, PREG_OFFSET_CAPTURE, 1), $m]);
+$m = null;
+show('anchored-run-lit', [preg_match('/[ \t]+#/A', 'x  #', $m, PREG_OFFSET_CAPTURE, 1), $m]);

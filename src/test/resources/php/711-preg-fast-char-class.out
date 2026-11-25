@@ -6383,3 +6383,47 @@ offset-negative: array (
     0 => 'bc',
   ),
 )
+anchored-run: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 2,
+    ),
+  ),
+)
+anchored-run-inside: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'xabc',
+      1 => 1,
+    ),
+  ),
+)
+anchored-class: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&',
+      1 => 1,
+    ),
+  ),
+)
+anchored-run-lit: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '  #',
+      1 => 1,
+    ),
+  ),
+)
