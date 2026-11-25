@@ -16,13 +16,11 @@ import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The per-call-site fast path for the array builtins that run a closure over an array
- * ({@code array_map}, {@code array_filter}, {@code array_reduce} and the callback sorts).
+ * ({@code array_map}, {@code array_filter}, {@code array_reduce}).
  *
  * <p>The builtin itself calls a closure through {@code PhpCallable.invokeClosure*}, which goes
  * through an {@code IndirectCallNode} from host code. This node holds a {@link DispatchCallNode}
@@ -45,15 +43,19 @@ public final class ArrayCallbackNode extends Node {
     /** Marks a call this fast path does not answer, so the builtin's own implementation runs. */
     public static final Object UNHANDLED = new Object();
 
-    private final String name;
+    private static final int MAP = 0;
+    private static final int FILTER = 1;
+    private static final int REDUCE = 2;
+
+    private final int kind;
     private final Node site;
     /** The frame below each closure call, also allocated once per site. */
     private final PhpBacktrace.InternalSite internalSite;
 
     @Child private DispatchCallNode dispatch = new DispatchCallNode();
 
-    private ArrayCallbackNode(String name, Node site) {
-        this.name = name;
+    private ArrayCallbackNode(int kind, String name, Node site) {
+        this.kind = kind;
         this.site = site;
         this.internalSite = new PhpBacktrace.InternalSite(site, name);
     }
@@ -64,9 +66,12 @@ public final class ArrayCallbackNode extends Node {
             return null;
         }
         String lower = dev.phpruntime.runtime.PhpStrings.lower(callName);
+        // The callback sorts stay in the builtin: running the sort itself in compiled guest code
+        // inlines a whole sort into every usort site for a small gain per comparison.
         return switch (lower) {
-            case "array_map", "array_filter", "array_reduce", "usort", "uasort", "uksort" ->
-                    new ArrayCallbackNode(lower, site);
+            case "array_map" -> new ArrayCallbackNode(MAP, lower, site);
+            case "array_filter" -> new ArrayCallbackNode(FILTER, lower, site);
+            case "array_reduce" -> new ArrayCallbackNode(REDUCE, lower, site);
             default -> null;
         };
     }
@@ -77,11 +82,10 @@ public final class ArrayCallbackNode extends Node {
             // The byte-string assertions and the builtin's argument checks run in def.call.
             return UNHANDLED;
         }
-        return switch (name) {
-            case "array_map" -> map(args);
-            case "array_filter" -> filter(def, args);
-            case "array_reduce" -> reduce(def, args);
-            default -> sort(def, args);
+        return switch (kind) {
+            case MAP -> map(args);
+            case FILTER -> filter(def, args);
+            default -> reduce(def, args);
         };
     }
 
@@ -238,52 +242,6 @@ public final class ArrayCallbackNode extends Node {
             ctx.exitBuiltin(previousSite, previousName);
         }
         return acc;
-    }
-
-    private Object sort(Builtins.Def def, Object[] args) {
-        if (args.length != 2 || !(args[0] instanceof PhpReference ref)
-                || !(ref.getValue() instanceof PhpArray src)) {
-            return UNHANDLED;
-        }
-        PhpObject closureObj = closureObject(args[1]);
-        if (closureObj == null) {
-            return UNHANDLED;
-        }
-        PhpClosure closure = closureObj.closure();
-        PhpFunctionRootNode fnRoot = PhpCallable.rootOf(closure.callTarget());
-        RootCallTarget target = closure.callTarget();
-        Object boundThis = closure.boundThis();
-        PhpClass calledClass = closure.calledClass();
-        boolean byKey = name.equals("uksort");
-        boolean keepKeys = !name.equals("usort");
-        PhpContext ctx = PhpContext.get(this);
-        Node previousSite = ctx.currentBuiltinCallSite();
-        String previousName = ctx.enterBuiltin(site, def.name());
-        CallbackFrame callback = beginCallback(ctx, fnRoot);
-        try {
-            // The callback must never see a half-sorted array, and may hold the source through
-            // use (&$arr): entries come from a private copy, as ArrayFunctions.writable does.
-            List<Map.Entry<Object, Object>> entries = new ArrayList<>(src.share().forWrite().entries());
-            entries.sort((left, right) -> {
-                Object answer = call(ctx, target, fnRoot, boundThis, calledClass, closureObj,
-                        byKey ? left.getKey() : left.getValue(),
-                        byKey ? right.getKey() : right.getValue(), true, site);
-                return PhpOps.compare(answer, 0L);
-            });
-            PhpArray out = PhpArray.withCapacity(entries.size(), keepKeys);
-            for (Map.Entry<Object, Object> entry : entries) {
-                if (keepKeys) {
-                    out.put(entry.getKey(), PhpOps.copyOnAssign(entry.getValue()));
-                } else {
-                    out.appendReserved(PhpOps.copyOnAssign(entry.getValue()));
-                }
-            }
-            ref.setValue(out);
-        } finally {
-            endCallback(ctx, callback);
-            ctx.exitBuiltin(previousSite, previousName);
-        }
-        return true;
     }
 
     /** The closure object a callback value denotes, or null when the builtin must resolve it. */
