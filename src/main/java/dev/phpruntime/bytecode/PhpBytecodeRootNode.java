@@ -4592,7 +4592,43 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = boolean.class, name = "forwarding")
     @ConstantOperand(type = boolean.class, name = "hasCalledClass")
     public static final class ResolveStaticMethod {
-        @Specialization
+        /**
+         * A literal method name on a class this site has seen: classes cannot change once
+         * declared, so the entry and its target are constants and the lookup disappears.
+         */
+        @Specialization(guards = {"site.methodId() >= 0", "targetClass == cachedClass", "cachedEntry != null"},
+                limit = "3")
+        static void cached(VirtualFrame frame, MethodSite site, LocalAccessor calleeLocal, boolean forwarding,
+                           boolean hasCalledClass, PhpClass targetClass, Object nameValue, Object thisValue,
+                           Object calledClassValue, @Bind BytecodeNode bytecode,
+                           @Cached("targetClass") PhpClass cachedClass,
+                           @Cached("cacheableEntry(targetClass, site)") PhpClass.MethodEntry cachedEntry) {
+            Object thisArg;
+            if (cachedEntry.isStatic()) {
+                thisArg = PhpNull.INSTANCE;
+            } else if (thisValue instanceof PhpObject thisObj
+                    && thisObj.phpClass().isInstanceOf(cachedEntry.declaringClass())) {
+                thisArg = thisObj;
+            } else {
+                CompilerDirectives.transferToInterpreter();
+                throw Ops.error("Non-static method " + cachedEntry.declaringClass().name() + "::"
+                        + cachedEntry.name() + "() cannot be called statically");
+            }
+            PhpClass calledArg = forwarding && hasCalledClass
+                    ? (calledClassValue instanceof PhpClass c ? c : null) : targetClass;
+            RootCallTarget sig = (RootCallTarget) cachedEntry.callTarget();
+            PhpObject obj = thisValue instanceof PhpObject o ? o : null;
+            calleeLocal.setObject(bytecode, frame,
+                    new MethodCallee(cachedEntry, thisArg, calledArg, sig, obj, site.name(), null));
+        }
+
+        /** The entry to keep for a class, or null when this site needs the general path. */
+        static PhpClass.MethodEntry cacheableEntry(PhpClass cls, MethodSite site) {
+            PhpClass.MethodEntry entry = cls.methodById(site.methodId());
+            return entry == null || entry.callTarget() == null ? null : entry;
+        }
+
+        @Specialization(replaces = "cached")
         static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor calleeLocal, boolean forwarding,
                             boolean hasCalledClass, PhpClass targetClass, Object nameValue, Object thisValue,
                             Object calledClassValue, @Bind BytecodeNode bytecode,

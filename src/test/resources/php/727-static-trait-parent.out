@@ -1,0 +1,12 @@
+First:First Second:Second
+trait trait
+base base base child
+base-parent+child base-parent
+anything(1,2,3)
+instance-missing(4:5)
+Error: Cannot call abstract method AbstractStatic::missing()
+Error: Non-static method InstanceOnly::method() cannot be called statically
+Hearts H Spades 2
+Error: Class "LateStatic" not found
+late-static
+First:First
