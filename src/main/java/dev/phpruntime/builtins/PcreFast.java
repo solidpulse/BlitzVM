@@ -896,7 +896,7 @@ abstract class PcreFast {
                 }
                 out[4] = keyStart + 1;
                 out[5] = p;
-                out[3] = p; // group 1 ends at the closing quote
+                out[3] = p + 1; // group 1 includes the closing quote
                 return afterKey(text, p + 1, out);
             }
             if (c0 == '\'') {
@@ -917,7 +917,7 @@ abstract class PcreFast {
                 }
                 out[6] = content;
                 out[7] = p;
-                out[3] = p;
+                out[3] = p + 1; // group 1 includes the closing quote
                 return afterKey(text, p + 1, out);
             }
             if (c0 == ' ' || c0 == '[' || c0 == '{' || c0 == '!') {

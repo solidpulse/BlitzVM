@@ -7,10 +7,11 @@ match-0: array (
     'key' => 'title',
     1 => 'title',
     2 => '',
-    3 => ' Tempest alpha 2',
-    4 => ' ',
+    3 => '',
+    4 => ' Tempest alpha 2',
+    5 => ' ',
     'value' => 'Tempest alpha 2',
-    5 => 'Tempest alpha 2',
+    6 => 'Tempest alpha 2',
   ),
   2 => 0,
   3 => 'No error',
@@ -41,10 +42,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' Tempest alpha 2',
       1 => 6,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 6,
@@ -54,7 +60,7 @@ match-256: array (
       0 => 'Tempest alpha 2',
       1 => 7,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'Tempest alpha 2',
       1 => 7,
@@ -71,10 +77,11 @@ match-512: array (
     'key' => 'title',
     1 => 'title',
     2 => NULL,
-    3 => ' Tempest alpha 2',
-    4 => ' ',
+    3 => NULL,
+    4 => ' Tempest alpha 2',
+    5 => ' ',
     'value' => 'Tempest alpha 2',
-    5 => 'Tempest alpha 2',
+    6 => 'Tempest alpha 2',
   ),
   2 => 0,
   3 => 'No error',
@@ -105,10 +112,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' Tempest alpha 2',
       1 => 6,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 6,
@@ -118,7 +130,7 @@ match-768: array (
       0 => 'Tempest alpha 2',
       1 => 7,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'Tempest alpha 2',
       1 => 7,
@@ -155,10 +167,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' Tempest alpha 2',
         1 => 6,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 6,
@@ -168,7 +185,7 @@ all: array (
         0 => 'Tempest alpha 2',
         1 => 7,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'Tempest alpha 2',
         1 => 7,
@@ -194,10 +211,11 @@ match-0: array (
     'key' => 'description',
     1 => 'description',
     2 => '',
-    3 => ' a:b c',
-    4 => ' ',
+    3 => '',
+    4 => ' a:b c',
+    5 => ' ',
     'value' => 'a:b c',
-    5 => 'a:b c',
+    6 => 'a:b c',
   ),
   2 => 0,
   3 => 'No error',
@@ -228,10 +246,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' a:b c',
       1 => 12,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 12,
@@ -241,7 +264,7 @@ match-256: array (
       0 => 'a:b c',
       1 => 13,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'a:b c',
       1 => 13,
@@ -258,10 +281,11 @@ match-512: array (
     'key' => 'description',
     1 => 'description',
     2 => NULL,
-    3 => ' a:b c',
-    4 => ' ',
+    3 => NULL,
+    4 => ' a:b c',
+    5 => ' ',
     'value' => 'a:b c',
-    5 => 'a:b c',
+    6 => 'a:b c',
   ),
   2 => 0,
   3 => 'No error',
@@ -292,10 +316,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' a:b c',
       1 => 12,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 12,
@@ -305,7 +334,7 @@ match-768: array (
       0 => 'a:b c',
       1 => 13,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'a:b c',
       1 => 13,
@@ -342,10 +371,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' a:b c',
         1 => 12,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 12,
@@ -355,7 +389,7 @@ all: array (
         0 => 'a:b c',
         1 => 13,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'a:b c',
         1 => 13,
@@ -381,10 +415,11 @@ match-0: array (
     'key' => 'description',
     1 => 'description',
     2 => '',
-    3 => ' Tempest alpha 2 is released with auth support, caching, and more!',
-    4 => ' ',
+    3 => '',
+    4 => ' Tempest alpha 2 is released with auth support, caching, and more!',
+    5 => ' ',
     'value' => 'Tempest alpha 2 is released with auth support, caching, and more!',
-    5 => 'Tempest alpha 2 is released with auth support, caching, and more!',
+    6 => 'Tempest alpha 2 is released with auth support, caching, and more!',
   ),
   2 => 0,
   3 => 'No error',
@@ -415,10 +450,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' Tempest alpha 2 is released with auth support, caching, and more!',
       1 => 12,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 12,
@@ -428,7 +468,7 @@ match-256: array (
       0 => 'Tempest alpha 2 is released with auth support, caching, and more!',
       1 => 13,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'Tempest alpha 2 is released with auth support, caching, and more!',
       1 => 13,
@@ -445,10 +485,11 @@ match-512: array (
     'key' => 'description',
     1 => 'description',
     2 => NULL,
-    3 => ' Tempest alpha 2 is released with auth support, caching, and more!',
-    4 => ' ',
+    3 => NULL,
+    4 => ' Tempest alpha 2 is released with auth support, caching, and more!',
+    5 => ' ',
     'value' => 'Tempest alpha 2 is released with auth support, caching, and more!',
-    5 => 'Tempest alpha 2 is released with auth support, caching, and more!',
+    6 => 'Tempest alpha 2 is released with auth support, caching, and more!',
   ),
   2 => 0,
   3 => 'No error',
@@ -479,10 +520,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' Tempest alpha 2 is released with auth support, caching, and more!',
       1 => 12,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 12,
@@ -492,7 +538,7 @@ match-768: array (
       0 => 'Tempest alpha 2 is released with auth support, caching, and more!',
       1 => 13,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'Tempest alpha 2 is released with auth support, caching, and more!',
       1 => 13,
@@ -529,10 +575,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' Tempest alpha 2 is released with auth support, caching, and more!',
         1 => 12,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 12,
@@ -542,7 +593,7 @@ all: array (
         0 => 'Tempest alpha 2 is released with auth support, caching, and more!',
         1 => 13,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'Tempest alpha 2 is released with auth support, caching, and more!',
         1 => 13,
@@ -561,140 +612,614 @@ grep: array (
 )
 == 2271756f746564206b6579223a2076
 match-0: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '"quoted key": v',
+    'key' => '"quoted key"',
+    1 => '"quoted key"',
+    2 => 'quoted key',
+    3 => '',
+    4 => ' v',
+    5 => ' ',
+    'value' => 'v',
+    6 => 'v',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-256: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '"quoted key": v',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '"quoted key"',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '"quoted key"',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => 'quoted key',
+      1 => 1,
+    ),
+    3 => 
+    array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
+      0 => ' v',
+      1 => 13,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 13,
+    ),
+    'value' => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
+    6 => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 match-512: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '"quoted key": v',
+    'key' => '"quoted key"',
+    1 => '"quoted key"',
+    2 => 'quoted key',
+    3 => NULL,
+    4 => ' v',
+    5 => ' ',
+    'value' => 'v',
+    6 => 'v',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-768: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '"quoted key": v',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '"quoted key"',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '"quoted key"',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => 'quoted key',
+      1 => 1,
+    ),
+    3 => 
+    array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
+      0 => ' v',
+      1 => 13,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 13,
+    ),
+    'value' => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
+    6 => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 all: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '"quoted key": v',
+        1 => 0,
+      ),
+      'key' => 
+      array (
+        0 => '"quoted key"',
+        1 => 0,
+      ),
+      1 => 
+      array (
+        0 => '"quoted key"',
+        1 => 0,
+      ),
+      2 => 
+      array (
+        0 => 'quoted key',
+        1 => 1,
+      ),
+      3 => 
+      array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
+        0 => ' v',
+        1 => 13,
+      ),
+      5 => 
+      array (
+        0 => ' ',
+        1 => 13,
+      ),
+      'value' => 
+      array (
+        0 => 'v',
+        1 => 14,
+      ),
+      6 => 
+      array (
+        0 => 'v',
+        1 => 14,
+      ),
+    ),
   ),
 )
 split: array (
-  0 => '"quoted key": v',
+  0 => '',
+  1 => '',
 )
-replace: '"quoted key": v'
+replace: '<$key=$value>'
 grep: array (
+  0 => '"quoted key": v',
   1 => 'x: y',
 )
 == 2773696e676c652071756f746564273a2076
 match-0: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '\'single quoted\': v',
+    'key' => '\'single quoted\'',
+    1 => '\'single quoted\'',
+    2 => '',
+    3 => 'single quoted',
+    4 => ' v',
+    5 => ' ',
+    'value' => 'v',
+    6 => 'v',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-256: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '\'single quoted\': v',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '\'single quoted\'',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '\'single quoted\'',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => -1,
+    ),
+    3 => 
+    array (
+      0 => 'single quoted',
+      1 => 1,
+    ),
+    4 => 
+    array (
+      0 => ' v',
+      1 => 16,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 16,
+    ),
+    'value' => 
+    array (
+      0 => 'v',
+      1 => 17,
+    ),
+    6 => 
+    array (
+      0 => 'v',
+      1 => 17,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 match-512: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '\'single quoted\': v',
+    'key' => '\'single quoted\'',
+    1 => '\'single quoted\'',
+    2 => NULL,
+    3 => 'single quoted',
+    4 => ' v',
+    5 => ' ',
+    'value' => 'v',
+    6 => 'v',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-768: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '\'single quoted\': v',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '\'single quoted\'',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '\'single quoted\'',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => NULL,
+      1 => -1,
+    ),
+    3 => 
+    array (
+      0 => 'single quoted',
+      1 => 1,
+    ),
+    4 => 
+    array (
+      0 => ' v',
+      1 => 16,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 16,
+    ),
+    'value' => 
+    array (
+      0 => 'v',
+      1 => 17,
+    ),
+    6 => 
+    array (
+      0 => 'v',
+      1 => 17,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 all: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '\'single quoted\': v',
+        1 => 0,
+      ),
+      'key' => 
+      array (
+        0 => '\'single quoted\'',
+        1 => 0,
+      ),
+      1 => 
+      array (
+        0 => '\'single quoted\'',
+        1 => 0,
+      ),
+      2 => 
+      array (
+        0 => '',
+        1 => -1,
+      ),
+      3 => 
+      array (
+        0 => 'single quoted',
+        1 => 1,
+      ),
+      4 => 
+      array (
+        0 => ' v',
+        1 => 16,
+      ),
+      5 => 
+      array (
+        0 => ' ',
+        1 => 16,
+      ),
+      'value' => 
+      array (
+        0 => 'v',
+        1 => 17,
+      ),
+      6 => 
+      array (
+        0 => 'v',
+        1 => 17,
+      ),
+    ),
   ),
 )
 split: array (
-  0 => '\'single quoted\': v',
+  0 => '',
+  1 => '',
 )
-replace: '\'single quoted\': v'
+replace: '<$key=$value>'
 grep: array (
+  0 => '\'single quoted\': v',
   1 => 'x: y',
 )
 == 2769742727732068657265273a2076
 match-0: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '\'it\'\'s here\': v',
+    'key' => '\'it\'\'s here\'',
+    1 => '\'it\'\'s here\'',
+    2 => '',
+    3 => 'it\'\'s here',
+    4 => ' v',
+    5 => ' ',
+    'value' => 'v',
+    6 => 'v',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-256: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '\'it\'\'s here\': v',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '\'it\'\'s here\'',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '\'it\'\'s here\'',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => -1,
+    ),
+    3 => 
+    array (
+      0 => 'it\'\'s here',
+      1 => 1,
+    ),
+    4 => 
+    array (
+      0 => ' v',
+      1 => 13,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 13,
+    ),
+    'value' => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
+    6 => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 match-512: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '\'it\'\'s here\': v',
+    'key' => '\'it\'\'s here\'',
+    1 => '\'it\'\'s here\'',
+    2 => NULL,
+    3 => 'it\'\'s here',
+    4 => ' v',
+    5 => ' ',
+    'value' => 'v',
+    6 => 'v',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-768: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '\'it\'\'s here\': v',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '\'it\'\'s here\'',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '\'it\'\'s here\'',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => NULL,
+      1 => -1,
+    ),
+    3 => 
+    array (
+      0 => 'it\'\'s here',
+      1 => 1,
+    ),
+    4 => 
+    array (
+      0 => ' v',
+      1 => 13,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 13,
+    ),
+    'value' => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
+    6 => 
+    array (
+      0 => 'v',
+      1 => 14,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 all: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '\'it\'\'s here\': v',
+        1 => 0,
+      ),
+      'key' => 
+      array (
+        0 => '\'it\'\'s here\'',
+        1 => 0,
+      ),
+      1 => 
+      array (
+        0 => '\'it\'\'s here\'',
+        1 => 0,
+      ),
+      2 => 
+      array (
+        0 => '',
+        1 => -1,
+      ),
+      3 => 
+      array (
+        0 => 'it\'\'s here',
+        1 => 1,
+      ),
+      4 => 
+      array (
+        0 => ' v',
+        1 => 13,
+      ),
+      5 => 
+      array (
+        0 => ' ',
+        1 => 13,
+      ),
+      'value' => 
+      array (
+        0 => 'v',
+        1 => 14,
+      ),
+      6 => 
+      array (
+        0 => 'v',
+        1 => 14,
+      ),
+    ),
   ),
 )
 split: array (
-  0 => '\'it\'\'s here\': v',
+  0 => '',
+  1 => '',
 )
-replace: '\'it\'\'s here\': v'
+replace: '<$key=$value>'
 grep: array (
+  0 => '\'it\'\'s here\': v',
   1 => 'x: y',
 )
 == 21746167206b65793a2076616c7565
@@ -706,10 +1231,11 @@ match-0: array (
     'key' => '!tag key',
     1 => '!tag key',
     2 => '',
-    3 => ' value',
-    4 => ' ',
+    3 => '',
+    4 => ' value',
+    5 => ' ',
     'value' => 'value',
-    5 => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
@@ -740,10 +1266,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' value',
       1 => 9,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 9,
@@ -753,7 +1284,7 @@ match-256: array (
       0 => 'value',
       1 => 10,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'value',
       1 => 10,
@@ -770,10 +1301,11 @@ match-512: array (
     'key' => '!tag key',
     1 => '!tag key',
     2 => NULL,
-    3 => ' value',
-    4 => ' ',
+    3 => NULL,
+    4 => ' value',
+    5 => ' ',
     'value' => 'value',
-    5 => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
@@ -804,10 +1336,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' value',
       1 => 9,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 9,
@@ -817,7 +1354,7 @@ match-768: array (
       0 => 'value',
       1 => 10,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'value',
       1 => 10,
@@ -854,10 +1391,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' value',
         1 => 9,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 9,
@@ -867,7 +1409,7 @@ all: array (
         0 => 'value',
         1 => 10,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'value',
         1 => 10,
@@ -886,48 +1428,206 @@ grep: array (
 )
 == 21746167202271756f746564223a2076616c7565
 match-0: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '!tag "quoted": value',
+    'key' => '!tag "quoted"',
+    1 => '!tag "quoted"',
+    2 => 'quoted',
+    3 => '',
+    4 => ' value',
+    5 => ' ',
+    'value' => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-256: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '!tag "quoted": value',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '!tag "quoted"',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '!tag "quoted"',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => 'quoted',
+      1 => 6,
+    ),
+    3 => 
+    array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
+      0 => ' value',
+      1 => 14,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 14,
+    ),
+    'value' => 
+    array (
+      0 => 'value',
+      1 => 15,
+    ),
+    6 => 
+    array (
+      0 => 'value',
+      1 => 15,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 match-512: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => '!tag "quoted": value',
+    'key' => '!tag "quoted"',
+    1 => '!tag "quoted"',
+    2 => 'quoted',
+    3 => NULL,
+    4 => ' value',
+    5 => ' ',
+    'value' => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
 )
 match-768: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => '!tag "quoted": value',
+      1 => 0,
+    ),
+    'key' => 
+    array (
+      0 => '!tag "quoted"',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '!tag "quoted"',
+      1 => 0,
+    ),
+    2 => 
+    array (
+      0 => 'quoted',
+      1 => 6,
+    ),
+    3 => 
+    array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
+      0 => ' value',
+      1 => 14,
+    ),
+    5 => 
+    array (
+      0 => ' ',
+      1 => 14,
+    ),
+    'value' => 
+    array (
+      0 => 'value',
+      1 => 15,
+    ),
+    6 => 
+    array (
+      0 => 'value',
+      1 => 15,
+    ),
   ),
   2 => 0,
   3 => 'No error',
 )
 all: array (
-  0 => 0,
+  0 => 1,
   1 => 
   array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '!tag "quoted": value',
+        1 => 0,
+      ),
+      'key' => 
+      array (
+        0 => '!tag "quoted"',
+        1 => 0,
+      ),
+      1 => 
+      array (
+        0 => '!tag "quoted"',
+        1 => 0,
+      ),
+      2 => 
+      array (
+        0 => 'quoted',
+        1 => 6,
+      ),
+      3 => 
+      array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
+        0 => ' value',
+        1 => 14,
+      ),
+      5 => 
+      array (
+        0 => ' ',
+        1 => 14,
+      ),
+      'value' => 
+      array (
+        0 => 'value',
+        1 => 15,
+      ),
+      6 => 
+      array (
+        0 => 'value',
+        1 => 15,
+      ),
+    ),
   ),
 )
 split: array (
-  0 => '!tag "quoted": value',
+  0 => '',
+  1 => '',
 )
-replace: '!tag "quoted": value'
+replace: '<$key=$value>'
 grep: array (
+  0 => '!tag "quoted": value',
   1 => 'x: y',
 )
 == 613a623a2063
@@ -939,10 +1639,11 @@ match-0: array (
     'key' => 'a:b',
     1 => 'a:b',
     2 => '',
-    3 => ' c',
-    4 => ' ',
+    3 => '',
+    4 => ' c',
+    5 => ' ',
     'value' => 'c',
-    5 => 'c',
+    6 => 'c',
   ),
   2 => 0,
   3 => 'No error',
@@ -973,10 +1674,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' c',
       1 => 4,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 4,
@@ -986,7 +1692,7 @@ match-256: array (
       0 => 'c',
       1 => 5,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'c',
       1 => 5,
@@ -1003,10 +1709,11 @@ match-512: array (
     'key' => 'a:b',
     1 => 'a:b',
     2 => NULL,
-    3 => ' c',
-    4 => ' ',
+    3 => NULL,
+    4 => ' c',
+    5 => ' ',
     'value' => 'c',
-    5 => 'c',
+    6 => 'c',
   ),
   2 => 0,
   3 => 'No error',
@@ -1037,10 +1744,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' c',
       1 => 4,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 4,
@@ -1050,7 +1762,7 @@ match-768: array (
       0 => 'c',
       1 => 5,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'c',
       1 => 5,
@@ -1087,10 +1799,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' c',
         1 => 4,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 4,
@@ -1100,7 +1817,7 @@ all: array (
         0 => 'c',
         1 => 5,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'c',
         1 => 5,
@@ -1172,10 +1889,11 @@ match-0: array (
     'key' => 'a',
     1 => 'a',
     2 => '',
-    3 => ' b: c',
-    4 => ' ',
+    3 => '',
+    4 => ' b: c',
+    5 => ' ',
     'value' => 'b: c',
-    5 => 'b: c',
+    6 => 'b: c',
   ),
   2 => 0,
   3 => 'No error',
@@ -1206,10 +1924,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' b: c',
       1 => 2,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 2,
@@ -1219,7 +1942,7 @@ match-256: array (
       0 => 'b: c',
       1 => 3,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'b: c',
       1 => 3,
@@ -1236,10 +1959,11 @@ match-512: array (
     'key' => 'a',
     1 => 'a',
     2 => NULL,
-    3 => ' b: c',
-    4 => ' ',
+    3 => NULL,
+    4 => ' b: c',
+    5 => ' ',
     'value' => 'b: c',
-    5 => 'b: c',
+    6 => 'b: c',
   ),
   2 => 0,
   3 => 'No error',
@@ -1270,10 +1994,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' b: c',
       1 => 2,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 2,
@@ -1283,7 +2012,7 @@ match-768: array (
       0 => 'b: c',
       1 => 3,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'b: c',
       1 => 3,
@@ -1320,10 +2049,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' b: c',
         1 => 2,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 2,
@@ -1333,7 +2067,7 @@ all: array (
         0 => 'b: c',
         1 => 3,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'b: c',
         1 => 3,
@@ -1395,8 +2129,9 @@ match-512: array (
     2 => NULL,
     3 => NULL,
     4 => NULL,
-    'value' => NULL,
     5 => NULL,
+    'value' => NULL,
+    6 => NULL,
   ),
   2 => 0,
   3 => 'No error',
@@ -1435,12 +2170,17 @@ match-768: array (
       0 => NULL,
       1 => -1,
     ),
+    5 => 
+    array (
+      0 => NULL,
+      1 => -1,
+    ),
     'value' => 
     array (
       0 => NULL,
       1 => -1,
     ),
-    5 => 
+    6 => 
     array (
       0 => NULL,
       1 => -1,
@@ -1583,10 +2323,11 @@ match-0: array (
     'key' => 'a',
     1 => 'a',
     2 => '',
-    3 => '  x  ',
-    4 => ' ',
+    3 => '',
+    4 => '  x  ',
+    5 => ' ',
     'value' => 'x  ',
-    5 => 'x  ',
+    6 => 'x  ',
   ),
   2 => 0,
   3 => 'No error',
@@ -1617,10 +2358,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => '  x  ',
       1 => 2,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 3,
@@ -1630,7 +2376,7 @@ match-256: array (
       0 => 'x  ',
       1 => 4,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'x  ',
       1 => 4,
@@ -1647,10 +2393,11 @@ match-512: array (
     'key' => 'a',
     1 => 'a',
     2 => NULL,
-    3 => '  x  ',
-    4 => ' ',
+    3 => NULL,
+    4 => '  x  ',
+    5 => ' ',
     'value' => 'x  ',
-    5 => 'x  ',
+    6 => 'x  ',
   ),
   2 => 0,
   3 => 'No error',
@@ -1681,10 +2428,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => '  x  ',
       1 => 2,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 3,
@@ -1694,7 +2446,7 @@ match-768: array (
       0 => 'x  ',
       1 => 4,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'x  ',
       1 => 4,
@@ -1731,10 +2483,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => '  x  ',
         1 => 2,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 3,
@@ -1744,7 +2501,7 @@ all: array (
         0 => 'x  ',
         1 => 4,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'x  ',
         1 => 4,
@@ -1816,10 +2573,11 @@ match-0: array (
     'key' => 'key',
     1 => 'key',
     2 => '',
-    3 => ' a # comment',
-    4 => ' ',
+    3 => '',
+    4 => ' a # comment',
+    5 => ' ',
     'value' => 'a # comment',
-    5 => 'a # comment',
+    6 => 'a # comment',
   ),
   2 => 0,
   3 => 'No error',
@@ -1850,10 +2608,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' a # comment',
       1 => 4,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 4,
@@ -1863,7 +2626,7 @@ match-256: array (
       0 => 'a # comment',
       1 => 5,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'a # comment',
       1 => 5,
@@ -1880,10 +2643,11 @@ match-512: array (
     'key' => 'key',
     1 => 'key',
     2 => NULL,
-    3 => ' a # comment',
-    4 => ' ',
+    3 => NULL,
+    4 => ' a # comment',
+    5 => ' ',
     'value' => 'a # comment',
-    5 => 'a # comment',
+    6 => 'a # comment',
   ),
   2 => 0,
   3 => 'No error',
@@ -1914,10 +2678,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' a # comment',
       1 => 4,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 4,
@@ -1927,7 +2696,7 @@ match-768: array (
       0 => 'a # comment',
       1 => 5,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'a # comment',
       1 => 5,
@@ -1964,10 +2733,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' a # comment',
         1 => 4,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 4,
@@ -1977,7 +2751,7 @@ all: array (
         0 => 'a # comment',
         1 => 5,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'a # comment',
         1 => 5,
@@ -2003,10 +2777,11 @@ match-0: array (
     'key' => 'key with spaces',
     1 => 'key with spaces',
     2 => '',
-    3 => ' value',
-    4 => ' ',
+    3 => '',
+    4 => ' value',
+    5 => ' ',
     'value' => 'value',
-    5 => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
@@ -2037,10 +2812,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' value',
       1 => 17,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 17,
@@ -2050,7 +2830,7 @@ match-256: array (
       0 => 'value',
       1 => 18,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'value',
       1 => 18,
@@ -2067,10 +2847,11 @@ match-512: array (
     'key' => 'key with spaces',
     1 => 'key with spaces',
     2 => NULL,
-    3 => ' value',
-    4 => ' ',
+    3 => NULL,
+    4 => ' value',
+    5 => ' ',
     'value' => 'value',
-    5 => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
@@ -2101,10 +2882,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' value',
       1 => 17,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 17,
@@ -2114,7 +2900,7 @@ match-768: array (
       0 => 'value',
       1 => 18,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'value',
       1 => 18,
@@ -2151,10 +2937,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' value',
         1 => 17,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 17,
@@ -2164,7 +2955,7 @@ all: array (
         0 => 'value',
         1 => 18,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'value',
         1 => 18,
@@ -2374,10 +3165,11 @@ match-0: array (
     'key' => 'a-b_c.d',
     1 => 'a-b_c.d',
     2 => '',
-    3 => ' value',
-    4 => ' ',
+    3 => '',
+    4 => ' value',
+    5 => ' ',
     'value' => 'value',
-    5 => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
@@ -2408,10 +3200,15 @@ match-256: array (
     ),
     3 => 
     array (
+      0 => '',
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' value',
       1 => 8,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 8,
@@ -2421,7 +3218,7 @@ match-256: array (
       0 => 'value',
       1 => 9,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'value',
       1 => 9,
@@ -2438,10 +3235,11 @@ match-512: array (
     'key' => 'a-b_c.d',
     1 => 'a-b_c.d',
     2 => NULL,
-    3 => ' value',
-    4 => ' ',
+    3 => NULL,
+    4 => ' value',
+    5 => ' ',
     'value' => 'value',
-    5 => 'value',
+    6 => 'value',
   ),
   2 => 0,
   3 => 'No error',
@@ -2472,10 +3270,15 @@ match-768: array (
     ),
     3 => 
     array (
+      0 => NULL,
+      1 => -1,
+    ),
+    4 => 
+    array (
       0 => ' value',
       1 => 8,
     ),
-    4 => 
+    5 => 
     array (
       0 => ' ',
       1 => 8,
@@ -2485,7 +3288,7 @@ match-768: array (
       0 => 'value',
       1 => 9,
     ),
-    5 => 
+    6 => 
     array (
       0 => 'value',
       1 => 9,
@@ -2522,10 +3325,15 @@ all: array (
       ),
       3 => 
       array (
+        0 => '',
+        1 => -1,
+      ),
+      4 => 
+      array (
         0 => ' value',
         1 => 8,
       ),
-      4 => 
+      5 => 
       array (
         0 => ' ',
         1 => 8,
@@ -2535,7 +3343,7 @@ all: array (
         0 => 'value',
         1 => 9,
       ),
-      5 => 
+      6 => 
       array (
         0 => 'value',
         1 => 9,
@@ -2752,20 +3560,25 @@ split-delim: array (
   ),
   3 => 
   array (
-    0 => ' x',
-    1 => 6,
+    0 => '',
+    1 => -1,
   ),
   4 => 
   array (
-    0 => ' ',
+    0 => ' x',
     1 => 6,
   ),
   5 => 
   array (
+    0 => ' ',
+    1 => 6,
+  ),
+  6 => 
+  array (
     0 => 'x',
     1 => 7,
   ),
-  6 => 
+  7 => 
   array (
     0 => '',
     1 => 8,
@@ -2779,7 +3592,7 @@ split-delim-empty: array (
 )
 callback: '[title=x]'
 callback-flags: array (
-  0 => '{"0":["a: b",0],"key":["a",0],"1":["a",0],"2":["",-1],"3":[" b",2],"4":[" ",2],"value":["b",3],"5":["b",3]}',
+  0 => '{"0":["a: b",0],"key":["a",0],"1":["a",0],"2":["",-1],"3":["",-1],"4":[" b",2],"5":[" ",2],"value":["b",3],"6":["b",3]}',
   1 => 1,
 )
 multiline-all: array (
@@ -2804,10 +3617,13 @@ multiline-all: array (
     4 => 
     array (
     ),
+    5 => 
+    array (
+    ),
     'value' => 
     array (
     ),
-    5 => 
+    6 => 
     array (
     ),
   ),
