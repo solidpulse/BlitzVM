@@ -1,0 +1,70 @@
+replace: string(6) "bbnbnb"
+replace-empty-search: string(3) "abc"
+replace-empty-replacement: string(3) "bnn"
+replace-overlap: string(4) "bXna"
+replace-not-found: string(6) "banana"
+replace-empty-subject: string(0) ""
+replace-bytes: string(4) "cafe"
+replace-int-subject: string(3) "x23"
+replace-count: array(2) {
+  [0]=>
+  string(6) "bbnbnb"
+  [1]=>
+  int(3)
+}
+replace-count-array-search: int(5)
+replace-array-subject: array(2) {
+  [0]=>
+  string(3) "bnb"
+  [1]=>
+  string(4) "nbnb"
+}
+starts: bool(true)
+starts-empty-needle: bool(true)
+starts-empty-subject: bool(true)
+starts-no: bool(false)
+starts-int: bool(true)
+starts-bytes: bool(true)
+ends: bool(true)
+ends-empty-needle: bool(true)
+ends-no: bool(false)
+ends-bytes: bool(true)
+contains: bool(true)
+contains-empty-needle: bool(true)
+contains-no: bool(false)
+contains-bytes: bool(true)
+trim: string(5) "alpha"
+trim-plain: string(5) "alpha"
+trim-empty: string(0) ""
+trim-all: string(0) ""
+ltrim: string(7) "alpha  "
+rtrim: string(7) "  alpha"
+trim-int: string(3) "123"
+trim-bytes: string(2) "é"
+trim-chars: string(3) "abc"
+trim-range: string(3) "XYZ"
+trim-chars-empty: string(7) "  abc  "
+ltrim-chars: string(3) "abc"
+rtrim-chars: string(3) "abc"
+trim-bytes-chars: string(3) "abc"
+strpos: int(2)
+strpos-none: bool(false)
+strpos-offset: int(4)
+strpos-negative-offset: int(4)
+strpos-empty-needle: int(0)
+strpos-empty-needle-at-end: int(6)
+strpos-empty-subject: int(0)
+strpos-bytes: int(3)
+substr: string(3) "bcd"
+substr-negative-start: string(3) "def"
+substr-negative-length: string(3) "bcd"
+substr-past-end: string(0) ""
+substr-negative-past-start: string(6) "abcdef"
+substr-zero-length: string(0) ""
+substr-big-length: string(4) "cdef"
+substr-empty: string(0) ""
+substr-bytes: string(2) "é"
+shadowed: string(10) "shadow:ABC"
+global: string(3) "abc"
+global-trim: string(2) "ok"
+global-replace: string(6) "bbnbnb"

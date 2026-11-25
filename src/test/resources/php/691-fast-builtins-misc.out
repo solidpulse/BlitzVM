@@ -1,0 +1,135 @@
+in-array-string: bool(true)
+in-array-string-missing: bool(false)
+in-array-strict: bool(false)
+in-array-strict-int: bool(false)
+in-array-loose-int: bool(true)
+in-array-loose-string: bool(true)
+in-array-empty: bool(false)
+in-array-object-identity: bool(true)
+in-array-object-other: bool(false)
+in-array-objects-loose: bool(true)
+in-array-array-needle: bool(true)
+lower: string(6) "abcdef"
+lower-empty: string(0) ""
+lower-bytes: string(10) "café Äbc"
+lower-int: string(5) "12345"
+explode: array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "c"
+}
+explode-limit-1: array(1) {
+  [0]=>
+  string(5) "a,b,c"
+}
+explode-limit-2: array(2) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(3) "b,c"
+}
+explode-limit-0: array(1) {
+  [0]=>
+  string(5) "a,b,c"
+}
+explode-limit-negative: array(2) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+}
+explode-limit-too-negative: array(0) {
+}
+explode-limit-large: array(2) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+}
+explode-not-found: array(1) {
+  [0]=>
+  string(3) "abc"
+}
+explode-trailing: array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(0) ""
+}
+explode-leading: array(3) {
+  [0]=>
+  string(0) ""
+  [1]=>
+  string(1) "a"
+  [2]=>
+  string(1) "b"
+}
+explode-empty-subject: array(1) {
+  [0]=>
+  string(0) ""
+}
+explode-multi-byte-separator: array(2) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+}
+explode-multichar: array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "c"
+}
+implode-list: string(5) "a,b,c"
+implode-assoc: string(3) "a-b"
+implode-empty: string(0) ""
+implode-one: string(4) "only"
+implode-glue-empty: string(2) "ab"
+implode-one-argument: string(3) "abc"
+implode-scalars: string(9) "1,2.5,1,,"
+implode-object: string(14) "thing-string,x"
+defined-user: bool(true)
+defined-namespaced: bool(true)
+defined-builtin: bool(true)
+defined-class-const: bool(true)
+defined-class-const-missing: bool(false)
+defined-missing: bool(false)
+defined-bytes: bool(false)
+extension-json: bool(true)
+extension-json-upper: bool(true)
+extension-mbstring: bool(true)
+extension-missing: bool(false)
+extension-bytes: bool(false)
+numeric-'123': bool(true)
+numeric-' 123 ': bool(true)
+numeric-'1e3': bool(true)
+numeric-'1E-3': bool(true)
+numeric-'0x1A': bool(false)
+numeric-'12x': bool(false)
+numeric-'': bool(false)
+numeric-'  ': bool(false)
+numeric-'+1.5': bool(true)
+numeric-'.5': bool(true)
+numeric-'5.': bool(true)
+numeric-'1_000': bool(false)
+numeric-'INF': bool(false)
+numeric-'NAN': bool(false)
+numeric-'4.5.6': bool(false)
+numeric-int: bool(true)
+numeric-float: bool(true)
+numeric-true: bool(false)
+numeric-null: bool(false)
+numeric-array: bool(false)
+key-last-list: int(2)
+key-last-assoc: string(1) "b"
+key-last-empty: NULL
+key-last-after-unset: int(1)
+key-last-empty-after-unset: NULL
+key-last-gap: int(2)

@@ -32,6 +32,7 @@ import com.oracle.truffle.api.source.SourceSection;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.builtins.Builtins;
+import dev.phpruntime.builtins.FastBuiltin;
 import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpRootNode;
@@ -3070,13 +3071,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                               @Bind Node node,
                               @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl,
                               @Cached(value = "intrinsicDef(site)", neverDefault = false) Builtins.Def intrinsicDef,
-                              @Cached(value = "intrinsicKind(site)", neverDefault = false) int intrinsicKind) {
+                              @Cached(value = "intrinsicKind(site)", neverDefault = false) int intrinsicKind,
+                              @Cached(value = "fastFor(site)", neverDefault = false) FastBuiltin fastPath) {
             if (def == intrinsicDef && args.length == CallNode.intrinsicArgc(intrinsicKind)) {
                 // A call the compiler could not make an intrinsic because the name was resolved
                 // at run time (unqualified, inside a namespace): it reached the builtin.
-                Object fast = Ops.inlineBuiltin(intrinsicKind, args);
-                if (fast != SplBuiltinNode.UNHANDLED) {
-                    return fast;
+                Object fastValue = Ops.inlineBuiltin(intrinsicKind, args);
+                if (fastValue != SplBuiltinNode.UNHANDLED) {
+                    return fastValue;
+                }
+            }
+            if (fastPath != null && def == fastPath.def()) {
+                // The usual argument shape of a hot builtin, answered without the boundary.
+                Object fastValue = fastPath.call(node, args);
+                if (fastValue != FastBuiltin.UNHANDLED) {
+                    return fastValue;
                 }
             }
             if (spl != null) {
@@ -3099,6 +3108,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         static int intrinsicKind(CallSite site) {
             return CallNode.intrinsicForName(site.name());
+        }
+
+        /** The per-site fast path for the builtin named by the call, or null. */
+        static FastBuiltin fastFor(CallSite site) {
+            return FastBuiltin.lookup(site.name());
         }
 
         static SplBuiltinNode createSpl(Node node, CallSite site) {
@@ -3161,6 +3175,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** Slow paths behind boundaries, so operations stay small when compiled. */
     static final class Ops {
+        /** The builtin assert() is compiled out; dynamic paths still reach it by identity. */
+        private static final Builtins.Def ASSERT = Builtins.lookup("assert");
+
         // Spread and named calls build their argument lists on the heap, and builtin
         // by-reference writeback goes through lvalue nodes that take the frame. Behind these
         // boundaries the frame is materialized instead of escaping from compiled code, and no
@@ -4033,7 +4050,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         @TruffleBoundary
         private static Object callBuiltinBoundary(PhpContext ctx, Builtins.Def def, Object[] args, SiteNode site) {
-            if (def.name().equals("assert")) {
+            if (def == ASSERT) {
                 return true;
             }
             CallNode.checkArity(def, args.length, site);

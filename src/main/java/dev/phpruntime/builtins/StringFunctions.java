@@ -213,7 +213,7 @@ final class StringFunctions {
      * each substring directly. A limit of 0 means 1, as in php; a negative limit keeps every
      * piece except the last -limit, which needs the total count to know where the result ends.
      */
-    private static PhpArray explode(String sep, String str, long limit) {
+    static PhpArray explode(String sep, String str, long limit) {
         if (limit == 0) {
             limit = 1;
         }
@@ -279,7 +279,7 @@ final class StringFunctions {
         return str.substring((int) start, (int) end);
     }
 
-    private static String trim(String str, String chars, boolean left, boolean right) {
+    static String trim(String str, String chars, boolean left, boolean right) {
         String set = expandRanges(chars);
         int b = 0;
         int e = str.length();
