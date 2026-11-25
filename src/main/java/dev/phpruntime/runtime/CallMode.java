@@ -201,6 +201,13 @@ public final class CallMode {
         if (pending != null && pending.target() == null) {
             return pending.strict();
         }
+        // The site is a node of the calling PHP function: its root is the frame the walk below
+        // would stop at first, without materializing the stack (a frame walk per non-string
+        // argument of a string builtin cost several microseconds).
+        if (site != null && site.getRootNode() instanceof RootNode siteRoot
+                && PhpFunctionRootNode.isGuestFrame(siteRoot)) {
+            return strictness(siteRoot);
+        }
         boolean[] strict = {false};
         Truffle.getRuntime().iterateFrames(fi -> {
             if (!(fi.getCallTarget() instanceof RootCallTarget target)) {

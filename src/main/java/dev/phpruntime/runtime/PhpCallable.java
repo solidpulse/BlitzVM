@@ -633,17 +633,17 @@ public final class PhpCallable {
         Object result;
         Node previousSite = ctx.currentBuiltinCallSite();
         String previousName = ctx.currentBuiltinName();
-        if (loc != null) {
-            ctx.enterBuiltin(loc, def.name());
-        }
+        // The callback builtin is the running one (its diagnostics name it), and its caller is
+        // internal, so its parameters are checked in weak mode.
+        ctx.enterBuiltin(loc != null ? loc : previousSite, def.name());
+        boolean previousInternal = ctx.setBuiltinInternalCaller(true);
         try {
             result = def.call(ctx, args);
         } catch (PhpError e) {
             throw loc != null ? e.at(loc) : e;
         } finally {
-            if (loc != null) {
-                ctx.exitBuiltin(previousSite, previousName);
-            }
+            ctx.setBuiltinInternalCaller(previousInternal);
+            ctx.exitBuiltin(previousSite, previousName);
         }
         for (int i = 0; i < userArgs.length; i++) {
             if (def.isRef(i) && userArgs[i] instanceof PhpReference ref) {

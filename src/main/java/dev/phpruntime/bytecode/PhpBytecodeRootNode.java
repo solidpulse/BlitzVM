@@ -4242,11 +4242,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             CallNode.checkArity(def, args.length, site);
             Node prev = ctx.currentBuiltinCallSite();
             String prevName = ctx.enterBuiltin(site, def.name());
+            // Called from PHP code: its parameters follow the calling file's strict_types.
+            boolean prevInternal = ctx.setBuiltinInternalCaller(false);
             try {
                 return def.call(ctx, args);
             } catch (PhpError e) {
                 throw e.withTrace(PhpBacktrace.captureFromBuiltin(site, def.name())).at(site);
             } finally {
+                ctx.setBuiltinInternalCaller(prevInternal);
                 ctx.exitBuiltin(prev, prevName);
             }
         }

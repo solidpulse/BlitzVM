@@ -28,7 +28,7 @@ final class StringParams {
         }
         String fn = ctx == null ? null : ctx.currentBuiltinName();
         String name = paramName(fn, i);
-        if (ctx != null && CallMode.strictOfCaller(ctx.currentBuiltinCallSite())) {
+        if (ctx != null && !ctx.builtinInternalCaller() && CallMode.strictOfCaller(ctx.currentBuiltinCallSite())) {
             throw typeError(fn, i, name, given(value));
         }
         if (value == PhpNull.INSTANCE) {

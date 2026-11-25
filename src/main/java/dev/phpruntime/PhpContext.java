@@ -333,6 +333,24 @@ public final class PhpContext {
         currentBuiltinName = name;
     }
 
+    /**
+     * True while a builtin runs that another builtin called (array_map('trim', ...),
+     * call_user_func('strlen', ...)): php checks its parameters in weak mode whatever the
+     * user file declares, because its caller is internal.
+     */
+    private boolean builtinInternalCaller;
+
+    public boolean builtinInternalCaller() {
+        return builtinInternalCaller;
+    }
+
+    /** Sets the flag and returns the previous value, for the caller to restore. */
+    public boolean setBuiltinInternalCaller(boolean value) {
+        boolean previous = builtinInternalCaller;
+        builtinInternalCaller = value;
+        return previous;
+    }
+
     public Node currentBuiltinCallSite() {
         return currentBuiltinCallSite;
     }
