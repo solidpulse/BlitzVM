@@ -963,6 +963,7 @@ public final class PhpContext {
         classes.put(lower, cls);
         classGeneration++;
         int id = language.classId(lower);
+        language.aliasCreated(id);
         if (id >= classesById.length) {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
         }
@@ -1599,6 +1600,10 @@ public final class PhpContext {
     public void restoreClass(String lowerName, PhpClass cls) {
         PhpClass existing = classes.putIfAbsent(lowerName, cls);
         classGeneration++;
+        if (!lowerName.equals(cls.template().lowerName())) {
+            // A class_alias captured in the snapshot.
+            language.aliasCreated(language.classId(lowerName));
+        }
         if (existing != null) {
             if (existing != cls) {
                 throw new IllegalStateException("snapshot class " + lowerName

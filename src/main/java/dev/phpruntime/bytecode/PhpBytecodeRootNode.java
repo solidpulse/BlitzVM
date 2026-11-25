@@ -4608,6 +4608,23 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
          * the context or the class table. A miss still resolves, because a {@code class_alias}
          * name points at a class whose own name id is different.
          */
+        /**
+         * A value of a class this site has seen: the answer is a constant of that class while
+         * the name has never been a class_alias in any request.
+         */
+        @Specialization(guards = {"spec.instanceofNameId() >= 0", "obj.phpClass() == cachedClass"},
+                assumptions = "neverAliased", limit = "3")
+        static boolean cachedClass(ClassRefSpec spec, PhpObject obj, Object operand,
+                                   @Cached("obj.phpClass()") PhpClass cachedClass,
+                                   @Cached("neverAliased(obj, spec)") com.oracle.truffle.api.Assumption neverAliased,
+                                   @Cached("cachedClass.matchesNameId(spec.instanceofNameId())") boolean answer) {
+            return answer;
+        }
+
+        static com.oracle.truffle.api.Assumption neverAliased(PhpObject obj, ClassRefSpec spec) {
+            return PhpLanguage.get(null).neverAliased(spec.instanceofNameId());
+        }
+
         @Specialization(guards = "spec.instanceofNameId() >= 0")
         static boolean named(ClassRefSpec spec, Object value, Object operand, @Bind Node node) {
             // A non-object is never an instance, and php does not autoload for instanceof.

@@ -237,6 +237,23 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
     private record CachedSource(long modified, long size, long inode, long ctime, Source source) {
     }
 
+    /**
+     * Per class name id: no request has ever made that name a {@code class_alias}. While it
+     * holds, a class declared under the name is the only class it can denote, so an
+     * {@code instanceof} answer computed from a value's class is final.
+     */
+    private final ConcurrentHashMap<Integer, com.oracle.truffle.api.Assumption> neverAliased = new ConcurrentHashMap<>();
+
+    public com.oracle.truffle.api.Assumption neverAliased(int nameId) {
+        return neverAliased.computeIfAbsent(nameId,
+                id -> com.oracle.truffle.api.Truffle.getRuntime().createAssumption("no class_alias of name id " + id));
+    }
+
+    /** A request made the name with this id a class_alias: drop the code that assumed it never would. */
+    public void aliasCreated(int nameId) {
+        neverAliased(nameId).invalidate();
+    }
+
     public static PhpLanguage get(com.oracle.truffle.api.nodes.Node node) {
         return REFERENCE.get(node);
     }
