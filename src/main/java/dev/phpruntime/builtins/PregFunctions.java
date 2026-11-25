@@ -40,6 +40,11 @@ final class PregFunctions {
     private PregFunctions() {
     }
 
+    /** A {@code string} parameter of the running builtin. */
+    private static String str(PhpContext ctx, Object[] a, int i) {
+        return StringParams.of(ctx, a, i);
+    }
+
     static void register() {
         Builtins.defRef("preg_match", 2, 5, 1 << 2, (ctx, a) -> match(ctx, a, false));
         Builtins.defRef("preg_match_all", 2, 5, 1 << 2, (ctx, a) -> match(ctx, a, true));
@@ -47,7 +52,7 @@ final class PregFunctions {
         Builtins.defRef("preg_replace_callback", 3, 6, 1 << 4, PregFunctions::replaceCallback);
         Builtins.defRef("preg_replace_callback_array", 2, 5, 1 << 3, PregFunctions::replaceCallbackArray);
         Builtins.def("preg_split", 2, 4, PregFunctions::split);
-        Builtins.def("preg_quote", 1, 2, (ctx, a) -> quote(PhpOps.toStr(a[0]),
+        Builtins.def("preg_quote", 1, 2, (ctx, a) -> quote(str(ctx, a, 0),
                 a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpOps.toStr(a[1]) : ""));
         Builtins.def("preg_grep", 2, 3, PregFunctions::grep);
         Builtins.def("preg_last_error", 0, 0, (ctx, a) -> (long) ContextState.of(ctx).pregLastError);
@@ -246,12 +251,12 @@ final class PregFunctions {
 
     private static Object match(PhpContext ctx, Object[] a, boolean all) {
         String fn = all ? "preg_match_all" : "preg_match";
-        String regex = PhpOps.toStr(a[0]);
+        String regex = str(ctx, a, 0);
         PcreTranslator.Compiled re = compile(ctx, fn, regex);
         if (re == null) {
             return false;
         }
-        String subject = PhpOps.toStr(a[1]);
+        String subject = str(ctx, a, 1);
         long offset = a.length > 4 ? PhpOps.toLong(a[4]) : 0;
         if (offset < 0) {
             offset = -offset > subject.length() ? 0 : subject.length() + offset;
@@ -751,12 +756,12 @@ final class PregFunctions {
     // ------------------------------------------------------------------ preg_split
 
     private static Object split(PhpContext ctx, Object[] a) {
-        String regex = PhpOps.toStr(a[0]);
+        String regex = str(ctx, a, 0);
         PcreTranslator.Compiled re = compile(ctx, "preg_split", regex);
         if (re == null) {
             return false;
         }
-        String subject = PhpOps.toStr(a[1]);
+        String subject = str(ctx, a, 1);
         long limit = a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : -1;
         if (limit == 0) {
             limit = -1;
@@ -883,7 +888,7 @@ final class PregFunctions {
     }
 
     private static Object grep(PhpContext ctx, Object[] a) {
-        String regex = PhpOps.toStr(a[0]);
+        String regex = str(ctx, a, 0);
         PcreTranslator.Compiled re = compile(ctx, "preg_grep", regex);
         if (re == null) {
             return false;

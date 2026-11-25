@@ -20,7 +20,13 @@ final class StringFunctions {
     private StringFunctions() {
     }
 
-    private static String s(Object[] a, int i) {
+    /** A {@code string} parameter of the running builtin. */
+    private static String s(dev.phpruntime.PhpContext ctx, Object[] a, int i) {
+        return StringParams.of(ctx, a, i);
+    }
+
+    /** A parameter that accepts more than a plain string (nullable or array|string). */
+    private static String loose(Object[] a, int i) {
         return PhpOps.toStr(a[i]);
     }
 
@@ -38,20 +44,20 @@ final class StringFunctions {
     }
 
     private static void basics() {
-        Builtins.def("strlen", 1, 1, (ctx, a) -> (long) s(a, 0).length());
-        Builtins.def("strtoupper", 1, 1, (ctx, a) -> PhpStrings.upper(s(a, 0)));
-        Builtins.def("strtolower", 1, 1, (ctx, a) -> PhpStrings.lower(s(a, 0)));
+        Builtins.def("strlen", 1, 1, (ctx, a) -> (long) s(ctx, a, 0).length());
+        Builtins.def("strtoupper", 1, 1, (ctx, a) -> PhpStrings.upper(s(ctx, a, 0)));
+        Builtins.def("strtolower", 1, 1, (ctx, a) -> PhpStrings.lower(s(ctx, a, 0)));
         Builtins.def("ucfirst", 1, 1, (ctx, a) -> {
-            String x = s(a, 0);
+            String x = s(ctx, a, 0);
             return x.isEmpty() ? x : PhpStrings.upper(x.charAt(0)) + x.substring(1);
         });
         Builtins.def("lcfirst", 1, 1, (ctx, a) -> {
-            String x = s(a, 0);
+            String x = s(ctx, a, 0);
             return x.isEmpty() ? x : PhpStrings.lower(x.charAt(0)) + x.substring(1);
         });
         Builtins.def("ucwords", 1, 2, (ctx, a) -> {
-            String delims = a.length > 1 ? s(a, 1) : " \t\r\n\f\u000B";
-            StringBuilder sb = new StringBuilder(s(a, 0));
+            String delims = a.length > 1 ? s(ctx, a, 1) : " \t\r\n\f\u000B";
+            StringBuilder sb = new StringBuilder(s(ctx, a, 0));
             boolean up = true;
             for (int i = 0; i < sb.length(); i++) {
                 if (up) {
@@ -66,60 +72,77 @@ final class StringFunctions {
             if (n < 0) {
                 throw new PhpError(PhpError.VALUE_ERROR, "str_repeat(): Argument #2 ($times) must be greater than or equal to 0", null);
             }
-            return s(a, 0).repeat((int) n);
+            return s(ctx, a, 0).repeat((int) n);
         });
-        Builtins.def("strrev", 1, 1, (ctx, a) -> new StringBuilder(s(a, 0)).reverse().toString());
-        Builtins.def("substr", 2, 3, (ctx, a) -> substr(s(a, 0), l(a, 1), a.length > 2 && a[2] != PhpNull.INSTANCE ? l(a, 2) : null));
-        Builtins.def("trim", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, true, true));
-        Builtins.def("ltrim", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, true, false));
-        Builtins.def("rtrim", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, false, true));
-        Builtins.def("chop", 1, 2, (ctx, a) -> trim(s(a, 0), a.length > 1 ? s(a, 1) : DEFAULT_TRIM, false, true));
-        Builtins.def("str_pad", 2, 4, (ctx, a) -> strPad(s(a, 0), (int) l(a, 1), a.length > 2 ? s(a, 2) : " ", a.length > 3 ? (int) l(a, 3) : 1));
-        Builtins.def("strcmp", 2, 2, (ctx, a) -> (long) Integer.signum(s(a, 0).compareTo(s(a, 1))));
-        Builtins.def("strcasecmp", 2, 2, (ctx, a) -> (long) Integer.signum(PhpStrings.lower(s(a, 0)).compareTo(PhpStrings.lower(s(a, 1)))));
+        Builtins.def("strrev", 1, 1, (ctx, a) -> new StringBuilder(s(ctx, a, 0)).reverse().toString());
+        Builtins.def("substr", 2, 3, (ctx, a) -> substr(s(ctx, a, 0), l(a, 1), a.length > 2 && a[2] != PhpNull.INSTANCE ? l(a, 2) : null));
+        Builtins.def("trim", 1, 2, (ctx, a) -> trim(s(ctx, a, 0), a.length > 1 ? s(ctx, a, 1) : DEFAULT_TRIM, true, true));
+        Builtins.def("ltrim", 1, 2, (ctx, a) -> trim(s(ctx, a, 0), a.length > 1 ? s(ctx, a, 1) : DEFAULT_TRIM, true, false));
+        Builtins.def("rtrim", 1, 2, (ctx, a) -> trim(s(ctx, a, 0), a.length > 1 ? s(ctx, a, 1) : DEFAULT_TRIM, false, true));
+        Builtins.def("chop", 1, 2, (ctx, a) -> trim(s(ctx, a, 0), a.length > 1 ? s(ctx, a, 1) : DEFAULT_TRIM, false, true));
+        Builtins.def("str_pad", 2, 4, (ctx, a) -> strPad(s(ctx, a, 0), (int) l(a, 1), a.length > 2 ? s(ctx, a, 2) : " ", a.length > 3 ? (int) l(a, 3) : 1));
+        Builtins.def("strcmp", 2, 2, (ctx, a) -> (long) compareBytes(s(ctx, a, 0), s(ctx, a, 1)));
+        Builtins.def("strcasecmp", 2, 2, (ctx, a) -> (long) compareBytes(PhpStrings.lower(s(ctx, a, 0)), PhpStrings.lower(s(ctx, a, 1))));
         Builtins.def("strncasecmp", 3, 3, (ctx, a) -> {
             int n = Math.max(0, (int) l(a, 2));
-            return (long) Integer.signum(PhpStrings.lower(substr(s(a, 0), 0, (long) n))
-                    .compareTo(PhpStrings.lower(substr(s(a, 1), 0, (long) n))));
+            return (long) compareBytes(PhpStrings.lower(substr(s(ctx, a, 0), 0, (long) n)),
+                    PhpStrings.lower(substr(s(ctx, a, 1), 0, (long) n)));
         });
         Builtins.def("strncmp", 3, 3, (ctx, a) -> {
             int n = (int) l(a, 2);
-            String x = s(a, 0);
-            String y = s(a, 1);
-            return (long) Integer.signum(x.substring(0, Math.min(n, x.length())).compareTo(y.substring(0, Math.min(n, y.length()))));
+            String x = s(ctx, a, 0);
+            String y = s(ctx, a, 1);
+            return (long) compareBytes(x.substring(0, Math.min(n, x.length())), y.substring(0, Math.min(n, y.length())));
         });
         Builtins.def("ord", 1, 1, (ctx, a) -> {
-            String str = s(a, 0);
-            return str.isEmpty() ? 0L : (long) (str.charAt(0) & 0xff);
+            String str = s(ctx, a, 0);
+            if (str.isEmpty()) {
+                ctx.deprecated("ord(): Providing an empty string is deprecated", 0);
+                return 0L;
+            }
+            if (str.length() != 1) {
+                ctx.deprecated("ord(): Providing a string that is not one byte long is deprecated. Use ord($str[0]) instead", 0);
+            }
+            return (long) (str.charAt(0) & 0xff);
         });
         Builtins.def("chr", 1, 1, (ctx, a) -> String.valueOf((char) Math.floorMod(l(a, 0), 256)));
-        Builtins.def("nl2br", 1, 2, (ctx, a) -> s(a, 0).replace("\r\n", "<br />\r\n").replaceAll("(?<!\r)\n", "<br />\n"));
+        Builtins.def("nl2br", 1, 2, (ctx, a) -> s(ctx, a, 0).replace("\r\n", "<br />\r\n").replaceAll("(?<!\r)\n", "<br />\n"));
         Builtins.def("str_word_count", 1, 1, (ctx, a) -> {
-            String x = s(a, 0).strip();
+            String x = s(ctx, a, 0).strip();
             return x.isEmpty() ? 0L : (long) x.split("[^A-Za-z'-]+").length;
         });
-        Builtins.def("wordwrap", 1, 4, (ctx, a) -> wordwrap(s(a, 0), a.length > 1 ? (int) l(a, 1) : 75,
-                a.length > 2 ? s(a, 2) : "\n", a.length > 3 && PhpOps.toBool(a[3])));
+        Builtins.def("wordwrap", 1, 4, (ctx, a) -> wordwrap(s(ctx, a, 0), a.length > 1 ? (int) l(a, 1) : 75,
+                a.length > 2 ? s(ctx, a, 2) : "\n", a.length > 3 && PhpOps.toBool(a[3])));
     }
 
     private static void searching() {
-        Builtins.def("strpos", 2, 3, (ctx, a) -> indexResult(s(a, 0).indexOf(s(a, 1), offset(s(a, 0), a))));
-        Builtins.def("stripos", 2, 3, (ctx, a) -> indexResult(PhpStrings.lower(s(a, 0)).indexOf(PhpStrings.lower(s(a, 1)), offset(s(a, 0), a))));
-        Builtins.def("strrpos", 2, 3, (ctx, a) -> reversePosition(a, false));
-        Builtins.def("strripos", 2, 3, (ctx, a) -> reversePosition(a, true));
-        Builtins.def("str_contains", 2, 2, (ctx, a) -> s(a, 0).contains(s(a, 1)));
-        Builtins.def("str_starts_with", 2, 2, (ctx, a) -> s(a, 0).startsWith(s(a, 1)));
-        Builtins.def("str_ends_with", 2, 2, (ctx, a) -> s(a, 0).endsWith(s(a, 1)));
+        Builtins.def("strpos", 2, 3, (ctx, a) -> {
+            String hay = s(ctx, a, 0);
+            return indexResult(hay.indexOf(s(ctx, a, 1), offset(hay, a)));
+        });
+        Builtins.def("stripos", 2, 3, (ctx, a) -> {
+            String hay = s(ctx, a, 0);
+            return indexResult(PhpStrings.lower(hay).indexOf(PhpStrings.lower(s(ctx, a, 1)), offset(hay, a)));
+        });
+        Builtins.def("strrpos", 2, 3, (ctx, a) -> reversePosition(ctx, a, false));
+        Builtins.def("strripos", 2, 3, (ctx, a) -> reversePosition(ctx, a, true));
+        Builtins.def("str_contains", 2, 2, (ctx, a) -> s(ctx, a, 0).contains(s(ctx, a, 1)));
+        Builtins.def("str_starts_with", 2, 2, (ctx, a) -> s(ctx, a, 0).startsWith(s(ctx, a, 1)));
+        Builtins.def("str_ends_with", 2, 2, (ctx, a) -> s(ctx, a, 0).endsWith(s(ctx, a, 1)));
         Builtins.def("strstr", 2, 3, (ctx, a) -> {
-            int i = s(a, 0).indexOf(s(a, 1));
+            String hay = s(ctx, a, 0);
+            int i = hay.indexOf(s(ctx, a, 1));
             if (i < 0) {
                 return false;
             }
-            return a.length > 2 && PhpOps.toBool(a[2]) ? s(a, 0).substring(0, i) : s(a, 0).substring(i);
+            return a.length > 2 && PhpOps.toBool(a[2]) ? hay.substring(0, i) : hay.substring(i);
         });
         Builtins.def("substr_count", 2, 2, (ctx, a) -> {
-            String h = s(a, 0);
-            String n = s(a, 1);
+            String h = s(ctx, a, 0);
+            String n = s(ctx, a, 1);
+            if (n.isEmpty()) {
+                throw new PhpError(PhpError.VALUE_ERROR, "substr_count(): Argument #2 ($needle) must not be empty", null);
+            }
             long count = 0;
             for (int i = h.indexOf(n); i >= 0 && !n.isEmpty(); i = h.indexOf(n, i + n.length())) {
                 count++;
@@ -132,16 +155,16 @@ final class StringFunctions {
 
     private static void splitting() {
         Builtins.def("explode", 2, 3, (ctx, a) -> {
-            String sep = s(a, 0);
+            String sep = s(ctx, a, 0);
             if (sep.isEmpty()) {
-                throw new PhpError(PhpError.VALUE_ERROR, "explode(): Argument #1 ($separator) must not be empty", null);
+                throw new PhpError(PhpError.VALUE_ERROR, "explode(): Argument #1 ($separator) must not be empty, use str_split() to split a string into characters", null);
             }
-            return explode(sep, s(a, 1), a.length > 2 ? l(a, 2) : Long.MAX_VALUE);
+            return explode(sep, s(ctx, a, 1), a.length > 2 ? l(a, 2) : Long.MAX_VALUE);
         });
         Builtins.def("implode", 1, 2, StringFunctions::implode);
         Builtins.def("join", 1, 2, StringFunctions::implode);
         Builtins.def("str_split", 1, 2, (ctx, a) -> {
-            String str = s(a, 0);
+            String str = s(ctx, a, 0);
             int n = a.length > 1 ? (int) l(a, 1) : 1;
             if (n < 1) {
                 throw new PhpError(PhpError.VALUE_ERROR, "str_split(): Argument #2 ($length) must be greater than 0", null);
@@ -155,7 +178,7 @@ final class StringFunctions {
     }
 
     private static void formatting() {
-        Builtins.def("sprintf", 1, -1, (ctx, a) -> sprintf(a));
+        Builtins.def("sprintf", 1, -1, StringFunctions::sprintf);
         Builtins.def("vsprintf", 2, 2, (ctx, a) -> {
             List<Object> vals = ((PhpArray) a[1]).values();
             Object[] args = new Object[vals.size() + 1];
@@ -163,33 +186,36 @@ final class StringFunctions {
             for (int i = 0; i < vals.size(); i++) {
                 args[i + 1] = vals.get(i);
             }
-            return sprintf(args);
+            return sprintf(ctx, args);
         });
         Builtins.def("number_format", 1, 4, (ctx, a) -> numberFormat(PhpOps.toDouble(a[0]), a.length > 1 ? (int) l(a, 1) : 0,
-                a.length > 2 ? s(a, 2) : ".", a.length > 3 ? s(a, 3) : ","));
+                a.length > 2 ? loose(a, 2) : ".", a.length > 3 ? loose(a, 3) : ","));
         Builtins.def("dechex", 1, 1, (ctx, a) -> Long.toHexString(l(a, 0)));
-        Builtins.def("hexdec", 1, 1, (ctx, a) -> Long.parseLong(s(a, 0).replaceAll("[^0-9a-fA-F]", "").isEmpty() ? "0" : s(a, 0).replaceAll("[^0-9a-fA-F]", ""), 16));
+        Builtins.def("hexdec", 1, 1, (ctx, a) -> {
+            String hex = hexDigits(ctx, s(ctx, a, 0));
+            return Long.parseLong(hex.isEmpty() ? "0" : hex, 16);
+        });
     }
 
     private static void encoding() {
-        Builtins.def("htmlspecialchars", 1, 4, (ctx, a) -> HtmlEntities.encode(s(a, 0),
-                a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? s(a, 2) : "UTF-8",
+        Builtins.def("htmlspecialchars", 1, 4, (ctx, a) -> HtmlEntities.encode(s(ctx, a, 0),
+                a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? loose(a, 2) : "UTF-8",
                 a.length < 4 || PhpOps.toBool(a[3]), false));
-        Builtins.def("htmlentities", 1, 4, (ctx, a) -> HtmlEntities.encode(s(a, 0),
-                a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? s(a, 2) : "UTF-8",
+        Builtins.def("htmlentities", 1, 4, (ctx, a) -> HtmlEntities.encode(s(ctx, a, 0),
+                a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? loose(a, 2) : "UTF-8",
                 a.length < 4 || PhpOps.toBool(a[3]), true));
-        Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(a, 0).replaceAll("<[^>]*>", ""));
-        Builtins.def("addslashes", 1, 1, (ctx, a) -> s(a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
-        Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(PhpStrings.bytes(s(a, 0))));
+        Builtins.def("strip_tags", 1, 2, (ctx, a) -> s(ctx, a, 0).replaceAll("<[^>]*>", ""));
+        Builtins.def("addslashes", 1, 1, (ctx, a) -> s(ctx, a, 0).replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\0", "\\0"));
+        Builtins.def("base64_encode", 1, 1, (ctx, a) -> java.util.Base64.getEncoder().encodeToString(PhpStrings.bytes(s(ctx, a, 0))));
         Builtins.def("base64_decode", 1, 2, (ctx, a) -> {
-            return base64Decode(s(a, 0), a.length > 1 && PhpOps.toBool(a[1]));
+            return base64Decode(s(ctx, a, 0), a.length > 1 && PhpOps.toBool(a[1]));
         });
-        Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(PhpStrings.bytes(s(a, 0))));
-        Builtins.def("md5", 1, 2, (ctx, a) -> digest("md5", s(a, 0), a.length > 1 && PhpOps.toBool(a[1])));
-        Builtins.def("sha1", 1, 2, (ctx, a) -> digest("sha1", s(a, 0), a.length > 1 && PhpOps.toBool(a[1])));
+        Builtins.def("bin2hex", 1, 1, (ctx, a) -> HexFormat.of().formatHex(PhpStrings.bytes(s(ctx, a, 0))));
+        Builtins.def("md5", 1, 2, (ctx, a) -> digest("md5", s(ctx, a, 0), a.length > 1 && PhpOps.toBool(a[1])));
+        Builtins.def("sha1", 1, 2, (ctx, a) -> digest("sha1", s(ctx, a, 0), a.length > 1 && PhpOps.toBool(a[1])));
         Builtins.def("crc32", 1, 1, (ctx, a) -> {
             java.util.zip.CRC32 c = new java.util.zip.CRC32();
-            c.update(PhpStrings.bytes(s(a, 0)));
+            c.update(PhpStrings.bytes(s(ctx, a, 0)));
             return c.getValue();
         });
     }
@@ -198,6 +224,19 @@ final class StringFunctions {
 
     private static Object indexResult(int i) {
         return i < 0 ? (Object) false : (Object) (long) i;
+    }
+
+    /** strcmp's result: the first differing byte's difference, or -1/1 when one is a prefix. */
+    private static int compareBytes(String a, String b) {
+        int n = Math.min(a.length(), b.length());
+        for (int i = 0; i < n; i++) {
+            char x = a.charAt(i);
+            char y = b.charAt(i);
+            if (x != y) {
+                return x - y;
+            }
+        }
+        return Integer.compare(a.length(), b.length());
     }
 
     private static int offset(String hay, Object[] a) {
@@ -311,10 +350,46 @@ final class StringFunctions {
         return sb.toString();
     }
 
+    /**
+     * hexdec's digits: leading and trailing whitespace and an optional 0x prefix are ignored
+     * silently, any other non-hex character is dropped with php's deprecation.
+     */
+    private static String hexDigits(dev.phpruntime.PhpContext ctx, String value) {
+        int start = 0;
+        int end = value.length();
+        while (start < end && Character.isWhitespace(value.charAt(start))) {
+            start++;
+        }
+        while (end > start && Character.isWhitespace(value.charAt(end - 1))) {
+            end--;
+        }
+        if (end - start >= 2 && value.charAt(start) == '0'
+                && (value.charAt(start + 1) == 'x' || value.charAt(start + 1) == 'X')) {
+            start += 2;
+        }
+        StringBuilder digits = new StringBuilder(end - start);
+        boolean ignored = false;
+        for (int i = start; i < end; i++) {
+            char c = value.charAt(i);
+            if (c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+                digits.append(c);
+            } else {
+                ignored = true;
+            }
+        }
+        if (ignored) {
+            ctx.deprecated("Invalid characters passed for attempted conversion, these have been ignored", 0);
+        }
+        return digits.toString();
+    }
+
     private static String strPad(String str, int length, String pad, int type) {
         int total = length - str.length();
-        if (total <= 0 || pad.isEmpty()) {
+        if (total <= 0) {
             return str;
+        }
+        if (pad.isEmpty()) {
+            throw new PhpError(PhpError.VALUE_ERROR, "str_pad(): Argument #3 ($pad_string) must not be empty", null);
         }
         int left = type == 0 ? total : type == 2 ? total / 2 : 0;
         int right = total - left;
@@ -331,6 +406,9 @@ final class StringFunctions {
     }
 
     private static String wordwrap(String str, int width, String brk, boolean cut) {
+        if (brk.isEmpty()) {
+            throw new PhpError(PhpError.VALUE_ERROR, "wordwrap(): Argument #3 ($break) must not be empty", null);
+        }
         String[] words = str.split(" ", -1);
         StringBuilder out = new StringBuilder();
         int lineLen = 0;
@@ -436,7 +514,7 @@ final class StringFunctions {
                 throw new PhpError(PhpError.TYPE_ERROR,
                         "implode(): Argument #2 ($array) must be of type ?array, " + PhpOps.typeName(a[1]) + " given", null);
             }
-            glue = s(a, 0);
+            glue = loose(a, 0);
             arr = pair;
         }
         return arr.join(glue);
@@ -506,8 +584,8 @@ final class StringFunctions {
 
     // ------------------------------------------------------------------ sprintf
 
-    static String sprintf(Object[] a) {
-        String fmt = PhpOps.toStr(a[0]);
+    static String sprintf(dev.phpruntime.PhpContext ctx, Object[] a) {
+        String fmt = s(ctx, a, 0);
         StringBuilder out = new StringBuilder();
         int argIndex = 1;
         int i = 0;
@@ -622,26 +700,26 @@ final class StringFunctions {
     // ------------------------------------------------------------------ more
 
     private static void more() {
-        Builtins.def("str_increment", 1, 1, (ctx, a) -> alnumAdvance(s(a, 0), true));
-        Builtins.def("str_decrement", 1, 1, (ctx, a) -> alnumAdvance(s(a, 0), false));
-        Builtins.def("strspn", 2, 4, (ctx, a) -> (long) span(segment(a), s(a, 1), true));
-        Builtins.def("strcspn", 2, 4, (ctx, a) -> (long) span(segment(a), s(a, 1), false));
-        Builtins.def("substr_compare", 3, 5, (ctx, a) -> substrCompare(a));
+        Builtins.def("str_increment", 1, 1, (ctx, a) -> alnumAdvance(s(ctx, a, 0), true));
+        Builtins.def("str_decrement", 1, 1, (ctx, a) -> alnumAdvance(s(ctx, a, 0), false));
+        Builtins.def("strspn", 2, 4, (ctx, a) -> (long) span(segment(ctx, a), s(ctx, a, 1), true));
+        Builtins.def("strcspn", 2, 4, (ctx, a) -> (long) span(segment(ctx, a), s(ctx, a, 1), false));
+        Builtins.def("substr_compare", 3, 5, (ctx, a) -> substrCompare(ctx, a));
         Builtins.def("strtr", 2, 3, (ctx, a) -> {
             if (a.length == 3) {
-                return strtrChars(s(a, 0), s(a, 1), s(a, 2));
+                return strtrChars(s(ctx, a, 0), loose(a, 1), loose(a, 2));
             }
             if (!(a[1] instanceof PhpArray map)) {
                 throw new PhpError(PhpError.TYPE_ERROR, "strtr(): Argument #2 ($from) must be of type array, " + PhpOps.typeName(a[1]) + " given", null);
             }
-            return strtrPairs(ctx, s(a, 0), map);
+            return strtrPairs(ctx, s(ctx, a, 0), map);
         });
         Builtins.def("version_compare", 2, 3, (ctx, a) -> {
-            int c = versionCompare(s(a, 0), s(a, 1));
+            int c = versionCompare(s(ctx, a, 0), s(ctx, a, 1));
             if (a.length < 3 || a[2] == PhpNull.INSTANCE) {
                 return (long) c;
             }
-            return switch (s(a, 2)) {
+            return switch (loose(a, 2)) {
                 case "<", "lt" -> c < 0;
                 case "<=", "le" -> c <= 0;
                 case ">", "gt" -> c > 0;
@@ -651,35 +729,35 @@ final class StringFunctions {
                 default -> throw new PhpError(PhpError.VALUE_ERROR, "version_compare(): Argument #3 ($operator) must be a valid comparison operator", null);
             };
         });
-        Builtins.def("stripslashes", 1, 1, (ctx, a) -> stripslashes(s(a, 0)));
-        Builtins.def("addcslashes", 2, 2, (ctx, a) -> addcslashes(s(a, 0), s(a, 1)));
-        Builtins.def("stripcslashes", 1, 1, (ctx, a) -> stripcslashes(s(a, 0)));
-        Builtins.def("strnatcmp", 2, 2, (ctx, a) -> (long) natCompare(s(a, 0), s(a, 1), false));
-        Builtins.def("strnatcasecmp", 2, 2, (ctx, a) -> (long) natCompare(s(a, 0), s(a, 1), true));
+        Builtins.def("stripslashes", 1, 1, (ctx, a) -> stripslashes(s(ctx, a, 0)));
+        Builtins.def("addcslashes", 2, 2, (ctx, a) -> addcslashes(s(ctx, a, 0), s(ctx, a, 1)));
+        Builtins.def("stripcslashes", 1, 1, (ctx, a) -> stripcslashes(s(ctx, a, 0)));
+        Builtins.def("strnatcmp", 2, 2, (ctx, a) -> (long) natCompare(s(ctx, a, 0), s(ctx, a, 1), false));
+        Builtins.def("strnatcasecmp", 2, 2, (ctx, a) -> (long) natCompare(s(ctx, a, 0), s(ctx, a, 1), true));
         Builtins.def("strtok", 1, 2, (ctx, a) -> {
             ContextState st = ContextState.of(ctx);
             String token;
             if (a.length == 2) {
-                st.strtokSubject = s(a, 0);
+                st.strtokSubject = s(ctx, a, 0);
                 st.strtokPos = 0;
-                token = s(a, 1);
+                token = loose(a, 1);
             } else {
-                token = s(a, 0);
+                token = s(ctx, a, 0);
             }
             return strtok(st, token);
         });
-        Builtins.def("substr_replace", 3, 4, (ctx, a) -> substrReplace(a));
+        Builtins.def("substr_replace", 3, 4, (ctx, a) -> substrReplace(ctx, a));
         Builtins.def("stristr", 2, 3, (ctx, a) -> {
-            String hay = s(a, 0);
-            int i = PhpStrings.lower(hay).indexOf(PhpStrings.lower(s(a, 1)));
+            String hay = s(ctx, a, 0);
+            int i = PhpStrings.lower(hay).indexOf(PhpStrings.lower(s(ctx, a, 1)));
             if (i < 0) {
                 return false;
             }
             return a.length > 2 && PhpOps.toBool(a[2]) ? hay.substring(0, i) : hay.substring(i);
         });
         Builtins.def("strrchr", 2, 3, (ctx, a) -> {
-            String hay = s(a, 0);
-            String needle = s(a, 1);
+            String hay = s(ctx, a, 0);
+            String needle = s(ctx, a, 1);
             int i = needle.isEmpty() ? -1 : hay.lastIndexOf(needle.charAt(0));
             if (i < 0) {
                 return false;
@@ -687,8 +765,8 @@ final class StringFunctions {
             return a.length > 2 && PhpOps.toBool(a[2]) ? hay.substring(0, i) : hay.substring(i);
         });
         Builtins.def("strpbrk", 2, 2, (ctx, a) -> {
-            String str = s(a, 0);
-            String chars = s(a, 1);
+            String str = s(ctx, a, 0);
+            String chars = s(ctx, a, 1);
             if (chars.isEmpty()) {
                 throw new PhpError(PhpError.VALUE_ERROR, "strpbrk(): Argument #2 ($characters) must be a non-empty string", null);
             }
@@ -700,13 +778,13 @@ final class StringFunctions {
             return false;
         });
         Builtins.def("html_entity_decode", 1, 3, (ctx, a) ->
-                HtmlEntities.decodeAll(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? s(a, 2) : "UTF-8"));
+                HtmlEntities.decodeAll(s(ctx, a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS, a.length > 2 ? loose(a, 2) : "UTF-8"));
         Builtins.def("htmlspecialchars_decode", 1, 2, (ctx, a) ->
-                HtmlEntities.decodeSpecial(s(a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS));
+                HtmlEntities.decodeSpecial(s(ctx, a, 0), a.length > 1 ? l(a, 1) : HtmlEntities.DEFAULT_FLAGS));
         Builtins.def("chunk_split", 1, 3, (ctx, a) -> {
-            String str = s(a, 0);
+            String str = s(ctx, a, 0);
             long len = a.length > 1 ? l(a, 1) : 76;
-            String end = a.length > 2 ? s(a, 2) : "\r\n";
+            String end = a.length > 2 ? s(ctx, a, 2) : "\r\n";
             if (len < 1) {
                 throw new PhpError(PhpError.VALUE_ERROR, "chunk_split(): Argument #2 ($length) must be greater than 0", null);
             }
@@ -721,27 +799,27 @@ final class StringFunctions {
         });
         Builtins.def("uniqid", 0, 2, (ctx, a) -> {
             long micros = System.currentTimeMillis() * 1000 + (System.nanoTime() / 1000) % 1000;
-            String id = (a.length > 0 ? s(a, 0) : "") + String.format("%08x%05x", micros / 1_000_000, micros % 1_000_000);
+            String id = (a.length > 0 ? s(ctx, a, 0) : "") + String.format("%08x%05x", micros / 1_000_000, micros % 1_000_000);
             if (a.length > 1 && PhpOps.toBool(a[1])) {
                 id += String.format(java.util.Locale.ROOT, "%.8f", Math.random() * 10);
             }
             return id;
         });
         Builtins.defRef("similar_text", 2, 3, 1 << 2, (ctx, a) -> {
-            int count = similar(s(a, 0), s(a, 1));
+            int count = similar(s(ctx, a, 0), s(ctx, a, 1));
             if (a.length > 2) {
-                int length = s(a, 0).length() + s(a, 1).length();
+                int length = s(ctx, a, 0).length() + s(ctx, a, 1).length();
                 a[2] = length == 0 ? 0.0 : count * 200.0 / length;
             }
             return (long) count;
         });
-        Builtins.def("levenshtein", 2, 5, (ctx, a) -> (long) levenshtein(s(a, 0), s(a, 1),
+        Builtins.def("levenshtein", 2, 5, (ctx, a) -> (long) levenshtein(s(ctx, a, 0), s(ctx, a, 1),
                 a.length > 2 ? (int) l(a, 2) : 1, a.length > 3 ? (int) l(a, 3) : 1, a.length > 4 ? (int) l(a, 4) : 1));
     }
 
     /** The part of a[0] selected by strspn/strcspn's optional offset and length. */
-    private static String segment(Object[] a) {
-        String str = s(a, 0);
+    private static String segment(dev.phpruntime.PhpContext ctx, Object[] a) {
+        String str = s(ctx, a, 0);
         if (a.length < 3) {
             return str;
         }
@@ -757,9 +835,9 @@ final class StringFunctions {
         return i;
     }
 
-    private static Object substrCompare(Object[] a) {
-        String hay = s(a, 0);
-        String needle = s(a, 1);
+    private static Object substrCompare(dev.phpruntime.PhpContext ctx, Object[] a) {
+        String hay = s(ctx, a, 0);
+        String needle = s(ctx, a, 1);
         long offset = l(a, 2);
         boolean lenDefault = a.length < 4 || a[3] == PhpNull.INSTANCE;
         long len = lenDefault ? 0 : l(a, 3);
@@ -1186,12 +1264,12 @@ final class StringFunctions {
         return subject.substring(start, i);
     }
 
-    private static Object substrReplace(Object[] a) {
+    private static Object substrReplace(dev.phpruntime.PhpContext ctx, Object[] a) {
         Object replace = a[1];
         Object offset = a[2];
         Object length = a.length > 3 ? a[3] : PhpNull.INSTANCE;
         if (!(a[0] instanceof PhpArray subjects)) {
-            return substrReplaceOne(s(a, 0), nth(replace, 0, ""), PhpOps.toLong(nth(offset, 0, 0L)),
+            return substrReplaceOne(loose(a, 0), nth(replace, 0, ""), PhpOps.toLong(nth(offset, 0, 0L)),
                     lengthOf(nth(length, 0, PhpNull.INSTANCE)));
         }
         PhpArray out = new PhpArray();
@@ -1235,9 +1313,9 @@ final class StringFunctions {
         return str.substring(0, (int) start) + PhpOps.toStr(replacement) + str.substring((int) end);
     }
 
-    private static Object reversePosition(Object[] a, boolean ci) {
-        String hay = ci ? PhpStrings.lower(s(a, 0)) : s(a, 0);
-        String needle = ci ? PhpStrings.lower(s(a, 1)) : s(a, 1);
+    private static Object reversePosition(dev.phpruntime.PhpContext ctx, Object[] a, boolean ci) {
+        String hay = ci ? PhpStrings.lower(s(ctx, a, 0)) : s(ctx, a, 0);
+        String needle = ci ? PhpStrings.lower(s(ctx, a, 1)) : s(ctx, a, 1);
         long offset = a.length > 2 ? l(a, 2) : 0;
         int at = offset < 0 ? hay.lastIndexOf(needle, (int) Math.max(0, hay.length() + offset)) : hay.lastIndexOf(needle);
         return offset > 0 && at < offset ? false : indexResult(at);

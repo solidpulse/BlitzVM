@@ -62,7 +62,7 @@ final class OutputFunctions {
             return PhpNull.INSTANCE;
         });
         Builtins.def("printf", 1, -1, (ctx, a) -> {
-            String s = StringFunctions.sprintf(a);
+            String s = StringFunctions.sprintf(ctx, a);
             ctx.echo(s);
             return (long) s.length();
         });

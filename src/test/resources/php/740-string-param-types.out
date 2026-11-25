@@ -1,0 +1,1730 @@
+strlen(string: [1, 2]) => strlen(): Argument #1 ($string) must be of type string, array given
+trim(string: "x", characters: [1, 2]) => trim(): Argument #2 ($characters) must be of type string, array given
+str_pad(length: 3, pad_string: [1, 2], string: "x") => str_pad(): Argument #3 ($pad_string) must be of type string, array given
+substr(string: [1, 2], offset: 0) => substr(): Argument #1 ($string) must be of type string, array given
+preg_match(pattern: "/a/", subject: [1, 2]) => preg_match(): Argument #2 ($subject) must be of type string, array given
+DIAG[8192] mb_strlen(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_strlen(string: null) => OK int(0)
+str_contains(needle: [1, 2], haystack: "abc") => str_contains(): Argument #2 ($needle) must be of type string, array given
+strlen #1 string => OK int(3)
+strlen #1 int => OK int(2)
+strlen #1 float => OK int(3)
+strlen #1 true => OK int(1)
+strlen #1 false => OK int(0)
+DIAG[8192] strlen(): Passing null to parameter #1 ($string) of type string is deprecated
+strlen #1 null => OK int(0)
+strlen #1 array => strlen(): Argument #1 ($string) must be of type string, array given
+strlen #1 stringable => OK int(3)
+strlen #1 object => strlen(): Argument #1 ($string) must be of type string, PlainArg given
+strlen #1 enum => strlen(): Argument #1 ($string) must be of type string, TestEnum given
+strlen #1 closure => strlen(): Argument #1 ($string) must be of type string, Closure given
+strtoupper #1 string => OK string(3)
+strtoupper #1 int => OK string(2)
+strtoupper #1 float => OK string(3)
+strtoupper #1 true => OK string(1)
+strtoupper #1 false => OK string(0)
+DIAG[8192] strtoupper(): Passing null to parameter #1 ($string) of type string is deprecated
+strtoupper #1 null => OK string(0)
+strtoupper #1 array => strtoupper(): Argument #1 ($string) must be of type string, array given
+strtoupper #1 stringable => OK string(3)
+strtoupper #1 object => strtoupper(): Argument #1 ($string) must be of type string, PlainArg given
+strtoupper #1 enum => strtoupper(): Argument #1 ($string) must be of type string, TestEnum given
+strtoupper #1 closure => strtoupper(): Argument #1 ($string) must be of type string, Closure given
+strtolower #1 string => OK string(3)
+strtolower #1 int => OK string(2)
+strtolower #1 float => OK string(3)
+strtolower #1 true => OK string(1)
+strtolower #1 false => OK string(0)
+DIAG[8192] strtolower(): Passing null to parameter #1 ($string) of type string is deprecated
+strtolower #1 null => OK string(0)
+strtolower #1 array => strtolower(): Argument #1 ($string) must be of type string, array given
+strtolower #1 stringable => OK string(3)
+strtolower #1 object => strtolower(): Argument #1 ($string) must be of type string, PlainArg given
+strtolower #1 enum => strtolower(): Argument #1 ($string) must be of type string, TestEnum given
+strtolower #1 closure => strtolower(): Argument #1 ($string) must be of type string, Closure given
+ucfirst #1 string => OK string(3)
+ucfirst #1 int => OK string(2)
+ucfirst #1 float => OK string(3)
+ucfirst #1 true => OK string(1)
+ucfirst #1 false => OK string(0)
+DIAG[8192] ucfirst(): Passing null to parameter #1 ($string) of type string is deprecated
+ucfirst #1 null => OK string(0)
+ucfirst #1 array => ucfirst(): Argument #1 ($string) must be of type string, array given
+ucfirst #1 stringable => OK string(3)
+ucfirst #1 object => ucfirst(): Argument #1 ($string) must be of type string, PlainArg given
+ucfirst #1 enum => ucfirst(): Argument #1 ($string) must be of type string, TestEnum given
+ucfirst #1 closure => ucfirst(): Argument #1 ($string) must be of type string, Closure given
+lcfirst #1 string => OK string(3)
+lcfirst #1 int => OK string(2)
+lcfirst #1 float => OK string(3)
+lcfirst #1 true => OK string(1)
+lcfirst #1 false => OK string(0)
+DIAG[8192] lcfirst(): Passing null to parameter #1 ($string) of type string is deprecated
+lcfirst #1 null => OK string(0)
+lcfirst #1 array => lcfirst(): Argument #1 ($string) must be of type string, array given
+lcfirst #1 stringable => OK string(3)
+lcfirst #1 object => lcfirst(): Argument #1 ($string) must be of type string, PlainArg given
+lcfirst #1 enum => lcfirst(): Argument #1 ($string) must be of type string, TestEnum given
+lcfirst #1 closure => lcfirst(): Argument #1 ($string) must be of type string, Closure given
+ucwords #1 string => OK string(3)
+ucwords #1 int => OK string(2)
+ucwords #1 float => OK string(3)
+ucwords #1 true => OK string(1)
+ucwords #1 false => OK string(0)
+DIAG[8192] ucwords(): Passing null to parameter #1 ($string) of type string is deprecated
+ucwords #1 null => OK string(0)
+ucwords #1 array => ucwords(): Argument #1 ($string) must be of type string, array given
+ucwords #1 stringable => OK string(3)
+ucwords #1 object => ucwords(): Argument #1 ($string) must be of type string, PlainArg given
+ucwords #1 enum => ucwords(): Argument #1 ($string) must be of type string, TestEnum given
+ucwords #1 closure => ucwords(): Argument #1 ($string) must be of type string, Closure given
+ucwords #2 string => OK string(3)
+ucwords #2 int => OK string(3)
+ucwords #2 float => OK string(3)
+ucwords #2 true => OK string(3)
+ucwords #2 false => OK string(3)
+DIAG[8192] ucwords(): Passing null to parameter #2 ($separators) of type string is deprecated
+ucwords #2 null => OK string(3)
+ucwords #2 array => ucwords(): Argument #2 ($separators) must be of type string, array given
+ucwords #2 stringable => OK string(3)
+ucwords #2 object => ucwords(): Argument #2 ($separators) must be of type string, PlainArg given
+ucwords #2 enum => ucwords(): Argument #2 ($separators) must be of type string, TestEnum given
+ucwords #2 closure => ucwords(): Argument #2 ($separators) must be of type string, Closure given
+str_repeat #1 string => OK string(6)
+str_repeat #1 int => OK string(4)
+str_repeat #1 float => OK string(6)
+str_repeat #1 true => OK string(2)
+str_repeat #1 false => OK string(0)
+DIAG[8192] str_repeat(): Passing null to parameter #1 ($string) of type string is deprecated
+str_repeat #1 null => OK string(0)
+str_repeat #1 array => str_repeat(): Argument #1 ($string) must be of type string, array given
+str_repeat #1 stringable => OK string(6)
+str_repeat #1 object => str_repeat(): Argument #1 ($string) must be of type string, PlainArg given
+str_repeat #1 enum => str_repeat(): Argument #1 ($string) must be of type string, TestEnum given
+str_repeat #1 closure => str_repeat(): Argument #1 ($string) must be of type string, Closure given
+strrev #1 string => OK string(3)
+strrev #1 int => OK string(2)
+strrev #1 float => OK string(3)
+strrev #1 true => OK string(1)
+strrev #1 false => OK string(0)
+DIAG[8192] strrev(): Passing null to parameter #1 ($string) of type string is deprecated
+strrev #1 null => OK string(0)
+strrev #1 array => strrev(): Argument #1 ($string) must be of type string, array given
+strrev #1 stringable => OK string(3)
+strrev #1 object => strrev(): Argument #1 ($string) must be of type string, PlainArg given
+strrev #1 enum => strrev(): Argument #1 ($string) must be of type string, TestEnum given
+strrev #1 closure => strrev(): Argument #1 ($string) must be of type string, Closure given
+substr #1 string => OK string(3)
+substr #1 int => OK string(2)
+substr #1 float => OK string(3)
+substr #1 true => OK string(1)
+substr #1 false => OK string(0)
+DIAG[8192] substr(): Passing null to parameter #1 ($string) of type string is deprecated
+substr #1 null => OK string(0)
+substr #1 array => substr(): Argument #1 ($string) must be of type string, array given
+substr #1 stringable => OK string(3)
+substr #1 object => substr(): Argument #1 ($string) must be of type string, PlainArg given
+substr #1 enum => substr(): Argument #1 ($string) must be of type string, TestEnum given
+substr #1 closure => substr(): Argument #1 ($string) must be of type string, Closure given
+trim #1 string => OK string(3)
+trim #1 int => OK string(2)
+trim #1 float => OK string(3)
+trim #1 true => OK string(1)
+trim #1 false => OK string(0)
+DIAG[8192] trim(): Passing null to parameter #1 ($string) of type string is deprecated
+trim #1 null => OK string(0)
+trim #1 array => trim(): Argument #1 ($string) must be of type string, array given
+trim #1 stringable => OK string(3)
+trim #1 object => trim(): Argument #1 ($string) must be of type string, PlainArg given
+trim #1 enum => trim(): Argument #1 ($string) must be of type string, TestEnum given
+trim #1 closure => trim(): Argument #1 ($string) must be of type string, Closure given
+trim #2 string => OK string(3)
+trim #2 int => OK string(3)
+trim #2 float => OK string(3)
+trim #2 true => OK string(3)
+trim #2 false => OK string(3)
+DIAG[8192] trim(): Passing null to parameter #2 ($characters) of type string is deprecated
+trim #2 null => OK string(3)
+trim #2 array => trim(): Argument #2 ($characters) must be of type string, array given
+trim #2 stringable => OK string(3)
+trim #2 object => trim(): Argument #2 ($characters) must be of type string, PlainArg given
+trim #2 enum => trim(): Argument #2 ($characters) must be of type string, TestEnum given
+trim #2 closure => trim(): Argument #2 ($characters) must be of type string, Closure given
+ltrim #1 string => OK string(3)
+ltrim #1 int => OK string(2)
+ltrim #1 float => OK string(3)
+ltrim #1 true => OK string(1)
+ltrim #1 false => OK string(0)
+DIAG[8192] ltrim(): Passing null to parameter #1 ($string) of type string is deprecated
+ltrim #1 null => OK string(0)
+ltrim #1 array => ltrim(): Argument #1 ($string) must be of type string, array given
+ltrim #1 stringable => OK string(3)
+ltrim #1 object => ltrim(): Argument #1 ($string) must be of type string, PlainArg given
+ltrim #1 enum => ltrim(): Argument #1 ($string) must be of type string, TestEnum given
+ltrim #1 closure => ltrim(): Argument #1 ($string) must be of type string, Closure given
+ltrim #2 string => OK string(3)
+ltrim #2 int => OK string(3)
+ltrim #2 float => OK string(3)
+ltrim #2 true => OK string(3)
+ltrim #2 false => OK string(3)
+DIAG[8192] ltrim(): Passing null to parameter #2 ($characters) of type string is deprecated
+ltrim #2 null => OK string(3)
+ltrim #2 array => ltrim(): Argument #2 ($characters) must be of type string, array given
+ltrim #2 stringable => OK string(3)
+ltrim #2 object => ltrim(): Argument #2 ($characters) must be of type string, PlainArg given
+ltrim #2 enum => ltrim(): Argument #2 ($characters) must be of type string, TestEnum given
+ltrim #2 closure => ltrim(): Argument #2 ($characters) must be of type string, Closure given
+rtrim #1 string => OK string(3)
+rtrim #1 int => OK string(2)
+rtrim #1 float => OK string(3)
+rtrim #1 true => OK string(1)
+rtrim #1 false => OK string(0)
+DIAG[8192] rtrim(): Passing null to parameter #1 ($string) of type string is deprecated
+rtrim #1 null => OK string(0)
+rtrim #1 array => rtrim(): Argument #1 ($string) must be of type string, array given
+rtrim #1 stringable => OK string(3)
+rtrim #1 object => rtrim(): Argument #1 ($string) must be of type string, PlainArg given
+rtrim #1 enum => rtrim(): Argument #1 ($string) must be of type string, TestEnum given
+rtrim #1 closure => rtrim(): Argument #1 ($string) must be of type string, Closure given
+rtrim #2 string => OK string(3)
+rtrim #2 int => OK string(3)
+rtrim #2 float => OK string(3)
+rtrim #2 true => OK string(3)
+rtrim #2 false => OK string(3)
+DIAG[8192] rtrim(): Passing null to parameter #2 ($characters) of type string is deprecated
+rtrim #2 null => OK string(3)
+rtrim #2 array => rtrim(): Argument #2 ($characters) must be of type string, array given
+rtrim #2 stringable => OK string(3)
+rtrim #2 object => rtrim(): Argument #2 ($characters) must be of type string, PlainArg given
+rtrim #2 enum => rtrim(): Argument #2 ($characters) must be of type string, TestEnum given
+rtrim #2 closure => rtrim(): Argument #2 ($characters) must be of type string, Closure given
+chop #1 string => OK string(3)
+chop #1 int => OK string(2)
+chop #1 float => OK string(3)
+chop #1 true => OK string(1)
+chop #1 false => OK string(0)
+DIAG[8192] chop(): Passing null to parameter #1 ($string) of type string is deprecated
+chop #1 null => OK string(0)
+chop #1 array => chop(): Argument #1 ($string) must be of type string, array given
+chop #1 stringable => OK string(3)
+chop #1 object => chop(): Argument #1 ($string) must be of type string, PlainArg given
+chop #1 enum => chop(): Argument #1 ($string) must be of type string, TestEnum given
+chop #1 closure => chop(): Argument #1 ($string) must be of type string, Closure given
+chop #2 string => OK string(3)
+chop #2 int => OK string(3)
+chop #2 float => OK string(3)
+chop #2 true => OK string(3)
+chop #2 false => OK string(3)
+DIAG[8192] chop(): Passing null to parameter #2 ($characters) of type string is deprecated
+chop #2 null => OK string(3)
+chop #2 array => chop(): Argument #2 ($characters) must be of type string, array given
+chop #2 stringable => OK string(3)
+chop #2 object => chop(): Argument #2 ($characters) must be of type string, PlainArg given
+chop #2 enum => chop(): Argument #2 ($characters) must be of type string, TestEnum given
+chop #2 closure => chop(): Argument #2 ($characters) must be of type string, Closure given
+str_pad #1 string => OK string(5)
+str_pad #1 int => OK string(5)
+str_pad #1 float => OK string(5)
+str_pad #1 true => OK string(5)
+str_pad #1 false => OK string(5)
+DIAG[8192] str_pad(): Passing null to parameter #1 ($string) of type string is deprecated
+str_pad #1 null => OK string(5)
+str_pad #1 array => str_pad(): Argument #1 ($string) must be of type string, array given
+str_pad #1 stringable => OK string(5)
+str_pad #1 object => str_pad(): Argument #1 ($string) must be of type string, PlainArg given
+str_pad #1 enum => str_pad(): Argument #1 ($string) must be of type string, TestEnum given
+str_pad #1 closure => str_pad(): Argument #1 ($string) must be of type string, Closure given
+str_pad #3 string => OK string(5)
+str_pad #3 int => OK string(5)
+str_pad #3 float => OK string(5)
+str_pad #3 true => OK string(5)
+str_pad #3 false => str_pad(): Argument #3 ($pad_string) must not be empty
+DIAG[8192] str_pad(): Passing null to parameter #3 ($pad_string) of type string is deprecated
+str_pad #3 null => str_pad(): Argument #3 ($pad_string) must not be empty
+str_pad #3 array => str_pad(): Argument #3 ($pad_string) must be of type string, array given
+str_pad #3 stringable => OK string(5)
+str_pad #3 object => str_pad(): Argument #3 ($pad_string) must be of type string, PlainArg given
+str_pad #3 enum => str_pad(): Argument #3 ($pad_string) must be of type string, TestEnum given
+str_pad #3 closure => str_pad(): Argument #3 ($pad_string) must be of type string, Closure given
+strcmp #1 string => OK int(-1)
+strcmp #1 int => OK int(-46)
+strcmp #1 float => OK int(-49)
+strcmp #1 true => OK int(-49)
+strcmp #1 false => OK int(-1)
+DIAG[8192] strcmp(): Passing null to parameter #1 ($string1) of type string is deprecated
+strcmp #1 null => OK int(-1)
+strcmp #1 array => strcmp(): Argument #1 ($string1) must be of type string, array given
+strcmp #1 stringable => OK int(-19)
+strcmp #1 object => strcmp(): Argument #1 ($string1) must be of type string, PlainArg given
+strcmp #1 enum => strcmp(): Argument #1 ($string1) must be of type string, TestEnum given
+strcmp #1 closure => strcmp(): Argument #1 ($string1) must be of type string, Closure given
+strcmp #2 string => OK int(-1)
+strcmp #2 int => OK int(45)
+strcmp #2 float => OK int(48)
+strcmp #2 true => OK int(48)
+strcmp #2 false => OK int(1)
+DIAG[8192] strcmp(): Passing null to parameter #2 ($string2) of type string is deprecated
+strcmp #2 null => OK int(1)
+strcmp #2 array => strcmp(): Argument #2 ($string2) must be of type string, array given
+strcmp #2 stringable => OK int(18)
+strcmp #2 object => strcmp(): Argument #2 ($string2) must be of type string, PlainArg given
+strcmp #2 enum => strcmp(): Argument #2 ($string2) must be of type string, TestEnum given
+strcmp #2 closure => strcmp(): Argument #2 ($string2) must be of type string, Closure given
+strcasecmp #1 string => OK int(-1)
+strcasecmp #1 int => OK int(-46)
+strcasecmp #1 float => OK int(-49)
+strcasecmp #1 true => OK int(-49)
+strcasecmp #1 false => OK int(-1)
+DIAG[8192] strcasecmp(): Passing null to parameter #1 ($string1) of type string is deprecated
+strcasecmp #1 null => OK int(-1)
+strcasecmp #1 array => strcasecmp(): Argument #1 ($string1) must be of type string, array given
+strcasecmp #1 stringable => OK int(13)
+strcasecmp #1 object => strcasecmp(): Argument #1 ($string1) must be of type string, PlainArg given
+strcasecmp #1 enum => strcasecmp(): Argument #1 ($string1) must be of type string, TestEnum given
+strcasecmp #1 closure => strcasecmp(): Argument #1 ($string1) must be of type string, Closure given
+strcasecmp #2 string => OK int(-1)
+strcasecmp #2 int => OK int(45)
+strcasecmp #2 float => OK int(48)
+strcasecmp #2 true => OK int(48)
+strcasecmp #2 false => OK int(1)
+DIAG[8192] strcasecmp(): Passing null to parameter #2 ($string2) of type string is deprecated
+strcasecmp #2 null => OK int(1)
+strcasecmp #2 array => strcasecmp(): Argument #2 ($string2) must be of type string, array given
+strcasecmp #2 stringable => OK int(-14)
+strcasecmp #2 object => strcasecmp(): Argument #2 ($string2) must be of type string, PlainArg given
+strcasecmp #2 enum => strcasecmp(): Argument #2 ($string2) must be of type string, TestEnum given
+strcasecmp #2 closure => strcasecmp(): Argument #2 ($string2) must be of type string, Closure given
+strncasecmp #1 string => OK int(-1)
+strncasecmp #1 int => OK int(-46)
+strncasecmp #1 float => OK int(-49)
+strncasecmp #1 true => OK int(-49)
+strncasecmp #1 false => OK int(-1)
+DIAG[8192] strncasecmp(): Passing null to parameter #1 ($string1) of type string is deprecated
+strncasecmp #1 null => OK int(-1)
+strncasecmp #1 array => strncasecmp(): Argument #1 ($string1) must be of type string, array given
+strncasecmp #1 stringable => OK int(13)
+strncasecmp #1 object => strncasecmp(): Argument #1 ($string1) must be of type string, PlainArg given
+strncasecmp #1 enum => strncasecmp(): Argument #1 ($string1) must be of type string, TestEnum given
+strncasecmp #1 closure => strncasecmp(): Argument #1 ($string1) must be of type string, Closure given
+strncasecmp #2 string => OK int(-1)
+strncasecmp #2 int => OK int(45)
+strncasecmp #2 float => OK int(48)
+strncasecmp #2 true => OK int(48)
+strncasecmp #2 false => OK int(1)
+DIAG[8192] strncasecmp(): Passing null to parameter #2 ($string2) of type string is deprecated
+strncasecmp #2 null => OK int(1)
+strncasecmp #2 array => strncasecmp(): Argument #2 ($string2) must be of type string, array given
+strncasecmp #2 stringable => OK int(-14)
+strncasecmp #2 object => strncasecmp(): Argument #2 ($string2) must be of type string, PlainArg given
+strncasecmp #2 enum => strncasecmp(): Argument #2 ($string2) must be of type string, TestEnum given
+strncasecmp #2 closure => strncasecmp(): Argument #2 ($string2) must be of type string, Closure given
+strncmp #1 string => OK int(-1)
+strncmp #1 int => OK int(-46)
+strncmp #1 float => OK int(-49)
+strncmp #1 true => OK int(-49)
+strncmp #1 false => OK int(-1)
+DIAG[8192] strncmp(): Passing null to parameter #1 ($string1) of type string is deprecated
+strncmp #1 null => OK int(-1)
+strncmp #1 array => strncmp(): Argument #1 ($string1) must be of type string, array given
+strncmp #1 stringable => OK int(-19)
+strncmp #1 object => strncmp(): Argument #1 ($string1) must be of type string, PlainArg given
+strncmp #1 enum => strncmp(): Argument #1 ($string1) must be of type string, TestEnum given
+strncmp #1 closure => strncmp(): Argument #1 ($string1) must be of type string, Closure given
+strncmp #2 string => OK int(-1)
+strncmp #2 int => OK int(45)
+strncmp #2 float => OK int(48)
+strncmp #2 true => OK int(48)
+strncmp #2 false => OK int(1)
+DIAG[8192] strncmp(): Passing null to parameter #2 ($string2) of type string is deprecated
+strncmp #2 null => OK int(1)
+strncmp #2 array => strncmp(): Argument #2 ($string2) must be of type string, array given
+strncmp #2 stringable => OK int(18)
+strncmp #2 object => strncmp(): Argument #2 ($string2) must be of type string, PlainArg given
+strncmp #2 enum => strncmp(): Argument #2 ($string2) must be of type string, TestEnum given
+strncmp #2 closure => strncmp(): Argument #2 ($string2) must be of type string, Closure given
+DIAG[8192] ord(): Providing a string that is not one byte long is deprecated. Use ord($str[0]) instead
+ord #1 string => OK int(97)
+DIAG[8192] ord(): Providing a string that is not one byte long is deprecated. Use ord($str[0]) instead
+ord #1 int => OK int(52)
+DIAG[8192] ord(): Providing a string that is not one byte long is deprecated. Use ord($str[0]) instead
+ord #1 float => OK int(49)
+ord #1 true => OK int(49)
+DIAG[8192] ord(): Providing an empty string is deprecated
+ord #1 false => OK int(0)
+DIAG[8192] ord(): Passing null to parameter #1 ($character) of type string is deprecated
+DIAG[8192] ord(): Providing an empty string is deprecated
+ord #1 null => OK int(0)
+ord #1 array => ord(): Argument #1 ($character) must be of type string, array given
+DIAG[8192] ord(): Providing a string that is not one byte long is deprecated. Use ord($str[0]) instead
+ord #1 stringable => OK int(79)
+ord #1 object => ord(): Argument #1 ($character) must be of type string, PlainArg given
+ord #1 enum => ord(): Argument #1 ($character) must be of type string, TestEnum given
+ord #1 closure => ord(): Argument #1 ($character) must be of type string, Closure given
+nl2br #1 string => OK string(3)
+nl2br #1 int => OK string(2)
+nl2br #1 float => OK string(3)
+nl2br #1 true => OK string(1)
+nl2br #1 false => OK string(0)
+DIAG[8192] nl2br(): Passing null to parameter #1 ($string) of type string is deprecated
+nl2br #1 null => OK string(0)
+nl2br #1 array => nl2br(): Argument #1 ($string) must be of type string, array given
+nl2br #1 stringable => OK string(3)
+nl2br #1 object => nl2br(): Argument #1 ($string) must be of type string, PlainArg given
+nl2br #1 enum => nl2br(): Argument #1 ($string) must be of type string, TestEnum given
+nl2br #1 closure => nl2br(): Argument #1 ($string) must be of type string, Closure given
+str_word_count #1 string => OK int(1)
+str_word_count #1 int => OK int(0)
+str_word_count #1 float => OK int(0)
+str_word_count #1 true => OK int(0)
+str_word_count #1 false => OK int(0)
+DIAG[8192] str_word_count(): Passing null to parameter #1 ($string) of type string is deprecated
+str_word_count #1 null => OK int(0)
+str_word_count #1 array => str_word_count(): Argument #1 ($string) must be of type string, array given
+str_word_count #1 stringable => OK int(1)
+str_word_count #1 object => str_word_count(): Argument #1 ($string) must be of type string, PlainArg given
+str_word_count #1 enum => str_word_count(): Argument #1 ($string) must be of type string, TestEnum given
+str_word_count #1 closure => str_word_count(): Argument #1 ($string) must be of type string, Closure given
+wordwrap #1 string => OK string(3)
+wordwrap #1 int => OK string(2)
+wordwrap #1 float => OK string(3)
+wordwrap #1 true => OK string(1)
+wordwrap #1 false => OK string(0)
+DIAG[8192] wordwrap(): Passing null to parameter #1 ($string) of type string is deprecated
+wordwrap #1 null => OK string(0)
+wordwrap #1 array => wordwrap(): Argument #1 ($string) must be of type string, array given
+wordwrap #1 stringable => OK string(3)
+wordwrap #1 object => wordwrap(): Argument #1 ($string) must be of type string, PlainArg given
+wordwrap #1 enum => wordwrap(): Argument #1 ($string) must be of type string, TestEnum given
+wordwrap #1 closure => wordwrap(): Argument #1 ($string) must be of type string, Closure given
+wordwrap #3 string => OK string(3)
+wordwrap #3 int => OK string(3)
+wordwrap #3 float => OK string(3)
+wordwrap #3 true => OK string(3)
+wordwrap #3 false => wordwrap(): Argument #3 ($break) must not be empty
+DIAG[8192] wordwrap(): Passing null to parameter #3 ($break) of type string is deprecated
+wordwrap #3 null => wordwrap(): Argument #3 ($break) must not be empty
+wordwrap #3 array => wordwrap(): Argument #3 ($break) must be of type string, array given
+wordwrap #3 stringable => OK string(3)
+wordwrap #3 object => wordwrap(): Argument #3 ($break) must be of type string, PlainArg given
+wordwrap #3 enum => wordwrap(): Argument #3 ($break) must be of type string, TestEnum given
+wordwrap #3 closure => wordwrap(): Argument #3 ($break) must be of type string, Closure given
+strpos #1 string => OK int(1)
+strpos #1 int => OK false
+strpos #1 float => OK false
+strpos #1 true => OK false
+strpos #1 false => OK false
+DIAG[8192] strpos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+strpos #1 null => OK false
+strpos #1 array => strpos(): Argument #1 ($haystack) must be of type string, array given
+strpos #1 stringable => OK false
+strpos #1 object => strpos(): Argument #1 ($haystack) must be of type string, PlainArg given
+strpos #1 enum => strpos(): Argument #1 ($haystack) must be of type string, TestEnum given
+strpos #1 closure => strpos(): Argument #1 ($haystack) must be of type string, Closure given
+strpos #2 string => OK int(0)
+strpos #2 int => OK false
+strpos #2 float => OK false
+strpos #2 true => OK false
+strpos #2 false => OK int(0)
+DIAG[8192] strpos(): Passing null to parameter #2 ($needle) of type string is deprecated
+strpos #2 null => OK int(0)
+strpos #2 array => strpos(): Argument #2 ($needle) must be of type string, array given
+strpos #2 stringable => OK false
+strpos #2 object => strpos(): Argument #2 ($needle) must be of type string, PlainArg given
+strpos #2 enum => strpos(): Argument #2 ($needle) must be of type string, TestEnum given
+strpos #2 closure => strpos(): Argument #2 ($needle) must be of type string, Closure given
+stripos #1 string => OK int(1)
+stripos #1 int => OK false
+stripos #1 float => OK false
+stripos #1 true => OK false
+stripos #1 false => OK false
+DIAG[8192] stripos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+stripos #1 null => OK false
+stripos #1 array => stripos(): Argument #1 ($haystack) must be of type string, array given
+stripos #1 stringable => OK int(1)
+stripos #1 object => stripos(): Argument #1 ($haystack) must be of type string, PlainArg given
+stripos #1 enum => stripos(): Argument #1 ($haystack) must be of type string, TestEnum given
+stripos #1 closure => stripos(): Argument #1 ($haystack) must be of type string, Closure given
+stripos #2 string => OK int(0)
+stripos #2 int => OK false
+stripos #2 float => OK false
+stripos #2 true => OK false
+stripos #2 false => OK int(0)
+DIAG[8192] stripos(): Passing null to parameter #2 ($needle) of type string is deprecated
+stripos #2 null => OK int(0)
+stripos #2 array => stripos(): Argument #2 ($needle) must be of type string, array given
+stripos #2 stringable => OK false
+stripos #2 object => stripos(): Argument #2 ($needle) must be of type string, PlainArg given
+stripos #2 enum => stripos(): Argument #2 ($needle) must be of type string, TestEnum given
+stripos #2 closure => stripos(): Argument #2 ($needle) must be of type string, Closure given
+strrpos #1 string => OK int(1)
+strrpos #1 int => OK false
+strrpos #1 float => OK false
+strrpos #1 true => OK false
+strrpos #1 false => OK false
+DIAG[8192] strrpos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+strrpos #1 null => OK false
+strrpos #1 array => strrpos(): Argument #1 ($haystack) must be of type string, array given
+strrpos #1 stringable => OK false
+strrpos #1 object => strrpos(): Argument #1 ($haystack) must be of type string, PlainArg given
+strrpos #1 enum => strrpos(): Argument #1 ($haystack) must be of type string, TestEnum given
+strrpos #1 closure => strrpos(): Argument #1 ($haystack) must be of type string, Closure given
+strrpos #2 string => OK int(0)
+strrpos #2 int => OK false
+strrpos #2 float => OK false
+strrpos #2 true => OK false
+strrpos #2 false => OK int(3)
+DIAG[8192] strrpos(): Passing null to parameter #2 ($needle) of type string is deprecated
+strrpos #2 null => OK int(3)
+strrpos #2 array => strrpos(): Argument #2 ($needle) must be of type string, array given
+strrpos #2 stringable => OK false
+strrpos #2 object => strrpos(): Argument #2 ($needle) must be of type string, PlainArg given
+strrpos #2 enum => strrpos(): Argument #2 ($needle) must be of type string, TestEnum given
+strrpos #2 closure => strrpos(): Argument #2 ($needle) must be of type string, Closure given
+strripos #1 string => OK int(1)
+strripos #1 int => OK false
+strripos #1 float => OK false
+strripos #1 true => OK false
+strripos #1 false => OK false
+DIAG[8192] strripos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+strripos #1 null => OK false
+strripos #1 array => strripos(): Argument #1 ($haystack) must be of type string, array given
+strripos #1 stringable => OK int(1)
+strripos #1 object => strripos(): Argument #1 ($haystack) must be of type string, PlainArg given
+strripos #1 enum => strripos(): Argument #1 ($haystack) must be of type string, TestEnum given
+strripos #1 closure => strripos(): Argument #1 ($haystack) must be of type string, Closure given
+strripos #2 string => OK int(0)
+strripos #2 int => OK false
+strripos #2 float => OK false
+strripos #2 true => OK false
+strripos #2 false => OK int(3)
+DIAG[8192] strripos(): Passing null to parameter #2 ($needle) of type string is deprecated
+strripos #2 null => OK int(3)
+strripos #2 array => strripos(): Argument #2 ($needle) must be of type string, array given
+strripos #2 stringable => OK false
+strripos #2 object => strripos(): Argument #2 ($needle) must be of type string, PlainArg given
+strripos #2 enum => strripos(): Argument #2 ($needle) must be of type string, TestEnum given
+strripos #2 closure => strripos(): Argument #2 ($needle) must be of type string, Closure given
+str_contains #1 string => OK true
+str_contains #1 int => OK false
+str_contains #1 float => OK false
+str_contains #1 true => OK false
+str_contains #1 false => OK false
+DIAG[8192] str_contains(): Passing null to parameter #1 ($haystack) of type string is deprecated
+str_contains #1 null => OK false
+str_contains #1 array => str_contains(): Argument #1 ($haystack) must be of type string, array given
+str_contains #1 stringable => OK false
+str_contains #1 object => str_contains(): Argument #1 ($haystack) must be of type string, PlainArg given
+str_contains #1 enum => str_contains(): Argument #1 ($haystack) must be of type string, TestEnum given
+str_contains #1 closure => str_contains(): Argument #1 ($haystack) must be of type string, Closure given
+str_contains #2 string => OK true
+str_contains #2 int => OK false
+str_contains #2 float => OK false
+str_contains #2 true => OK false
+str_contains #2 false => OK true
+DIAG[8192] str_contains(): Passing null to parameter #2 ($needle) of type string is deprecated
+str_contains #2 null => OK true
+str_contains #2 array => str_contains(): Argument #2 ($needle) must be of type string, array given
+str_contains #2 stringable => OK false
+str_contains #2 object => str_contains(): Argument #2 ($needle) must be of type string, PlainArg given
+str_contains #2 enum => str_contains(): Argument #2 ($needle) must be of type string, TestEnum given
+str_contains #2 closure => str_contains(): Argument #2 ($needle) must be of type string, Closure given
+str_starts_with #1 string => OK false
+str_starts_with #1 int => OK false
+str_starts_with #1 float => OK false
+str_starts_with #1 true => OK false
+str_starts_with #1 false => OK false
+DIAG[8192] str_starts_with(): Passing null to parameter #1 ($haystack) of type string is deprecated
+str_starts_with #1 null => OK false
+str_starts_with #1 array => str_starts_with(): Argument #1 ($haystack) must be of type string, array given
+str_starts_with #1 stringable => OK false
+str_starts_with #1 object => str_starts_with(): Argument #1 ($haystack) must be of type string, PlainArg given
+str_starts_with #1 enum => str_starts_with(): Argument #1 ($haystack) must be of type string, TestEnum given
+str_starts_with #1 closure => str_starts_with(): Argument #1 ($haystack) must be of type string, Closure given
+str_starts_with #2 string => OK true
+str_starts_with #2 int => OK false
+str_starts_with #2 float => OK false
+str_starts_with #2 true => OK false
+str_starts_with #2 false => OK true
+DIAG[8192] str_starts_with(): Passing null to parameter #2 ($needle) of type string is deprecated
+str_starts_with #2 null => OK true
+str_starts_with #2 array => str_starts_with(): Argument #2 ($needle) must be of type string, array given
+str_starts_with #2 stringable => OK false
+str_starts_with #2 object => str_starts_with(): Argument #2 ($needle) must be of type string, PlainArg given
+str_starts_with #2 enum => str_starts_with(): Argument #2 ($needle) must be of type string, TestEnum given
+str_starts_with #2 closure => str_starts_with(): Argument #2 ($needle) must be of type string, Closure given
+str_ends_with #1 string => OK false
+str_ends_with #1 int => OK false
+str_ends_with #1 float => OK false
+str_ends_with #1 true => OK false
+str_ends_with #1 false => OK false
+DIAG[8192] str_ends_with(): Passing null to parameter #1 ($haystack) of type string is deprecated
+str_ends_with #1 null => OK false
+str_ends_with #1 array => str_ends_with(): Argument #1 ($haystack) must be of type string, array given
+str_ends_with #1 stringable => OK false
+str_ends_with #1 object => str_ends_with(): Argument #1 ($haystack) must be of type string, PlainArg given
+str_ends_with #1 enum => str_ends_with(): Argument #1 ($haystack) must be of type string, TestEnum given
+str_ends_with #1 closure => str_ends_with(): Argument #1 ($haystack) must be of type string, Closure given
+str_ends_with #2 string => OK true
+str_ends_with #2 int => OK false
+str_ends_with #2 float => OK false
+str_ends_with #2 true => OK false
+str_ends_with #2 false => OK true
+DIAG[8192] str_ends_with(): Passing null to parameter #2 ($needle) of type string is deprecated
+str_ends_with #2 null => OK true
+str_ends_with #2 array => str_ends_with(): Argument #2 ($needle) must be of type string, array given
+str_ends_with #2 stringable => OK false
+str_ends_with #2 object => str_ends_with(): Argument #2 ($needle) must be of type string, PlainArg given
+str_ends_with #2 enum => str_ends_with(): Argument #2 ($needle) must be of type string, TestEnum given
+str_ends_with #2 closure => str_ends_with(): Argument #2 ($needle) must be of type string, Closure given
+strstr #1 string => OK string(2)
+strstr #1 int => OK false
+strstr #1 float => OK false
+strstr #1 true => OK false
+strstr #1 false => OK false
+DIAG[8192] strstr(): Passing null to parameter #1 ($haystack) of type string is deprecated
+strstr #1 null => OK false
+strstr #1 array => strstr(): Argument #1 ($haystack) must be of type string, array given
+strstr #1 stringable => OK false
+strstr #1 object => strstr(): Argument #1 ($haystack) must be of type string, PlainArg given
+strstr #1 enum => strstr(): Argument #1 ($haystack) must be of type string, TestEnum given
+strstr #1 closure => strstr(): Argument #1 ($haystack) must be of type string, Closure given
+strstr #2 string => OK string(3)
+strstr #2 int => OK false
+strstr #2 float => OK false
+strstr #2 true => OK false
+strstr #2 false => OK string(3)
+DIAG[8192] strstr(): Passing null to parameter #2 ($needle) of type string is deprecated
+strstr #2 null => OK string(3)
+strstr #2 array => strstr(): Argument #2 ($needle) must be of type string, array given
+strstr #2 stringable => OK false
+strstr #2 object => strstr(): Argument #2 ($needle) must be of type string, PlainArg given
+strstr #2 enum => strstr(): Argument #2 ($needle) must be of type string, TestEnum given
+strstr #2 closure => strstr(): Argument #2 ($needle) must be of type string, Closure given
+substr_count #1 string => OK int(1)
+substr_count #1 int => OK int(0)
+substr_count #1 float => OK int(0)
+substr_count #1 true => OK int(0)
+substr_count #1 false => OK int(0)
+DIAG[8192] substr_count(): Passing null to parameter #1 ($haystack) of type string is deprecated
+substr_count #1 null => OK int(0)
+substr_count #1 array => substr_count(): Argument #1 ($haystack) must be of type string, array given
+substr_count #1 stringable => OK int(0)
+substr_count #1 object => substr_count(): Argument #1 ($haystack) must be of type string, PlainArg given
+substr_count #1 enum => substr_count(): Argument #1 ($haystack) must be of type string, TestEnum given
+substr_count #1 closure => substr_count(): Argument #1 ($haystack) must be of type string, Closure given
+substr_count #2 string => OK int(1)
+substr_count #2 int => OK int(0)
+substr_count #2 float => OK int(0)
+substr_count #2 true => OK int(0)
+substr_count #2 false => substr_count(): Argument #2 ($needle) must not be empty
+DIAG[8192] substr_count(): Passing null to parameter #2 ($needle) of type string is deprecated
+substr_count #2 null => substr_count(): Argument #2 ($needle) must not be empty
+substr_count #2 array => substr_count(): Argument #2 ($needle) must be of type string, array given
+substr_count #2 stringable => OK int(0)
+substr_count #2 object => substr_count(): Argument #2 ($needle) must be of type string, PlainArg given
+substr_count #2 enum => substr_count(): Argument #2 ($needle) must be of type string, TestEnum given
+substr_count #2 closure => substr_count(): Argument #2 ($needle) must be of type string, Closure given
+explode #1 string => OK array(1)
+explode #1 int => OK array(1)
+explode #1 float => OK array(1)
+explode #1 true => OK array(1)
+explode #1 false => explode(): Argument #1 ($separator) must not be empty, use str_split() to split a string into characters
+DIAG[8192] explode(): Passing null to parameter #1 ($separator) of type string is deprecated
+explode #1 null => explode(): Argument #1 ($separator) must not be empty, use str_split() to split a string into characters
+explode #1 array => explode(): Argument #1 ($separator) must be of type string, array given
+explode #1 stringable => OK array(1)
+explode #1 object => explode(): Argument #1 ($separator) must be of type string, PlainArg given
+explode #1 enum => explode(): Argument #1 ($separator) must be of type string, TestEnum given
+explode #1 closure => explode(): Argument #1 ($separator) must be of type string, Closure given
+explode #2 string => OK array(2)
+explode #2 int => OK array(1)
+explode #2 float => OK array(1)
+explode #2 true => OK array(1)
+explode #2 false => OK array(1)
+DIAG[8192] explode(): Passing null to parameter #2 ($string) of type string is deprecated
+explode #2 null => OK array(1)
+explode #2 array => explode(): Argument #2 ($string) must be of type string, array given
+explode #2 stringable => OK array(1)
+explode #2 object => explode(): Argument #2 ($string) must be of type string, PlainArg given
+explode #2 enum => explode(): Argument #2 ($string) must be of type string, TestEnum given
+explode #2 closure => explode(): Argument #2 ($string) must be of type string, Closure given
+str_split #1 string => OK array(3)
+str_split #1 int => OK array(2)
+str_split #1 float => OK array(3)
+str_split #1 true => OK array(1)
+str_split #1 false => OK array(0)
+DIAG[8192] str_split(): Passing null to parameter #1 ($string) of type string is deprecated
+str_split #1 null => OK array(0)
+str_split #1 array => str_split(): Argument #1 ($string) must be of type string, array given
+str_split #1 stringable => OK array(3)
+str_split #1 object => str_split(): Argument #1 ($string) must be of type string, PlainArg given
+str_split #1 enum => str_split(): Argument #1 ($string) must be of type string, TestEnum given
+str_split #1 closure => str_split(): Argument #1 ($string) must be of type string, Closure given
+sprintf #1 string => OK string(3)
+sprintf #1 int => OK string(2)
+sprintf #1 float => OK string(3)
+sprintf #1 true => OK string(1)
+sprintf #1 false => OK string(0)
+DIAG[8192] sprintf(): Passing null to parameter #1 ($format) of type string is deprecated
+sprintf #1 null => OK string(0)
+sprintf #1 array => sprintf(): Argument #1 ($format) must be of type string, array given
+sprintf #1 stringable => OK string(3)
+sprintf #1 object => sprintf(): Argument #1 ($format) must be of type string, PlainArg given
+sprintf #1 enum => sprintf(): Argument #1 ($format) must be of type string, TestEnum given
+sprintf #1 closure => sprintf(): Argument #1 ($format) must be of type string, Closure given
+vsprintf #1 string => OK string(3)
+vsprintf #1 int => OK string(2)
+vsprintf #1 float => OK string(3)
+vsprintf #1 true => OK string(1)
+vsprintf #1 false => OK string(0)
+DIAG[8192] vsprintf(): Passing null to parameter #1 ($format) of type string is deprecated
+vsprintf #1 null => OK string(0)
+vsprintf #1 array => vsprintf(): Argument #1 ($format) must be of type string, array given
+vsprintf #1 stringable => OK string(3)
+vsprintf #1 object => vsprintf(): Argument #1 ($format) must be of type string, PlainArg given
+vsprintf #1 enum => vsprintf(): Argument #1 ($format) must be of type string, TestEnum given
+vsprintf #1 closure => vsprintf(): Argument #1 ($format) must be of type string, Closure given
+hexdec #1 string => OK int(2748)
+hexdec #1 int => OK int(66)
+DIAG[8192] Invalid characters passed for attempted conversion, these have been ignored
+hexdec #1 float => OK int(21)
+hexdec #1 true => OK int(1)
+hexdec #1 false => OK int(0)
+DIAG[8192] hexdec(): Passing null to parameter #1 ($hex_string) of type string is deprecated
+hexdec #1 null => OK int(0)
+hexdec #1 array => hexdec(): Argument #1 ($hex_string) must be of type string, array given
+DIAG[8192] Invalid characters passed for attempted conversion, these have been ignored
+hexdec #1 stringable => OK int(11)
+hexdec #1 object => hexdec(): Argument #1 ($hex_string) must be of type string, PlainArg given
+hexdec #1 enum => hexdec(): Argument #1 ($hex_string) must be of type string, TestEnum given
+hexdec #1 closure => hexdec(): Argument #1 ($hex_string) must be of type string, Closure given
+htmlspecialchars #1 string => OK string(3)
+htmlspecialchars #1 int => OK string(2)
+htmlspecialchars #1 float => OK string(3)
+htmlspecialchars #1 true => OK string(1)
+htmlspecialchars #1 false => OK string(0)
+DIAG[8192] htmlspecialchars(): Passing null to parameter #1 ($string) of type string is deprecated
+htmlspecialchars #1 null => OK string(0)
+htmlspecialchars #1 array => htmlspecialchars(): Argument #1 ($string) must be of type string, array given
+htmlspecialchars #1 stringable => OK string(3)
+htmlspecialchars #1 object => htmlspecialchars(): Argument #1 ($string) must be of type string, PlainArg given
+htmlspecialchars #1 enum => htmlspecialchars(): Argument #1 ($string) must be of type string, TestEnum given
+htmlspecialchars #1 closure => htmlspecialchars(): Argument #1 ($string) must be of type string, Closure given
+htmlentities #1 string => OK string(3)
+htmlentities #1 int => OK string(2)
+htmlentities #1 float => OK string(3)
+htmlentities #1 true => OK string(1)
+htmlentities #1 false => OK string(0)
+DIAG[8192] htmlentities(): Passing null to parameter #1 ($string) of type string is deprecated
+htmlentities #1 null => OK string(0)
+htmlentities #1 array => htmlentities(): Argument #1 ($string) must be of type string, array given
+htmlentities #1 stringable => OK string(3)
+htmlentities #1 object => htmlentities(): Argument #1 ($string) must be of type string, PlainArg given
+htmlentities #1 enum => htmlentities(): Argument #1 ($string) must be of type string, TestEnum given
+htmlentities #1 closure => htmlentities(): Argument #1 ($string) must be of type string, Closure given
+strip_tags #1 string => OK string(3)
+strip_tags #1 int => OK string(2)
+strip_tags #1 float => OK string(3)
+strip_tags #1 true => OK string(1)
+strip_tags #1 false => OK string(0)
+DIAG[8192] strip_tags(): Passing null to parameter #1 ($string) of type string is deprecated
+strip_tags #1 null => OK string(0)
+strip_tags #1 array => strip_tags(): Argument #1 ($string) must be of type string, array given
+strip_tags #1 stringable => OK string(3)
+strip_tags #1 object => strip_tags(): Argument #1 ($string) must be of type string, PlainArg given
+strip_tags #1 enum => strip_tags(): Argument #1 ($string) must be of type string, TestEnum given
+strip_tags #1 closure => strip_tags(): Argument #1 ($string) must be of type string, Closure given
+addslashes #1 string => OK string(3)
+addslashes #1 int => OK string(2)
+addslashes #1 float => OK string(3)
+addslashes #1 true => OK string(1)
+addslashes #1 false => OK string(0)
+DIAG[8192] addslashes(): Passing null to parameter #1 ($string) of type string is deprecated
+addslashes #1 null => OK string(0)
+addslashes #1 array => addslashes(): Argument #1 ($string) must be of type string, array given
+addslashes #1 stringable => OK string(3)
+addslashes #1 object => addslashes(): Argument #1 ($string) must be of type string, PlainArg given
+addslashes #1 enum => addslashes(): Argument #1 ($string) must be of type string, TestEnum given
+addslashes #1 closure => addslashes(): Argument #1 ($string) must be of type string, Closure given
+base64_encode #1 string => OK string(4)
+base64_encode #1 int => OK string(4)
+base64_encode #1 float => OK string(4)
+base64_encode #1 true => OK string(4)
+base64_encode #1 false => OK string(0)
+DIAG[8192] base64_encode(): Passing null to parameter #1 ($string) of type string is deprecated
+base64_encode #1 null => OK string(0)
+base64_encode #1 array => base64_encode(): Argument #1 ($string) must be of type string, array given
+base64_encode #1 stringable => OK string(4)
+base64_encode #1 object => base64_encode(): Argument #1 ($string) must be of type string, PlainArg given
+base64_encode #1 enum => base64_encode(): Argument #1 ($string) must be of type string, TestEnum given
+base64_encode #1 closure => base64_encode(): Argument #1 ($string) must be of type string, Closure given
+base64_decode #1 string => OK string(2)
+base64_decode #1 int => OK string(1)
+base64_decode #1 float => OK string(1)
+base64_decode #1 true => OK string(0)
+base64_decode #1 false => OK string(0)
+DIAG[8192] base64_decode(): Passing null to parameter #1 ($string) of type string is deprecated
+base64_decode #1 null => OK string(0)
+base64_decode #1 array => base64_decode(): Argument #1 ($string) must be of type string, array given
+base64_decode #1 stringable => OK string(2)
+base64_decode #1 object => base64_decode(): Argument #1 ($string) must be of type string, PlainArg given
+base64_decode #1 enum => base64_decode(): Argument #1 ($string) must be of type string, TestEnum given
+base64_decode #1 closure => base64_decode(): Argument #1 ($string) must be of type string, Closure given
+bin2hex #1 string => OK string(6)
+bin2hex #1 int => OK string(4)
+bin2hex #1 float => OK string(6)
+bin2hex #1 true => OK string(2)
+bin2hex #1 false => OK string(0)
+DIAG[8192] bin2hex(): Passing null to parameter #1 ($string) of type string is deprecated
+bin2hex #1 null => OK string(0)
+bin2hex #1 array => bin2hex(): Argument #1 ($string) must be of type string, array given
+bin2hex #1 stringable => OK string(6)
+bin2hex #1 object => bin2hex(): Argument #1 ($string) must be of type string, PlainArg given
+bin2hex #1 enum => bin2hex(): Argument #1 ($string) must be of type string, TestEnum given
+bin2hex #1 closure => bin2hex(): Argument #1 ($string) must be of type string, Closure given
+md5 #1 string => OK string(32)
+md5 #1 int => OK string(32)
+md5 #1 float => OK string(32)
+md5 #1 true => OK string(32)
+md5 #1 false => OK string(32)
+DIAG[8192] md5(): Passing null to parameter #1 ($string) of type string is deprecated
+md5 #1 null => OK string(32)
+md5 #1 array => md5(): Argument #1 ($string) must be of type string, array given
+md5 #1 stringable => OK string(32)
+md5 #1 object => md5(): Argument #1 ($string) must be of type string, PlainArg given
+md5 #1 enum => md5(): Argument #1 ($string) must be of type string, TestEnum given
+md5 #1 closure => md5(): Argument #1 ($string) must be of type string, Closure given
+sha1 #1 string => OK string(40)
+sha1 #1 int => OK string(40)
+sha1 #1 float => OK string(40)
+sha1 #1 true => OK string(40)
+sha1 #1 false => OK string(40)
+DIAG[8192] sha1(): Passing null to parameter #1 ($string) of type string is deprecated
+sha1 #1 null => OK string(40)
+sha1 #1 array => sha1(): Argument #1 ($string) must be of type string, array given
+sha1 #1 stringable => OK string(40)
+sha1 #1 object => sha1(): Argument #1 ($string) must be of type string, PlainArg given
+sha1 #1 enum => sha1(): Argument #1 ($string) must be of type string, TestEnum given
+sha1 #1 closure => sha1(): Argument #1 ($string) must be of type string, Closure given
+crc32 #1 string => OK int(891568578)
+crc32 #1 int => OK int(841265288)
+crc32 #1 float => OK int(2270993338)
+crc32 #1 true => OK int(2212294583)
+crc32 #1 false => OK int(0)
+DIAG[8192] crc32(): Passing null to parameter #1 ($string) of type string is deprecated
+crc32 #1 null => OK int(0)
+crc32 #1 array => crc32(): Argument #1 ($string) must be of type string, array given
+crc32 #1 stringable => OK int(3502348006)
+crc32 #1 object => crc32(): Argument #1 ($string) must be of type string, PlainArg given
+crc32 #1 enum => crc32(): Argument #1 ($string) must be of type string, TestEnum given
+crc32 #1 closure => crc32(): Argument #1 ($string) must be of type string, Closure given
+str_increment #1 string => OK string(3)
+str_increment #1 int => OK string(2)
+str_increment #1 float => str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters
+str_increment #1 true => OK string(1)
+str_increment #1 false => str_increment(): Argument #1 ($string) must not be empty
+DIAG[8192] str_increment(): Passing null to parameter #1 ($string) of type string is deprecated
+str_increment #1 null => str_increment(): Argument #1 ($string) must not be empty
+str_increment #1 array => str_increment(): Argument #1 ($string) must be of type string, array given
+str_increment #1 stringable => OK string(3)
+str_increment #1 object => str_increment(): Argument #1 ($string) must be of type string, PlainArg given
+str_increment #1 enum => str_increment(): Argument #1 ($string) must be of type string, TestEnum given
+str_increment #1 closure => str_increment(): Argument #1 ($string) must be of type string, Closure given
+str_decrement #1 string => OK string(3)
+str_decrement #1 int => OK string(2)
+str_decrement #1 float => str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters
+str_decrement #1 true => OK string(1)
+str_decrement #1 false => str_decrement(): Argument #1 ($string) must not be empty
+DIAG[8192] str_decrement(): Passing null to parameter #1 ($string) of type string is deprecated
+str_decrement #1 null => str_decrement(): Argument #1 ($string) must not be empty
+str_decrement #1 array => str_decrement(): Argument #1 ($string) must be of type string, array given
+str_decrement #1 stringable => OK string(3)
+str_decrement #1 object => str_decrement(): Argument #1 ($string) must be of type string, PlainArg given
+str_decrement #1 enum => str_decrement(): Argument #1 ($string) must be of type string, TestEnum given
+str_decrement #1 closure => str_decrement(): Argument #1 ($string) must be of type string, Closure given
+strspn #1 string => OK int(1)
+strspn #1 int => OK int(0)
+strspn #1 float => OK int(0)
+strspn #1 true => OK int(0)
+strspn #1 false => OK int(0)
+DIAG[8192] strspn(): Passing null to parameter #1 ($string) of type string is deprecated
+strspn #1 null => OK int(0)
+strspn #1 array => strspn(): Argument #1 ($string) must be of type string, array given
+strspn #1 stringable => OK int(0)
+strspn #1 object => strspn(): Argument #1 ($string) must be of type string, PlainArg given
+strspn #1 enum => strspn(): Argument #1 ($string) must be of type string, TestEnum given
+strspn #1 closure => strspn(): Argument #1 ($string) must be of type string, Closure given
+strspn #2 string => OK int(3)
+strspn #2 int => OK int(0)
+strspn #2 float => OK int(0)
+strspn #2 true => OK int(0)
+strspn #2 false => OK int(0)
+DIAG[8192] strspn(): Passing null to parameter #2 ($characters) of type string is deprecated
+strspn #2 null => OK int(0)
+strspn #2 array => strspn(): Argument #2 ($characters) must be of type string, array given
+strspn #2 stringable => OK int(0)
+strspn #2 object => strspn(): Argument #2 ($characters) must be of type string, PlainArg given
+strspn #2 enum => strspn(): Argument #2 ($characters) must be of type string, TestEnum given
+strspn #2 closure => strspn(): Argument #2 ($characters) must be of type string, Closure given
+strcspn #1 string => OK int(0)
+strcspn #1 int => OK int(2)
+strcspn #1 float => OK int(3)
+strcspn #1 true => OK int(1)
+strcspn #1 false => OK int(0)
+DIAG[8192] strcspn(): Passing null to parameter #1 ($string) of type string is deprecated
+strcspn #1 null => OK int(0)
+strcspn #1 array => strcspn(): Argument #1 ($string) must be of type string, array given
+strcspn #1 stringable => OK int(3)
+strcspn #1 object => strcspn(): Argument #1 ($string) must be of type string, PlainArg given
+strcspn #1 enum => strcspn(): Argument #1 ($string) must be of type string, TestEnum given
+strcspn #1 closure => strcspn(): Argument #1 ($string) must be of type string, Closure given
+strcspn #2 string => OK int(0)
+strcspn #2 int => OK int(3)
+strcspn #2 float => OK int(3)
+strcspn #2 true => OK int(3)
+strcspn #2 false => OK int(3)
+DIAG[8192] strcspn(): Passing null to parameter #2 ($characters) of type string is deprecated
+strcspn #2 null => OK int(3)
+strcspn #2 array => strcspn(): Argument #2 ($characters) must be of type string, array given
+strcspn #2 stringable => OK int(3)
+strcspn #2 object => strcspn(): Argument #2 ($characters) must be of type string, PlainArg given
+strcspn #2 enum => strcspn(): Argument #2 ($characters) must be of type string, TestEnum given
+strcspn #2 closure => strcspn(): Argument #2 ($characters) must be of type string, Closure given
+substr_compare #1 string => OK int(-1)
+substr_compare #1 int => OK int(-46)
+substr_compare #1 float => OK int(-49)
+substr_compare #1 true => OK int(-49)
+substr_compare #1 false => OK int(-1)
+DIAG[8192] substr_compare(): Passing null to parameter #1 ($haystack) of type string is deprecated
+substr_compare #1 null => OK int(-1)
+substr_compare #1 array => substr_compare(): Argument #1 ($haystack) must be of type string, array given
+substr_compare #1 stringable => OK int(-19)
+substr_compare #1 object => substr_compare(): Argument #1 ($haystack) must be of type string, PlainArg given
+substr_compare #1 enum => substr_compare(): Argument #1 ($haystack) must be of type string, TestEnum given
+substr_compare #1 closure => substr_compare(): Argument #1 ($haystack) must be of type string, Closure given
+substr_compare #2 string => OK int(-1)
+substr_compare #2 int => OK int(45)
+substr_compare #2 float => OK int(48)
+substr_compare #2 true => OK int(48)
+substr_compare #2 false => OK int(1)
+DIAG[8192] substr_compare(): Passing null to parameter #2 ($needle) of type string is deprecated
+substr_compare #2 null => OK int(1)
+substr_compare #2 array => substr_compare(): Argument #2 ($needle) must be of type string, array given
+substr_compare #2 stringable => OK int(18)
+substr_compare #2 object => substr_compare(): Argument #2 ($needle) must be of type string, PlainArg given
+substr_compare #2 enum => substr_compare(): Argument #2 ($needle) must be of type string, TestEnum given
+substr_compare #2 closure => substr_compare(): Argument #2 ($needle) must be of type string, Closure given
+strtr #1 string => OK string(3)
+strtr #1 int => OK string(2)
+strtr #1 float => OK string(3)
+strtr #1 true => OK string(1)
+strtr #1 false => OK string(0)
+DIAG[8192] strtr(): Passing null to parameter #1 ($string) of type string is deprecated
+strtr #1 null => OK string(0)
+strtr #1 array => strtr(): Argument #1 ($string) must be of type string, array given
+strtr #1 stringable => OK string(3)
+strtr #1 object => strtr(): Argument #1 ($string) must be of type string, PlainArg given
+strtr #1 enum => strtr(): Argument #1 ($string) must be of type string, TestEnum given
+strtr #1 closure => strtr(): Argument #1 ($string) must be of type string, Closure given
+version_compare #1 string => OK int(-1)
+version_compare #1 int => OK int(1)
+version_compare #1 float => OK int(1)
+version_compare #1 true => OK int(0)
+version_compare #1 false => OK int(-1)
+DIAG[8192] version_compare(): Passing null to parameter #1 ($version1) of type string is deprecated
+version_compare #1 null => OK int(-1)
+version_compare #1 array => version_compare(): Argument #1 ($version1) must be of type string, array given
+version_compare #1 stringable => OK int(-1)
+version_compare #1 object => version_compare(): Argument #1 ($version1) must be of type string, PlainArg given
+version_compare #1 enum => version_compare(): Argument #1 ($version1) must be of type string, TestEnum given
+version_compare #1 closure => version_compare(): Argument #1 ($version1) must be of type string, Closure given
+version_compare #2 string => OK int(1)
+version_compare #2 int => OK int(-1)
+version_compare #2 float => OK int(-1)
+version_compare #2 true => OK int(0)
+version_compare #2 false => OK int(1)
+DIAG[8192] version_compare(): Passing null to parameter #2 ($version2) of type string is deprecated
+version_compare #2 null => OK int(1)
+version_compare #2 array => version_compare(): Argument #2 ($version2) must be of type string, array given
+version_compare #2 stringable => OK int(1)
+version_compare #2 object => version_compare(): Argument #2 ($version2) must be of type string, PlainArg given
+version_compare #2 enum => version_compare(): Argument #2 ($version2) must be of type string, TestEnum given
+version_compare #2 closure => version_compare(): Argument #2 ($version2) must be of type string, Closure given
+stripslashes #1 string => OK string(3)
+stripslashes #1 int => OK string(2)
+stripslashes #1 float => OK string(3)
+stripslashes #1 true => OK string(1)
+stripslashes #1 false => OK string(0)
+DIAG[8192] stripslashes(): Passing null to parameter #1 ($string) of type string is deprecated
+stripslashes #1 null => OK string(0)
+stripslashes #1 array => stripslashes(): Argument #1 ($string) must be of type string, array given
+stripslashes #1 stringable => OK string(3)
+stripslashes #1 object => stripslashes(): Argument #1 ($string) must be of type string, PlainArg given
+stripslashes #1 enum => stripslashes(): Argument #1 ($string) must be of type string, TestEnum given
+stripslashes #1 closure => stripslashes(): Argument #1 ($string) must be of type string, Closure given
+addcslashes #1 string => OK string(4)
+addcslashes #1 int => OK string(2)
+addcslashes #1 float => OK string(3)
+addcslashes #1 true => OK string(1)
+addcslashes #1 false => OK string(0)
+DIAG[8192] addcslashes(): Passing null to parameter #1 ($string) of type string is deprecated
+addcslashes #1 null => OK string(0)
+addcslashes #1 array => addcslashes(): Argument #1 ($string) must be of type string, array given
+addcslashes #1 stringable => OK string(3)
+addcslashes #1 object => addcslashes(): Argument #1 ($string) must be of type string, PlainArg given
+addcslashes #1 enum => addcslashes(): Argument #1 ($string) must be of type string, TestEnum given
+addcslashes #1 closure => addcslashes(): Argument #1 ($string) must be of type string, Closure given
+addcslashes #2 string => OK string(6)
+addcslashes #2 int => OK string(3)
+addcslashes #2 float => OK string(3)
+addcslashes #2 true => OK string(3)
+addcslashes #2 false => OK string(3)
+DIAG[8192] addcslashes(): Passing null to parameter #2 ($characters) of type string is deprecated
+addcslashes #2 null => OK string(3)
+addcslashes #2 array => addcslashes(): Argument #2 ($characters) must be of type string, array given
+addcslashes #2 stringable => OK string(3)
+addcslashes #2 object => addcslashes(): Argument #2 ($characters) must be of type string, PlainArg given
+addcslashes #2 enum => addcslashes(): Argument #2 ($characters) must be of type string, TestEnum given
+addcslashes #2 closure => addcslashes(): Argument #2 ($characters) must be of type string, Closure given
+stripcslashes #1 string => OK string(3)
+stripcslashes #1 int => OK string(2)
+stripcslashes #1 float => OK string(3)
+stripcslashes #1 true => OK string(1)
+stripcslashes #1 false => OK string(0)
+DIAG[8192] stripcslashes(): Passing null to parameter #1 ($string) of type string is deprecated
+stripcslashes #1 null => OK string(0)
+stripcslashes #1 array => stripcslashes(): Argument #1 ($string) must be of type string, array given
+stripcslashes #1 stringable => OK string(3)
+stripcslashes #1 object => stripcslashes(): Argument #1 ($string) must be of type string, PlainArg given
+stripcslashes #1 enum => stripcslashes(): Argument #1 ($string) must be of type string, TestEnum given
+stripcslashes #1 closure => stripcslashes(): Argument #1 ($string) must be of type string, Closure given
+strnatcmp #1 string => OK int(-1)
+strnatcmp #1 int => OK int(-1)
+strnatcmp #1 float => OK int(-1)
+strnatcmp #1 true => OK int(-1)
+strnatcmp #1 false => OK int(-1)
+DIAG[8192] strnatcmp(): Passing null to parameter #1 ($string1) of type string is deprecated
+strnatcmp #1 null => OK int(-1)
+strnatcmp #1 array => strnatcmp(): Argument #1 ($string1) must be of type string, array given
+strnatcmp #1 stringable => OK int(-1)
+strnatcmp #1 object => strnatcmp(): Argument #1 ($string1) must be of type string, PlainArg given
+strnatcmp #1 enum => strnatcmp(): Argument #1 ($string1) must be of type string, TestEnum given
+strnatcmp #1 closure => strnatcmp(): Argument #1 ($string1) must be of type string, Closure given
+strnatcmp #2 string => OK int(-1)
+strnatcmp #2 int => OK int(1)
+strnatcmp #2 float => OK int(1)
+strnatcmp #2 true => OK int(1)
+strnatcmp #2 false => OK int(1)
+DIAG[8192] strnatcmp(): Passing null to parameter #2 ($string2) of type string is deprecated
+strnatcmp #2 null => OK int(1)
+strnatcmp #2 array => strnatcmp(): Argument #2 ($string2) must be of type string, array given
+strnatcmp #2 stringable => OK int(1)
+strnatcmp #2 object => strnatcmp(): Argument #2 ($string2) must be of type string, PlainArg given
+strnatcmp #2 enum => strnatcmp(): Argument #2 ($string2) must be of type string, TestEnum given
+strnatcmp #2 closure => strnatcmp(): Argument #2 ($string2) must be of type string, Closure given
+strnatcasecmp #1 string => OK int(-1)
+strnatcasecmp #1 int => OK int(-1)
+strnatcasecmp #1 float => OK int(-1)
+strnatcasecmp #1 true => OK int(-1)
+strnatcasecmp #1 false => OK int(-1)
+DIAG[8192] strnatcasecmp(): Passing null to parameter #1 ($string1) of type string is deprecated
+strnatcasecmp #1 null => OK int(-1)
+strnatcasecmp #1 array => strnatcasecmp(): Argument #1 ($string1) must be of type string, array given
+strnatcasecmp #1 stringable => OK int(1)
+strnatcasecmp #1 object => strnatcasecmp(): Argument #1 ($string1) must be of type string, PlainArg given
+strnatcasecmp #1 enum => strnatcasecmp(): Argument #1 ($string1) must be of type string, TestEnum given
+strnatcasecmp #1 closure => strnatcasecmp(): Argument #1 ($string1) must be of type string, Closure given
+strnatcasecmp #2 string => OK int(-1)
+strnatcasecmp #2 int => OK int(1)
+strnatcasecmp #2 float => OK int(1)
+strnatcasecmp #2 true => OK int(1)
+strnatcasecmp #2 false => OK int(1)
+DIAG[8192] strnatcasecmp(): Passing null to parameter #2 ($string2) of type string is deprecated
+strnatcasecmp #2 null => OK int(1)
+strnatcasecmp #2 array => strnatcasecmp(): Argument #2 ($string2) must be of type string, array given
+strnatcasecmp #2 stringable => OK int(-1)
+strnatcasecmp #2 object => strnatcasecmp(): Argument #2 ($string2) must be of type string, PlainArg given
+strnatcasecmp #2 enum => strnatcasecmp(): Argument #2 ($string2) must be of type string, TestEnum given
+strnatcasecmp #2 closure => strnatcasecmp(): Argument #2 ($string2) must be of type string, Closure given
+strtok #1 string => OK string(3)
+strtok #1 int => OK string(2)
+strtok #1 float => OK string(3)
+strtok #1 true => OK string(1)
+strtok #1 false => OK false
+DIAG[8192] strtok(): Passing null to parameter #1 ($string) of type string is deprecated
+strtok #1 null => OK false
+strtok #1 array => strtok(): Argument #1 ($string) must be of type string, array given
+strtok #1 stringable => OK string(3)
+strtok #1 object => strtok(): Argument #1 ($string) must be of type string, PlainArg given
+strtok #1 enum => strtok(): Argument #1 ($string) must be of type string, TestEnum given
+strtok #1 closure => strtok(): Argument #1 ($string) must be of type string, Closure given
+stristr #1 string => OK string(2)
+stristr #1 int => OK false
+stristr #1 float => OK false
+stristr #1 true => OK false
+stristr #1 false => OK false
+DIAG[8192] stristr(): Passing null to parameter #1 ($haystack) of type string is deprecated
+stristr #1 null => OK false
+stristr #1 array => stristr(): Argument #1 ($haystack) must be of type string, array given
+stristr #1 stringable => OK string(2)
+stristr #1 object => stristr(): Argument #1 ($haystack) must be of type string, PlainArg given
+stristr #1 enum => stristr(): Argument #1 ($haystack) must be of type string, TestEnum given
+stristr #1 closure => stristr(): Argument #1 ($haystack) must be of type string, Closure given
+stristr #2 string => OK string(3)
+stristr #2 int => OK false
+stristr #2 float => OK false
+stristr #2 true => OK false
+stristr #2 false => OK string(3)
+DIAG[8192] stristr(): Passing null to parameter #2 ($needle) of type string is deprecated
+stristr #2 null => OK string(3)
+stristr #2 array => stristr(): Argument #2 ($needle) must be of type string, array given
+stristr #2 stringable => OK false
+stristr #2 object => stristr(): Argument #2 ($needle) must be of type string, PlainArg given
+stristr #2 enum => stristr(): Argument #2 ($needle) must be of type string, TestEnum given
+stristr #2 closure => stristr(): Argument #2 ($needle) must be of type string, Closure given
+strrchr #1 string => OK string(2)
+strrchr #1 int => OK false
+strrchr #1 float => OK false
+strrchr #1 true => OK false
+strrchr #1 false => OK false
+DIAG[8192] strrchr(): Passing null to parameter #1 ($haystack) of type string is deprecated
+strrchr #1 null => OK false
+strrchr #1 array => strrchr(): Argument #1 ($haystack) must be of type string, array given
+strrchr #1 stringable => OK false
+strrchr #1 object => strrchr(): Argument #1 ($haystack) must be of type string, PlainArg given
+strrchr #1 enum => strrchr(): Argument #1 ($haystack) must be of type string, TestEnum given
+strrchr #1 closure => strrchr(): Argument #1 ($haystack) must be of type string, Closure given
+strrchr #2 string => OK string(3)
+strrchr #2 int => OK false
+strrchr #2 float => OK false
+strrchr #2 true => OK false
+strrchr #2 false => OK false
+DIAG[8192] strrchr(): Passing null to parameter #2 ($needle) of type string is deprecated
+strrchr #2 null => OK false
+strrchr #2 array => strrchr(): Argument #2 ($needle) must be of type string, array given
+strrchr #2 stringable => OK false
+strrchr #2 object => strrchr(): Argument #2 ($needle) must be of type string, PlainArg given
+strrchr #2 enum => strrchr(): Argument #2 ($needle) must be of type string, TestEnum given
+strrchr #2 closure => strrchr(): Argument #2 ($needle) must be of type string, Closure given
+strpbrk #1 string => OK string(3)
+strpbrk #1 int => OK false
+strpbrk #1 float => OK false
+strpbrk #1 true => OK false
+strpbrk #1 false => OK false
+DIAG[8192] strpbrk(): Passing null to parameter #1 ($string) of type string is deprecated
+strpbrk #1 null => OK false
+strpbrk #1 array => strpbrk(): Argument #1 ($string) must be of type string, array given
+strpbrk #1 stringable => OK false
+strpbrk #1 object => strpbrk(): Argument #1 ($string) must be of type string, PlainArg given
+strpbrk #1 enum => strpbrk(): Argument #1 ($string) must be of type string, TestEnum given
+strpbrk #1 closure => strpbrk(): Argument #1 ($string) must be of type string, Closure given
+strpbrk #2 string => OK string(3)
+strpbrk #2 int => OK false
+strpbrk #2 float => OK false
+strpbrk #2 true => OK false
+strpbrk #2 false => strpbrk(): Argument #2 ($characters) must be a non-empty string
+DIAG[8192] strpbrk(): Passing null to parameter #2 ($characters) of type string is deprecated
+strpbrk #2 null => strpbrk(): Argument #2 ($characters) must be a non-empty string
+strpbrk #2 array => strpbrk(): Argument #2 ($characters) must be of type string, array given
+strpbrk #2 stringable => OK false
+strpbrk #2 object => strpbrk(): Argument #2 ($characters) must be of type string, PlainArg given
+strpbrk #2 enum => strpbrk(): Argument #2 ($characters) must be of type string, TestEnum given
+strpbrk #2 closure => strpbrk(): Argument #2 ($characters) must be of type string, Closure given
+html_entity_decode #1 string => OK string(3)
+html_entity_decode #1 int => OK string(2)
+html_entity_decode #1 float => OK string(3)
+html_entity_decode #1 true => OK string(1)
+html_entity_decode #1 false => OK string(0)
+DIAG[8192] html_entity_decode(): Passing null to parameter #1 ($string) of type string is deprecated
+html_entity_decode #1 null => OK string(0)
+html_entity_decode #1 array => html_entity_decode(): Argument #1 ($string) must be of type string, array given
+html_entity_decode #1 stringable => OK string(3)
+html_entity_decode #1 object => html_entity_decode(): Argument #1 ($string) must be of type string, PlainArg given
+html_entity_decode #1 enum => html_entity_decode(): Argument #1 ($string) must be of type string, TestEnum given
+html_entity_decode #1 closure => html_entity_decode(): Argument #1 ($string) must be of type string, Closure given
+htmlspecialchars_decode #1 string => OK string(3)
+htmlspecialchars_decode #1 int => OK string(2)
+htmlspecialchars_decode #1 float => OK string(3)
+htmlspecialchars_decode #1 true => OK string(1)
+htmlspecialchars_decode #1 false => OK string(0)
+DIAG[8192] htmlspecialchars_decode(): Passing null to parameter #1 ($string) of type string is deprecated
+htmlspecialchars_decode #1 null => OK string(0)
+htmlspecialchars_decode #1 array => htmlspecialchars_decode(): Argument #1 ($string) must be of type string, array given
+htmlspecialchars_decode #1 stringable => OK string(3)
+htmlspecialchars_decode #1 object => htmlspecialchars_decode(): Argument #1 ($string) must be of type string, PlainArg given
+htmlspecialchars_decode #1 enum => htmlspecialchars_decode(): Argument #1 ($string) must be of type string, TestEnum given
+htmlspecialchars_decode #1 closure => htmlspecialchars_decode(): Argument #1 ($string) must be of type string, Closure given
+chunk_split #1 string => OK string(5)
+chunk_split #1 int => OK string(4)
+chunk_split #1 float => OK string(5)
+chunk_split #1 true => OK string(3)
+chunk_split #1 false => OK string(2)
+DIAG[8192] chunk_split(): Passing null to parameter #1 ($string) of type string is deprecated
+chunk_split #1 null => OK string(2)
+chunk_split #1 array => chunk_split(): Argument #1 ($string) must be of type string, array given
+chunk_split #1 stringable => OK string(5)
+chunk_split #1 object => chunk_split(): Argument #1 ($string) must be of type string, PlainArg given
+chunk_split #1 enum => chunk_split(): Argument #1 ($string) must be of type string, TestEnum given
+chunk_split #1 closure => chunk_split(): Argument #1 ($string) must be of type string, Closure given
+chunk_split #3 string => OK string(9)
+chunk_split #3 int => OK string(7)
+chunk_split #3 float => OK string(9)
+chunk_split #3 true => OK string(5)
+chunk_split #3 false => OK string(3)
+DIAG[8192] chunk_split(): Passing null to parameter #3 ($separator) of type string is deprecated
+chunk_split #3 null => OK string(3)
+chunk_split #3 array => chunk_split(): Argument #3 ($separator) must be of type string, array given
+chunk_split #3 stringable => OK string(9)
+chunk_split #3 object => chunk_split(): Argument #3 ($separator) must be of type string, PlainArg given
+chunk_split #3 enum => chunk_split(): Argument #3 ($separator) must be of type string, TestEnum given
+chunk_split #3 closure => chunk_split(): Argument #3 ($separator) must be of type string, Closure given
+uniqid #1 string => OK string(16)
+uniqid #1 int => OK string(15)
+uniqid #1 float => OK string(16)
+uniqid #1 true => OK string(14)
+uniqid #1 false => OK string(13)
+DIAG[8192] uniqid(): Passing null to parameter #1 ($prefix) of type string is deprecated
+uniqid #1 null => OK string(13)
+uniqid #1 array => uniqid(): Argument #1 ($prefix) must be of type string, array given
+uniqid #1 stringable => OK string(16)
+uniqid #1 object => uniqid(): Argument #1 ($prefix) must be of type string, PlainArg given
+uniqid #1 enum => uniqid(): Argument #1 ($prefix) must be of type string, TestEnum given
+uniqid #1 closure => uniqid(): Argument #1 ($prefix) must be of type string, Closure given
+similar_text #1 string => OK int(1)
+similar_text #1 int => OK int(0)
+similar_text #1 float => OK int(0)
+similar_text #1 true => OK int(0)
+similar_text #1 false => OK int(0)
+DIAG[8192] similar_text(): Passing null to parameter #1 ($string1) of type string is deprecated
+similar_text #1 null => OK int(0)
+similar_text #1 array => similar_text(): Argument #1 ($string1) must be of type string, array given
+similar_text #1 stringable => OK int(0)
+similar_text #1 object => similar_text(): Argument #1 ($string1) must be of type string, PlainArg given
+similar_text #1 enum => similar_text(): Argument #1 ($string1) must be of type string, TestEnum given
+similar_text #1 closure => similar_text(): Argument #1 ($string1) must be of type string, Closure given
+similar_text #2 string => OK int(3)
+similar_text #2 int => OK int(0)
+similar_text #2 float => OK int(0)
+similar_text #2 true => OK int(0)
+similar_text #2 false => OK int(0)
+DIAG[8192] similar_text(): Passing null to parameter #2 ($string2) of type string is deprecated
+similar_text #2 null => OK int(0)
+similar_text #2 array => similar_text(): Argument #2 ($string2) must be of type string, array given
+similar_text #2 stringable => OK int(0)
+similar_text #2 object => similar_text(): Argument #2 ($string2) must be of type string, PlainArg given
+similar_text #2 enum => similar_text(): Argument #2 ($string2) must be of type string, TestEnum given
+similar_text #2 closure => similar_text(): Argument #2 ($string2) must be of type string, Closure given
+levenshtein #1 string => OK int(2)
+levenshtein #1 int => OK int(2)
+levenshtein #1 float => OK int(3)
+levenshtein #1 true => OK int(1)
+levenshtein #1 false => OK int(1)
+DIAG[8192] levenshtein(): Passing null to parameter #1 ($string1) of type string is deprecated
+levenshtein #1 null => OK int(1)
+levenshtein #1 array => levenshtein(): Argument #1 ($string1) must be of type string, array given
+levenshtein #1 stringable => OK int(3)
+levenshtein #1 object => levenshtein(): Argument #1 ($string1) must be of type string, PlainArg given
+levenshtein #1 enum => levenshtein(): Argument #1 ($string1) must be of type string, TestEnum given
+levenshtein #1 closure => levenshtein(): Argument #1 ($string1) must be of type string, Closure given
+levenshtein #2 string => OK int(0)
+levenshtein #2 int => OK int(3)
+levenshtein #2 float => OK int(3)
+levenshtein #2 true => OK int(3)
+levenshtein #2 false => OK int(3)
+DIAG[8192] levenshtein(): Passing null to parameter #2 ($string2) of type string is deprecated
+levenshtein #2 null => OK int(3)
+levenshtein #2 array => levenshtein(): Argument #2 ($string2) must be of type string, array given
+levenshtein #2 stringable => OK int(3)
+levenshtein #2 object => levenshtein(): Argument #2 ($string2) must be of type string, PlainArg given
+levenshtein #2 enum => levenshtein(): Argument #2 ($string2) must be of type string, TestEnum given
+levenshtein #2 closure => levenshtein(): Argument #2 ($string2) must be of type string, Closure given
+mb_convert_encoding #2 string => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "abc" given
+mb_convert_encoding #2 int => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "42" given
+mb_convert_encoding #2 float => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "1.5" given
+mb_convert_encoding #2 true => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "1" given
+mb_convert_encoding #2 false => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "" given
+DIAG[8192] mb_convert_encoding(): Passing null to parameter #2 ($to_encoding) of type string is deprecated
+mb_convert_encoding #2 null => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "" given
+mb_convert_encoding #2 array => mb_convert_encoding(): Argument #2 ($to_encoding) must be of type string, array given
+mb_convert_encoding #2 stringable => mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, "OBJ" given
+mb_convert_encoding #2 object => mb_convert_encoding(): Argument #2 ($to_encoding) must be of type string, PlainArg given
+mb_convert_encoding #2 enum => mb_convert_encoding(): Argument #2 ($to_encoding) must be of type string, TestEnum given
+mb_convert_encoding #2 closure => mb_convert_encoding(): Argument #2 ($to_encoding) must be of type string, Closure given
+mb_scrub #1 string => OK string(3)
+mb_scrub #1 int => OK string(2)
+mb_scrub #1 float => OK string(3)
+mb_scrub #1 true => OK string(1)
+mb_scrub #1 false => OK string(0)
+DIAG[8192] mb_scrub(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_scrub #1 null => OK string(0)
+mb_scrub #1 array => mb_scrub(): Argument #1 ($string) must be of type string, array given
+mb_scrub #1 stringable => OK string(3)
+mb_scrub #1 object => mb_scrub(): Argument #1 ($string) must be of type string, PlainArg given
+mb_scrub #1 enum => mb_scrub(): Argument #1 ($string) must be of type string, TestEnum given
+mb_scrub #1 closure => mb_scrub(): Argument #1 ($string) must be of type string, Closure given
+mb_detect_encoding #1 string => OK string(5)
+mb_detect_encoding #1 int => OK string(5)
+mb_detect_encoding #1 float => OK string(5)
+mb_detect_encoding #1 true => OK string(5)
+mb_detect_encoding #1 false => OK string(5)
+DIAG[8192] mb_detect_encoding(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_detect_encoding #1 null => OK string(5)
+mb_detect_encoding #1 array => mb_detect_encoding(): Argument #1 ($string) must be of type string, array given
+mb_detect_encoding #1 stringable => OK string(5)
+mb_detect_encoding #1 object => mb_detect_encoding(): Argument #1 ($string) must be of type string, PlainArg given
+mb_detect_encoding #1 enum => mb_detect_encoding(): Argument #1 ($string) must be of type string, TestEnum given
+mb_detect_encoding #1 closure => mb_detect_encoding(): Argument #1 ($string) must be of type string, Closure given
+mb_strlen #1 string => OK int(3)
+mb_strlen #1 int => OK int(2)
+mb_strlen #1 float => OK int(3)
+mb_strlen #1 true => OK int(1)
+mb_strlen #1 false => OK int(0)
+DIAG[8192] mb_strlen(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_strlen #1 null => OK int(0)
+mb_strlen #1 array => mb_strlen(): Argument #1 ($string) must be of type string, array given
+mb_strlen #1 stringable => OK int(3)
+mb_strlen #1 object => mb_strlen(): Argument #1 ($string) must be of type string, PlainArg given
+mb_strlen #1 enum => mb_strlen(): Argument #1 ($string) must be of type string, TestEnum given
+mb_strlen #1 closure => mb_strlen(): Argument #1 ($string) must be of type string, Closure given
+mb_substr #1 string => OK string(3)
+mb_substr #1 int => OK string(2)
+mb_substr #1 float => OK string(3)
+mb_substr #1 true => OK string(1)
+mb_substr #1 false => OK string(0)
+DIAG[8192] mb_substr(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_substr #1 null => OK string(0)
+mb_substr #1 array => mb_substr(): Argument #1 ($string) must be of type string, array given
+mb_substr #1 stringable => OK string(3)
+mb_substr #1 object => mb_substr(): Argument #1 ($string) must be of type string, PlainArg given
+mb_substr #1 enum => mb_substr(): Argument #1 ($string) must be of type string, TestEnum given
+mb_substr #1 closure => mb_substr(): Argument #1 ($string) must be of type string, Closure given
+mb_convert_case #1 string => OK string(3)
+mb_convert_case #1 int => OK string(2)
+mb_convert_case #1 float => OK string(3)
+mb_convert_case #1 true => OK string(1)
+mb_convert_case #1 false => OK string(0)
+DIAG[8192] mb_convert_case(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_convert_case #1 null => OK string(0)
+mb_convert_case #1 array => mb_convert_case(): Argument #1 ($string) must be of type string, array given
+mb_convert_case #1 stringable => OK string(3)
+mb_convert_case #1 object => mb_convert_case(): Argument #1 ($string) must be of type string, PlainArg given
+mb_convert_case #1 enum => mb_convert_case(): Argument #1 ($string) must be of type string, TestEnum given
+mb_convert_case #1 closure => mb_convert_case(): Argument #1 ($string) must be of type string, Closure given
+mb_strtoupper #1 string => OK string(3)
+mb_strtoupper #1 int => OK string(2)
+mb_strtoupper #1 float => OK string(3)
+mb_strtoupper #1 true => OK string(1)
+mb_strtoupper #1 false => OK string(0)
+DIAG[8192] mb_strtoupper(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_strtoupper #1 null => OK string(0)
+mb_strtoupper #1 array => mb_strtoupper(): Argument #1 ($string) must be of type string, array given
+mb_strtoupper #1 stringable => OK string(3)
+mb_strtoupper #1 object => mb_strtoupper(): Argument #1 ($string) must be of type string, PlainArg given
+mb_strtoupper #1 enum => mb_strtoupper(): Argument #1 ($string) must be of type string, TestEnum given
+mb_strtoupper #1 closure => mb_strtoupper(): Argument #1 ($string) must be of type string, Closure given
+mb_strtolower #1 string => OK string(3)
+mb_strtolower #1 int => OK string(2)
+mb_strtolower #1 float => OK string(3)
+mb_strtolower #1 true => OK string(1)
+mb_strtolower #1 false => OK string(0)
+DIAG[8192] mb_strtolower(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_strtolower #1 null => OK string(0)
+mb_strtolower #1 array => mb_strtolower(): Argument #1 ($string) must be of type string, array given
+mb_strtolower #1 stringable => OK string(3)
+mb_strtolower #1 object => mb_strtolower(): Argument #1 ($string) must be of type string, PlainArg given
+mb_strtolower #1 enum => mb_strtolower(): Argument #1 ($string) must be of type string, TestEnum given
+mb_strtolower #1 closure => mb_strtolower(): Argument #1 ($string) must be of type string, Closure given
+mb_ord #1 string => OK int(97)
+mb_ord #1 int => OK int(52)
+mb_ord #1 float => OK int(49)
+mb_ord #1 true => OK int(49)
+mb_ord #1 false => mb_ord(): Argument #1 ($string) must not be empty
+DIAG[8192] mb_ord(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_ord #1 null => mb_ord(): Argument #1 ($string) must not be empty
+mb_ord #1 array => mb_ord(): Argument #1 ($string) must be of type string, array given
+mb_ord #1 stringable => OK int(79)
+mb_ord #1 object => mb_ord(): Argument #1 ($string) must be of type string, PlainArg given
+mb_ord #1 enum => mb_ord(): Argument #1 ($string) must be of type string, TestEnum given
+mb_ord #1 closure => mb_ord(): Argument #1 ($string) must be of type string, Closure given
+mb_strpos #1 string => OK int(1)
+mb_strpos #1 int => OK false
+mb_strpos #1 float => OK false
+mb_strpos #1 true => OK false
+mb_strpos #1 false => OK false
+DIAG[8192] mb_strpos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+mb_strpos #1 null => OK false
+mb_strpos #1 array => mb_strpos(): Argument #1 ($haystack) must be of type string, array given
+mb_strpos #1 stringable => OK false
+mb_strpos #1 object => mb_strpos(): Argument #1 ($haystack) must be of type string, PlainArg given
+mb_strpos #1 enum => mb_strpos(): Argument #1 ($haystack) must be of type string, TestEnum given
+mb_strpos #1 closure => mb_strpos(): Argument #1 ($haystack) must be of type string, Closure given
+mb_strpos #2 string => OK int(0)
+mb_strpos #2 int => OK false
+mb_strpos #2 float => OK false
+mb_strpos #2 true => OK false
+mb_strpos #2 false => OK int(0)
+DIAG[8192] mb_strpos(): Passing null to parameter #2 ($needle) of type string is deprecated
+mb_strpos #2 null => OK int(0)
+mb_strpos #2 array => mb_strpos(): Argument #2 ($needle) must be of type string, array given
+mb_strpos #2 stringable => OK false
+mb_strpos #2 object => mb_strpos(): Argument #2 ($needle) must be of type string, PlainArg given
+mb_strpos #2 enum => mb_strpos(): Argument #2 ($needle) must be of type string, TestEnum given
+mb_strpos #2 closure => mb_strpos(): Argument #2 ($needle) must be of type string, Closure given
+mb_strrpos #1 string => OK int(1)
+mb_strrpos #1 int => OK false
+mb_strrpos #1 float => OK false
+mb_strrpos #1 true => OK false
+mb_strrpos #1 false => OK false
+DIAG[8192] mb_strrpos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+mb_strrpos #1 null => OK false
+mb_strrpos #1 array => mb_strrpos(): Argument #1 ($haystack) must be of type string, array given
+mb_strrpos #1 stringable => OK false
+mb_strrpos #1 object => mb_strrpos(): Argument #1 ($haystack) must be of type string, PlainArg given
+mb_strrpos #1 enum => mb_strrpos(): Argument #1 ($haystack) must be of type string, TestEnum given
+mb_strrpos #1 closure => mb_strrpos(): Argument #1 ($haystack) must be of type string, Closure given
+mb_strrpos #2 string => OK int(0)
+mb_strrpos #2 int => OK false
+mb_strrpos #2 float => OK false
+mb_strrpos #2 true => OK false
+mb_strrpos #2 false => OK int(3)
+DIAG[8192] mb_strrpos(): Passing null to parameter #2 ($needle) of type string is deprecated
+mb_strrpos #2 null => OK int(3)
+mb_strrpos #2 array => mb_strrpos(): Argument #2 ($needle) must be of type string, array given
+mb_strrpos #2 stringable => OK false
+mb_strrpos #2 object => mb_strrpos(): Argument #2 ($needle) must be of type string, PlainArg given
+mb_strrpos #2 enum => mb_strrpos(): Argument #2 ($needle) must be of type string, TestEnum given
+mb_strrpos #2 closure => mb_strrpos(): Argument #2 ($needle) must be of type string, Closure given
+mb_stripos #1 string => OK int(1)
+mb_stripos #1 int => OK false
+mb_stripos #1 float => OK false
+mb_stripos #1 true => OK false
+mb_stripos #1 false => OK false
+DIAG[8192] mb_stripos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+mb_stripos #1 null => OK false
+mb_stripos #1 array => mb_stripos(): Argument #1 ($haystack) must be of type string, array given
+mb_stripos #1 stringable => OK int(1)
+mb_stripos #1 object => mb_stripos(): Argument #1 ($haystack) must be of type string, PlainArg given
+mb_stripos #1 enum => mb_stripos(): Argument #1 ($haystack) must be of type string, TestEnum given
+mb_stripos #1 closure => mb_stripos(): Argument #1 ($haystack) must be of type string, Closure given
+mb_stripos #2 string => OK int(0)
+mb_stripos #2 int => OK false
+mb_stripos #2 float => OK false
+mb_stripos #2 true => OK false
+mb_stripos #2 false => OK int(0)
+DIAG[8192] mb_stripos(): Passing null to parameter #2 ($needle) of type string is deprecated
+mb_stripos #2 null => OK int(0)
+mb_stripos #2 array => mb_stripos(): Argument #2 ($needle) must be of type string, array given
+mb_stripos #2 stringable => OK false
+mb_stripos #2 object => mb_stripos(): Argument #2 ($needle) must be of type string, PlainArg given
+mb_stripos #2 enum => mb_stripos(): Argument #2 ($needle) must be of type string, TestEnum given
+mb_stripos #2 closure => mb_stripos(): Argument #2 ($needle) must be of type string, Closure given
+mb_strripos #1 string => OK int(1)
+mb_strripos #1 int => OK false
+mb_strripos #1 float => OK false
+mb_strripos #1 true => OK false
+mb_strripos #1 false => OK false
+DIAG[8192] mb_strripos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+mb_strripos #1 null => OK false
+mb_strripos #1 array => mb_strripos(): Argument #1 ($haystack) must be of type string, array given
+mb_strripos #1 stringable => OK int(1)
+mb_strripos #1 object => mb_strripos(): Argument #1 ($haystack) must be of type string, PlainArg given
+mb_strripos #1 enum => mb_strripos(): Argument #1 ($haystack) must be of type string, TestEnum given
+mb_strripos #1 closure => mb_strripos(): Argument #1 ($haystack) must be of type string, Closure given
+mb_strripos #2 string => OK int(0)
+mb_strripos #2 int => OK false
+mb_strripos #2 float => OK false
+mb_strripos #2 true => OK false
+mb_strripos #2 false => OK int(3)
+DIAG[8192] mb_strripos(): Passing null to parameter #2 ($needle) of type string is deprecated
+mb_strripos #2 null => OK int(3)
+mb_strripos #2 array => mb_strripos(): Argument #2 ($needle) must be of type string, array given
+mb_strripos #2 stringable => OK false
+mb_strripos #2 object => mb_strripos(): Argument #2 ($needle) must be of type string, PlainArg given
+mb_strripos #2 enum => mb_strripos(): Argument #2 ($needle) must be of type string, TestEnum given
+mb_strripos #2 closure => mb_strripos(): Argument #2 ($needle) must be of type string, Closure given
+mb_str_split #1 string => OK array(3)
+mb_str_split #1 int => OK array(2)
+mb_str_split #1 float => OK array(3)
+mb_str_split #1 true => OK array(1)
+mb_str_split #1 false => OK array(0)
+DIAG[8192] mb_str_split(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_str_split #1 null => OK array(0)
+mb_str_split #1 array => mb_str_split(): Argument #1 ($string) must be of type string, array given
+mb_str_split #1 stringable => OK array(3)
+mb_str_split #1 object => mb_str_split(): Argument #1 ($string) must be of type string, PlainArg given
+mb_str_split #1 enum => mb_str_split(): Argument #1 ($string) must be of type string, TestEnum given
+mb_str_split #1 closure => mb_str_split(): Argument #1 ($string) must be of type string, Closure given
+mb_substr_count #1 string => OK int(1)
+mb_substr_count #1 int => OK int(0)
+mb_substr_count #1 float => OK int(0)
+mb_substr_count #1 true => OK int(0)
+mb_substr_count #1 false => OK int(0)
+DIAG[8192] mb_substr_count(): Passing null to parameter #1 ($haystack) of type string is deprecated
+mb_substr_count #1 null => OK int(0)
+mb_substr_count #1 array => mb_substr_count(): Argument #1 ($haystack) must be of type string, array given
+mb_substr_count #1 stringable => OK int(0)
+mb_substr_count #1 object => mb_substr_count(): Argument #1 ($haystack) must be of type string, PlainArg given
+mb_substr_count #1 enum => mb_substr_count(): Argument #1 ($haystack) must be of type string, TestEnum given
+mb_substr_count #1 closure => mb_substr_count(): Argument #1 ($haystack) must be of type string, Closure given
+mb_substr_count #2 string => OK int(1)
+mb_substr_count #2 int => OK int(0)
+mb_substr_count #2 float => OK int(0)
+mb_substr_count #2 true => OK int(0)
+mb_substr_count #2 false => mb_substr_count(): Argument #2 ($needle) must not be empty
+DIAG[8192] mb_substr_count(): Passing null to parameter #2 ($needle) of type string is deprecated
+mb_substr_count #2 null => mb_substr_count(): Argument #2 ($needle) must not be empty
+mb_substr_count #2 array => mb_substr_count(): Argument #2 ($needle) must be of type string, array given
+mb_substr_count #2 stringable => OK int(0)
+mb_substr_count #2 object => mb_substr_count(): Argument #2 ($needle) must be of type string, PlainArg given
+mb_substr_count #2 enum => mb_substr_count(): Argument #2 ($needle) must be of type string, TestEnum given
+mb_substr_count #2 closure => mb_substr_count(): Argument #2 ($needle) must be of type string, Closure given
+mb_strwidth #1 string => OK int(3)
+mb_strwidth #1 int => OK int(2)
+mb_strwidth #1 float => OK int(3)
+mb_strwidth #1 true => OK int(1)
+mb_strwidth #1 false => OK int(0)
+DIAG[8192] mb_strwidth(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_strwidth #1 null => OK int(0)
+mb_strwidth #1 array => mb_strwidth(): Argument #1 ($string) must be of type string, array given
+mb_strwidth #1 stringable => OK int(3)
+mb_strwidth #1 object => mb_strwidth(): Argument #1 ($string) must be of type string, PlainArg given
+mb_strwidth #1 enum => mb_strwidth(): Argument #1 ($string) must be of type string, TestEnum given
+mb_strwidth #1 closure => mb_strwidth(): Argument #1 ($string) must be of type string, Closure given
+mb_str_pad #1 string => OK string(5)
+mb_str_pad #1 int => OK string(5)
+mb_str_pad #1 float => OK string(5)
+mb_str_pad #1 true => OK string(5)
+mb_str_pad #1 false => OK string(5)
+DIAG[8192] mb_str_pad(): Passing null to parameter #1 ($string) of type string is deprecated
+mb_str_pad #1 null => OK string(5)
+mb_str_pad #1 array => mb_str_pad(): Argument #1 ($string) must be of type string, array given
+mb_str_pad #1 stringable => OK string(5)
+mb_str_pad #1 object => mb_str_pad(): Argument #1 ($string) must be of type string, PlainArg given
+mb_str_pad #1 enum => mb_str_pad(): Argument #1 ($string) must be of type string, TestEnum given
+mb_str_pad #1 closure => mb_str_pad(): Argument #1 ($string) must be of type string, Closure given
+mb_str_pad #3 string => OK string(5)
+mb_str_pad #3 int => OK string(5)
+mb_str_pad #3 float => OK string(5)
+mb_str_pad #3 true => OK string(5)
+mb_str_pad #3 false => mb_str_pad(): Argument #3 ($pad_string) must not be empty
+DIAG[8192] mb_str_pad(): Passing null to parameter #3 ($pad_string) of type string is deprecated
+mb_str_pad #3 null => mb_str_pad(): Argument #3 ($pad_string) must not be empty
+mb_str_pad #3 array => mb_str_pad(): Argument #3 ($pad_string) must be of type string, array given
+mb_str_pad #3 stringable => OK string(5)
+mb_str_pad #3 object => mb_str_pad(): Argument #3 ($pad_string) must be of type string, PlainArg given
+mb_str_pad #3 enum => mb_str_pad(): Argument #3 ($pad_string) must be of type string, TestEnum given
+mb_str_pad #3 closure => mb_str_pad(): Argument #3 ($pad_string) must be of type string, Closure given
+DIAG[2] iconv(): Wrong encoding, conversion from "abc" to "UTF-8" is not allowed
+iconv #1 string => OK false
+DIAG[2] iconv(): Wrong encoding, conversion from "42" to "UTF-8" is not allowed
+iconv #1 int => OK false
+DIAG[2] iconv(): Wrong encoding, conversion from "1.5" to "UTF-8" is not allowed
+iconv #1 float => OK false
+DIAG[2] iconv(): Wrong encoding, conversion from "1" to "UTF-8" is not allowed
+iconv #1 true => OK false
+iconv #1 false => OK string(3)
+DIAG[8192] iconv(): Passing null to parameter #1 ($from_encoding) of type string is deprecated
+iconv #1 null => OK string(3)
+iconv #1 array => iconv(): Argument #1 ($from_encoding) must be of type string, array given
+DIAG[2] iconv(): Wrong encoding, conversion from "OBJ" to "UTF-8" is not allowed
+iconv #1 stringable => OK false
+iconv #1 object => iconv(): Argument #1 ($from_encoding) must be of type string, PlainArg given
+iconv #1 enum => iconv(): Argument #1 ($from_encoding) must be of type string, TestEnum given
+iconv #1 closure => iconv(): Argument #1 ($from_encoding) must be of type string, Closure given
+DIAG[2] iconv(): Wrong encoding, conversion from "UTF-8" to "abc" is not allowed
+iconv #2 string => OK false
+DIAG[2] iconv(): Wrong encoding, conversion from "UTF-8" to "42" is not allowed
+iconv #2 int => OK false
+DIAG[2] iconv(): Wrong encoding, conversion from "UTF-8" to "1.5" is not allowed
+iconv #2 float => OK false
+DIAG[2] iconv(): Wrong encoding, conversion from "UTF-8" to "1" is not allowed
+iconv #2 true => OK false
+iconv #2 false => OK string(3)
+DIAG[8192] iconv(): Passing null to parameter #2 ($to_encoding) of type string is deprecated
+iconv #2 null => OK string(3)
+iconv #2 array => iconv(): Argument #2 ($to_encoding) must be of type string, array given
+DIAG[2] iconv(): Wrong encoding, conversion from "UTF-8" to "OBJ" is not allowed
+iconv #2 stringable => OK false
+iconv #2 object => iconv(): Argument #2 ($to_encoding) must be of type string, PlainArg given
+iconv #2 enum => iconv(): Argument #2 ($to_encoding) must be of type string, TestEnum given
+iconv #2 closure => iconv(): Argument #2 ($to_encoding) must be of type string, Closure given
+iconv #3 string => OK string(3)
+iconv #3 int => OK string(2)
+iconv #3 float => OK string(3)
+iconv #3 true => OK string(1)
+iconv #3 false => OK string(0)
+DIAG[8192] iconv(): Passing null to parameter #3 ($string) of type string is deprecated
+iconv #3 null => OK string(0)
+iconv #3 array => iconv(): Argument #3 ($string) must be of type string, array given
+iconv #3 stringable => OK string(3)
+iconv #3 object => iconv(): Argument #3 ($string) must be of type string, PlainArg given
+iconv #3 enum => iconv(): Argument #3 ($string) must be of type string, TestEnum given
+iconv #3 closure => iconv(): Argument #3 ($string) must be of type string, Closure given
+iconv_strlen #1 string => OK int(3)
+iconv_strlen #1 int => OK int(2)
+iconv_strlen #1 float => OK int(3)
+iconv_strlen #1 true => OK int(1)
+iconv_strlen #1 false => OK int(0)
+DIAG[8192] iconv_strlen(): Passing null to parameter #1 ($string) of type string is deprecated
+iconv_strlen #1 null => OK int(0)
+iconv_strlen #1 array => iconv_strlen(): Argument #1 ($string) must be of type string, array given
+iconv_strlen #1 stringable => OK int(3)
+iconv_strlen #1 object => iconv_strlen(): Argument #1 ($string) must be of type string, PlainArg given
+iconv_strlen #1 enum => iconv_strlen(): Argument #1 ($string) must be of type string, TestEnum given
+iconv_strlen #1 closure => iconv_strlen(): Argument #1 ($string) must be of type string, Closure given
+iconv_substr #1 string => OK string(3)
+iconv_substr #1 int => OK string(2)
+iconv_substr #1 float => OK string(3)
+iconv_substr #1 true => OK string(1)
+iconv_substr #1 false => OK string(0)
+DIAG[8192] iconv_substr(): Passing null to parameter #1 ($string) of type string is deprecated
+iconv_substr #1 null => OK string(0)
+iconv_substr #1 array => iconv_substr(): Argument #1 ($string) must be of type string, array given
+iconv_substr #1 stringable => OK string(3)
+iconv_substr #1 object => iconv_substr(): Argument #1 ($string) must be of type string, PlainArg given
+iconv_substr #1 enum => iconv_substr(): Argument #1 ($string) must be of type string, TestEnum given
+iconv_substr #1 closure => iconv_substr(): Argument #1 ($string) must be of type string, Closure given
+iconv_strpos #1 string => OK int(1)
+iconv_strpos #1 int => OK false
+iconv_strpos #1 float => OK false
+iconv_strpos #1 true => OK false
+iconv_strpos #1 false => OK false
+DIAG[8192] iconv_strpos(): Passing null to parameter #1 ($haystack) of type string is deprecated
+iconv_strpos #1 null => OK false
+iconv_strpos #1 array => iconv_strpos(): Argument #1 ($haystack) must be of type string, array given
+iconv_strpos #1 stringable => OK false
+iconv_strpos #1 object => iconv_strpos(): Argument #1 ($haystack) must be of type string, PlainArg given
+iconv_strpos #1 enum => iconv_strpos(): Argument #1 ($haystack) must be of type string, TestEnum given
+iconv_strpos #1 closure => iconv_strpos(): Argument #1 ($haystack) must be of type string, Closure given
+iconv_strpos #2 string => OK int(0)
+iconv_strpos #2 int => OK false
+iconv_strpos #2 float => OK false
+iconv_strpos #2 true => OK false
+iconv_strpos #2 false => OK false
+DIAG[8192] iconv_strpos(): Passing null to parameter #2 ($needle) of type string is deprecated
+iconv_strpos #2 null => OK false
+iconv_strpos #2 array => iconv_strpos(): Argument #2 ($needle) must be of type string, array given
+iconv_strpos #2 stringable => OK false
+iconv_strpos #2 object => iconv_strpos(): Argument #2 ($needle) must be of type string, PlainArg given
+iconv_strpos #2 enum => iconv_strpos(): Argument #2 ($needle) must be of type string, TestEnum given
+iconv_strpos #2 closure => iconv_strpos(): Argument #2 ($needle) must be of type string, Closure given
+preg_match #1 string => OK int(0)
+DIAG[2] preg_match(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match #1 int => OK false
+DIAG[2] preg_match(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match #1 float => OK false
+DIAG[2] preg_match(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match #1 true => OK false
+DIAG[2] preg_match(): Empty regular expression
+preg_match #1 false => OK false
+DIAG[8192] preg_match(): Passing null to parameter #1 ($pattern) of type string is deprecated
+DIAG[2] preg_match(): Empty regular expression
+preg_match #1 null => OK false
+preg_match #1 array => preg_match(): Argument #1 ($pattern) must be of type string, array given
+DIAG[2] preg_match(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match #1 stringable => OK false
+preg_match #1 object => preg_match(): Argument #1 ($pattern) must be of type string, PlainArg given
+preg_match #1 enum => preg_match(): Argument #1 ($pattern) must be of type string, TestEnum given
+preg_match #1 closure => preg_match(): Argument #1 ($pattern) must be of type string, Closure given
+preg_match #2 string => OK int(1)
+preg_match #2 int => OK int(0)
+preg_match #2 float => OK int(0)
+preg_match #2 true => OK int(0)
+preg_match #2 false => OK int(0)
+DIAG[8192] preg_match(): Passing null to parameter #2 ($subject) of type string is deprecated
+preg_match #2 null => OK int(0)
+preg_match #2 array => preg_match(): Argument #2 ($subject) must be of type string, array given
+preg_match #2 stringable => OK int(0)
+preg_match #2 object => preg_match(): Argument #2 ($subject) must be of type string, PlainArg given
+preg_match #2 enum => preg_match(): Argument #2 ($subject) must be of type string, TestEnum given
+preg_match #2 closure => preg_match(): Argument #2 ($subject) must be of type string, Closure given
+preg_match_all #1 string => OK int(0)
+DIAG[2] preg_match_all(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match_all #1 int => OK false
+DIAG[2] preg_match_all(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match_all #1 float => OK false
+DIAG[2] preg_match_all(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match_all #1 true => OK false
+DIAG[2] preg_match_all(): Empty regular expression
+preg_match_all #1 false => OK false
+DIAG[8192] preg_match_all(): Passing null to parameter #1 ($pattern) of type string is deprecated
+DIAG[2] preg_match_all(): Empty regular expression
+preg_match_all #1 null => OK false
+preg_match_all #1 array => preg_match_all(): Argument #1 ($pattern) must be of type string, array given
+DIAG[2] preg_match_all(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_match_all #1 stringable => OK false
+preg_match_all #1 object => preg_match_all(): Argument #1 ($pattern) must be of type string, PlainArg given
+preg_match_all #1 enum => preg_match_all(): Argument #1 ($pattern) must be of type string, TestEnum given
+preg_match_all #1 closure => preg_match_all(): Argument #1 ($pattern) must be of type string, Closure given
+preg_match_all #2 string => OK int(1)
+preg_match_all #2 int => OK int(0)
+preg_match_all #2 float => OK int(0)
+preg_match_all #2 true => OK int(0)
+preg_match_all #2 false => OK int(0)
+DIAG[8192] preg_match_all(): Passing null to parameter #2 ($subject) of type string is deprecated
+preg_match_all #2 null => OK int(0)
+preg_match_all #2 array => preg_match_all(): Argument #2 ($subject) must be of type string, array given
+preg_match_all #2 stringable => OK int(0)
+preg_match_all #2 object => preg_match_all(): Argument #2 ($subject) must be of type string, PlainArg given
+preg_match_all #2 enum => preg_match_all(): Argument #2 ($subject) must be of type string, TestEnum given
+preg_match_all #2 closure => preg_match_all(): Argument #2 ($subject) must be of type string, Closure given
+preg_split #1 string => OK array(1)
+DIAG[2] preg_split(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_split #1 int => OK false
+DIAG[2] preg_split(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_split #1 float => OK false
+DIAG[2] preg_split(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_split #1 true => OK false
+DIAG[2] preg_split(): Empty regular expression
+preg_split #1 false => OK false
+DIAG[8192] preg_split(): Passing null to parameter #1 ($pattern) of type string is deprecated
+DIAG[2] preg_split(): Empty regular expression
+preg_split #1 null => OK false
+preg_split #1 array => preg_split(): Argument #1 ($pattern) must be of type string, array given
+DIAG[2] preg_split(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_split #1 stringable => OK false
+preg_split #1 object => preg_split(): Argument #1 ($pattern) must be of type string, PlainArg given
+preg_split #1 enum => preg_split(): Argument #1 ($pattern) must be of type string, TestEnum given
+preg_split #1 closure => preg_split(): Argument #1 ($pattern) must be of type string, Closure given
+preg_split #2 string => OK array(2)
+preg_split #2 int => OK array(1)
+preg_split #2 float => OK array(1)
+preg_split #2 true => OK array(1)
+preg_split #2 false => OK array(1)
+DIAG[8192] preg_split(): Passing null to parameter #2 ($subject) of type string is deprecated
+preg_split #2 null => OK array(1)
+preg_split #2 array => preg_split(): Argument #2 ($subject) must be of type string, array given
+preg_split #2 stringable => OK array(1)
+preg_split #2 object => preg_split(): Argument #2 ($subject) must be of type string, PlainArg given
+preg_split #2 enum => preg_split(): Argument #2 ($subject) must be of type string, TestEnum given
+preg_split #2 closure => preg_split(): Argument #2 ($subject) must be of type string, Closure given
+preg_quote #1 string => OK string(3)
+preg_quote #1 int => OK string(2)
+preg_quote #1 float => OK string(4)
+preg_quote #1 true => OK string(1)
+preg_quote #1 false => OK string(0)
+DIAG[8192] preg_quote(): Passing null to parameter #1 ($str) of type string is deprecated
+preg_quote #1 null => OK string(0)
+preg_quote #1 array => preg_quote(): Argument #1 ($str) must be of type string, array given
+preg_quote #1 stringable => OK string(3)
+preg_quote #1 object => preg_quote(): Argument #1 ($str) must be of type string, PlainArg given
+preg_quote #1 enum => preg_quote(): Argument #1 ($str) must be of type string, TestEnum given
+preg_quote #1 closure => preg_quote(): Argument #1 ($str) must be of type string, Closure given
+preg_grep #1 string => OK array(1)
+DIAG[2] preg_grep(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_grep #1 int => OK false
+DIAG[2] preg_grep(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_grep #1 float => OK false
+DIAG[2] preg_grep(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_grep #1 true => OK false
+DIAG[2] preg_grep(): Empty regular expression
+preg_grep #1 false => OK false
+DIAG[8192] preg_grep(): Passing null to parameter #1 ($pattern) of type string is deprecated
+DIAG[2] preg_grep(): Empty regular expression
+preg_grep #1 null => OK false
+preg_grep #1 array => preg_grep(): Argument #1 ($pattern) must be of type string, array given
+DIAG[2] preg_grep(): Delimiter must not be alphanumeric, backslash, or NUL byte
+preg_grep #1 stringable => OK false
+preg_grep #1 object => preg_grep(): Argument #1 ($pattern) must be of type string, PlainArg given
+preg_grep #1 enum => preg_grep(): Argument #1 ($pattern) must be of type string, TestEnum given
+preg_grep #1 closure => preg_grep(): Argument #1 ($pattern) must be of type string, Closure given

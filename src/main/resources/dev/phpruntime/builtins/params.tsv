@@ -542,6 +542,8 @@ stream_socket_enable_crypto	stream:0:!	enable:0:!	crypto_method:0:NULL	session_s
 strftime	format:0:!	timestamp:0:NULL
 strip_tags	string:0:!	allowed_tags:0:NULL
 stripcslashes	string:0:!
+str_increment	string:0:!
+str_decrement	string:0:!
 stripos	haystack:0:!	needle:0:!	offset:0:0
 stripslashes	string:0:!
 stristr	haystack:0:!	needle:0:!	before_needle:0:false
