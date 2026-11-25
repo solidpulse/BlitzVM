@@ -67,7 +67,7 @@ public final class DispatchCallNode extends Node {
     /** With the class a trait method runs for, which php reports as the frame's class. */
     public Object call(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf) {
         dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
-        int depth = ctx.pushTraceFrame(traceSite(target, site, traitSelf));
+        int depth = ctx.pushTraceFrame(traceSite(target != null && isTraitMethod(target), site, traitSelf));
         try {
             return call(target, args);
         } finally {
@@ -96,7 +96,7 @@ public final class DispatchCallNode extends Node {
 
     public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site, PhpClass traitSelf) {
         dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
-        int depth = ctx.pushTraceFrame(traceSite(entry.callTarget(), site, traitSelf));
+        int depth = ctx.pushTraceFrame(traceSite(entry.fromTrait(), site, traitSelf));
         try {
             return callMethod(entry, args);
         } finally {
@@ -104,8 +104,14 @@ public final class DispatchCallNode extends Node {
         }
     }
 
-    private Object traceSite(RootCallTarget target, Object site, PhpClass traitSelf) {
-        if (traitSelf == null || target == null || !isTraitMethod(target) || !(site instanceof Node node)) {
+    /**
+     * {@code traitMethod} comes from the method entry where there is one: a method call passes
+     * its called class as {@code traitSelf}, and walking from a call target that is not a
+     * compile-time constant to its PHP function on every call cost each call site about 250
+     * IR nodes on /blog.
+     */
+    private Object traceSite(boolean traitMethod, Object site, PhpClass traitSelf) {
+        if (traitSelf == null || !traitMethod || !(site instanceof Node node)) {
             return site;
         }
         TraitSiteCache cached = traitSiteCache;
@@ -149,7 +155,7 @@ public final class DispatchCallNode extends Node {
             // of compiled code until the site is polymorphic.
             CompilerDirectives.transferToInterpreterAndInvalidate();
         }
-        return call(target, isTraitMethod(target) ? withTraitSelf(args, entry.declaringClass()) : args);
+        return call(target, entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
     }
 
     private static boolean isTraitMethod(CallTarget target) {

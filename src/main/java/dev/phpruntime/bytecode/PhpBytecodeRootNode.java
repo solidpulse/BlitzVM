@@ -2317,9 +2317,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object call(VirtualFrame frame, boolean keepRef, LocalAccessor calleeLocal, @Variadic Object[] args,
                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                           @Cached("create()") DispatchCallNode dispatch) {
+                           @Cached("create()") DispatchCallNode dispatch,
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile magicSeen) {
             MethodCallee m = (MethodCallee) calleeLocal.getObject(bytecode, frame);
             if (m.entry() == null) {
+                // __call: rare at most sites, so its dispatch stays out of compiled code until
+                // a site takes it.
+                magicSeen.enter();
                 return Ops.ret(keepRef, dispatch.call(m.magic(),
                         new Object[]{m.obj(), m.cls(), m.name(), Ops.packArgs(args)}, location, m.cls()));
             }
