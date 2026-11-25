@@ -28,6 +28,10 @@ final class CallableFunctions {
         def("spl_autoload_unregister", 1, 1, (ctx, a) -> ctx.unregisterAutoload(PhpOps.copyOnAssign(a[0])));
         def("spl_autoload_functions", 0, 0, (ctx, a) -> ctx.autoloadFunctions());
         def("spl_autoload", 1, 2, CallableFunctions::splAutoload);
+        def("spl_autoload_call", 1, 1, (ctx, a) -> {
+            ctx.callAutoloaders(PhpOps.toStr(a[0]));
+            return PhpNull.INSTANCE;
+        });
 
         def("register_shutdown_function", 1, -1, CallableFunctions::registerShutdownFunction);
         def("set_error_handler", 1, 2, CallableFunctions::setErrorHandler);

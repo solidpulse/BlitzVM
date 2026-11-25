@@ -100,7 +100,9 @@ public final class PhpContext {
     }
 
     /** Autoload registrations, allocated on the first spl_autoload_register(); null means empty. */
-    private List<Object> autoloaders;
+    private Object[] autoloaders;
+    /** Resolved {@link #autoloaders}, parallel to it; null whenever the registration list changes. */
+    private PhpCallable[] autoloadCallables;
     private Set<String> autoloadingInProgress;
     private List<ShutdownEntry> shutdownFunctions;
     private Deque<ErrorHandlerEntry> errorHandlers;
@@ -973,15 +975,6 @@ public final class PhpContext {
         return java.util.Collections.unmodifiableMap(constants);
     }
 
-    private List<Object> autoloaders() {
-        List<Object> list = autoloaders;
-        if (list == null) {
-            list = new ArrayList<>();
-            autoloaders = list;
-        }
-        return list;
-    }
-
     private Set<String> autoloadingInProgress() {
         Set<String> set = autoloadingInProgress;
         if (set == null) {
@@ -989,6 +982,23 @@ public final class PhpContext {
             autoloadingInProgress = set;
         }
         return set;
+    }
+
+    /** The resolved callable for each registered loader at the same index, cached until the list changes. */
+    private PhpCallable[] resolvedAutoloaders(Object[] loaders) {
+        PhpCallable[] resolved = autoloadCallables;
+        if (resolved == null || resolved.length != loaders.length) {
+            resolved = new PhpCallable[loaders.length];
+            for (int i = 0; i < loaders.length; i++) {
+                resolved[i] = loaders[i] == null ? null : PhpCallable.resolveOrNull(this, loaders[i]);
+            }
+            // Resolving a callback may itself autoload a class whose loader registers another
+            // one; only publish the cache for the list it was built from.
+            if (autoloaders == loaders) {
+                autoloadCallables = resolved;
+            }
+        }
+        return resolved;
     }
 
     @TruffleBoundary
@@ -999,24 +1009,52 @@ public final class PhpContext {
             return cls;
         }
         String lower = PhpStrings.lower(n);
-        List<Object> loaders = autoloaders;
-        if (loaders == null || loaders.isEmpty() || !autoloadingInProgress().add(lower)) {
+        if (autoloaders == null || autoloaders.length == 0 || !autoloadingInProgress().add(lower)) {
             return cls;
         }
         try {
-            for (Object cbVal : List.copyOf(loaders)) {
-                PhpCallable cb = PhpCallable.resolveOrNull(this, cbVal);
+            // A loader registered while another one runs joins this walk (php appends it to
+            // the list being iterated), and one unregistered before its turn is skipped.
+            for (int i = 0; ; i++) {
+                Object[] loaders = autoloaders;
+                if (loaders == null || i >= loaders.length) {
+                    break;
+                }
+                PhpCallable cb = resolvedAutoloaders(loaders)[i];
                 if (cb != null) {
+                    int generation = classGeneration;
                     cb.call(this, null, null, n);
-                    cls = lookupClass(n);
-                    if (cls != null) {
-                        return cls;
+                    if (classGeneration != generation) {
+                        cls = lookupClass(n);
+                        if (cls != null) {
+                            return cls;
+                        }
                     }
                 }
             }
             return null;
         } finally {
             autoloadingInProgress().remove(lower);
+        }
+    }
+
+    /** spl_autoload_call(): runs the loaders for any name, without the engine's guard or validation. */
+    @TruffleBoundary
+    public void callAutoloaders(String name) {
+        for (int i = 0; ; i++) {
+            Object[] loaders = autoloaders;
+            if (loaders == null || i >= loaders.length) {
+                break;
+            }
+            PhpCallable cb = resolvedAutoloaders(loaders)[i];
+            if (cb != null) {
+                cb.call(this, null, null, name);
+                // php stops after the loader that made the name exist, including when it
+                // already existed before the walk started.
+                if (lookupClass(name) != null) {
+                    return;
+                }
+            }
         }
     }
 
@@ -1044,28 +1082,45 @@ public final class PhpContext {
 
     @TruffleBoundary
     public boolean registerAutoload(Object callable, boolean prepend) {
-        List<Object> loaders = autoloaders();
-        for (Object existing : loaders) {
-            if (sameCallback(existing, callable)) {
-                return true;
+        Object[] loaders = autoloaders;
+        if (loaders != null) {
+            for (Object existing : loaders) {
+                if (sameCallback(existing, callable)) {
+                    return true;
+                }
             }
         }
+        Object[] next;
         if (prepend) {
-            loaders.add(0, callable);
+            next = new Object[(loaders == null ? 0 : loaders.length) + 1];
+            next[0] = callable;
+            if (loaders != null) {
+                System.arraycopy(loaders, 0, next, 1, loaders.length);
+            }
+        } else if (loaders == null) {
+            next = new Object[]{callable};
         } else {
-            loaders.add(callable);
+            next = java.util.Arrays.copyOf(loaders, loaders.length + 1);
+            next[loaders.length] = callable;
         }
+        autoloaders = next;
+        autoloadCallables = null;
         return true;
     }
 
     @TruffleBoundary
     public boolean unregisterAutoload(Object callable) {
-        if (autoloaders == null) {
+        Object[] loaders = autoloaders;
+        if (loaders == null) {
             return false;
         }
-        for (int i = 0; i < autoloaders.size(); i++) {
-            if (sameCallback(autoloaders.get(i), callable)) {
-                autoloaders.remove(i);
+        for (int i = 0; i < loaders.length; i++) {
+            if (sameCallback(loaders[i], callable)) {
+                Object[] next = new Object[loaders.length - 1];
+                System.arraycopy(loaders, 0, next, 0, i);
+                System.arraycopy(loaders, i + 1, next, i, loaders.length - i - 1);
+                autoloaders = next;
+                autoloadCallables = null;
                 return true;
             }
         }
@@ -1075,11 +1130,11 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpArray autoloadFunctions() {
         PhpArray out = new PhpArray();
-        if (autoloaders == null) {
-            return out;
-        }
-        for (Object cb : autoloaders) {
-            out.append(PhpOps.copyOnAssign(cb));
+        Object[] loaders = autoloaders;
+        if (loaders != null) {
+            for (Object cb : loaders) {
+                out.append(PhpOps.copyOnAssign(cb));
+            }
         }
         return out;
     }
@@ -1449,7 +1504,8 @@ public final class PhpContext {
 
     @TruffleBoundary
     public List<Object> snapshotAutoloaders() {
-        return autoloaders == null ? List.of() : autoloaders;
+        Object[] loaders = autoloaders;
+        return loaders == null ? List.of() : java.util.Arrays.asList(loaders.clone());
     }
 
     @TruffleBoundary
@@ -1559,7 +1615,11 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void restoreAutoload(Object callable) {
-        autoloaders().add(callable);
+        Object[] loaders = autoloaders;
+        Object[] next = loaders == null ? new Object[1] : java.util.Arrays.copyOf(loaders, loaders.length + 1);
+        next[next.length - 1] = callable;
+        autoloaders = next;
+        autoloadCallables = null;
     }
 
     @TruffleBoundary
