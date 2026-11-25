@@ -1,0 +1,10 @@
+1
+2 child
+trait
+7
+BaseWithConstructor:10:dynamic
+InheritsConstructor:11:dynamic
+anonymous:5
+Error: Class "LateConstructed" not found
+7
+4 9

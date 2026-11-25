@@ -4758,7 +4758,23 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class ResolveConstructor {
-        @Specialization
+        /** The class this site instantiates, while it stays one class: its constructor is fixed. */
+        @Specialization(guards = {"obj.phpClass() == cachedClass", "cachedCtor != null"}, limit = "3")
+        static void cached(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj,
+                           @Bind BytecodeNode bytecode,
+                           @Cached("obj.phpClass()") PhpClass cachedClass,
+                           @Cached("cacheableConstructor(cachedClass)") PhpClass.MethodEntry cachedCtor) {
+            calleeLocal.setObject(bytecode, frame,
+                    new MethodCallee(cachedCtor, obj, cachedClass, (RootCallTarget) cachedCtor.callTarget(), obj,
+                            cachedCtor.name(), null));
+        }
+
+        static PhpClass.MethodEntry cacheableConstructor(PhpClass cls) {
+            PhpClass.MethodEntry ctor = cls.constructMethod();
+            return ctor == null || ctor.callTarget() == null ? null : ctor;
+        }
+
+        @Specialization(replaces = "cached")
         static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, PhpObject obj,
                             @Bind BytecodeNode bytecode,
                             @Cached("createIdentityProfile()") com.oracle.truffle.api.profiles.ValueProfile sigIdentity) {
@@ -4789,7 +4805,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 callArgs[0] = m.thisArg();
                 callArgs[1] = m.cls();
                 System.arraycopy(args, 0, callArgs, 2, args.length);
-                dispatch.callMethod(m.entry(), callArgs, location, m.cls());
+                if (m.entry().fromTrait()) {
+                    dispatch.callMethod(m.entry(), callArgs, location, m.cls());
+                } else {
+                    dispatch.callMethod(m.entry(), callArgs, location);
+                }
             }
             return obj;
         }
