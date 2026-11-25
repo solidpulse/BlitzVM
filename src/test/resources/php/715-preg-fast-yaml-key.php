@@ -49,6 +49,12 @@ foreach ($lines as $s) {
     show('grep', preg_grep($pattern, [$s, 'x: y']));
 }
 
+// Replace callbacks see the same named groups and spans.
+show('callback', preg_replace_callback($pattern, fn($m) => '[' . $m['key'] . '=' . ($m['value'] ?? '') . ']', 'title: x'));
+$cbCount = 0;
+show('callback-flags', [preg_replace_callback($pattern, fn($m) => json_encode($m), 'a: b', -1,
+    $cbCount, PREG_OFFSET_CAPTURE), $cbCount]);
+
 // The pattern's ^ is not multiline, so match_all only sees a line at offset 0.
 $m = null;
 show('multiline-all', [preg_match_all($pattern, "a: b\nc: d", $m), $m]);

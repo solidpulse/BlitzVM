@@ -5008,6 +5008,12 @@ grep: array (
   0 => 'éabcé',
   1 => 'abc',
 )
+callback: 'A1BC2D'
+callback-flags: array (
+  0 => '[["ab",0]] [["cd",3]]',
+  1 => 2,
+)
+callback-array: 'xyxyx'
 offset-end: array (
   0 => 0,
   1 => 

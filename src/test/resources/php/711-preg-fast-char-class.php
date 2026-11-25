@@ -45,6 +45,16 @@ foreach ($cases as [$p, $s]) {
     show('grep', preg_grep($p, [$s, 'abc', '']));
 }
 
+// Replace callbacks take the same fast match spans.
+show('callback', preg_replace_callback('/[a-z]+/', fn($m) => strtoupper($m[0]), 'a1bc2d'));
+$cbCount = 0;
+show('callback-flags', [preg_replace_callback('/[a-z]+/', fn($m) => json_encode($m), 'ab cd', -1,
+    $cbCount, PREG_OFFSET_CAPTURE), $cbCount]);
+show('callback-array', preg_replace_callback_array([
+    '/[a-z]+/' => fn($m) => 'x',
+    '/[0-9]+/' => fn($m) => 'y',
+], 'a1bc2d'));
+
 // Offsets, including one past the end, and a negative offset.
 $m = null;
 show('offset-end', [preg_match('/[a-z]+/', 'abc', $m, 0, 3), $m]);
