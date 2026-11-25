@@ -1925,72 +1925,110 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     @Operation
     public static final class ForeachNext {
-        @Specialization
-        static boolean next(Object state, @Bind PhpBytecodeRootNode root,
-                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                            @Cached("create(root)") IteratorNode iterator, @Bind Node node) {
-            if (!(state instanceof Cursor c)) {
-                return false;
-            }
+        /** An array loop: the cursor moves through the live array in compiled code. */
+        @Specialization(guards = "c.array != null")
+        static boolean nextArray(Cursor c, @Bind Node node) {
             TruffleSafepoint.poll(node);
-            if (c.array != null) {
-                c.pos = c.pos < 0 && !c.started ? c.array.firstPos() : c.array.nextPos(c.pos);
-                c.started = true;
-                return c.pos >= 0;
+            c.pos = c.pos < 0 && !c.started ? c.array.firstPos() : c.array.nextPos(c.pos);
+            c.started = true;
+            return c.pos >= 0;
+        }
+
+        /** A Traversable object: the Iterator's own methods, kept out of the array loop's code. */
+        @Specialization(guards = "c.iterator != null")
+        static boolean nextIterator(Cursor c, @Bind PhpBytecodeRootNode root, @Bind Node node,
+                                    @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                    @Cached("create(root)") IteratorNode iterator,
+                                    @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            TruffleSafepoint.poll(node);
+            return nextIteratorSlow(c, iterator, location);
+        }
+
+        @TruffleBoundary
+        private static boolean nextIteratorSlow(Cursor c, IteratorNode iterator, SiteNode location) {
+            if (c.started) {
+                iterator.next(c.iterator, location);
             }
-            if (c.iterator != null) {
-                if (c.started) {
-                    iterator.next(c.iterator, location);
-                }
-                c.started = true;
-                return iterator.valid(c.iterator, location);
-            }
+            c.started = true;
+            return iterator.valid(c.iterator, location);
+        }
+
+        /** An object's visible properties, snapshotted at the start. */
+        @Specialization
+        static boolean nextEntries(Cursor c) {
             c.pos++;
             return c.pos < c.entryCount;
+        }
+
+        @Fallback
+        static boolean notCursor(Object state) {
+            return false;
         }
     }
 
     @Operation
     public static final class ForeachKey {
+        @Specialization(guards = "c.array != null")
+        static Object keyArray(Cursor c) {
+            return c.array.keyAt(c.pos);
+        }
+
+        @Specialization(guards = "c.iterator != null")
+        static Object keyIterator(Cursor c, @Bind PhpBytecodeRootNode root, @Bind Node node,
+                                  @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                  @Cached("create(root)") IteratorNode iterator,
+                                  @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            return keyIteratorSlow(c, iterator, location);
+        }
+
+        @TruffleBoundary
+        private static Object keyIteratorSlow(Cursor c, IteratorNode iterator, SiteNode location) {
+            return iterator.key(c.iterator, location);
+        }
+
         @Specialization
-        static Object key(Cursor c, @Bind PhpBytecodeRootNode root,
-                          @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                          @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                          @Cached("create(root)") IteratorNode iterator) {
-            if (c.array != null) {
-                return c.array.keyAt(c.pos);
-            }
-            if (c.iterator != null) {
-                return iterator.key(c.iterator, location);
-            }
+        static Object keyEntries(Cursor c) {
             return c.entryKey();
         }
     }
 
     @Operation
     public static final class ForeachValue {
-        @Specialization
-        static Object value(Cursor c, @Bind PhpBytecodeRootNode root,
-                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                            @Cached("create(root)") IteratorNode iterator,
-                            @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile refSeen) {
-            Object raw;
-            if (c.array != null) {
-                raw = c.array.rawValueAt(c.pos);
-            } else if (c.iterator != null) {
-                raw = iterator.current(c.iterator, location);
-            } else {
-                raw = c.entryValue();
-            }
-            Object v = raw;
+        @Specialization(guards = "c.array != null")
+        static Object valueArray(Cursor c, @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile refSeen) {
+            Object raw = c.array.rawValueAt(c.pos);
             if (raw instanceof PhpReference ref) {
                 // Elements bound by reference are rare; until a loop sees one this is a deopt.
                 refSeen.enter();
-                v = ref.getValue();
+                raw = ref.getValue();
             }
-            return v == null ? PhpNull.INSTANCE : v;
+            return raw == null ? PhpNull.INSTANCE : raw;
+        }
+
+        @Specialization(guards = "c.iterator != null")
+        static Object valueIterator(Cursor c, @Bind PhpBytecodeRootNode root, @Bind Node node,
+                                    @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                    @Cached("create(root)") IteratorNode iterator,
+                                    @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                    @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile refSeen) {
+            return valueIteratorSlow(c, iterator, location, refSeen);
+        }
+
+        @TruffleBoundary
+        private static Object valueIteratorSlow(Cursor c, IteratorNode iterator, SiteNode location,
+                                                com.oracle.truffle.api.profiles.BranchProfile refSeen) {
+            Object raw = iterator.current(c.iterator, location);
+            if (raw instanceof PhpReference ref) {
+                refSeen.enter();
+                raw = ref.getValue();
+            }
+            return raw == null ? PhpNull.INSTANCE : raw;
+        }
+
+        @Specialization
+        static Object valueEntries(Cursor c) {
+            Object raw = c.entryValue();
+            return raw == null ? PhpNull.INSTANCE : raw;
         }
     }
 
