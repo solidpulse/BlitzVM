@@ -2185,10 +2185,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** The parameters a callee declares (for by-reference checks), or null if unknown or a builtin. */
     static PhpFunctionRootNode signature(Object callee) {
         if (callee instanceof PhpFunction fn) {
-            return PhpFunctionRootNode.of(fn.callTarget().getRootNode());
+            return fn.signature();
         }
         if (callee instanceof MethodCallee m && m.entry() != null) {
-            return PhpFunctionRootNode.of(m.sigTarget().getRootNode());
+            return m.signature();
         }
         if (callee instanceof ValueCallee v) {
             return v.sig();
@@ -2198,7 +2198,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** A method call resolved on its receiver; {@code entry} is null for a {@code __call} fallback. */
     public record MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
-                               Object obj, String name, RootCallTarget magic) {
+                               Object obj, String name, RootCallTarget magic, PhpFunctionRootNode signature) {
+        public MethodCallee {
+            // The target's guest function is fixed when the callee is resolved; a call that needs
+            // its parameters (spread or named arguments) must not walk from the target to its root.
+            signature = sigTarget == null ? null : PhpFunctionRootNode.of(sigTarget.getRootNode());
+        }
+
+        public MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
+                            Object obj, String name, RootCallTarget magic) {
+            this(entry, thisArg, cls, sigTarget, obj, name, magic, null);
+        }
     }
 
     /**
@@ -4842,9 +4852,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             // A magic call collects its arguments into an array, so its target's parameters do
             // not describe the call site (the AST evaluates those arguments as plain values).
-            PhpFunctionRootNode sig = callable.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL
-                    || callable.callTarget() == null ? null
-                    : PhpFunctionRootNode.of(callable.callTarget().getRootNode());
+            PhpFunctionRootNode sig = callable.signature();
             calleeLocal.setObject(bytecode, frame, new ValueCallee(callable, sig));
         }
     }
@@ -4865,9 +4873,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (callable == null) {
                 throw notCallable(targetValue, node);
             }
-            PhpFunctionRootNode sig = callable.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL
-                    || callable.callTarget() == null ? null
-                    : PhpFunctionRootNode.of(callable.callTarget().getRootNode());
+            // A magic call collects its arguments into an array, so its target's parameters do
+            // not describe the call site (the AST evaluates those arguments as plain values).
+            PhpFunctionRootNode sig = callable.signature();
             calleeLocal.setObject(bytecode, frame, new ValueCallee(callable, sig));
         }
 
@@ -5554,8 +5562,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         private static Object[] genericFunctionArgs(PhpFunction fn, NamedArgs.Buffer buffer, SiteNode location) {
-            PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-            return CallArgHelper.bindToFunction(new Object[0], NamedArgs.toRaw(buffer), fnRoot, location);
+            return CallArgHelper.bindToFunction(new Object[0], NamedArgs.toRaw(buffer), fn.signature(), location);
         }
     }
 
@@ -5597,7 +5604,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @TruffleBoundary
         private static Object[] genericMethodArgs(MethodCallee m, NamedArgs.Buffer buffer, SiteNode location) {
             CallArgHelper.RawCallArgs raw = NamedArgs.toRaw(buffer);
-            PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
+            PhpFunctionRootNode fnRoot = m.signature();
             return fnRoot != null
                     ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                     : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
@@ -5825,7 +5832,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpObject obj = (PhpObject) object;
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
             if (callee instanceof MethodCallee m) {
-                PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
+                PhpFunctionRootNode fnRoot = m.signature();
                 Object[] args = fnRoot != null
                         ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
                         : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,

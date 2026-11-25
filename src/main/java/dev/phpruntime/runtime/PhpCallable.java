@@ -40,6 +40,12 @@ public final class PhpCallable {
     private final java.util.List<String> parameterNames;
     /** The linked method when this callable is one, so named binding sees its full metadata. */
     private final PhpClass.MethodEntry methodEntry;
+    /**
+     * The guest function metadata of {@link #callTarget}, computed once when the callable is
+     * made. A call site needs it for by-reference parameters and the trace of a rebound closure;
+     * walking from the target's root there would put the root's type checks in every call.
+     */
+    private final PhpFunctionRootNode signature;
 
     private PhpCallable(Kind kind, PhpObject closureObj, RootCallTarget callTarget, Builtins.Def builtin,
                         Object boundThis, PhpClass calledClass, PhpClass traitSelf, String magicMethodName) {
@@ -67,6 +73,8 @@ public final class PhpCallable {
         this.calledClass = calledClass;
         this.traitSelf = traitSelf;
         this.magicMethodName = magicMethodName;
+        this.signature = kind == Kind.MAGIC_CALL || callTarget == null ? null
+                : PhpFunctionRootNode.of(callTarget.getRootNode());
     }
 
     /** The using class when this callable is a method declared in a trait, else null. */
@@ -94,6 +102,11 @@ public final class PhpCallable {
 
     public RootCallTarget callTarget() {
         return callTarget;
+    }
+
+    /** The guest function {@link #callTarget} runs, or null for a builtin or magic call. */
+    public PhpFunctionRootNode signature() {
+        return signature;
     }
 
     public Builtins.Def builtin() {

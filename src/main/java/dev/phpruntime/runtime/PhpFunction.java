@@ -12,6 +12,12 @@ public final class PhpFunction {
     private final String name;
     private final RootCallTarget callTarget;
     private final String lowerName;
+    /**
+     * The guest function's metadata, computed once: a spread or named call needs the parameter
+     * names and reference mask, and walking from the call target to its root at the call site
+     * would put the root's type checks in every such call.
+     */
+    private final dev.phpruntime.nodes.PhpFunctionRootNode signature;
     private int id = -1;
     private byte builtinClash = -1;
 
@@ -19,11 +25,15 @@ public final class PhpFunction {
         this.name = name;
         this.callTarget = callTarget;
         this.lowerName = PhpStrings.lower(name);
+        this.signature = dev.phpruntime.nodes.PhpFunctionRootNode.of(callTarget.getRootNode());
     }
 
     public String name() { return name; }
 
     public RootCallTarget callTarget() { return callTarget; }
+
+    /** The guest function this call target runs, computed when the function was made. */
+    public dev.phpruntime.nodes.PhpFunctionRootNode signature() { return signature; }
 
     public String lowerName() { return lowerName; }
 
