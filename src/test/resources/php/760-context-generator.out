@@ -1,0 +1,8 @@
+gen:0:1
+gen:1:2
+gen:2:3
+cur:4
+next:5
+last:6
+bool(true)
+bool(false)
