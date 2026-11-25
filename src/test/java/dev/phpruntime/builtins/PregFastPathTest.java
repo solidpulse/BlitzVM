@@ -20,8 +20,6 @@ class PregFastPathTest {
         assertNotNull(PcreTranslator.compile("/^(?:\\/)+/u").fast);
         assertNotNull(PcreTranslator.compile("/^[a-z]+/").fast);
         assertNotNull(PcreTranslator.compile("/^(?:\\+|-)?0o(?P<value>[0-7_]++)$/").fast);
-        assertNotNull(PcreTranslator.compile("/\\s*#.*$/A").fast);
-        assertNotNull(PcreTranslator.compile("/^[\\s\\r\\n]?---[\\s\\r\\n]?$/sm").fast);
         assertTrue(PcreTranslator.compile("//u").empty);
     }
 
@@ -36,6 +34,9 @@ class PregFastPathTest {
         assertNull(PcreTranslator.compile("/a.b/s").fast);
         assertNull(PcreTranslator.compile("/(a)(b)?(c)/").fast);
         assertNull(PcreTranslator.compile("/abc/D").fast);
+        // No matcher is chosen by a pattern's exact text, only by its shape.
+        assertNull(PcreTranslator.compile("/\\s*#.*$/A").fast);
+        assertNull(PcreTranslator.compile("/^[\\s\\r\\n]?---[\\s\\r\\n]?$/sm").fast);
         assertFalse(PcreTranslator.compile("/abc/").empty);
     }
 }
