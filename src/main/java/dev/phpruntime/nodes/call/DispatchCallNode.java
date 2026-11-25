@@ -115,21 +115,30 @@ public final class DispatchCallNode extends Node {
             return site;
         }
         TraitSiteCache cached = traitSiteCache;
-        if (cached != null && cached.site == site && cached.traitSelf == traitSelf) {
-            return cached.traceSite;
+        if (cached != null) {
+            if (cached.site == site && cached.traitSelf == traitSelf) {
+                return cached.traceSite;
+            }
+            // Another using class at this site (a trait shared by several classes): a small
+            // record, allocated in place. Republishing the cache under the node lock on every
+            // change cost every worker a boundary call and the shared lock.
+            return new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
         }
+        // Compiled code that folded the empty cache must not keep taking the slow path.
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreterAndInvalidate();
         return traceSiteSlow(node, site, traitSelf);
     }
 
-    /** The first call of a site, or a call whose trait class changed (a rebind); entry is rare. */
+    /** The first trait call of a site publishes its trace site. */
     @TruffleBoundary
     private Object traceSiteSlow(Node node, Object site, PhpClass traitSelf) {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
             TraitSiteCache cached = traitSiteCache;
-            if (cached != null && cached.site == site && cached.traitSelf == traitSelf) {
-                return cached.traceSite;
+            if (cached != null) {
+                return cached.site == site && cached.traitSelf == traitSelf ? cached.traceSite
+                        : new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
             }
             dev.phpruntime.runtime.PhpBacktrace.TraceSite fresh = new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
             traitSiteCache = new TraitSiteCache(fresh, site, traitSelf);
