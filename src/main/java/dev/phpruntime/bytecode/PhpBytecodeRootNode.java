@@ -5454,16 +5454,34 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final class DoNamedFunction {
         @Specialization
         static Object builtin(VirtualFrame frame, boolean keepRef, Builtins.Def builtin, Object argsObj,
-                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci, @Bind Node node,
                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                              @Cached("create()") NamedArgs.PlanProfile profile) {
+                              @Cached("create()") NamedArgs.PlanProfile profile,
+                              @Cached(value = "fastBuiltinFor(builtin)", neverDefault = false) FastBuiltin fastPath,
+                              @Cached(value = "createArrayCallbacks(builtin, location)", neverDefault = false) ArrayCallbackNode callbacks) {
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             NamedArgs.Plan plan = profile.profile(buffer.plan);
             if (plan != null) {
                 if (plan.hasError()) {
                     plan.throwError(location);
                 }
-                return NamedArgs.callBuiltin(builtin, buffer, plan, location);
+                // Bound, the arguments are what the positional call passes, so the same per-site
+                // fast paths apply (is_a(..., allow_string: true), array_any(array:, callback:)).
+                Object[] values = NamedArgs.boundValues(buffer, plan);
+                if (fastPath != null && builtin == fastPath.def()) {
+                    Object fast = fastPath.call(node, values);
+                    if (fast != FastBuiltin.UNHANDLED) {
+                        return fast;
+                    }
+                }
+                if (callbacks != null) {
+                    CallNode.checkArity(builtin, values.length, location);
+                    Object fast = callbacks.execute(builtin, values);
+                    if (fast != ArrayCallbackNode.UNHANDLED) {
+                        return fast;
+                    }
+                }
+                return NamedArgs.callBuiltinValues(builtin, values, location);
             }
             return Ops.callComplexBuiltinBoundary(frame.materialize(), builtin, NamedArgs.toRaw(buffer), location);
         }
@@ -5489,6 +5507,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         @TruffleBoundary
+        static FastBuiltin fastBuiltinFor(Builtins.Def builtin) {
+            return FastBuiltin.lookup(builtin.name());
+        }
+
+        static ArrayCallbackNode createArrayCallbacks(Builtins.Def builtin, SiteNode location) {
+            return ArrayCallbackNode.create(builtin.name(), location);
+        }
+
         private static Object[] genericFunctionArgs(PhpFunction fn, NamedArgs.Buffer buffer, SiteNode location) {
             PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
             return CallArgHelper.bindToFunction(new Object[0], NamedArgs.toRaw(buffer), fnRoot, location);

@@ -889,7 +889,15 @@ final class NamedArgs {
      * the positional path, so the writeback needs no frame or lvalue side table.
      */
     static Object callBuiltin(Builtins.Def def, Buffer buffer, Plan plan, PhpBytecodeRootNode.SiteNode site) {
-        Object[] values = buffer.slots ? buffer.values : bindArgs(plan, null, null, null, buffer.values);
+        return callBuiltinValues(def, boundValues(buffer, plan), site);
+    }
+
+    /** The arguments in parameter order, defaults placed: what a positional call would pass. */
+    static Object[] boundValues(Buffer buffer, Plan plan) {
+        return buffer.slots ? buffer.values : bindArgs(plan, null, null, null, buffer.values);
+    }
+
+    static Object callBuiltinValues(Builtins.Def def, Object[] values, PhpBytecodeRootNode.SiteNode site) {
         if (def.refMask() == 0) {
             return PhpBytecodeRootNode.Ops.callBuiltin(def, values, site);
         }
