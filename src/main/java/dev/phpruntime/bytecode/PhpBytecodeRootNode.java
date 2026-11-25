@@ -5978,18 +5978,35 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = boolean.class, name = "keepRef")
     public static final class DoComplexFunction {
         @Specialization
-        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
-                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                           @Cached("create()") DispatchCallNode dispatch) {
+        static Object function(boolean keepRef, PhpFunction fn, Object rawArgs,
+                               @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                               @Cached("create()") DispatchCallNode dispatch) {
+            CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
+            Object[] args = CallArgHelper.bindToFunction(new Object[0], raw, fn.signature(), location);
+            return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args, location));
+        }
+
+        @Specialization
+        static Object builtin(VirtualFrame frame, boolean keepRef, Builtins.Def def, Object rawArgs,
+                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
+            return Ops.callComplexBuiltinBoundary(frame.materialize(), def,
+                    (CallArgHelper.RawCallArgs) rawArgs, location);
+        }
+
+        @Specialization(replaces = {"function", "builtin"})
+        static Object other(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                            @Cached("create()") DispatchCallNode dispatch) {
             CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
             Builtins.Def builtin = builtinCallee(callee);
             if (builtin != null) {
                 return Ops.callComplexBuiltinBoundary(frame.materialize(), builtin, raw, location);
             }
             PhpFunction fn = (PhpFunction) callee;
-            PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(fn.callTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-            Object[] args = CallArgHelper.bindToFunction(new Object[0], raw, fnRoot, location);
+            Object[] args = CallArgHelper.bindToFunction(new Object[0], raw, fn.signature(), location);
             return Ops.ret(keepRef, dispatch.call(fn.callTarget(), args, location));
         }
     }
@@ -5998,23 +6015,44 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     @ConstantOperand(type = boolean.class, name = "keepRef")
     public static final class DoComplexMethod {
-        @Specialization
-        static Object call(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
-                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                           @Cached("create()") DispatchCallNode dispatch) {
-            MethodCallee m = (MethodCallee) callee;
-            CallArgHelper.RawCallArgs raw = (CallArgHelper.RawCallArgs) rawArgs;
-            if (m.entry() == null) {
-                return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
-                        m.obj(), m.cls(), m.name(), CallArgHelper.magicArray(raw)}, location));
-            }
-            PhpFunctionRootNode fnRoot = PhpFunctionRootNode.of(m.sigTarget().getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
-            Object[] args = fnRoot != null
-                    ? CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw, fnRoot, location)
-                    : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
-                            m.entry(), location);
+        @Specialization(guards = "isGuest(m)")
+        static Object guest(boolean keepRef, MethodCallee m, Object rawArgs,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                            @Cached("create()") DispatchCallNode dispatch) {
+            return callGuest(keepRef, m, (CallArgHelper.RawCallArgs) rawArgs, location, dispatch);
+        }
+
+        static boolean isGuest(MethodCallee m) {
+            return m.entry() != null && m.signature() != null;
+        }
+
+        private static Object callGuest(boolean keepRef, MethodCallee m, CallArgHelper.RawCallArgs raw,
+                                        SiteNode location, DispatchCallNode dispatch) {
+            Object[] args = CallArgHelper.bindToFunction(new Object[]{m.thisArg(), m.cls()}, raw,
+                    m.signature(), location);
             return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location, m.cls()));
+        }
+
+        @Specialization(guards = "m.entry() != null")
+        static Object internal(boolean keepRef, MethodCallee m, Object rawArgs,
+                               @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                               @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                               @Cached("create()") DispatchCallNode dispatch) {
+            Object[] args = CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()},
+                    (CallArgHelper.RawCallArgs) rawArgs, m.entry(), location);
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location, m.cls()));
+        }
+
+        /** {@code __call}: the arguments go to the magic method as an array. */
+        @Specialization(replaces = {"guest", "internal"})
+        static Object magic(boolean keepRef, MethodCallee m, Object rawArgs,
+                            @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                            @Cached("create()") DispatchCallNode dispatch) {
+            return Ops.ret(keepRef, dispatch.call(m.magic(), new Object[]{
+                    m.obj(), m.cls(), m.name(), CallArgHelper.magicArray((CallArgHelper.RawCallArgs) rawArgs)},
+                    location));
         }
     }
 
