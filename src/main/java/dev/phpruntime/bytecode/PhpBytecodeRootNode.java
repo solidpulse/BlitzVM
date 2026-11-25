@@ -864,6 +864,32 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
      * throws php's TypeError, and writes the coerced value back to the local (or the referenced
      * cell for a by-reference parameter).
      */
+    /**
+     * The value class a class-typed parameter or return check last saw pass. A class's ancestors
+     * never change, so while a site sees one class the check is a single compare and the ancestor
+     * search is not compiled in; a second class makes the site generic.
+     */
+    public static final class ClassPassCache extends Node {
+        @CompilerDirectives.CompilationFinal private PhpClass passing;
+        @CompilerDirectives.CompilationFinal private boolean generic;
+
+        boolean matches(DeclaredType type, PhpObject value) {
+            PhpClass cls = value.phpClass();
+            if (!generic) {
+                if (cls == passing) {
+                    return true;
+                }
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                if (passing == null && type.fastClassMatches(value)) {
+                    passing = cls;
+                    return true;
+                }
+                generic = true;
+            }
+            return type.fastClassMatches(value);
+        }
+    }
+
     @Operation
     @ConstantOperand(type = DeclaredType.class)
     @ConstantOperand(type = LocalAccessor.class)
@@ -911,13 +937,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                 String name, PhpObject value) {
         }
 
-        @Specialization(guards = {"type.hasFastClass()", "type.fastClassMatches(value)"})
+        @Specialization(guards = {"type.hasFastClass()", "classPass.matches(type, value)"}, limit = "1")
         static void classValue(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
-                               String name, PhpObject value) {
+                               String name, PhpObject value,
+                               @Cached("new()") ClassPassCache classPass) {
             // The class name id is in the value class's ancestor set: nothing to coerce or store.
         }
 
-        @Fallback
+        @Specialization // last and unguarded instead of @Fallback: the class cache above cannot be negated
         static void fallback(VirtualFrame frame, DeclaredType type, LocalAccessor acc, VarInfo info, int param,
                              String name, Object value, @Bind Node node, @Bind BytecodeNode bytecode) {
             slow(frame, type, acc, info, param, name, value, node, bytecode);
@@ -1009,12 +1036,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.hasFastClass()",
-                "type.fastClassMatches(value)"})
-        static PhpObject classValue(VirtualFrame frame, DeclaredType type, boolean implicit, PhpObject value) {
+                "classPass.matches(type, value)"}, limit = "1")
+        static PhpObject classValue(VirtualFrame frame, DeclaredType type, boolean implicit, PhpObject value,
+                                    @Cached("new()") ClassPassCache classPass) {
             return value;
         }
 
-        @Fallback
+        @Specialization // last and unguarded instead of @Fallback: the class cache above cannot be negated
         static Object slow(VirtualFrame frame, DeclaredType type, boolean implicit, Object value, @Bind Node node) {
             return slowReturn(frame, type, implicit, value, node);
         }
