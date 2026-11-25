@@ -5003,6 +5003,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static PhpObject create(ClosureSpec spec, boolean bindThis, boolean hasTraitSlot, int lexicalClassId,
                                 Object thisValue, Object calledClassValue, Object traitSelfValue,
                                 @Variadic Object[] captureValues, @Bind Node node) {
+            // The closure object, its property layout and the capture copies are made once per
+            // creation; keeping them out of the call site leaves the variadic array and a call.
+            return createClosure(spec, bindThis, hasTraitSlot, lexicalClassId, thisValue, calledClassValue,
+                    traitSelfValue, captureValues, node);
+        }
+
+        @TruffleBoundary
+        private static PhpObject createClosure(ClosureSpec spec, boolean bindThis, boolean hasTraitSlot,
+                                               int lexicalClassId, Object thisValue, Object calledClassValue,
+                                               Object traitSelfValue, Object[] captureValues, Node node) {
             PhpContext ctx = PhpContext.get(node);
             Object boundThis = bindThis ? thisValue : PhpNull.INSTANCE;
             PhpClass calledClass = calledClassValue instanceof PhpClass c ? c : null;
