@@ -33,7 +33,8 @@ public final class PipeNode extends PhpNode {
             e.expr(callable);
             e.loadSlotOrNull(outerThisSlot);
             b.endResolvePipeCallable();
-            b.beginDoValueCall(keepRef, callee);
+            b.beginDoValueCall(keepRef);
+            b.emitLoadLocal(callee);
             b.beginSendValue(0, 0, callee);
             b.beginPipeArgument(callee);
             b.emitLoadLocal(piped);

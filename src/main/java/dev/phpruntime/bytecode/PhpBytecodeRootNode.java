@@ -2216,6 +2216,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
      * metadata (for by-reference parameters). The call target is null for a builtin.
      */
     public record ValueCallee(dev.phpruntime.runtime.PhpCallable callable, PhpFunctionRootNode sig) {
+        public int kindOrdinal() {
+            return callable.kind().ordinal();
+        }
     }
 
     /**
@@ -4898,43 +4901,83 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     /** Calls the {@link ValueCallee} written by {@link ResolveCallable}, laying out its frame. */
     @Operation
     @ConstantOperand(type = boolean.class, name = "keepRef")
-    @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class DoValueCall {
-        @Specialization
-        static Object call(VirtualFrame frame, boolean keepRef, LocalAccessor calleeLocal, @Variadic Object[] args,
-                           @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
-                           @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                           @Cached("create()") DispatchCallNode dispatch) {
-            ValueCallee v = (ValueCallee) calleeLocal.getObject(bytecode, frame);
-            dev.phpruntime.runtime.PhpCallable cb = v.callable();
-            Object result = switch (cb.kind()) {
-                case CLOSURE -> {
-                    Object[] frameArgs = new Object[3 + args.length];
-                    frameArgs[0] = cb.boundThis();
-                    frameArgs[1] = cb.calledClass();
-                    frameArgs[2] = cb.closureObj();
-                    System.arraycopy(args, 0, frameArgs, 3, args.length);
-                    yield dispatch.call(cb.callTarget(), frameArgs,
-                            dev.phpruntime.runtime.PhpBacktrace.bindingSite(location, v.sig(), cb.boundThis() instanceof PhpObject, cb.calledClass()));
-                }
-                case USER_FUNCTION -> dispatch.call(cb.callTarget(), args, location);
-                case METHOD -> {
-                    boolean trait = cb.traitSelf() != null;
-                    int prefix = trait ? 3 : 2;
-                    Object[] frameArgs = new Object[prefix + args.length];
-                    frameArgs[0] = cb.boundThis();
-                    frameArgs[1] = cb.calledClass();
-                    if (trait) {
-                        frameArgs[2] = cb.traitSelf();
-                    }
-                    System.arraycopy(args, 0, frameArgs, prefix, args.length);
-                    yield dispatch.call(cb.callTarget(), frameArgs, location);
-                }
-                case MAGIC_CALL -> dispatch.call(cb.callTarget(), new Object[]{
-                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)}, location);
-                case BUILTIN -> Ops.callBuiltinValue(cb.builtin(), args, location);
-            };
-            return Ops.ret(keepRef, result);
+        /**
+         * A closure call: its frame carries the bound this, the called class and the closure
+         * object. The other callable kinds have different layouts, and each specialization
+         * contains only its own, so a site that calls one kind compiles one layout.
+         */
+        @Specialization(guards = "v.kindOrdinal() == 0")
+        static Object callClosure(boolean keepRef, ValueCallee v, @Variadic Object[] args,
+                                  @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                  @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                  @Cached("create()") DispatchCallNode dispatch) {
+            return Ops.ret(keepRef, callClosure(v, v.callable(), args, location, dispatch));
+        }
+
+        private static Object callClosure(ValueCallee v, dev.phpruntime.runtime.PhpCallable cb,
+                                          Object[] args, SiteNode location, DispatchCallNode dispatch) {
+            Object[] frameArgs = new Object[3 + args.length];
+            frameArgs[0] = cb.boundThis();
+            frameArgs[1] = cb.calledClass();
+            frameArgs[2] = cb.closureObj();
+            System.arraycopy(args, 0, frameArgs, 3, args.length);
+            return dispatch.call(cb.callTarget(), frameArgs,
+                    PhpBacktrace.bindingSite(location, v.sig(),
+                            cb.boundThis() instanceof PhpObject, cb.calledClass()));
+        }
+
+        @Specialization(guards = "v.kindOrdinal() == 1")
+        static Object callUserFunction(boolean keepRef, ValueCallee v, @Variadic Object[] args,
+                                       @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                       @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                       @Cached("create()") DispatchCallNode dispatch) {
+            return Ops.ret(keepRef, dispatch.call(v.callable().callTarget(), args, location));
+        }
+
+        @Specialization(guards = "v.kindOrdinal() == 2")
+        static Object callMethod(boolean keepRef, ValueCallee v, @Variadic Object[] args,
+                                 @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                 @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                 @Cached("create()") DispatchCallNode dispatch) {
+            return Ops.ret(keepRef, callMethod(v.callable(), args, location, dispatch));
+        }
+
+        private static Object callMethod(dev.phpruntime.runtime.PhpCallable cb, Object[] args, SiteNode location,
+                                         DispatchCallNode dispatch) {
+            boolean trait = cb.traitSelf() != null;
+            int prefix = trait ? 3 : 2;
+            Object[] frameArgs = new Object[prefix + args.length];
+            frameArgs[0] = cb.boundThis();
+            frameArgs[1] = cb.calledClass();
+            if (trait) {
+                frameArgs[2] = cb.traitSelf();
+            }
+            System.arraycopy(args, 0, frameArgs, prefix, args.length);
+            return dispatch.call(cb.callTarget(), frameArgs, location);
+        }
+
+        @Specialization(guards = "v.kindOrdinal() == 3")
+        static Object callMagic(boolean keepRef, ValueCallee v, @Variadic Object[] args,
+                                @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                @Cached("create()") DispatchCallNode dispatch) {
+            return Ops.ret(keepRef, callMagic(v.callable(), args, location, dispatch));
+        }
+
+        private static Object callMagic(dev.phpruntime.runtime.PhpCallable cb, Object[] args, SiteNode location,
+                                        DispatchCallNode dispatch) {
+            return dispatch.call(cb.callTarget(), new Object[]{
+                    cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)}, location);
+        }
+
+        /** Builtins, and any kind a later callable adds. */
+        @Specialization(replaces = {"callClosure", "callUserFunction", "callMethod", "callMagic"})
+        static Object callOther(boolean keepRef, ValueCallee v, @Variadic Object[] args,
+                                @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                @Cached("create()") DispatchCallNode dispatch) {
+            return Ops.ret(keepRef, Ops.callBuiltinValue(v.callable().builtin(), args, location));
         }
     }
 

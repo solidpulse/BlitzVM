@@ -214,9 +214,18 @@ public final class PhpBacktrace {
         if (fn != null && fn.isClosure() && site instanceof Node node
                 && (fn.closureBoundThis() != boundThis || (fn.declaringClass() == null && scope != null))) {
             // Rebound (Closure::bind, bindTo, call): php reports the scope it now runs in.
-            return new TraceSite(node, null, boundThis, fn.declaringClass() == null ? scope : null);
+            return reboundSite(node, boundThis, fn.declaringClass() == null ? scope : null);
         }
         return site;
+    }
+
+    /**
+     * Only a closure rebound by {@code Closure::bind}, {@code bindTo} or {@code call} needs a
+     * wrapper here; every ordinary closure call gets its site back untouched.
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static Object reboundSite(Node node, boolean boundThis, PhpClass scope) {
+        return new TraceSite(node, null, boundThis, scope);
     }
 
     private static FrameEntry traceEntry(Object site, Object callee) {

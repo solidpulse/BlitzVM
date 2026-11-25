@@ -84,7 +84,8 @@ public final class CallValueNode extends PhpNode {
                     b.endDoComplexValue();
                 }
             } else {
-                b.beginDoValueCall(keepRef, callee);
+                b.beginDoValueCall(keepRef);
+                b.emitLoadLocal(callee);
                 for (int i = 0; i < args.length; i++) {
                     e.sendArgument(args[i], refTargets[i], i, callee);
                 }
