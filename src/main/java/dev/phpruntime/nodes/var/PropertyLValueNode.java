@@ -445,10 +445,19 @@ public final class PropertyLValueNode extends LValueNode {
         writeFallback(obj, name, value, false, null);
     }
 
-    /** Enum cases have no dynamic properties: a write to any name they do not declare fails. */
-    @TruffleBoundary
+    /**
+     * Enum cases have no dynamic properties: a write to any name they do not declare fails. The
+     * enum test is two field reads and stays in compiled code; only enums take the boundary.
+     */
     private void checkEnumDynamicProperty(PhpObject obj, String name) {
-        if (obj.phpClass().template().isEnum() && !obj.phpClass().hasDeclaredProperty(name)) {
+        if (obj.phpClass().template().isEnum()) {
+            checkEnumProperty(obj, name);
+        }
+    }
+
+    @TruffleBoundary
+    private void checkEnumProperty(PhpObject obj, String name) {
+        if (!obj.phpClass().hasDeclaredProperty(name)) {
             throw new PhpError("Cannot create dynamic property " + obj.phpClass().name() + "::$" + name, this);
         }
     }
