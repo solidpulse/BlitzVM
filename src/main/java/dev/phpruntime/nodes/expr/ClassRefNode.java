@@ -87,7 +87,11 @@ public final class ClassRefNode extends PhpNode {
      * unused.
      */
     public PhpClass resolveValue(Object operand) {
-        PhpClass cls = resolveValueOrNull(operand);
+        return resolveValue(operand, PhpContext.get(this));
+    }
+
+    public PhpClass resolveValue(Object operand, PhpContext ctx) {
+        PhpClass cls = resolveValueOrNull(operand, ctx);
         if (cls == null) {
             CompilerDirectives.transferToInterpreter();
             if (kind == Kind.PARENT) {
@@ -105,7 +109,10 @@ public final class ClassRefNode extends PhpNode {
     }
 
     public PhpClass resolveValueOrNull(Object operand) {
-        PhpContext ctx = PhpContext.get(this);
+        return resolveValueOrNull(operand, PhpContext.get(this));
+    }
+
+    public PhpClass resolveValueOrNull(Object operand, PhpContext ctx) {
         return switch (kind) {
             case NAMED -> {
                 PhpClass c = ctx.classById(classId);
@@ -164,18 +171,22 @@ public final class ClassRefNode extends PhpNode {
 
     /** Same as {@link #resolveValueOrNull} but returns null for missing class names without autoloading (for instanceof). */
     public PhpClass resolveForInstanceof(Object operand) {
+        return resolveForInstanceof(operand, PhpContext.get(this));
+    }
+
+    public PhpClass resolveForInstanceof(Object operand, PhpContext ctx) {
         if (kind == Kind.NAMED) {
-            return PhpContext.get(this).classById(classId);
+            return ctx.classById(classId);
         }
         if (kind == Kind.DYNAMIC) {
             if (operand instanceof PhpObject o) {
                 return o.phpClass();
             }
             if (operand instanceof String s) {
-                return PhpContext.get(this).lookupClass(s);
+                return ctx.lookupClass(s);
             }
             return null;
         }
-        return resolveValueOrNull(operand);
+        return resolveValueOrNull(operand, ctx);
     }
 }

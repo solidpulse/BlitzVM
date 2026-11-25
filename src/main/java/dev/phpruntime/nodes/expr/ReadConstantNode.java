@@ -27,7 +27,11 @@ public final class ReadConstantNode extends PhpNode {
     }
 
     public Object execute(VirtualFrame frame) {
-        PhpContext ctx = PhpContext.get(this);
+        return execute(frame, PhpContext.get(this));
+    }
+
+    /** {@link #execute(VirtualFrame)} with the caller's context, for a bytecode instruction. */
+    public Object execute(VirtualFrame frame, PhpContext ctx) {
         if (nsName != null) {
             Object nsValue = ctx.readConstant(nsName);
             if (nsValue != null) {

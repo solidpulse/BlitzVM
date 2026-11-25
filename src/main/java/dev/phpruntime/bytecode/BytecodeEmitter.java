@@ -4,6 +4,7 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.bytecode.BytecodeConfig;
 import com.oracle.truffle.api.bytecode.BytecodeLabel;
 import com.oracle.truffle.api.bytecode.BytecodeLocal;
+import com.oracle.truffle.api.bytecode.LocalAccessor;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.source.SourceSection;
 import dev.phpruntime.PhpLanguage;
@@ -63,6 +64,8 @@ public final class BytecodeEmitter {
     private int currentLine = -1;
 
     private BytecodeLocal hoisted;
+    /** The local the root prolog stores the request's context in; see PhpBytecodeRootNode#context. */
+    private BytecodeLocal contextLocal;
     /** The PhpGenerator of a generator function's body (null elsewhere). */
     private BytecodeLocal generator;
     /** The declared return type of the function being compiled, checked on every return. */
@@ -90,8 +93,10 @@ public final class BytecodeEmitter {
     /** The call target for a file's top-level code. */
     public static RootCallTarget mainTarget(PhpLanguage language, dev.phpruntime.nodes.PhpMainRootNode main) {
         try {
+            BytecodeEmitter[] emitter = new BytecodeEmitter[1];
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, language, null, main.source()).emitMain(main)).getNode(0);
+                    builder -> (emitter[0] = new BytecodeEmitter(builder, language, null, main.source())).emitMain(main)).getNode(0);
+            root.initContext(LocalAccessor.constantOf(emitter[0].contextLocal));
             root.initMain(main);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -115,9 +120,11 @@ public final class BytecodeEmitter {
     public static RootCallTarget exprTarget(PhpLanguage language, Source source,
                                             dev.phpruntime.nodes.PhpNode expr, int traitSelfSlot) {
         try {
+            BytecodeEmitter[] emitter = new BytecodeEmitter[1];
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, language, null, source)
+                    builder -> (emitter[0] = new BytecodeEmitter(builder, language, null, source))
                             .emitExpression(expr, traitSelfSlot)).getNode(0);
+            root.initContext(LocalAccessor.constantOf(emitter[0].contextLocal));
             root.initExpression(source, expr.line(), traitSelfSlot);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -145,6 +152,7 @@ public final class BytecodeEmitter {
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.beginRoot();
+        initContext();
         if (traitSelfSlot >= 0) {
             storeArgument(traitSelfSlot, 0);
         }
@@ -158,6 +166,15 @@ public final class BytecodeEmitter {
         b.endSource();
     }
 
+    /**
+     * The root's first instruction. Every root kind stores the context it runs with in this
+     * local, so each operation can read it with a frame load instead of a context lookup.
+     */
+    private void initContext() {
+        contextLocal = b.createLocal("#context", null);
+        b.emitInitContext(contextLocal);
+    }
+
     private void emitMain(dev.phpruntime.nodes.PhpMainRootNode main) {
         b.beginSource(source);
         SourceSection whole = source != null && source.getLineCount() >= 1 ? source.createSection(1) : null;
@@ -165,6 +182,7 @@ public final class BytecodeEmitter {
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.beginRoot();
+        initContext();
         if (main.usesSymbolTable()) {
             // Arguments: (include path or eval mode, the caller's symbol table).
             mainLayout = main.scopeLayout();
@@ -220,8 +238,10 @@ public final class BytecodeEmitter {
             if (fn.isGenerator() && fn.generatorSource() == null) {
                 throw new Unsupported("generator");
             }
+            BytecodeEmitter[] emitter = new BytecodeEmitter[1];
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, language, fn).emitRoot()).getNode(0);
+                    builder -> (emitter[0] = new BytecodeEmitter(builder, language, fn)).emitRoot()).getNode(0);
+            root.initContext(LocalAccessor.constantOf(emitter[0].contextLocal));
             root.init(fn);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -255,6 +275,7 @@ public final class BytecodeEmitter {
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.beginRoot();
+        initContext();
         b.emitEnter();
         bindSpecialSlots();
         bindParameters();

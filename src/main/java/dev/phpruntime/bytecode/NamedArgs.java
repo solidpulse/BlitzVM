@@ -901,16 +901,26 @@ final class NamedArgs {
         return callBuiltinValues(def, boundValues(buffer, plan), site);
     }
 
+    static Object callBuiltin(Builtins.Def def, Buffer buffer, Plan plan, PhpBytecodeRootNode.SiteNode site,
+                              dev.phpruntime.PhpContext ctx) {
+        return callBuiltinValues(def, boundValues(buffer, plan), site, ctx);
+    }
+
     /** The arguments in parameter order, defaults placed: what a positional call would pass. */
     static Object[] boundValues(Buffer buffer, Plan plan) {
         return buffer.slots ? buffer.values : bindArgs(plan, null, null, null, buffer.values);
     }
 
     static Object callBuiltinValues(Builtins.Def def, Object[] values, PhpBytecodeRootNode.SiteNode site) {
+        return callBuiltinValues(def, values, site, dev.phpruntime.PhpContext.get(site));
+    }
+
+    static Object callBuiltinValues(Builtins.Def def, Object[] values, PhpBytecodeRootNode.SiteNode site,
+                                    dev.phpruntime.PhpContext ctx) {
         if (def.refMask() == 0) {
-            return PhpBytecodeRootNode.Ops.callBuiltin(def, values, site);
+            return PhpBytecodeRootNode.Ops.callBuiltin(def, values, site, ctx);
         }
-        return PhpBytecodeRootNode.Ops.callBuiltinValue(def, values, site);
+        return PhpBytecodeRootNode.Ops.callBuiltinValue(def, values, site, ctx);
     }
 
     // ------------------------------------------------------------------ generic fallback

@@ -74,7 +74,11 @@ public final class IndexLValueNode extends LValueNode {
 
     /** The rvalue read of {@link #execute} on evaluated keys: warns when a key is missing. */
     public Object readOrWarn(VirtualFrame frame, Object[] keys) {
-        Object v = read(frame, keys);
+        return readOrWarn(frame, keys, PhpContext.get(this));
+    }
+
+    public Object readOrWarn(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        Object v = read(frame, keys, ctx);
         if (v == null) {
             warnMissing(arrayKeys(keys));
             return PhpNull.INSTANCE;
@@ -99,8 +103,13 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
+        return read(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public Object read(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         try {
-            return readPath(base.read(frame, baseKeys(keys)), arrayKeys(keys));
+            return readPath(base.read(frame, baseKeys(keys), ctx), arrayKeys(keys));
         } catch (PhpError e) {
             throw e.at(this);
         }
@@ -125,7 +134,13 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     @ExplodeLoop
     public boolean isSet(VirtualFrame frame, Object[] packed) {
-        Object value = base.readIfSet(frame, baseKeys(packed));
+        return isSet(frame, packed, PhpContext.get(this));
+    }
+
+    @Override
+    @ExplodeLoop
+    public boolean isSet(VirtualFrame frame, Object[] packed, PhpContext ctx) {
+        Object value = base.readIfSet(frame, baseKeys(packed), ctx);
         Object[] keys = arrayKeys(packed);
         for (int i = 0; i < keyNodes.length; i++) {
             if (value instanceof PhpObject obj) {
@@ -149,7 +164,13 @@ public final class IndexLValueNode extends LValueNode {
     @Override
     @ExplodeLoop
     public Object readIfSet(VirtualFrame frame, Object[] packed) {
-        Object value = base.readIfSet(frame, baseKeys(packed));
+        return readIfSet(frame, packed, PhpContext.get(this));
+    }
+
+    @Override
+    @ExplodeLoop
+    public Object readIfSet(VirtualFrame frame, Object[] packed, PhpContext ctx) {
+        Object value = base.readIfSet(frame, baseKeys(packed), ctx);
         Object[] keys = arrayKeys(packed);
         for (int i = 0; i < keyNodes.length; i++) {
             if (value instanceof PhpObject obj) {
@@ -169,12 +190,17 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
+        write(frame, keys, value, PhpContext.get(this));
+    }
+
+    @Override
+    public void write(VirtualFrame frame, Object[] keys, Object value, PhpContext ctx) {
         Object[] bk = baseKeys(keys);
         if (base instanceof PropertyLValueNode plv) {
-            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+            plv.checkNotReadonlyForIndirectWrite(frame, bk, ctx);
         }
-        PhpReference indirect = base.indirectCell(frame, bk);
-        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk, ctx);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk, ctx);
         try {
             if (root instanceof PhpObject) {
                 writeMixed(root, arrayKeys(keys), 0, value);
@@ -184,7 +210,7 @@ public final class IndexLValueNode extends LValueNode {
             if (indirect != null) {
                 indirect.setValue(updated);
             } else {
-                base.write(frame, bk, updated);
+                base.write(frame, bk, updated, ctx);
             }
         } catch (PhpError e) {
             throw e.at(this);
@@ -193,12 +219,17 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        return obtainCell(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         Object[] bk = baseKeys(keys);
         if (base instanceof PropertyLValueNode plv) {
-            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+            plv.checkNotReadonlyForIndirectWrite(frame, bk, ctx);
         }
-        PhpReference indirect = base.indirectCell(frame, bk);
-        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk, ctx);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk, ctx);
         try {
             Object[] ak = arrayKeys(keys);
             if (root instanceof PhpObject obj) {
@@ -209,7 +240,7 @@ public final class IndexLValueNode extends LValueNode {
             if (indirect != null) {
                 indirect.setValue(updatedRoot);
             } else {
-                base.write(frame, bk, updatedRoot);
+                base.write(frame, bk, updatedRoot, ctx);
             }
             return outRef[0];
         } catch (PhpError e) {
@@ -219,12 +250,17 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        bindCell(frame, keys, cell, PhpContext.get(this));
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell, PhpContext ctx) {
         Object[] bk = baseKeys(keys);
         if (base instanceof PropertyLValueNode plv) {
-            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+            plv.checkNotReadonlyForIndirectWrite(frame, bk, ctx);
         }
-        PhpReference indirect = base.indirectCell(frame, bk);
-        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk, ctx);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk, ctx);
         try {
             if (root instanceof PhpObject obj && keyNodes.length == 1) {
                 access.bindCell(obj, arrayKeys(keys)[0] == APPEND ? PhpNull.INSTANCE : arrayKeys(keys)[0], cell);
@@ -334,7 +370,11 @@ public final class IndexLValueNode extends LValueNode {
     }
 
     public boolean usesArrayAccess(VirtualFrame frame, Object[] keys) {
-        return base.read(frame, baseKeys(keys)) instanceof PhpObject;
+        return usesArrayAccess(frame, keys, PhpContext.get(this));
+    }
+
+    public boolean usesArrayAccess(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        return base.read(frame, baseKeys(keys), ctx) instanceof PhpObject;
     }
 
     public boolean isNested() {
@@ -343,14 +383,20 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
-        if (isNested() && usesArrayAccess(frame, keys)) {
-            PhpReference cell = obtainCell(frame, keys);
+        return appendString(frame, keys, suffix, resultNeeded, PhpContext.get(this));
+    }
+
+    @Override
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded,
+                               PhpContext ctx) {
+        if (isNested() && usesArrayAccess(frame, keys, ctx)) {
+            PhpReference cell = obtainCell(frame, keys, ctx);
             Object current = cell.getValue();
             String result = concat(PhpOps.toStr(current == null ? PhpNull.INSTANCE : current), suffix);
             cell.setValue(result);
             return result;
         }
-        return super.appendString(frame, keys, suffix, resultNeeded);
+        return super.appendString(frame, keys, suffix, resultNeeded, ctx);
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
@@ -469,12 +515,17 @@ public final class IndexLValueNode extends LValueNode {
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
+        unset(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public void unset(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         Object[] bk = baseKeys(keys);
         if (base instanceof PropertyLValueNode plv) {
-            plv.checkNotReadonlyForIndirectWrite(frame, bk);
+            plv.checkNotReadonlyForIndirectWrite(frame, bk, ctx);
         }
-        PhpReference indirect = base.indirectCell(frame, bk);
-        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk);
+        PhpReference indirect = base.indirectCell(frame, bk, ctx);
+        Object root = indirect != null ? indirect.getValue() : base.read(frame, bk, ctx);
         if (root instanceof PhpObject obj) {
             Object[] ak = arrayKeys(keys);
             if (ak.length == 1) {
@@ -492,7 +543,7 @@ public final class IndexLValueNode extends LValueNode {
             if (indirect != null) {
                 indirect.setValue(result);
             } else {
-                base.write(frame, bk, result);
+                base.write(frame, bk, result, ctx);
             }
         } catch (PhpError e) {
             throw e.at(this);

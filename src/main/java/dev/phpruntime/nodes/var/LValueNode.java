@@ -15,10 +15,22 @@ public abstract class LValueNode extends PhpNode {
     /** Current value, or Java {@code null} if undefined. */
     public abstract Object read(VirtualFrame frame, Object[] keys);
 
+    /**
+     * {@link #read} with the request context the bytecode instruction already read. Nodes that
+     * do not use the context keep the default, which ignores it.
+     */
+    public Object read(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        return read(frame, keys);
+    }
+
     /** Returns whether this lvalue is set (non-null) for {@code isset}. */
     public boolean isSet(VirtualFrame frame, Object[] keys) {
         Object v = read(frame, keys);
         return v != null && v != dev.phpruntime.runtime.PhpNull.INSTANCE;
+    }
+
+    public boolean isSet(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        return isSet(frame, keys);
     }
 
     /** Reads this lvalue for {@code ??}; may check {@code __isset} before {@code __get}. */
@@ -26,7 +38,15 @@ public abstract class LValueNode extends PhpNode {
         return read(frame, keys);
     }
 
+    public Object readIfSet(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        return readIfSet(frame, keys);
+    }
+
     public abstract void write(VirtualFrame frame, Object[] keys, Object value);
+
+    public void write(VirtualFrame frame, Object[] keys, Object value, dev.phpruntime.PhpContext ctx) {
+        write(frame, keys, value);
+    }
 
     /** Append without exposing mutable storage. Arrays/properties retain immutable stores. */
     public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
@@ -34,6 +54,15 @@ public abstract class LValueNode extends PhpNode {
         String result = concat(dev.phpruntime.runtime.PhpOps.toStr(current == null
                 ? dev.phpruntime.runtime.PhpNull.INSTANCE : current), suffix);
         write(frame, keys, result);
+        return result;
+    }
+
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded,
+                               dev.phpruntime.PhpContext ctx) {
+        Object current = read(frame, keys, ctx);
+        String result = concat(dev.phpruntime.runtime.PhpOps.toStr(current == null
+                ? dev.phpruntime.runtime.PhpNull.INSTANCE : current), suffix);
+        write(frame, keys, result, ctx);
         return result;
     }
 
@@ -50,11 +79,19 @@ public abstract class LValueNode extends PhpNode {
         throw referenceError(false);
     }
 
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        return obtainCell(frame, keys);
+    }
+
     /**
      * Binds this lvalue directly to {@code cell} (for {@code $lhs = &$rhs} and {@code foreach (... as &$v)}).
      */
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
         throw referenceError(true);
+    }
+
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell, dev.phpruntime.PhpContext ctx) {
+        bindCell(frame, keys, cell);
     }
 
     /**
@@ -63,6 +100,10 @@ public abstract class LValueNode extends PhpNode {
      */
     public PhpReference indirectCell(VirtualFrame frame, Object[] keys) {
         return null;
+    }
+
+    public PhpReference indirectCell(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        return indirectCell(frame, keys);
     }
 
     /**
@@ -86,6 +127,10 @@ public abstract class LValueNode extends PhpNode {
 
     public abstract void unset(VirtualFrame frame, Object[] keys);
 
+    public void unset(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        unset(frame, keys);
+    }
+
     /** Name used in diagnostics, e.g. "$x". */
     public abstract String describe();
 
@@ -98,9 +143,19 @@ public abstract class LValueNode extends PhpNode {
         return v;
     }
 
+    public Object readValue(VirtualFrame frame, Object[] keys, dev.phpruntime.PhpContext ctx) {
+        return readValue(frame, keys);
+    }
+
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     protected Object undefined() {
         dev.phpruntime.PhpContext.get(this).warning("Undefined variable " + describe(), line());
+        return dev.phpruntime.runtime.PhpNull.INSTANCE;
+    }
+
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    protected Object undefined(dev.phpruntime.PhpContext ctx) {
+        ctx.warning("Undefined variable " + describe(), line());
         return dev.phpruntime.runtime.PhpNull.INSTANCE;
     }
 }

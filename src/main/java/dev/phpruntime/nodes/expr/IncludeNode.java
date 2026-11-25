@@ -52,11 +52,16 @@ public final class IncludeNode extends PhpNode {
     }
 
     public Object executePath(String path) {
-        Object prepared = prepare(path);
+        return executePathWith(path, PhpContext.get(this));
+    }
+
+    /** {@link #executePath(String)} with the caller's context, for a bytecode instruction. */
+    public Object executePathWith(String path, PhpContext ctx) {
+        Object prepared = prepare(path, ctx);
         if (prepared instanceof PreparedInclude inc) {
-            Object result = callIncluded(inc.target(), new Object[]{inc.canonicalPath()});
+            Object result = callIncluded(inc.target(), new Object[]{inc.canonicalPath()}, ctx);
             if (inc.snapshotBoot()) {
-                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(PhpContext.get(this));
+                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(ctx);
             }
             return result;
         }
@@ -65,11 +70,15 @@ public final class IncludeNode extends PhpNode {
 
     /** An include into a function's local scope: the included file shares {@code table}. */
     public Object executePath(String path, Object table) {
-        Object prepared = prepare(path);
+        return executePath(path, table, PhpContext.get(this));
+    }
+
+    public Object executePath(String path, Object table, PhpContext ctx) {
+        Object prepared = prepare(path, ctx);
         if (prepared instanceof PreparedInclude inc) {
-            Object result = callIncluded(inc.target(), new Object[]{inc.canonicalPath(), table});
+            Object result = callIncluded(inc.target(), new Object[]{inc.canonicalPath(), table}, ctx);
             if (inc.snapshotBoot()) {
-                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(PhpContext.get(this));
+                dev.phpruntime.snapshot.SnapshotSupport.bootIncludeReturned(ctx);
             }
             return result;
         }
@@ -80,8 +89,7 @@ public final class IncludeNode extends PhpNode {
      * Runs the included file with an {@code include} frame on the trace stack, which php
      * reports as the file's caller with the name of the include statement.
      */
-    private Object callIncluded(CallTarget target, Object[] args) {
-        PhpContext ctx = PhpContext.get(this);
+    private Object callIncluded(CallTarget target, Object[] args, PhpContext ctx) {
         int depth = ctx.pushTraceFrame(this);
         try {
             return callNode.call(target, args);
@@ -106,8 +114,7 @@ public final class IncludeNode extends PhpNode {
     }
 
     @TruffleBoundary
-    private Object prepare(String path) {
-        PhpContext ctx = PhpContext.get(this);
+    private Object prepare(String path, PhpContext ctx) {
         boolean once = kind == Kind.INCLUDE_ONCE || kind == Kind.REQUIRE_ONCE;
         if (path.isEmpty() && !once) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();

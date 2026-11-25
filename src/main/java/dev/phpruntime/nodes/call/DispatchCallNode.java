@@ -66,13 +66,26 @@ public final class DispatchCallNode extends Node {
 
     /** With the class a trait method runs for, which php reports as the frame's class. */
     public Object call(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf) {
-        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        return callTraced(target, args, site, traitSelf, dev.phpruntime.PhpContext.get(this));
+    }
+
+    /**
+     * {@link #call} with the context the caller already has in hand. Guest code reads it once
+     * per invocation, so every call it makes must not repeat the lookup.
+     */
+    public Object callTraced(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf,
+                             dev.phpruntime.PhpContext ctx) {
         int depth = ctx.pushTraceFrame(traceSite(traitSelf != null && target != null && isTraitMethod(target), site, traitSelf));
         try {
             return call(target, args);
         } finally {
             ctx.popTraceFrame(depth);
         }
+    }
+
+    /** {@link #callTraced} without a trait class. */
+    public Object callTraced(RootCallTarget target, Object[] args, Object site, dev.phpruntime.PhpContext ctx) {
+        return callTraced(target, args, site, null, ctx);
     }
 
     /**
@@ -95,13 +108,24 @@ public final class DispatchCallNode extends Node {
     }
 
     public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site, PhpClass traitSelf) {
-        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        return callMethodTraced(entry, args, site, traitSelf, dev.phpruntime.PhpContext.get(this));
+    }
+
+    /** {@link #callMethod} with the context the caller already holds. */
+    public Object callMethodTraced(PhpClass.MethodEntry entry, Object[] args, Node site, PhpClass traitSelf,
+                                   dev.phpruntime.PhpContext ctx) {
         int depth = ctx.pushTraceFrame(traceSite(entry.fromTrait(), site, traitSelf));
         try {
             return callMethod(entry, args);
         } finally {
             ctx.popTraceFrame(depth);
         }
+    }
+
+    /** {@link #callMethodTraced} without a trait class. */
+    public Object callMethodTraced(PhpClass.MethodEntry entry, Object[] args, Node site,
+                                   dev.phpruntime.PhpContext ctx) {
+        return callMethodTraced(entry, args, site, null, ctx);
     }
 
     /**
