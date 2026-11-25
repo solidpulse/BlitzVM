@@ -50,9 +50,12 @@ public final class PhpObject extends DynamicObject {
     /** True while the magic method {@code kind} runs for property {@code name} on this object. */
     public boolean inMagic(String name, int kind) {
         MagicGuardStack g = magicGuards;
-        if (g == null) {
-            return false;
-        }
+        return g != null && inMagicSlow(g, name, kind);
+    }
+
+    /** The search itself: guards exist only while a magic method runs, so it stays out of compiled sites. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static boolean inMagicSlow(MagicGuardStack g, String name, int kind) {
         for (int i = g.depth - 1; i >= 0; i--) {
             if ((g.kinds[i] & kind) != 0 && g.names[i].equals(name)) {
                 return true;
