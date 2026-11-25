@@ -37,6 +37,19 @@ public final class PhpStringBuffer {
     }
 
     public static Object flatten(Object value) {
-        return value instanceof PhpStringBuffer buffer ? buffer.asString() : value;
+        if (value instanceof PhpStringBuffer buffer) {
+            return flattenSlow(buffer);
+        }
+        return value;
+    }
+
+    /**
+     * A reference cell holds an append buffer only while {@code .=} is building a string in it;
+     * every other read returns the value itself. Keeping the buffer's conversion out of
+     * {@link #flatten} leaves each reference read with the type check alone.
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static String flattenSlow(PhpStringBuffer buffer) {
+        return buffer.asString();
     }
 }

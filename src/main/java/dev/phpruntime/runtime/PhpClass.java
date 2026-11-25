@@ -85,6 +85,19 @@ public final class PhpClass {
 
         /** The stored value, possibly a {@link PhpReference} cell; runs the initializer on first use. */
         private Object raw() {
+            if (initialized) {
+                return value;
+            }
+            return initializeAndGet();
+        }
+
+        /**
+         * The first read of a static property, which runs its initializer expression. That runs
+         * once per request and pulls in the expression's call machinery, so it stays out of the
+         * compiled read: every later static property access is two field reads and a branch.
+         */
+        @TruffleBoundary
+        private Object initializeAndGet() {
             if (!initialized) {
                 // Set first so a self-referencing initializer sees null instead of recursing;
                 // reset on failure so a throwing initializer is retried, as php does.
@@ -102,17 +115,28 @@ public final class PhpClass {
         /** The value, with a reference cell bound to this property unwrapped. */
         public Object get() {
             Object v = raw();
-            return v instanceof PhpReference ref ? ref.getValue() : v;
+            return v instanceof PhpReference ref ? getThroughCell(ref) : v;
+        }
+
+        /** A reference bound with {@code &Cls::$p}: rare, so its append-buffer handling stays out. */
+        @TruffleBoundary
+        private static Object getThroughCell(PhpReference ref) {
+            return ref.getValue();
         }
 
         /** Assigns, writing through a reference cell bound to this property. */
         public void set(Object v) {
             if (initialized && value instanceof PhpReference ref) {
-                ref.setValue(v);
+                setThroughCell(ref, v);
                 return;
             }
             initialized = true;
             value = v;
+        }
+
+        @TruffleBoundary
+        private static void setThroughCell(PhpReference ref, Object v) {
+            ref.setValue(v);
         }
 
         /** The cell for {@code &Cls::$p}, converting the plain value into one on first use. */

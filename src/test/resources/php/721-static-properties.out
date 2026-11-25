@@ -1,0 +1,18 @@
+0
+15 16 16 15
+42
+7
+6 7 7
+x
+7
+9
+11 11
+Error: Typed static property Typed::$uninitialized must not be accessed before initialization
+3 typed
+Error: Class "Late" not found
+9
+parent parent
+changed changed
+parent child
+trait trait
+trait changed
