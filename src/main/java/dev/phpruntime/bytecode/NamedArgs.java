@@ -345,7 +345,7 @@ final class NamedArgs {
             return callee;
         }
         if (callee instanceof PhpFunction fn) {
-            return rootOf(fn.callTarget());
+            return fn.signature();
         }
         if (callee instanceof PhpBytecodeRootNode.MethodCallee m) {
             if (m.entry() == null) {
@@ -353,16 +353,18 @@ final class NamedArgs {
             }
             // Prefer the declared function (shared AST) and fall back to the call target, which
             // belongs to the class template: a MethodEntry may be built per request.
-            PhpFunctionRootNode root = m.sigTarget() != null ? rootOf(m.sigTarget()) : null;
+            PhpFunctionRootNode root = m.signature();
             return root != null ? root : m.sigTarget();
         }
         if (callee instanceof PhpBytecodeRootNode.ValueCallee v) {
             dev.phpruntime.runtime.PhpCallable cb = v.callable();
-            return switch (cb.kind()) {
-                case BUILTIN -> cb.builtin();
-                case MAGIC_CALL -> null;
-                default -> v.sig() != null ? v.sig() : rootOf(cb.callTarget());
-            };
+            if (cb.kind() == dev.phpruntime.runtime.PhpCallable.Kind.BUILTIN) {
+                return cb.builtin();
+            }
+            if (cb.kind() == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL) {
+                return null;
+            }
+            return v.sig() != null ? v.sig() : rootOf(cb.callTarget());
         }
         return null;
     }
@@ -380,13 +382,20 @@ final class NamedArgs {
         }
         if (callee instanceof PhpBytecodeRootNode.ValueCallee v) {
             dev.phpruntime.runtime.PhpCallable cb = v.callable();
-            return switch (cb.kind()) {
-                case CLOSURE -> 4;
-                case USER_FUNCTION -> 5;
-                case METHOD -> 6 + (cb.traitSelf() != null ? 1 : 0);
-                case MAGIC_CALL -> 8;
-                case BUILTIN -> 9;
-            };
+            dev.phpruntime.runtime.PhpCallable.Kind kind = cb.kind();
+            if (kind == dev.phpruntime.runtime.PhpCallable.Kind.CLOSURE) {
+                return 4;
+            }
+            if (kind == dev.phpruntime.runtime.PhpCallable.Kind.USER_FUNCTION) {
+                return 5;
+            }
+            if (kind == dev.phpruntime.runtime.PhpCallable.Kind.METHOD) {
+                return 6 + (cb.traitSelf() != null ? 1 : 0);
+            }
+            if (kind == dev.phpruntime.runtime.PhpCallable.Kind.MAGIC_CALL) {
+                return 8;
+            }
+            return 9;
         }
         return 0;
     }
@@ -403,7 +412,7 @@ final class NamedArgs {
             return buildBuiltin(def, spec, 0);
         }
         if (callee instanceof PhpFunction fn) {
-            PhpFunctionRootNode fnRoot = rootOf(fn.callTarget());
+            PhpFunctionRootNode fnRoot = fn.signature();
             return fnRoot == null ? null : buildUser(fnRoot, spec, 0);
         }
         if (callee instanceof PhpBytecodeRootNode.MethodCallee m) {
@@ -415,7 +424,7 @@ final class NamedArgs {
                 // forwards them to the callable or constructor they invoke.
                 return null;
             }
-            PhpFunctionRootNode fnRoot = m.sigTarget() != null ? rootOf(m.sigTarget()) : null;
+            PhpFunctionRootNode fnRoot = m.signature();
             if (fnRoot != null) {
                 return buildUser(fnRoot, spec, 2);
             }

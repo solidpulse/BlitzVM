@@ -5419,6 +5419,34 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = NamedArgs.Spec.class)
     public static final class StartNamedArgs {
         @Specialization
+        static Object startMethod(NamedArgs.Spec spec, MethodCallee callee,
+                                  @Cached("create()") NamedArgs.Cache cache,
+                                  @Cached("create()") NamedArgs.PlanProfile profile) {
+            return new NamedArgs.Buffer(spec, profile.profile(cache.planFor(callee, spec)));
+        }
+
+        @Specialization
+        static Object startFunction(NamedArgs.Spec spec, PhpFunction callee,
+                                    @Cached("create()") NamedArgs.Cache cache,
+                                    @Cached("create()") NamedArgs.PlanProfile profile) {
+            return new NamedArgs.Buffer(spec, profile.profile(cache.planFor(callee, spec)));
+        }
+
+        @Specialization
+        static Object startBuiltin(NamedArgs.Spec spec, Builtins.Def callee,
+                                   @Cached("create()") NamedArgs.Cache cache,
+                                   @Cached("create()") NamedArgs.PlanProfile profile) {
+            return new NamedArgs.Buffer(spec, profile.profile(cache.planFor(callee, spec)));
+        }
+
+        @Specialization
+        static Object startValue(NamedArgs.Spec spec, ValueCallee callee,
+                                 @Cached("create()") NamedArgs.Cache cache,
+                                 @Cached("create()") NamedArgs.PlanProfile profile) {
+            return new NamedArgs.Buffer(spec, profile.profile(cache.planFor(callee, spec)));
+        }
+
+        @Specialization(replaces = {"startMethod", "startFunction", "startBuiltin", "startValue"})
         static Object start(NamedArgs.Spec spec, Object callee,
                             @Cached("create()") NamedArgs.Cache cache,
                             @Cached("create()") NamedArgs.PlanProfile profile) {
@@ -5744,7 +5772,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         m.obj(), m.cls(), m.name(), NamedArgs.magicArray(buffer)}, location));
             }
             Object[] args = methodArgs(m, buffer, profile.profile(buffer.plan), location);
-            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location, m.cls()));
+            if (m.entry().fromTrait()) {
+                return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location, m.cls()));
+            }
+            return Ops.ret(keepRef, dispatch.callMethod(m.entry(), args, location));
         }
 
         /**
@@ -5785,7 +5816,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             PhpObject obj = (PhpObject) object;
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             if (callee instanceof MethodCallee m) {
-                dispatch.callMethod(m.entry(), DoNamedMethod.methodArgs(m, buffer, profile.profile(buffer.plan), location), location, m.cls());
+                Object[] args = DoNamedMethod.methodArgs(m, buffer, profile.profile(buffer.plan), location);
+                if (m.entry().fromTrait()) {
+                    dispatch.callMethod(m.entry(), args, location, m.cls());
+                } else {
+                    dispatch.callMethod(m.entry(), args, location);
+                }
             } else {
                 String name = buffer.spec.firstName();
                 if (name != null) {
