@@ -4022,13 +4022,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return TypeTest.test(kind, args[0]);
         }
 
-        @TruffleBoundary
+        /**
+         * Calls a builtin from guest code. The context is read here, in compiled guest code,
+         * where the lookup is a few loads; inside the boundary the same lookup takes Truffle's
+         * generic path on every call.
+         */
         static Object callBuiltin(Builtins.Def def, Object[] args, SiteNode site) {
+            return callBuiltinBoundary(PhpContext.get(site), def, args, site);
+        }
+
+        @TruffleBoundary
+        private static Object callBuiltinBoundary(PhpContext ctx, Builtins.Def def, Object[] args, SiteNode site) {
             if (def.name().equals("assert")) {
                 return true;
             }
             CallNode.checkArity(def, args.length, site);
-            PhpContext ctx = PhpContext.get(site);
             Node prev = ctx.currentBuiltinCallSite();
             String prevName = ctx.enterBuiltin(site, def.name());
             try {
