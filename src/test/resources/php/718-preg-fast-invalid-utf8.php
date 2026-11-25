@@ -4,11 +4,15 @@ function show($label, $value) {
     echo $label, ': ', var_export($value, true), "\n";
 }
 
+$yamlPattern = <<<'PAT'
+#^(?P<key>(?:![^\s]++\s++)?(?:(?:"([^"\\]*+(?:\\.[^"\\]*+)*+)"|'([^']*+(?:''[^']*+)*+)')|[^ '"\[\{!].*?)) *\:(( |\t)++(?P<value>.+))?$#u
+PAT;
+
 $patterns = [
     '/[a-z]+/u',
     '/^(?:\/)+/u',
     '/^(?:\+|-)?0o(?P<value>[0-7_]++)$/u',
-    '#^(?P<key>(?:![^\s]++\s++)?(?:(?:"([^"\\]*+(?:\\.[^"\\]*+)*+)"|\'([^\']*+(?:\'\'[^\']*+)*+)\')|[^ \'"\[\{!].*?)) *\:(( |\t)++(?P<value>.+))?$#u',
+    $yamlPattern,
 ];
 $subjects = ["\xFF", "a\xFFb", "\xC3", "\xC3\xA9", "\xED\xA0\x80", "title: \xFF"];
 foreach ($patterns as $p) {
