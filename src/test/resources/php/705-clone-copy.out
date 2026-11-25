@@ -1,0 +1,58 @@
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(99)
+}
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+string(25) "changed through the clone"
+string(25) "changed through the clone"
+Error: Typed property App\Box::$uninit must not be accessed before initialization
+bool(true)
+string(7) "dynamic"
+bool(false)
+int(1)
+string(1) "c"
+int(1)
+int(10)
+int(2)
+array(1) {
+  [0]=>
+  string(1) "t"
+}
+Error: Cannot modify readonly property App\Point::$x
+int(1)
+array(0) {
+}
+array(2) {
+  [0]=>
+  string(6) "cloned"
+  [1]=>
+  string(4) "more"
+}
+App\Box {"items":[1,2],"count":0,"next":null,"ref":5}
+App\Point {"x":3,"y":4,"tags":[]}
+App\Counted {"log":["cloned"]}
+stdClass []
+ArrayObject []
+stdClass {"a":[1],"b":"x"}
+array(1) {
+  [0]=>
+  int(1)
+}
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+bool(true)

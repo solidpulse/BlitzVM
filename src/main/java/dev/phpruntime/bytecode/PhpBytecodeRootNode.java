@@ -4723,11 +4723,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object clone(Object value, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create()") DispatchCallNode dispatch,
-                            @Cached("create()") DynamicObject.GetKeyArrayNode keyArray,
-                            @Cached("create()") DynamicObject.GetNode propGet,
-                            @Cached("create()") DynamicObject.PutNode propPut) {
-            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch,
-                    keyArray, propGet, propPut);
+                            @Cached dev.phpruntime.nodes.expr.CloneNode.CopyNode copier) {
+            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch, copier);
         }
     }
 
@@ -4741,12 +4738,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create()") DispatchCallNode dispatch,
-                            @Cached("create()") DynamicObject.GetKeyArrayNode keyArray,
-                            @Cached("create()") DynamicObject.GetNode propGet,
-                            @Cached("create()") DynamicObject.PutNode propPut) {
+                            @Cached dev.phpruntime.nodes.expr.CloneNode.CopyNode copier) {
             Object traitSelf = traitSelfSlot >= 0 ? frame.getObject(traitSelfSlot) : null;
             return dev.phpruntime.nodes.expr.CloneNode.cloneValueWith(value, with, location, dispatch,
-                    callingClass.isEmpty() ? null : callingClass, traitSelf, keyArray, propGet, propPut);
+                    callingClass.isEmpty() ? null : callingClass, traitSelf, copier);
         }
     }
 

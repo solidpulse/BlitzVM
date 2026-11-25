@@ -31,9 +31,7 @@ public final class CloneNode extends PhpNode {
     }
 
     /** The semantics of {@code clone $value}; the bytecode operation passes this instruction's site. */
-    public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch,
-                                    DynamicObject.GetKeyArrayNode keyArray, DynamicObject.GetNode propGet,
-                                    DynamicObject.PutNode propPut) {
+    public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch, CopyNode copier) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR,
@@ -44,16 +42,14 @@ public final class CloneNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Trying to clone an uncloneable object of class " + obj.phpClass().name(), site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(site), obj, keyArray, propGet, propPut);
+        PhpObject copy = shallowCopy(PhpContext.get(site), obj, copier);
         runCloneMethod(obj, copy, site, dispatch);
         return copy;
     }
 
     /** {@code clone($obj, $with)}: clone, let {@code __clone} run, then assign the new values. */
     public static Object cloneValueWith(Object val, Object with, Node site, DispatchCallNode dispatch,
-                                        String callingClass, Object traitSelf,
-                                        DynamicObject.GetKeyArrayNode keyArray, DynamicObject.GetNode propGet,
-                                        DynamicObject.PutNode propPut) {
+                                        String callingClass, Object traitSelf, CopyNode copier) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR,
@@ -69,7 +65,7 @@ public final class CloneNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Trying to clone an uncloneable object of class " + obj.phpClass().name(), site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(site), obj, keyArray, propGet, propPut);
+        PhpObject copy = shallowCopy(PhpContext.get(site), obj, copier);
         runCloneMethod(obj, copy, site, dispatch);
         applyProperties(copy, properties, callingClass,
                 traitSelf instanceof PhpClass c ? c.template().lowerName() : null, site);
@@ -189,8 +185,7 @@ public final class CloneNode extends PhpNode {
         return state.copy();
     }
 
-    private static PhpObject shallowCopy(PhpContext ctx, PhpObject src, DynamicObject.GetKeyArrayNode keyArray,
-                                         DynamicObject.GetNode propGet, DynamicObject.PutNode propPut) {
+    private static PhpObject shallowCopy(PhpContext ctx, PhpObject src, CopyNode copier) {
         PhpObject copy = new PhpObject(
                 src.phpClass(),
                 ctx.nextObjectId(),
@@ -198,21 +193,56 @@ public final class CloneNode extends PhpNode {
         if (src.nativeState() != null) {
             copy.setNativeState(copyNativeState(src.nativeState()));
         }
-        Object[] keys = keyArray.execute(src);
-        for (int i = 0; i < keys.length; i++) {
-            Object k = keys[i];
-            Object raw = propGet.execute(src, k, PhpNull.INSTANCE);
-            if (raw == PhpClass.UNINITIALIZED) {
-                propPut.execute(copy, k, PhpClass.UNINITIALIZED);
-                continue;
-            }
-            if (raw instanceof dev.phpruntime.runtime.PhpReference ref) {
-                // PHP clone preserves explicit aliases, not a copy of their current values.
-                propPut.execute(copy, k, ref);
-                continue;
-            }
-            propPut.execute(copy, k, PhpOps.copyOnAssign(raw == null ? PhpNull.INSTANCE : raw));
-        }
+        copier.execute(src, copy);
         return copy;
+    }
+
+    /**
+     * Copies every property of the source into the new object as php's clone does: values as
+     * they are (uninitialized markers and reference cells included, so explicit aliases stay
+     * aliases), with each array value shared copy-on-write. A site that sees a few source shapes
+     * copies the storage with {@link DynamicObject.CopyPropertiesNode} and shares the arrays
+     * through getters made once per shape; property-by-property gets and puts through one node
+     * went megamorphic (about 2% of /blog cycles).
+     */
+    @com.oracle.truffle.api.dsl.GenerateInline(false)
+    public abstract static class CopyNode extends Node {
+        public abstract void execute(PhpObject src, PhpObject copy);
+
+        @com.oracle.truffle.api.dsl.Specialization(guards = "src.getShape() == cachedShape", limit = "3")
+        @com.oracle.truffle.api.nodes.ExplodeLoop
+        static void cached(PhpObject src, PhpObject copy,
+                           @com.oracle.truffle.api.dsl.Cached("src.getShape()") com.oracle.truffle.api.object.Shape cachedShape,
+                           @com.oracle.truffle.api.dsl.Cached(value = "getters(cachedShape)", dimensions = 1)
+                           com.oracle.truffle.api.object.PropertyGetter[] getters,
+                           @com.oracle.truffle.api.dsl.Cached DynamicObject.CopyPropertiesNode copyProperties) {
+            copyProperties.execute(src, copy);
+            for (int i = 0; i < getters.length; i++) {
+                if (getters[i].get(src) instanceof dev.phpruntime.runtime.PhpArray array) {
+                    array.share();
+                }
+            }
+        }
+
+        static com.oracle.truffle.api.object.PropertyGetter[] getters(com.oracle.truffle.api.object.Shape shape) {
+            java.util.List<Object> keys = shape.getKeyList();
+            com.oracle.truffle.api.object.PropertyGetter[] getters = new com.oracle.truffle.api.object.PropertyGetter[keys.size()];
+            for (int i = 0; i < getters.length; i++) {
+                getters[i] = shape.makePropertyGetter(keys.get(i));
+            }
+            return getters;
+        }
+
+        @com.oracle.truffle.api.dsl.Specialization(replaces = "cached")
+        @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+        static void generic(PhpObject src, PhpObject copy) {
+            DynamicObject.GetNode get = DynamicObject.GetNode.getUncached();
+            DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+            Object[] keys = DynamicObject.GetKeyArrayNode.getUncached().execute(src);
+            for (Object k : keys) {
+                Object raw = get.execute(src, k, PhpNull.INSTANCE);
+                put.execute(copy, k, raw == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(raw));
+            }
+        }
     }
 }
