@@ -67,7 +67,7 @@ public final class DispatchCallNode extends Node {
     /** With the class a trait method runs for, which php reports as the frame's class. */
     public Object call(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf) {
         dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
-        int depth = ctx.pushTraceFrame(traceSite(target != null && isTraitMethod(target), site, traitSelf));
+        int depth = ctx.pushTraceFrame(traceSite(traitSelf != null && target != null && isTraitMethod(target), site, traitSelf));
         try {
             return call(target, args);
         } finally {
