@@ -37,15 +37,24 @@ public abstract class FastBuiltin {
     }
 
     public final Object call(Node node, Object[] args) {
+        return call(node, args, PhpContext.get(node));
+    }
+
+    public final Object call(Node node, Object[] args, PhpContext ctx) {
         if (PhpStrings.CHECK) {
             PhpStrings.checkArguments(args, name);
-            Object value = callImpl(node, args);
+            Object value = callImplWith(node, args, ctx);
             return value == UNHANDLED ? UNHANDLED : PhpStrings.checkReturn(value, name);
         }
-        return callImpl(node, args);
+        return callImplWith(node, args, ctx);
     }
 
     abstract Object callImpl(Node node, Object[] args);
+
+    /** {@link #callImpl} for a fast path that needs the request context. */
+    Object callImplWith(Node node, Object[] args, PhpContext ctx) {
+        return callImpl(node, args);
+    }
 
     /** The fast path registered for a builtin name, or null. Called once per call site. */
     public static FastBuiltin lookup(String name) {
@@ -346,8 +355,13 @@ public abstract class FastBuiltin {
 
         @Override
         Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
             if (args.length == 1 && args[0] instanceof String name) {
-                return hasConstant(PhpContext.get(node), name);
+                return hasConstant(ctx, name);
             }
             return UNHANDLED;
         }
@@ -473,11 +487,15 @@ public abstract class FastBuiltin {
 
         @Override
         Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
             if (args.length < 2 || args.length > 3 || !(args[1] instanceof String targetName)
                     || (args.length == 3 && !(args[2] instanceof Boolean))) {
                 return UNHANDLED;
             }
-            PhpContext ctx = PhpContext.get(node);
             if (args[0] instanceof PhpObject subject) {
                 PhpClass target = ctx.lookupClass(targetName);
                 return target != null && subject.phpClass().isInstanceOf(target);
@@ -503,9 +521,14 @@ public abstract class FastBuiltin {
 
         @Override
         Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
             if ((args.length == 1 || (args.length == 2 && args[1] instanceof Boolean))
                     && args[0] instanceof String name) {
-                PhpClass cls = PhpContext.get(node).lookupClass(name);
+                PhpClass cls = ctx.lookupClass(name);
                 if (cls != null) {
                     return !cls.isInterface() && !cls.isTrait();
                 }
@@ -527,9 +550,14 @@ public abstract class FastBuiltin {
 
         @Override
         Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
             if ((args.length == 1 || (args.length == 2 && args[1] instanceof Boolean))
                     && args[0] instanceof String name) {
-                PhpClass cls = PhpContext.get(node).lookupClass(name);
+                PhpClass cls = ctx.lookupClass(name);
                 if (cls != null) {
                     return cls.isInterface();
                 }

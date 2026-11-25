@@ -641,4 +641,11 @@ public final class IndexLValueNode extends LValueNode {
             default -> { if (single) { b.endIssetIndex(); } else { b.endIssetPath(); } }
         }
     }
+
+    @Override
+    public Object readValue(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        Object v = read(frame, keys, ctx);
+        return v == null ? undefined(ctx) : v;
+    }
+
 }

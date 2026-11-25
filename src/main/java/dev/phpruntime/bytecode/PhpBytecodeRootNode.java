@@ -1941,17 +1941,18 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         @Specialization
-        static Object object(PhpObject object, @Bind PhpBytecodeRootNode root,
+        static Object object(VirtualFrame frame, PhpObject object, @Bind PhpBytecodeRootNode root,
                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
-                             @Cached("create(root)") IteratorNode iterator, @Bind Node node) {
+                             @Cached("create(root)") IteratorNode iterator) {
             if (object.phpClass().hasSplInterface(SplInterfaces.TRAVERSABLE)) {
                 PhpObject it = iterator.resolve(object);
                 iterator.rewind(it, location);
                 return new Cursor(null, it, null);
             }
             PhpFunctionRootNode fn = root.function;
-            return new Cursor(null, null, Ops.visibleEntries(PhpContext.get(node), object, fn == null ? null : fn.declaringClass()));
+            return new Cursor(null, null, Ops.visibleEntries(root.context(frame, bytecode), object,
+                    fn == null ? null : fn.declaringClass()));
         }
 
         @Fallback
@@ -2986,7 +2987,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             switch (mode) {
                 case P_READ:
                     if (engine instanceof dev.phpruntime.nodes.var.IndexLValueNode il) {
-                        return il.readOrWarn(frame, keys);
+                        return il.readOrWarn(frame, keys, ctx);
                     }
                     if (engine instanceof dev.phpruntime.nodes.var.PropertyLValueNode p) {
                         return p.executeOn(frame, keys[0], (String) keys[1], keys, ctx);
@@ -3282,7 +3283,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             if (fastPath != null && def == fastPath.def()) {
                 // The usual argument shape of a hot builtin, answered without the boundary.
-                Object fastValue = fastPath.call(node, args);
+                Object fastValue = fastPath.call(node, args, ctx);
                 if (fastValue != FastBuiltin.UNHANDLED) {
                     return fastValue;
                 }
@@ -3296,7 +3297,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             if (callbacks != null) {
                 CallNode.checkArity(def, args.length, location);
-                Object fast = callbacks.execute(def, args);
+                Object fast = callbacks.execute(def, args, ctx);
                 if (fast != ArrayCallbackNode.UNHANDLED) {
                     return fast;
                 }
@@ -4940,11 +4941,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     public static final class Clone {
         @Specialization
-        static Object clone(Object value, @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+        static Object clone(VirtualFrame frame, Object value, @Bind BytecodeNode bytecode,
+                            @Bind("$bytecodeIndex") int bci, @Bind PhpBytecodeRootNode root,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create()") DispatchCallNode dispatch,
                             @Cached dev.phpruntime.nodes.expr.CloneNode.CopyNode copier) {
-            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch, copier);
+            return dev.phpruntime.nodes.expr.CloneNode.cloneValue(value, location, dispatch, copier,
+                    root.context(frame, bytecode));
         }
     }
 
@@ -4956,12 +4959,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object clone(VirtualFrame frame, String callingClass, int traitSelfSlot, Object value, Object with,
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                            @Bind PhpBytecodeRootNode root,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create()") DispatchCallNode dispatch,
                             @Cached dev.phpruntime.nodes.expr.CloneNode.CopyNode copier) {
             Object traitSelf = traitSelfSlot >= 0 ? frame.getObject(traitSelfSlot) : null;
             return dev.phpruntime.nodes.expr.CloneNode.cloneValueWith(value, with, location, dispatch,
-                    callingClass.isEmpty() ? null : callingClass, traitSelf, copier);
+                    callingClass.isEmpty() ? null : callingClass, traitSelf, copier,
+                    root.context(frame, bytecode));
         }
     }
 
@@ -5783,14 +5788,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 // fast paths apply (is_a(..., allow_string: true), array_any(array:, callback:)).
                 Object[] values = NamedArgs.boundValues(buffer, plan);
                 if (fastPath != null && builtin == fastPath.def()) {
-                    Object fast = fastPath.call(node, values);
+                    Object fast = fastPath.call(node, values, root.context(frame, bytecode));
                     if (fast != FastBuiltin.UNHANDLED) {
                         return fast;
                     }
                 }
                 if (callbacks != null) {
                     CallNode.checkArity(builtin, values.length, location);
-                    Object fast = callbacks.execute(builtin, values);
+                    Object fast = callbacks.execute(builtin, values, root.context(frame, bytecode));
                     if (fast != ArrayCallbackNode.UNHANDLED) {
                         return fast;
                     }
@@ -6280,11 +6285,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = int.class, name = "functionId")
     public static final class FirstClassFunction {
         @Specialization
-        static Object create(String nsName, int nsFunctionId, String name, int functionId, @Bind Node node,
+        static Object create(VirtualFrame frame, String nsName, int nsFunctionId, String name, int functionId,
                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Bind PhpBytecodeRootNode root,
                              @Cached(value = "lookup(name)", neverDefault = false) Builtins.Def builtin,
                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
-            return FirstClassCallableNode.createFunction(PhpContext.get(node),
+            return FirstClassCallableNode.createFunction(root.context(frame, bytecode),
                     nsName.isEmpty() ? null : nsName, nsFunctionId, name, functionId, builtin, location);
         }
 
@@ -6299,11 +6305,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = MethodSite.class)
     public static final class FirstClassMethod {
         @Specialization
-        static Object create(MethodSite site, Object target, Object nameValue, @Bind Node node,
+        static Object create(VirtualFrame frame, MethodSite site, Object target, Object nameValue,
                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Bind PhpBytecodeRootNode root,
                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             String name = site.name() != null ? site.name() : Ops.toStr(nameValue);
-            return FirstClassCallableNode.createMethod(PhpContext.get(node), target, name, site.methodId(), location);
+            return FirstClassCallableNode.createMethod(root.context(frame, bytecode), target, name, site.methodId(),
+                    location);
         }
     }
 
@@ -6314,14 +6322,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = boolean.class, name = "hasCalledClass")
     public static final class FirstClassStaticMethod {
         @Specialization
-        static Object create(MethodSite site, boolean forwarding, boolean hasCalledClass, PhpClass targetClass,
-                             Object nameValue, Object thisValue, Object calledClassValue, @Bind Node node,
+        static Object create(VirtualFrame frame, MethodSite site, boolean forwarding, boolean hasCalledClass,
+                             PhpClass targetClass, Object nameValue, Object thisValue, Object calledClassValue,
                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Bind PhpBytecodeRootNode root,
                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             String name = site.name() != null ? site.name() : Ops.toStr(nameValue);
             Object calledArg = forwarding && hasCalledClass ? calledClassValue : targetClass;
-            return FirstClassCallableNode.createStaticMethod(PhpContext.get(node), targetClass, name, site.methodId(),
-                    forwarding, thisValue, calledArg, location);
+            return FirstClassCallableNode.createStaticMethod(root.context(frame, bytecode), targetClass, name,
+                    site.methodId(), forwarding, thisValue, calledArg, location);
         }
     }
 
@@ -6329,11 +6338,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     public static final class FirstClassCallable {
         @Specialization
-        static Object create(Object target, Object callerThis, @Bind Node node,
+        static Object create(VirtualFrame frame, Object target, Object callerThis,
                              @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                             @Bind PhpBytecodeRootNode root,
                              @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             return dev.phpruntime.runtime.PhpCallable.toClosure(
-                    PhpContext.get(node), target, callerThis, location);
+                    root.context(frame, bytecode), target, callerThis, location);
         }
     }
 

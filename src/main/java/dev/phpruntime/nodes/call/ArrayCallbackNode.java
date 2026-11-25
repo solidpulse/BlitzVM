@@ -78,18 +78,22 @@ public final class ArrayCallbackNode extends Node {
 
     /** The builtin's answer, or {@link #UNHANDLED} when the builtin must run it. */
     public Object execute(Builtins.Def def, Object[] args) {
+        return execute(def, args, PhpContext.get(this));
+    }
+
+    public Object execute(Builtins.Def def, Object[] args, PhpContext ctx) {
         if (dev.phpruntime.runtime.PhpStrings.CHECK) {
             // The byte-string assertions and the builtin's argument checks run in def.call.
             return UNHANDLED;
         }
         return switch (kind) {
-            case MAP -> map(args);
-            case FILTER -> filter(def, args);
-            default -> reduce(def, args);
+            case MAP -> map(args, ctx);
+            case FILTER -> filter(def, args, ctx);
+            default -> reduce(def, args, ctx);
         };
     }
 
-    private Object map(Object[] args) {
+    private Object map(Object[] args, PhpContext ctx) {
         // Several arrays and a null callback keep the builtin's own row-building path.
         if (args.length != 2 || !(args[1] instanceof PhpArray src)) {
             return UNHANDLED;
@@ -105,7 +109,6 @@ public final class ArrayCallbackNode extends Node {
         PhpClass calledClass = closure.calledClass();
         boolean list = src.isList();
         PhpArray out = PhpArray.withCapacity(src.size(), !list);
-        PhpContext ctx = PhpContext.get(this);
         Node previousSite = ctx.currentBuiltinCallSite();
         String previousName = ctx.enterBuiltin(site, "array_map");
         CallbackFrame callback = beginCallback(ctx, fnRoot);
@@ -131,7 +134,7 @@ public final class ArrayCallbackNode extends Node {
         return out;
     }
 
-    private Object filter(Builtins.Def def, Object[] args) {
+    private Object filter(Builtins.Def def, Object[] args, PhpContext ctx) {
         if ((args.length != 2 && args.length != 3) || !(args[0] instanceof PhpArray src)) {
             return UNHANDLED;
         }
@@ -156,7 +159,6 @@ public final class ArrayCallbackNode extends Node {
         boolean list = src.isList();
         PhpArray out = PhpArray.withCapacity(src.size(), !list);
         int kept = 0;
-        PhpContext ctx = PhpContext.get(this);
         Node previousSite = ctx.currentBuiltinCallSite();
         String previousName = ctx.enterBuiltin(site, def.name());
         CallbackFrame callback = beginCallback(ctx, fnRoot);
@@ -209,7 +211,7 @@ public final class ArrayCallbackNode extends Node {
         return out;
     }
 
-    private Object reduce(Builtins.Def def, Object[] args) {
+    private Object reduce(Builtins.Def def, Object[] args, PhpContext ctx) {
         if ((args.length != 2 && args.length != 3) || !(args[0] instanceof PhpArray src)) {
             return UNHANDLED;
         }
@@ -223,7 +225,6 @@ public final class ArrayCallbackNode extends Node {
         Object boundThis = closure.boundThis();
         PhpClass calledClass = closure.calledClass();
         Object acc = args.length > 2 ? PhpOps.copyOnAssign(args[2]) : PhpNull.INSTANCE;
-        PhpContext ctx = PhpContext.get(this);
         Node previousSite = ctx.currentBuiltinCallSite();
         String previousName = ctx.enterBuiltin(site, def.name());
         CallbackFrame callback = beginCallback(ctx, fnRoot);

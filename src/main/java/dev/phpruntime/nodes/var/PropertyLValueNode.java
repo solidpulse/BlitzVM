@@ -1144,4 +1144,11 @@ public final class PropertyLValueNode extends LValueNode {
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
     }
+
+    @Override
+    public Object readValue(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        Object v = read(frame, keys, ctx);
+        return v == null ? undefined(ctx) : v;
+    }
+
 }

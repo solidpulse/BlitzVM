@@ -32,6 +32,11 @@ public final class CloneNode extends PhpNode {
 
     /** The semantics of {@code clone $value}; the bytecode operation passes this instruction's site. */
     public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch, CopyNode copier) {
+        return cloneValue(val, site, dispatch, copier, PhpContext.get(site));
+    }
+
+    public static Object cloneValue(Object val, Node site, DispatchCallNode dispatch, CopyNode copier,
+                                    PhpContext ctx) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR,
@@ -42,7 +47,7 @@ public final class CloneNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Trying to clone an uncloneable object of class " + obj.phpClass().name(), site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(site), obj, copier);
+        PhpObject copy = shallowCopy(ctx, obj, copier);
         runCloneMethod(obj, copy, site, dispatch);
         return copy;
     }
@@ -50,6 +55,11 @@ public final class CloneNode extends PhpNode {
     /** {@code clone($obj, $with)}: clone, let {@code __clone} run, then assign the new values. */
     public static Object cloneValueWith(Object val, Object with, Node site, DispatchCallNode dispatch,
                                         String callingClass, Object traitSelf, CopyNode copier) {
+        return cloneValueWith(val, with, site, dispatch, callingClass, traitSelf, copier, PhpContext.get(site));
+    }
+
+    public static Object cloneValueWith(Object val, Object with, Node site, DispatchCallNode dispatch,
+                                        String callingClass, Object traitSelf, CopyNode copier, PhpContext ctx) {
         if (!(val instanceof PhpObject obj)) {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR,
@@ -65,7 +75,7 @@ public final class CloneNode extends PhpNode {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError("Trying to clone an uncloneable object of class " + obj.phpClass().name(), site);
         }
-        PhpObject copy = shallowCopy(PhpContext.get(site), obj, copier);
+        PhpObject copy = shallowCopy(ctx, obj, copier);
         runCloneMethod(obj, copy, site, dispatch);
         applyProperties(copy, properties, callingClass,
                 traitSelf instanceof PhpClass c ? c.template().lowerName() : null, site);

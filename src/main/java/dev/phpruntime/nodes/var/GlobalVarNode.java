@@ -36,7 +36,11 @@ public final class GlobalVarNode extends LValueNode {
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
-        PhpContext ctx = PhpContext.get(this);
+        return read(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public Object read(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
         if (globalId < 0) {
             return ctx.buildGlobalsSnapshot();
@@ -46,48 +50,70 @@ public final class GlobalVarNode extends LValueNode {
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
+        write(frame, keys, value, PhpContext.get(this));
+    }
+
+    @Override
+    public void write(VirtualFrame frame, Object[] keys, Object value, PhpContext ctx) {
         if (globalId < 0) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
         }
-        PhpContext ctx = PhpContext.get(this);
         if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
         ctx.writeGlobalById(globalId, value);
     }
 
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
+        return obtainCell(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         if (globalId < 0) {
             throw PhpError.fatal("Cannot acquire reference to $GLOBALS").at(this);
         }
-        PhpContext ctx = PhpContext.get(this);
         if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
         return ctx.globalRefById(globalId);
     }
 
     @Override
     public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded) {
-        if (globalId < 0) { return super.appendString(frame, keys, suffix, resultNeeded); }
-        PhpContext ctx = PhpContext.get(this);
+        return appendString(frame, keys, suffix, resultNeeded, PhpContext.get(this));
+    }
+
+    @Override
+    public String appendString(VirtualFrame frame, Object[] keys, String suffix, boolean resultNeeded,
+                               PhpContext ctx) {
+        if (globalId < 0) { return super.appendString(frame, keys, suffix, resultNeeded, ctx); }
         if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
         return ctx.appendGlobalById(globalId, suffix, resultNeeded);
     }
 
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
+        bindCell(frame, keys, cell, PhpContext.get(this));
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell, PhpContext ctx) {
         if (globalId < 0) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
         }
-        PhpContext ctx = PhpContext.get(this);
         if (lazySuperglobal) { ctx.exposeAutoGlobalById(globalId); }
         ctx.bindGlobalById(globalId, cell);
     }
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
+        unset(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public void unset(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         if (globalId < 0) {
             throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
         }
-        PhpContext.get(this).unsetGlobalById(globalId);
+        ctx.unsetGlobalById(globalId);
     }
 
     @Override
@@ -103,4 +129,11 @@ public final class GlobalVarNode extends LValueNode {
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
     }
+
+    @Override
+    public Object readValue(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        Object v = read(frame, keys, ctx);
+        return v == null ? undefined(ctx) : v;
+    }
+
 }
