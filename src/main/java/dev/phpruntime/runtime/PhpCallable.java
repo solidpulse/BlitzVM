@@ -377,7 +377,8 @@ public final class PhpCallable {
         return CallArgHelper.unwrapReturn(res);
     }
 
-    private static PhpFunctionRootNode rootOf(RootCallTarget target) {
+    /** The guest function a call target belongs to, or null for a generator entry or wrapper. */
+    public static PhpFunctionRootNode rootOf(RootCallTarget target) {
         return target != null && PhpFunctionRootNode.of(target.getRootNode()) instanceof PhpFunctionRootNode r ? r : null;
     }
 
@@ -537,7 +538,8 @@ public final class PhpCallable {
         return args;
     }
 
-    private static Object adaptUserArg(PhpFunctionRootNode fnRoot, int paramIdx, Object arg, PhpContext ctx, Node loc) {
+    /** Parameter coercion and by-value copy for an argument a builtin passes to a callback. */
+    public static Object adaptUserArg(PhpFunctionRootNode fnRoot, int paramIdx, Object arg, PhpContext ctx, Node loc) {
         boolean expectsRef = fnRoot != null && fnRoot.isParamByRef(paramIdx);
         if (expectsRef) {
             if (arg instanceof PhpReference ref) {

@@ -432,6 +432,24 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
+     * Appends one value into room already reserved by {@link #withCapacity}, with the field
+     * updates of {@link #append} but none of its boundary: callers that build a presized packed
+     * result in a compiled loop use it. The caller guarantees a packed array with spare capacity.
+     */
+    public void appendReserved(Object value) {
+        assert keys == null && size < values.length && !immutable : "appendReserved without reserved room";
+        values[size] = value;
+        if (pointer < 0) {
+            pointer = size;
+        }
+        used = ++size;
+        if (!nextIndexInitialized || size - 1 >= nextIndex) {
+            nextIndex = size;
+            nextIndexInitialized = true;
+        }
+    }
+
+    /**
      * True when converting an element to a string can run PHP: an object's __toString(), or the
      * "Array to string conversion" warning of a nested array reaching a user error handler.
      */

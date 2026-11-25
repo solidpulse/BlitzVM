@@ -1,0 +1,52 @@
+map trace:
+#0 [internal function]: {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:5}()
+#1 /home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php(7): array_map()
+#2 {main}
+filter trace:
+#0 [internal function]: {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:13}()
+#1 /home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php(13): array_filter()
+#2 {main}
+reduce trace:
+#0 [internal function]: {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:19}()
+#1 /home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php(19): array_reduce()
+#2 {main}
+sort trace:
+#0 [internal function]: {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:26}()
+#1 /home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php(26): usort()
+#2 {main}
+bt0 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:31} [internal]:0
+bt1 array_map 697-array-callback-traces.php:38
+bt0 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:31} 697-array-callback-traces.php:39
+bt1 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:39} [internal]:0
+bt2 array_reduce 697-array-callback-traces.php:39
+warn 2 Undefined array key "missing" 697-array-callback-traces.php:48
+warn 2 Undefined array key "missing" 697-array-callback-traces.php:52
+warn 2 Undefined variable $undefinedInReduce 697-array-callback-traces.php:55
+warn 2 Undefined variable $undefinedInSort 697-array-callback-traces.php:59
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:63}(): Argument #1 ($x) must be passed by reference, value given 697-array-callback-traces.php:64
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:63}(): Argument #1 ($x) must be passed by reference, value given 697-array-callback-traces.php:64
+array(2) {
+  [0]=>
+  int(2)
+  [1]=>
+  int(3)
+}
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:65}(): Argument #1 ($x) must be passed by reference, value given 697-array-callback-traces.php:66
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:65}(): Argument #1 ($x) must be passed by reference, value given 697-array-callback-traces.php:66
+array(1) {
+  [1]=>
+  int(2)
+}
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:67}(): Argument #1 ($acc) must be passed by reference, value given 697-array-callback-traces.php:68
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:67}(): Argument #2 ($v) must be passed by reference, value given 697-array-callback-traces.php:68
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:67}(): Argument #1 ($acc) must be passed by reference, value given 697-array-callback-traces.php:68
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:67}(): Argument #2 ($v) must be passed by reference, value given 697-array-callback-traces.php:68
+int(3)
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:69}(): Argument #1 ($a) must be passed by reference, value given 697-array-callback-traces.php:71
+warn 2 {closure:/home/silva/code/java/php-runtime-t67/src/test/resources/php/697-array-callback-traces.php:69}(): Argument #2 ($b) must be passed by reference, value given 697-array-callback-traces.php:71
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}

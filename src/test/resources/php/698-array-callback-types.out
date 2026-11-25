@@ -1,0 +1,29 @@
+array(3) {
+  [0]=>
+  int(6)
+  [1]=>
+  int(7)
+  [2]=>
+  int(8)
+}
+array(1) {
+  [0]=>
+  int(6)
+}
+array(1) {
+  [0]=>
+  int(9)
+}
+array(1) {
+  [0]=>
+  int(7)
+}
+strict return: {closure:strictReturnClosure():15}(): Return value must be of type int, string returned
+map param: {closure:698-array-callback-types.php:24}(): Argument #1 ($x) must be of type int, string given
+filter param: {closure:698-array-callback-types.php:29}(): Argument #1 ($v) must be of type int, string given
+reduce param: {closure:698-array-callback-types.php:34}(): Argument #2 ($v) must be of type int, string given
+sort param: {closure:698-array-callback-types.php:40}(): Argument #1 ($a) must be of type int, string given
+array(1) {
+  [0]=>
+  int(6)
+}

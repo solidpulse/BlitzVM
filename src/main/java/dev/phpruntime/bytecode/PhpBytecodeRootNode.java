@@ -36,6 +36,7 @@ import dev.phpruntime.builtins.FastBuiltin;
 import dev.phpruntime.nodes.ControlFlow;
 import dev.phpruntime.nodes.PhpFunctionRootNode;
 import dev.phpruntime.nodes.PhpRootNode;
+import dev.phpruntime.nodes.call.ArrayCallbackNode;
 import dev.phpruntime.nodes.call.CallArgHelper;
 import dev.phpruntime.nodes.call.CallNode;
 import dev.phpruntime.nodes.call.DispatchCallNode;
@@ -3070,6 +3071,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object builtin(CallSite site, Builtins.Def def, Object[] args, SiteNode location,
                               @Bind Node node,
                               @Cached(value = "createSpl(node, site)", neverDefault = false) SplBuiltinNode spl,
+                              @Cached(value = "createArrayCallbacks(site, location)", neverDefault = false) ArrayCallbackNode callbacks,
                               @Cached(value = "intrinsicDef(site)", neverDefault = false) Builtins.Def intrinsicDef,
                               @Cached(value = "intrinsicKind(site)", neverDefault = false) int intrinsicKind,
                               @Cached(value = "fastFor(site)", neverDefault = false) FastBuiltin fastPath) {
@@ -3095,6 +3097,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     return fast;
                 }
             }
+            if (callbacks != null) {
+                CallNode.checkArity(def, args.length, location);
+                Object fast = callbacks.execute(def, args);
+                if (fast != ArrayCallbackNode.UNHANDLED) {
+                    return fast;
+                }
+            }
             if (def.refMask() != 0) {
                 return Ops.callBuiltinValue(def, args, location);
             }
@@ -3117,6 +3126,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         static SplBuiltinNode createSpl(Node node, CallSite site) {
             return SplBuiltinNode.create(node.getRootNode(), site.splName());
+        }
+
+        /** The per-site closure-callback path for array_map and friends, or null. */
+        static ArrayCallbackNode createArrayCallbacks(CallSite site, SiteNode location) {
+            return ArrayCallbackNode.create(site.name(), location);
         }
     }
 
