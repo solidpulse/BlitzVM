@@ -2273,7 +2273,33 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = MethodSite.class)
     @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class ResolveMethod {
-        @Specialization
+        /**
+         * A literal method name on an object of a class this site has seen: classes cannot
+         * change once declared and are shared by every request, so the entry is a constant and
+         * the call that follows can use it directly. Closure objects keep the general path.
+         */
+        @Specialization(guards = {"site.methodId() >= 0", "obj.phpClass() == cachedClass", "cachedEntry != null"},
+                limit = "3")
+        static void cached(VirtualFrame frame, MethodSite site, LocalAccessor callee, PhpObject obj, Object nameValue,
+                           @Bind BytecodeNode bytecode,
+                           @Cached("obj.phpClass()") PhpClass cachedClass,
+                           @Cached("cacheableEntry(cachedClass, site)") PhpClass.MethodEntry cachedEntry) {
+            Object thisArg = cachedEntry.isStatic() ? PhpNull.INSTANCE : obj;
+            callee.setObject(bytecode, frame,
+                    new MethodCallee(cachedEntry, thisArg, cachedClass, cachedEntry.callTarget(), obj, site.name(), null));
+        }
+
+        /** The entry to cache for a class, or null when the site needs the general path. */
+        static PhpClass.MethodEntry cacheableEntry(PhpClass cls, MethodSite site) {
+            PhpClass.MethodEntry entry = cls.methodById(site.methodId());
+            if (entry == null || entry.callTarget() == null
+                    || entry.callTarget().getRootNode() instanceof dev.phpruntime.nodes.call.ClosureInvokeRootNode) {
+                return null;
+            }
+            return entry;
+        }
+
+        @Specialization(replaces = "cached")
         static void resolve(VirtualFrame frame, MethodSite site, LocalAccessor callee, Object target, Object nameValue,
                             @Bind BytecodeNode bytecode,
                             @Cached("createIdentityProfile()") com.oracle.truffle.api.profiles.ValueProfile sigIdentity) {
