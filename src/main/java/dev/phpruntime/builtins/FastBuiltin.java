@@ -9,7 +9,6 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
-import dev.phpruntime.runtime.PhpResource;
 import dev.phpruntime.runtime.PhpStringBuffer;
 import dev.phpruntime.runtime.PhpStrings;
 
@@ -282,8 +281,9 @@ public abstract class FastBuiltin {
                 if (value instanceof PhpReference ref) {
                     value = ref.getValue();
                 }
-                if (value == null || value instanceof PhpObject || value instanceof PhpArray
-                        || value instanceof PhpResource) {
+                if (value == null || (!strict && value instanceof PhpObject)) {
+                    // An object compared with a string or int can run __toString; let the
+                    // builtin do it.
                     return UNHANDLED;
                 }
                 if (strict ? PhpOps.strictEquals(needle, value) : PhpOps.looseEquals(needle, value)) {
