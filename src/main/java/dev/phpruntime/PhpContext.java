@@ -76,6 +76,11 @@ public final class PhpContext {
     private final HashMap<String, Object> classByExactName = new HashMap<>();
     /** Bumped whenever a class or alias is added to {@link #classes}. */
     private int classGeneration;
+
+    /** The generation a site compares before reusing a class it resolved from the table. */
+    public int classGeneration() {
+        return classGeneration;
+    }
     private int missingClassEntries;
     /** Null until a class's static properties or constants are used; the by-id array mirrors it. */
     private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
