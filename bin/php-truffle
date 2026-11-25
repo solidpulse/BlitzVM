@@ -25,6 +25,14 @@ JDK_FLAGS+=(-XX:-DontCompileHugeMethods)
 if grep -q '\[madvise\]' /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null; then
   JDK_FLAGS+=(-XX:+UseTransparentHugePages)
 fi
+# G1 grows the heap whenever GC takes more than 1/(1+GCTimeRatio) of the time (default 12, about
+# 7.7%). During warm-up it crosses that, expands, and keeps the memory under steady load even
+# though GC then takes ~1.5%. Allowing 20% before expanding keeps the heap near what the app
+# needs without a hard cap: Tempest /blog worker mode, same throughput (675 vs 673-687 rps),
+# committed heap 972 -> 620 MB, RSS 1.42 -> 1.09 GB. PHP_TRUFFLE_OPTS can set its own ratio.
+if [[ "${PHP_TRUFFLE_OPTS:-}" != *GCTimeRatio* ]]; then
+  JDK_FLAGS+=(-XX:GCTimeRatio=4)
+fi
 JDK_MAJOR="$(sed -n 's/^JAVA_VERSION="\([0-9]*\).*/\1/p' "${JAVA_HOME:-/nonexistent}/release" 2>/dev/null || true)"
 if [[ -n "$JDK_MAJOR" && "$JDK_MAJOR" -ge 23 ]]; then
   JDK_FLAGS+=(--sun-misc-unsafe-memory-access=allow)
