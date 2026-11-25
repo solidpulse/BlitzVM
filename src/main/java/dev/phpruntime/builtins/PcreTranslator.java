@@ -54,9 +54,13 @@ final class PcreTranslator {
         final Lead lead;
         /** PCRE (*MARK:name) verbs, as the Java group that marks their position. */
         final java.util.LinkedHashMap<Integer, String> marks;
+        /** A regex-free matcher for a simple shape, or null. */
+        final PcreFast fast;
+        /** The pattern body is empty: it matches the empty string at every position. */
+        final boolean empty;
 
         Compiled(Pattern pattern, int groupCount, int[][] javaGroups, String[] names, boolean utf, String decodedPattern,
-                 String prefix, Lead lead, java.util.LinkedHashMap<Integer, String> marks) {
+                 String prefix, Lead lead, java.util.LinkedHashMap<Integer, String> marks, PcreFast fast, boolean empty) {
             this.pattern = pattern;
             this.groupCount = groupCount;
             this.javaGroups = javaGroups;
@@ -66,6 +70,8 @@ final class PcreTranslator {
             this.prefix = prefix;
             this.lead = lead;
             this.marks = marks;
+            this.fast = fast;
+            this.empty = empty;
         }
 
         /** The MARK value PCRE reports for this match, or null. */
@@ -321,6 +327,11 @@ final class PcreTranslator {
             throw new PatternError("Compilation failed: " + e.getMessage() + " is not supported by this runtime");
         }
         String body = resolveBackrefs(out.toString());
+        PcreFast fast = PcreFast.analyze(body, caseless, multiline, dotall, utf, anchored, dollarEndOnly);
+        if (fast != null && fast.groups != userGroups) {
+            fast = null;
+        }
+        boolean empty = body.isEmpty();
         String prefix = anchored ? null : literalPrefix(body, caseless);
         if (anchored) {
             body = "\\G(?:" + body + ")";
@@ -352,7 +363,7 @@ final class PcreTranslator {
             names[g] = userNames.get(g);
         }
         Lead lead = anchored || prefix != null ? null : leadLiteral(body, caseless, utf);
-        return new Compiled(pattern, userGroups, map, names, utf, src, prefix, lead, marks);
+        return new Compiled(pattern, userGroups, map, names, utf, src, prefix, lead, marks, fast, empty);
     }
 
     // ------------------------------------------------------------------ structure
