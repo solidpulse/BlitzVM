@@ -541,3 +541,192 @@ replace-count: array (
 grep: array (
   1 => 'abc',
 )
+== /é/u "a\u00e9"
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'é',
+  ),
+)
+offset: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+)
+all: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'é',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split: array (
+  0 => 'a',
+  1 => '',
+)
+split-flags: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 0,
+  ),
+)
+replace: 'a<é>'
+replace-count: array (
+  0 => 'a<é>',
+  1 => 1,
+)
+grep: array (
+  0 => 'aé',
+)
+== /é/ "a\u00e9"
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'é',
+  ),
+)
+offset: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+)
+all: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'é',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split: array (
+  0 => 'a',
+  1 => '',
+)
+split-flags: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 0,
+  ),
+)
+replace: 'a<é>'
+replace-count: array (
+  0 => 'a<é>',
+  1 => 1,
+)
+grep: array (
+  0 => 'aé',
+)
+== /abc/iu "ABC"
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'ABC',
+  ),
+)
+offset: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+)
+all: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'ABC',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+split: array (
+  0 => '',
+  1 => '',
+)
+split-flags: array (
+)
+replace: '<ABC>'
+replace-count: array (
+  0 => '<ABC>',
+  1 => 1,
+)
+grep: array (
+  0 => 'ABC',
+  1 => 'abc',
+)
+== /\x{1F600}/u "a\ud83d\ude00b"
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '😀',
+  ),
+)
+offset: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+)
+all: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '😀',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split: array (
+  0 => 'a',
+  1 => 'b',
+)
+split-flags: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 0,
+  ),
+  1 => 
+  array (
+    0 => 'b',
+    1 => 5,
+  ),
+)
+replace: 'a<😀>b'
+replace-count: array (
+  0 => 'a<😀>b',
+  1 => 1,
+)
+grep: array (
+  0 => 'a😀b',
+)

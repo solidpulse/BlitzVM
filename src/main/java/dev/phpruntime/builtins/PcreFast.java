@@ -288,6 +288,9 @@ abstract class PcreFast {
 
     private static PcreFast classShape(String body, boolean caseless, boolean utf,
                                        boolean atStart, boolean atFrom) {
+        if (caseless && utf) {
+            return null; // PCRE folds Unicode case variants (Kelvin sign for [k], long s for [s])
+        }
         Atom atom = atom(body, 0, caseless, utf);
         if (atom == null) {
             return null;

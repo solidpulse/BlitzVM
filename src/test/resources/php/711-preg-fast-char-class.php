@@ -23,6 +23,10 @@ $cases = [
     ['/[&|]/u', "aé&b😀|c"],
     ['/[a-z]+/u', "éabcé"],
     ['/[ \t]+#/u', "x \t# y"],
+    ['/[k]/iu', "\xE2\x84\xAA"],
+    ['/[s]/iu', "\xC5\xBF"],
+    ['/[k]/i', "\xE2\x84\xAA"],
+    ['/[a-z]+/u', "\xF0\x9F\x98\x80abc\xF0\x9F\x98\x80"],
 ];
 
 foreach ($cases as [$p, $s]) {

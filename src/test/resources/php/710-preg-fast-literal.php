@@ -16,6 +16,10 @@ $cases = [
     ['/^abc/', 'xabc'],
     ['/abc/A', 'abc'],
     ['/abc/A', 'xabc'],
+    ['/é/u', 'aé'],
+    ['/é/', 'aé'],
+    ['/abc/iu', 'ABC'],
+    ['/\x{1F600}/u', "a\xF0\x9F\x98\x80b"],
 ];
 
 foreach ($cases as [$p, $s]) {
