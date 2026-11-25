@@ -1421,6 +1421,241 @@ replace: array (
   0 => 'xÃx',
   1 => 0,
 )
+== // c0af
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 3,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'À',
+    2 => '¯',
+    3 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xÀx¯x',
+  1 => 0,
+)
+== //u c0af
+bare: array (
+  0 => false,
+  1 => 4,
+  2 => 'Malformed UTF-8 characters, possibly incorrectly encoded',
+)
+match: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 4,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => false,
+  1 => 
+  array (
+    0 => 
+    array (
+    ),
+  ),
+  2 => 4,
+)
+split: array (
+  0 => false,
+  1 => 4,
+)
+replace: array (
+  0 => NULL,
+  1 => 4,
+)
+== //i c0af
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 3,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'À',
+    2 => '¯',
+    3 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xÀx¯x',
+  1 => 0,
+)
+== //m c0af
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 3,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'À',
+    2 => '¯',
+    3 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xÀx¯x',
+  1 => 0,
+)
+== //D c0af
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 3,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'À',
+    2 => '¯',
+    3 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xÀx¯x',
+  1 => 0,
+)
 == // eda080
 bare: array (
   0 => 1,
@@ -1662,6 +1897,257 @@ split: array (
 )
 replace: array (
   0 => 'xíx x€x',
+  1 => 0,
+)
+== // f4908080
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 5,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+      3 => '',
+      4 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'ô',
+    2 => '',
+    3 => '€',
+    4 => '€',
+    5 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xôxx€x€x',
+  1 => 0,
+)
+== //u f4908080
+bare: array (
+  0 => false,
+  1 => 4,
+  2 => 'Malformed UTF-8 characters, possibly incorrectly encoded',
+)
+match: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 4,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => false,
+  1 => 
+  array (
+    0 => 
+    array (
+    ),
+  ),
+  2 => 4,
+)
+split: array (
+  0 => false,
+  1 => 4,
+)
+replace: array (
+  0 => NULL,
+  1 => 4,
+)
+== //i f4908080
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 5,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+      3 => '',
+      4 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'ô',
+    2 => '',
+    3 => '€',
+    4 => '€',
+    5 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xôxx€x€x',
+  1 => 0,
+)
+== //m f4908080
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 5,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+      3 => '',
+      4 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'ô',
+    2 => '',
+    3 => '€',
+    4 => '€',
+    5 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xôxx€x€x',
+  1 => 0,
+)
+== //D f4908080
+bare: array (
+  0 => 1,
+  1 => 0,
+  2 => 'No error',
+)
+match: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '',
+  ),
+  2 => 0,
+)
+past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+all: array (
+  0 => 5,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => '',
+      2 => '',
+      3 => '',
+      4 => '',
+    ),
+  ),
+  2 => 0,
+)
+split: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'ô',
+    2 => '',
+    3 => '€',
+    4 => '€',
+    5 => '',
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'xôxx€x€x',
   1 => 0,
 )
 == // f09f9880

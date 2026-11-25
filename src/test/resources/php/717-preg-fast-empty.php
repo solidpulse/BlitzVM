@@ -4,7 +4,8 @@ function show($label, $value) {
     echo $label, ': ', var_export($value, true), "\n";
 }
 
-$subjects = ['', 'abc', "a\xC3\xA9b", "\xC3\xA9", "\xC3", "\xED\xA0\x80", "\xF0\x9F\x98\x80", "a\xFFb"];
+$subjects = ['', 'abc', "a\xC3\xA9b", "\xC3\xA9", "\xC3", "\xC0\xAF", "\xED\xA0\x80",
+    "\xF4\x90\x80\x80", "\xF0\x9F\x98\x80", "a\xFFb"];
 foreach ($subjects as $s) {
     foreach (['//', '//u', '//i', '//m', '//D'] as $p) {
         echo "== $p ", bin2hex($s), "\n";
