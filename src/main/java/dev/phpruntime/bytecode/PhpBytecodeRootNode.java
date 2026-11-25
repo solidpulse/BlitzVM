@@ -2216,6 +2216,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
      * metadata (for by-reference parameters). The call target is null for a builtin.
      */
     public record ValueCallee(dev.phpruntime.runtime.PhpCallable callable, PhpFunctionRootNode sig) {
+        /**
+         * The DSL guard expression parser cannot name an imported enum constant, so
+         * {@link DoValueCall} compares this ordinal: 0 CLOSURE, 1 USER_FUNCTION, 2 METHOD,
+         * 3 MAGIC_CALL, 4 BUILTIN. Keep it in step with {@code PhpCallable.Kind}.
+         */
         public int kindOrdinal() {
             return callable.kind().ordinal();
         }
