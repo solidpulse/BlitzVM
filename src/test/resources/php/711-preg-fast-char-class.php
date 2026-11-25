@@ -22,6 +22,7 @@ $cases = [
     ['/[a-]+/', '-a-b'],
     ['/[&|]/u', "aé&b😀|c"],
     ['/[a-z]+/u', "éabcé"],
+    ['/[ \t]+#/u', "x \t# y"],
 ];
 
 foreach ($cases as [$p, $s]) {
@@ -44,6 +45,17 @@ foreach ($cases as [$p, $s]) {
     show('replace-empty', preg_replace($p, '', $s));
     show('grep', preg_grep($p, [$s, 'abc', '']));
 }
+
+// A middle unmatched group is reported at offset -1, like php.
+show('split-unmatched', preg_split('/(a)(b)?(c)/', 'ac', -1, PREG_SPLIT_DELIM_CAPTURE));
+show('split-unmatched-offsets', preg_split('/(a)(b)?(c)/', 'ac', -1,
+    PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_OFFSET_CAPTURE));
+show('split-unmatched-empty', preg_split('/(a)(b)?(c)/', 'ac', -1,
+    PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE));
+
+// Array patterns and array subjects go through the same fast replace.
+show('replace-arrays', preg_replace(['/[a-z]+/', '/[0-9]+/'], ['X', 'Y'], 'a1bc2d'));
+show('replace-subjects', preg_replace('/[a-z]+/', 'X', ['a1', 'bc2', 3]));
 
 // Replace callbacks take the same fast match spans.
 show('callback', preg_replace_callback('/[a-z]+/', fn($m) => strtoupper($m[0]), 'a1bc2d'));

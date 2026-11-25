@@ -2734,6 +2734,49 @@ all: array (
 split: false
 replace: NULL
 grep: false
+split-delim: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 0,
+  ),
+  1 => 
+  array (
+    0 => 'title',
+    1 => 0,
+  ),
+  2 => 
+  array (
+    0 => '',
+    1 => -1,
+  ),
+  3 => 
+  array (
+    0 => ' x',
+    1 => 6,
+  ),
+  4 => 
+  array (
+    0 => ' ',
+    1 => 6,
+  ),
+  5 => 
+  array (
+    0 => 'x',
+    1 => 7,
+  ),
+  6 => 
+  array (
+    0 => '',
+    1 => 8,
+  ),
+)
+split-delim-empty: array (
+  0 => 'title',
+  1 => ' x',
+  2 => ' ',
+  3 => 'x',
+)
 callback: '[title=x]'
 callback-flags: array (
   0 => '{"0":["a: b",0],"key":["a",0],"1":["a",0],"2":["",-1],"3":[" b",2],"4":[" ",2],"value":["b",3],"5":["b",3]}',

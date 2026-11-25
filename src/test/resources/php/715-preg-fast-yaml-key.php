@@ -49,6 +49,10 @@ foreach ($lines as $s) {
     show('grep', preg_grep($pattern, [$s, 'x: y']));
 }
 
+// Split delimiters report the fast capture spans.
+show('split-delim', preg_split($pattern, 'title: x', -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_OFFSET_CAPTURE));
+show('split-delim-empty', preg_split($pattern, 'title: x', -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE));
+
 // Replace callbacks see the same named groups and spans.
 show('callback', preg_replace_callback($pattern, fn($m) => '[' . $m['key'] . '=' . ($m['value'] ?? '') . ']', 'title: x'));
 $cbCount = 0;

@@ -30,6 +30,9 @@ foreach ($patterns as $p) {
 }
 
 $p = '/^(?:\+|-)?0o(?P<value>[0-7_]++)$/';
+show('split-delim', preg_split($p, '0o755', -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_OFFSET_CAPTURE));
+show('split-delim-empty', preg_split($p, '0o755', -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE));
+show('split-miss', preg_split($p, '0o8', -1, PREG_SPLIT_DELIM_CAPTURE));
 show('replace-named', preg_replace($p, '[$value]', '0o755'));
 show('replace-offset', preg_replace($p, '[$0]', '0o755'));
 $m = null;

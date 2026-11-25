@@ -816,7 +816,7 @@ final class PregFunctions {
                             int s = start(re, m, g, spans);
                             int e = end(re, m, g, spans);
                             if (!noEmpty || (s >= 0 && e > s)) {
-                                out.append(s < 0 ? piece(subject, 0, 0, off, offsets) : piece(subject, s, e, off, offsets));
+                                out.append(s < 0 ? unmatchedPiece(offsets) : piece(subject, s, e, off, offsets));
                             }
                         }
                     }
@@ -836,6 +836,17 @@ final class PregFunctions {
             out.append(piece(subject, last, subject.length(), off, offsets));
         }
         return out;
+    }
+
+    /** An unmatched delimiter capture: php reports the empty string at byte offset -1. */
+    private static Object unmatchedPiece(boolean withOffset) {
+        if (!withOffset) {
+            return "";
+        }
+        PhpArray pair = new PhpArray();
+        pair.append("");
+        pair.append(-1L);
+        return pair;
     }
 
     private static Object piece(String s, int start, int end, Offsets off, boolean withOffset) {
