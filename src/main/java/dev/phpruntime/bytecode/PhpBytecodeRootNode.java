@@ -3039,11 +3039,6 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return template.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.NAMED ? template.classId() : -1;
         }
 
-        /** Whether the reference is a literal class name, whose table entry can be cached. */
-        public boolean isNamed() {
-            return template.kind() == dev.phpruntime.nodes.expr.ClassRefNode.Kind.NAMED;
-        }
-
         @Override
         public String toString() {
             return String.valueOf(template.staticName());
@@ -3054,56 +3049,13 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = ClassRefSpec.class, name = "ref")
     public static final class ResolveClass {
         @Specialization
-        static PhpClass resolve(ClassRefSpec ref, Object operand, @Bind Node node,
-                                @Cached("ref.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine,
-                                @Cached("create()") NamedClassCache cache) {
-            if (!ref.isNamed()) {
-                return engine.resolveValue(operand == PhpNull.INSTANCE ? null : operand);
-            }
-            PhpContext ctx = PhpContext.get(node);
-            PhpClass hit = cache.hit(ctx);
-            if (hit != null) {
-                return hit;
-            }
-            return cache.miss(ctx, engine, operand);
-        }
-    }
-
-    /**
-     * The class a literal name last resolved to, with the context and class generation it was
-     * seen at. A request's class table only grows (a declaration or {@code class_alias} bumps
-     * the generation), so an unchanged generation proves the table still holds that class; a
-     * miss goes through the ordinary lookup, autoload included, and republishes the result.
-     */
-    static final class NamedClassCache extends Node {
-        private record Snapshot(PhpContext ctx, int generation, PhpClass cls) {
-        }
-
-        @CompilerDirectives.CompilationFinal private Snapshot snapshot;
-
-        static NamedClassCache create() {
-            return new NamedClassCache();
-        }
-
-        PhpClass hit(PhpContext ctx) {
-            Snapshot s = snapshot;
-            if (s != null && s.ctx() == ctx && s.generation() == ctx.classGeneration()) {
-                return s.cls();
-            }
-            return null;
-        }
-
-        @TruffleBoundary
-        PhpClass miss(PhpContext ctx, dev.phpruntime.nodes.expr.ClassRefNode engine, Object operand) {
-            PhpClass cls = engine.resolveValue(operand == PhpNull.INSTANCE ? null : operand);
-            java.util.concurrent.locks.Lock lock = getLock();
-            lock.lock();
-            try {
-                snapshot = new Snapshot(ctx, ctx.classGeneration(), cls);
-            } finally {
-                lock.unlock();
-            }
-            return cls;
+        static PhpClass resolve(ClassRefSpec ref, Object operand,
+                                @Cached("ref.newEngine()") dev.phpruntime.nodes.expr.ClassRefNode engine) {
+            // A literal name is one read of the request's by-id table. A per-site cache of the
+            // result keyed on the context missed on every request and every other worker, and
+            // its miss path (a boundary call and the root's lock, shared by all workers) cost
+            // 10% of the cycles on /blog.
+            return engine.resolveValue(operand == PhpNull.INSTANCE ? null : operand);
         }
     }
 
