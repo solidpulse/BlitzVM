@@ -378,7 +378,7 @@ public final class PropertyLValueNode extends LValueNode {
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+            throw new PhpError(msg("Attempt to assign property \"", name, "\" on ", PhpOps.typeName(target)), this);
         }
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null ? fast.arrayProps() : true) {
@@ -407,8 +407,7 @@ public final class PropertyLValueNode extends LValueNode {
         }
         if (res.writeBlocked()) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("ReflectionException", "Cannot set read-only property "
-                    + obj.phpClass().name() + "::$" + name, this);
+            throw new PhpError("ReflectionException", msg("Cannot set read-only property ", obj.phpClass().name(), "::$", name), this);
         }
         if (res.isReadonly()) {
             String storageKey = res.storageKey();
@@ -531,13 +530,18 @@ public final class PropertyLValueNode extends LValueNode {
                 + " is not allowed", this);
     }
 
+    @TruffleBoundary
+    private PhpError modifyNonObject(String name, Object target) {
+        return new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+    }
+
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         Object target = keys[0];
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+            throw modifyNonObject(name, target);
         }
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null ? fast.arrayProps() : true) {
@@ -569,8 +573,7 @@ public final class PropertyLValueNode extends LValueNode {
         if (existing == PhpClass.UNINITIALIZED) {
             if (res.type() != null && !res.type().acceptsNull()) {
                 String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
-                throw new PhpError("Cannot access uninitialized non-nullable property " + owner + "::$" + name
-                        + " by reference", this);
+                throw new PhpError(msg("Cannot access uninitialized non-nullable property ", owner, "::$", name, " by reference"), this);
             }
             PhpReference ref = new PhpReference(PhpNull.INSTANCE);
             if (res.type() != null) {
@@ -629,7 +632,7 @@ public final class PropertyLValueNode extends LValueNode {
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Attempt to assign property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+            throw new PhpError(msg("Attempt to assign property \"", name, "\" on ", PhpOps.typeName(target)), this);
         }
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null ? fast.arrayProps() : true) {
@@ -667,7 +670,7 @@ public final class PropertyLValueNode extends LValueNode {
         String name = (String) keys[1];
         if (!(target instanceof PhpObject obj)) {
             CompilerDirectives.transferToInterpreter();
-            throw new PhpError("Attempt to modify property " + '"' + name + '"' + " on " + PhpOps.typeName(target), this);
+            throw new PhpError(msg("Attempt to modify property \"", name, "\" on ", PhpOps.typeName(target)), this);
         }
         Resolution fast = fastResolution(frame, obj, name, keys);
         if (fast != null ? fast.arrayProps() : true) {
@@ -679,14 +682,14 @@ public final class PropertyLValueNode extends LValueNode {
         PhpClass.PropertyResolution res = fast != null ? fast.res()
                 : resolveFull(obj, name, effectiveCallerLower(frame, keys));
         if (res.hasHooks()) {
-            throw new PhpError("Cannot unset hooked property " + obj.phpClass().name() + "::$" + name, this);
+            throw new PhpError(msg("Cannot unset hooked property ", obj.phpClass().name(), "::$", name), this);
         }
         if (res.accessible() && res.isReadonly()) {
             Object existing = res.storageKey() == null ? null : getNode.execute(obj, res.storageKey(), null);
             if (existing != PhpClass.UNINITIALIZED || !res.canInitReadonly()) {
                 String owner = res.declaringClass() != null ? res.declaringClass() : obj.phpClass().name();
                 CompilerDirectives.transferToInterpreter();
-                throw new PhpError("Cannot unset readonly property " + owner + "::$" + name, this);
+                throw new PhpError(msg("Cannot unset readonly property ", owner, "::$", name), this);
             }
         }
         if (res.accessible() && !res.writable()) {

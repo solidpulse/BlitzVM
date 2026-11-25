@@ -179,6 +179,16 @@ public final class CloneNode extends PhpNode {
         e.builder().endCloneWith();
     }
 
+    /**
+     * The Java-side state of a builtin class instance (SPL file, collection, random engine):
+     * its copy uses JDK collections and strings, so it stays out of compiled guest code (native
+     * image refuses those methods in runtime compilation, and HotSpot gains nothing from them).
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static dev.phpruntime.runtime.PhpNativeState copyNativeState(dev.phpruntime.runtime.PhpNativeState state) {
+        return state.copy();
+    }
+
     private static PhpObject shallowCopy(PhpContext ctx, PhpObject src, DynamicObject.GetKeyArrayNode keyArray,
                                          DynamicObject.GetNode propGet, DynamicObject.PutNode propPut) {
         PhpObject copy = new PhpObject(
@@ -186,7 +196,7 @@ public final class CloneNode extends PhpNode {
                 ctx.nextObjectId(),
                 src.closure() != null ? src.closure().copy() : null);
         if (src.nativeState() != null) {
-            copy.setNativeState(src.nativeState().copy());
+            copy.setNativeState(copyNativeState(src.nativeState()));
         }
         Object[] keys = keyArray.execute(src);
         for (int i = 0; i < keys.length; i++) {

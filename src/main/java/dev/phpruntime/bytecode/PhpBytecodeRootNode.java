@@ -3885,10 +3885,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         // ---- destructuring
 
+        /** The undefined-variable warning, built behind a boundary so its message is not compiled in. */
+        @TruffleBoundary
+        static void warnUndefinedVariable(Node node, String describe, int line) {
+            PhpContext.get(node).warning("Undefined variable " + describe, line);
+        }
+
         static DestructureState destructureStartCell(PhpReference cell, String describe, int line, Node node) {
             Object cur = cell.getValue();
             if (cur == null) {
-                PhpContext.get(node).warning("Undefined variable " + describe, line);
+                Ops.warnUndefinedVariable(node, describe, line);
                 cur = PhpNull.INSTANCE;
             }
             if (cur instanceof PhpArray arr) {
@@ -4006,7 +4012,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                        Object traitSelf, String declaringClass) {
             Object cur = engine.read(frame, keys);
             if (cur == null) {
-                PhpContext.get(node).warning("Undefined variable " + describe, line);
+                Ops.warnUndefinedVariable(node, describe, line);
                 cur = PhpNull.INSTANCE;
             }
             if (!(cur instanceof PhpArray)) {
@@ -5738,7 +5744,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                         : CallArgHelper.bindToInternal(new Object[]{m.thisArg(), m.cls()}, raw,
                                 m.entry(), location);
                 dispatch.callMethod(m.entry(), args, location, m.cls());
-            } else if (raw.named() != null && !raw.named().isEmpty()) {
+            } else if (CallArgHelper.hasNamed(raw)) {
                 CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Unknown named parameter $" + CallArgHelper.firstKey(raw.named()), location);
             }
@@ -5966,7 +5972,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             @Bind Node node) {
             Object cur = current(frame, acc, bytecode);
             if (cur == null) {
-                PhpContext.get(node).warning("Undefined variable " + describe, lineOf(bytecode, bci));
+                Ops.warnUndefinedVariable(node, describe, lineOf(bytecode, bci));
                 cur = PhpNull.INSTANCE;
             }
             if (!(cur instanceof PhpArray)) {

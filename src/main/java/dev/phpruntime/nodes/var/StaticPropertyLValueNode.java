@@ -189,6 +189,12 @@ public final class StaticPropertyLValueNode extends LValueNode {
                 + "::$" + name + " from " + scope, this);
     }
 
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private PhpError uninitializedByReference(PhpClass declaring, String name) {
+        return new PhpError("Cannot access uninitialized non-nullable property "
+                + declaring.name() + "::$" + name + " by reference", this);
+    }
+
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
         PhpClass caller = keys.length > 2 && keys[2] instanceof PhpClass c ? c : null;
@@ -207,8 +213,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass.StaticSlot slot = res.decl().slot(PhpContext.get(this));
         if (slot.get() == PhpClass.UNINITIALIZED) {
             if (res.decl().declaredType() != null && !res.decl().declaredType().acceptsNull()) {
-                throw new PhpError("Cannot access uninitialized non-nullable property "
-                        + res.decl().declaringClass().name() + "::$" + name + " by reference", this);
+                throw uninitializedByReference(res.decl().declaringClass(), name);
             }
             slot.set(PhpNull.INSTANCE);
         }
@@ -255,7 +260,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         PhpClass cls = (PhpClass) keys[0];
         String name = (String) keys[1];
         CompilerDirectives.transferToInterpreter();
-        throw new PhpError("Attempt to unset static property " + cls.name() + "::$" + name, this);
+        throw new PhpError(msg("Attempt to unset static property ", cls.name(), "::$", name), this);
     }
 
     /**

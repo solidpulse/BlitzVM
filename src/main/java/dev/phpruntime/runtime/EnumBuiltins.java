@@ -88,12 +88,15 @@ public final class EnumBuiltins {
             if (index == NO_INDEX) {
                 return SCAN;
             }
-            String caseName = index.get(value);
-            if (caseName == null) {
-                return null;
-            }
-            int position = enumClass.template().enumCaseIndex(caseName);
+            int position = lookupCase(index, value);
             return position < 0 ? null : enumClass.enumCaseAt(ctx, position);
+        }
+
+        /** The declaration index of the case with this backing value, or -1 (maps, so a boundary). */
+        @TruffleBoundary
+        private int lookupCase(java.util.Map<Object, String> index, Object value) {
+            String caseName = index.get(value);
+            return caseName == null ? -1 : enumClass.template().enumCaseIndex(caseName);
         }
 
         @TruffleBoundary
@@ -156,6 +159,7 @@ public final class EnumBuiltins {
                     rendered + " is not a valid backing value for enum " + enumClass.name(), this);
         }
 
+        @TruffleBoundary
         private java.util.Map<Object, String> backingIndex() {
             java.util.Map<Object, String> index = backingIndex;
             if (index == null) {

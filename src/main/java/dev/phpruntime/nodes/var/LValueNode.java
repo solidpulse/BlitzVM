@@ -65,6 +65,19 @@ public abstract class LValueNode extends PhpNode {
         return null;
     }
 
+    /**
+     * Joins the pieces of an error message behind a boundary. Concatenation compiled into guest
+     * code is wasted on HotSpot and not allowed at all in native-image runtime compilation.
+     */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    protected static String msg(Object... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (Object part : parts) {
+            sb.append(part);
+        }
+        return sb.toString();
+    }
+
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     private dev.phpruntime.runtime.PhpError referenceError(boolean assignment) {
         return new dev.phpruntime.runtime.PhpError(

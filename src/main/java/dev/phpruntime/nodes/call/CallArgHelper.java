@@ -170,6 +170,13 @@ public final class CallArgHelper {
     }
 
     /** An empty mutable argument list for bytecode, which evaluates one argument per operation. */
+    /** Whether a spread/named call collected named arguments (a map, so behind a boundary). */
+    @TruffleBoundary
+    public static boolean hasNamed(RawCallArgs raw) {
+        return raw.named() != null && !raw.named().isEmpty();
+    }
+
+    @TruffleBoundary
     public static RawCallArgs newRawCallArgs() {
         return new RawCallArgs(new ArrayList<>(), null, null, new LinkedHashMap<>(), null, null);
     }
