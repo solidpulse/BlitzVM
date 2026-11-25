@@ -46,6 +46,18 @@ foreach ([
 }
 echo $magic(-7), "\n";
 
+// One site sees every kind over time, with a builtin before the script ones.
+$mixedKinds = [
+    'abs', 'double', fn (int $x): int => $x + 2000, [$instance, 'method'], 'Callables::staticMethod',
+    $instance, [$instance, 'missing'],
+];
+foreach ([0, 1] as $pass) {
+    foreach ($mixedKinds as $callable) {
+        echo $callable(-7), ' ';
+    }
+    echo "\n";
+}
+
 // First-class callables are closure objects backed by one function or method.
 $firstClassFunction = double(...);
 $firstClassStatic = Callables::staticMethod(...);

@@ -4,6 +4,9 @@ base base base child
 base-parent+child base-parent
 anything(1,2,3)
 instance-missing(4:5)
+real:3
+magic:m:3,4
+real:11
 Error: Cannot call abstract method AbstractStatic::missing()
 Error: Non-static method InstanceOnly::method() cannot be called statically
 Hearts H Spades 2

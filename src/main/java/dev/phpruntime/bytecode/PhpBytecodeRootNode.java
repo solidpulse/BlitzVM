@@ -5079,9 +5079,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)}, location);
         }
 
-        /** Builtins, and any kind a later callable adds. */
-        @Specialization(replaces = {"callClosure", "callUserFunction", "callMethod", "callMagic"})
-        static Object callOther(boolean keepRef, ValueCallee v, @Variadic Object[] args,
+        /** Builtins; the four guarded kinds above cover every other callable. */
+        @Specialization(guards = "v.kindOrdinal() == 4")
+        static Object callBuiltin(boolean keepRef, ValueCallee v, @Variadic Object[] args,
                                 @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                                 @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                                 @Cached("create()") DispatchCallNode dispatch) {
@@ -5995,7 +5995,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     (CallArgHelper.RawCallArgs) rawArgs, location);
         }
 
-        @Specialization(replaces = {"function", "builtin"})
+        @Specialization
         static Object other(VirtualFrame frame, boolean keepRef, Object callee, Object rawArgs,
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
@@ -6045,7 +6045,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
 
         /** {@code __call}: the arguments go to the magic method as an array. */
-        @Specialization(replaces = {"guest", "internal"})
+        @Specialization(guards = "m.entry() == null")
         static Object magic(boolean keepRef, MethodCallee m, Object rawArgs,
                             @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,

@@ -84,6 +84,29 @@ final class MagicInstance
 $magicInstance = new MagicInstance();
 echo $magicInstance->missing(4, 5), "\n";
 
+// One spread-call site switches between a real method and __call.
+final class RealMethod
+{
+    public function m(int $a, int $b): string
+    {
+        return 'real:' . ($a + $b);
+    }
+}
+final class MagicMethod
+{
+    public function __call(string $name, array $arguments): string
+    {
+        return 'magic:' . $name . ':' . implode(',', $arguments);
+    }
+}
+function callSpread(object $object, array $arguments): string
+{
+    return $object->m(...$arguments);
+}
+echo callSpread(new RealMethod(), [1, 2]), "\n";
+echo callSpread(new MagicMethod(), [3, 4]), "\n";
+echo callSpread(new RealMethod(), [5, 6]), "\n";
+
 // Abstract and non-static methods cannot be called statically.
 abstract class AbstractStatic
 {
