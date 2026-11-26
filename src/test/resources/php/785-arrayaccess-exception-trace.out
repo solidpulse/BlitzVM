@@ -1,0 +1,10 @@
+get: ThrowA->offsetGet:22
+exists: ThrowA->offsetExists:25
+exists: ThrowA->offsetExists:28
+set: ThrowA->offsetSet:31
+unset: ThrowA->offsetUnset:34
+get: ThrowB->offsetGet:22
+exists: ThrowB->offsetExists:25
+exists: ThrowB->offsetExists:28
+set: ThrowB->offsetSet:31
+unset: ThrowB->offsetUnset:34
