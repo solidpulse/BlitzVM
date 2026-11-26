@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BlitzVM</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="BlitzVM is a research runtime for server-side languages with JIT compilation, per-request isolation and preemptive scheduling. PHP first, Node.js- and Bun-compatible environments next.">
+<meta name="description" content="BlitzVM is a research runtime for PHP with JIT compilation, per-request isolation and preemptive scheduling.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -241,7 +241,7 @@ pre.code .k { color: var(--ink); font-weight: 500; }
   .sscale > :first-child { display: none; }
 }
 
-/* Architecture (Fig. 5) */
+/* Architecture (Fig. 4) */
 .diagram { overflow-x: auto; }
 .diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .diagram .box { fill: var(--raised); stroke: var(--rule-strong); stroke-width: 1.2; }
@@ -323,9 +323,9 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
   <div class="hero" id="overview">
     <div class="hero-grid">
       <div class="hero-copy">
-        <p class="eyebrow"><span>research project</span><span>PHP for now</span><span>Node.js and Bun later</span></p>
-        <h1>A <em>preemptive</em> runtime for <span style="white-space:nowrap">server-side</span> languages.</h1>
-        <p class="lede">Every backend hits this eventually: one heavy request ties up a php-fpm worker, or the whole event loop in Node and Bun, and everyone queued behind it waits. BlitzVM JIT-compiles hot code and preemptively schedules requests in short time slices. Each request still starts with clean state, and you write the same plain PHP or JavaScript handler you would write today.</p>
+        <p class="eyebrow"><span>research project</span><span>PHP</span></p>
+        <h1>A <em>preemptive</em> runtime for PHP.</h1>
+        <p class="lede">Every backend hits this eventually: one heavy request ties up a php-fpm worker, and everyone queued behind it waits. BlitzVM JIT-compiles hot code and preemptively schedules requests in short time slices. Each request still starts with clean state, and you write the same plain PHP you would write today.</p>
         <p class="byline">By <b>Avinash D'Silva</b></p>
         <ul class="components" aria-label="Components">
           <li class="own">PHP 8 front end</li>
@@ -341,7 +341,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
     <div class="keys" aria-label="Results">
       <div class="key"><span class="big">2.5×</span><span class="what">faster than PHP's own tracing JIT</span><span class="how">collatz 91 ms vs 229 ms. 1.2× to 2.5× across six kernels, fig. 3</span></div>
       <div class="key"><span class="big">4×</span><span class="what">php-fpm's throughput on API-style requests</span><span class="how">523 vs 131 req/s, and 1.4× Swoole with a third of its p99, fig. 2</span></div>
-      <div class="key"><span class="big">1.8×</span><span class="what">faster than Node.js on integer loops</span><span class="how">collatz in JavaScript, 179 ms vs 316 ms on V8, fig. 4</span></div>
+      <div class="key"><span class="big">5 ms</span><span class="what">to answer a quick request while a slow one runs</span><span class="how">php-fpm and Swoole take over 3.4 s with one worker, fig. 1</span></div>
     </div>
 
   </div>
@@ -493,7 +493,7 @@ $server-&gt;start();</pre>
       <div class="sh">
         <span class="sn">05</span>
         <h2>How it fits together</h2>
-        <p>Everything inside the dashed line is BlitzVM. The PHP front end builds its trees on Truffle's node framework, and Graal compiles the hot ones. The bottom row, the scheduler and the per-request contexts, knows nothing about PHP. That's the reason the Node.js plan is realistic.</p>
+        <p>Everything inside the dashed line is BlitzVM. The PHP front end builds its trees on Truffle's node framework, and Graal compiles the hot ones. The bottom row, the scheduler and the per-request contexts, knows nothing about PHP.</p>
       </div>
       <figure class="fig">
         <div class="diagram">
@@ -570,7 +570,7 @@ $server-&gt;start();</pre>
             <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
           </svg>
         </div>
-        <figcaption><b>Fig. 5</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
+        <figcaption><b>Fig. 4</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
       </figure>
       <div class="notes">
         <div><b>Parsed once</b>Each file's tree is cached on the shared engine until the file changes.</div>
@@ -583,14 +583,13 @@ $server-&gt;start();</pre>
       <div class="sh">
         <span class="sn">06</span>
         <h2>What's next</h2>
-        <p>None of the scheduling or isolation code is PHP-specific. I started with PHP because it's easy to measure: php-fpm and Swoole are well understood, and the request model is simple. Node.js- and Bun-compatible environments are the bigger target.</p>
+        <p>The aim is unmodified PHP applications running faster than on php-fpm, with the same one-request-at-a-time model. php-fpm and Swoole are well understood baselines, which makes the gains easy to measure.</p>
       </div>
       <div class="road">
         <div><span class="tag on">working</span><div><h3>PHP 8 core</h3><p>Functions with defaults and by-reference args, copy-on-write arrays, PHP 8 type juggling and int overflow, alternative syntax, templates, superglobals, headers and status codes, and 179 builtins. I check the output against real PHP 8.5 with a conformance suite.</p></div></div>
         <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Request contexts on Java virtual threads, so a request that's sleeping or waiting costs next to nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. On a 64-thread pool they take <span class="mono" id="vt-pool"></span>.</p></div></div>
         <div><span class="tag">next</span><div><h3>Classes, closures and require</h3><p>What's missing before real apps, Laravel included, can run.</p></div></div>
         <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Right now <code>strlen</code>, <code>count</code>, <code>microtime</code> and friends are plain Java calls, so the JIT can't see inside them. Turning the hot ones into nodes fixes that.</p></div></div>
-        <div><span class="tag">planned</span><div><h3>Node.js- and Bun-compatible environments</h3><p>A small JavaScript front end already runs on the same core; BlitzVM-JS in the chart at the top is that prototype. Work on full Node.js and Bun compatibility starts once the PHP front end can render Laravel.</p></div></div>
       </div>
     </section>
 
@@ -600,7 +599,7 @@ $server-&gt;start();</pre>
         <h2>How I measured</h2>
       </div>
       <dl class="method">
-        <dt>date</dt><dd>Compute, API and JavaScript numbers re-measured on 13 November 2026</dd>
+        <dt>date</dt><dd>Compute and API numbers re-measured on 13 November 2026</dd>
         <dt>machine</dt><dd>8 cores, Linux 6.8, load generator and servers on the same host</dd>
         <dt>blitzvm</dt><dd>v0.1 on JDK 25 with the Graal compiler from GraalVM Community 25.5</dd>
         <dt>php-fpm</dt><dd>PHP 8.5 with opcache, static pool, nginx in front. Compute runs use <code>opcache.jit=tracing</code>, set at process start and confirmed with <code>opcache_get_status()</code></dd>
@@ -609,8 +608,6 @@ $server-&gt;start();</pre>
         <dt>workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM CPU slots), 1 for the latency scenario</dd>
         <dt>compute</dt><dd>Time measured inside the script with <code>microtime</code>; 12 runs per workload, one worker, median of the last three. Kernels in <code>www/compute.php</code></dd>
         <dt>api request</dt><dd><code>compute.php?k=api</code>: <code>usleep(20000)</code>, then the pixel loop on 300 × 300; 15 s warm-up, 10 s measured</dd>
-        <dt>js compute</dt><dd>The kernels ported to JavaScript (<code>www/compute.js</code>), one process per runtime, run back to back on BlitzVM, Node.js 22.14 and Bun 1.4.4; best of five rounds after warm-up</dd>
-        <dt>javascript</dt><dd>The same handler file (<code>www/spin.js</code>, <code>www/hello.js</code>) on BlitzVM, Bun 1.4.4 and Node.js 22.14; each server answers one hello request before the test starts</dd>
         <dt>latency</dt><dd>Hello requests every 300 ms while a 4 s CPU loop holds the only worker; load-generator start-up excluded</dd>
       </dl>
     </section>
@@ -653,15 +650,12 @@ const DATA = {
   hero: {
     title: "A quick request while a slow one runs",
     unit: "ms until a hello request is answered while a 4 s CPU loop holds the only worker. Lower is better.",
-    summary: "BlitzVM: 5 to 25 ms. The rest: over 3.4 s",
+    summary: "BlitzVM: 5 ms. php-fpm and Swoole: over 3.4 s",
     ms: true,
     rows: [
-      { who: "PHP-BlitzVM", us: true, v: 5 },
-      { who: "BlitzVM-JS", us: true, v: 25 },
-      { who: "Bun", note: "1.4.4", v: 3410 },
+      { who: "BlitzVM", us: true, v: 5 },
       { who: "php-fpm", note: "opcache", v: 3450 },
-      { who: "PHP-Swoole", note: "default", v: 3480 },
-      { who: "Node.js", note: "22.14", v: 3780 }
+      { who: "Swoole", note: "default", v: 3480 }
     ]
   },
   timeline: { hogSeconds: 4, helloAt: 0.55, blitzMs: 5, fpmMs: 3450 },
@@ -681,7 +675,7 @@ const DATA = {
     {
       speedup: true,
       fig: 3,
-      title: "PHP-BlitzVM: how much faster than PHP's own JIT",
+      title: "BlitzVM: how much faster than PHP's own JIT",
       unit: "times faster than php-fpm with opcache's tracing JIT, warm, one worker. The dashed line is the JIT itself.",
       caption: "Recursion, integer branches, float loops and code made of small helper functions. Graal inlines across the calls and the variables stay in registers. Swoole can't use PHP's JIT at all, so it runs 2.7× to 8.4× behind BlitzVM on these.",
       rows: [
@@ -691,25 +685,6 @@ const DATA = {
         { k: "tak(24, 16, 8)", us: 8.6, jit: 14.4, swoole: 35.0 },
         { k: "gcd sum, n = 600", us: 9.1, jit: 10.7, swoole: 27.1 },
         { k: "spectral-norm, n = 300", us: 41.4, jit: 48.8, swoole: 111.0 }
-      ]
-    },
-    {
-      fig: 4,
-      wide: true,
-      perGroup: true,
-      title: "BlitzVM-JS vs Node.js and Bun: time to run a CPU-heavy loop",
-      unit: "milliseconds for one run of a number-crunching function, no I/O, warm, lower is better. The same .js file on each runtime.",
-      caption: "The JavaScript front end is a prototype that shares BlitzVM's core with PHP. On integer-heavy loops it is already ahead of V8 and JavaScriptCore.",
-      ms: true,
-      groups: [
-        { label: "collatz to 300,000", rows: [
-          { who: "BlitzVM-JS", us: true, v: 179.3 },
-          { who: "Node.js", note: "22.14, V8", v: 315.9 },
-          { who: "Bun", note: "1.4.4, JavaScriptCore", v: 426.7 } ] },
-        { label: "primes to 2,000,000", rows: [
-          { who: "BlitzVM-JS", us: true, v: 128.1 },
-          { who: "Bun", note: "1.4.4, JavaScriptCore", v: 133.8 },
-          { who: "Node.js", note: "22.14, V8", v: 149.3 } ] }
       ]
     }
   ],
