@@ -2273,6 +2273,14 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     }
 
     /**
+     * A string callable that names a builtin, resolved once for a {@code $f(...)} site. The
+     * callable is immutable engine state, so the cached ValueCallee is shared safely by every
+     * request that runs the site.
+     */
+    public record BuiltinValueCall(String name, ValueCallee callee) {
+    }
+
+    /**
      * Whether the resolved callee takes parameter {@code param} by reference. Kept small: it is
      * compiled into every argument of every call. Reads the mask precomputed on the callee's
      * root; only an unusual root (a closure's invoke, SPL methods) goes through a boundary.
@@ -5014,7 +5022,19 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @Operation
     @ConstantOperand(type = LocalAccessor.class, name = "callee")
     public static final class ResolveCallable {
-        @Specialization
+        /**
+         * A string that names a builtin, which cannot be redeclared in a request: resolve it
+         * once at the site instead of crossing the callable resolver's boundary per call.
+         * Any other string (a user function, a static method, a miss) takes the generic path.
+         */
+        @Specialization(guards = "sameBuiltinValue(targetValue, cached)", limit = "1")
+        static void resolveBuiltin(VirtualFrame frame, LocalAccessor calleeLocal, String targetValue, Object callerThis,
+                                   @Bind BytecodeNode bytecode,
+                                   @Cached("builtinValueCall(targetValue)") BuiltinValueCall cached) {
+            calleeLocal.setObject(bytecode, frame, cached.callee());
+        }
+
+        @Specialization(replaces = "resolveBuiltin")
         static void resolve(VirtualFrame frame, LocalAccessor calleeLocal, Object targetValue, Object callerThis,
                             @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root) {
             // A closure object's callable is fixed for the request. Resolving it here keeps the
@@ -5033,6 +5053,21 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             // not describe the call site (the AST evaluates those arguments as plain values).
             PhpFunctionRootNode sig = callable.signature();
             calleeLocal.setObject(bytecode, frame, new ValueCallee(callable, sig));
+        }
+
+        static BuiltinValueCall builtinValueCall(String name) {
+            String n = name.startsWith("\\") ? name.substring(1) : name;
+            if (n.indexOf("::") >= 0) {
+                return null;
+            }
+            Builtins.Def def = Builtins.lookup(n);
+            return def == null ? null
+                    : new BuiltinValueCall(name, new ValueCallee(
+                            dev.phpruntime.runtime.PhpCallable.forBuiltin(def), null));
+        }
+
+        static boolean sameBuiltinValue(String name, BuiltinValueCall cached) {
+            return cached != null && cached.name().equals(name);
         }
     }
 
@@ -5157,8 +5192,28 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)}, location, ctx);
         }
 
+        /**
+         * A builtin whose fast path the site already resolved: answer the common argument
+         * shape here, and keep every other shape on callBuiltinValue so its by-reference
+         * writeback and diagnostics run.
+         */
+        @Specialization(guards = {"v.kindOrdinal() == 4", "fast != null",
+                "v.callable().builtin() == fast.def()"}, limit = "1")
+        static Object callBuiltinFast(VirtualFrame frame, boolean keepRef, ValueCallee v, @Variadic Object[] args,
+                                @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                @Bind PhpBytecodeRootNode root,
+                                @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
+                                @Cached(value = "fastBuiltinFor(v)", neverDefault = false) FastBuiltin fast) {
+            Object value = fast.call(location, args, root.context(frame, bytecode));
+            if (value != FastBuiltin.UNHANDLED) {
+                return Ops.ret(keepRef, value);
+            }
+            return Ops.ret(keepRef, Ops.callBuiltinValue(v.callable().builtin(), args, location,
+                    root.context(frame, bytecode)));
+        }
+
         /** Builtins; the four guarded kinds above cover every other callable. */
-        @Specialization(guards = "v.kindOrdinal() == 4")
+        @Specialization(guards = "v.kindOrdinal() == 4", replaces = "callBuiltinFast")
         static Object callBuiltin(VirtualFrame frame, boolean keepRef, ValueCallee v, @Variadic Object[] args,
                                 @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                                 @Bind PhpBytecodeRootNode root,
@@ -5166,6 +5221,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                 @Cached("create()") DispatchCallNode dispatch) {
             return Ops.ret(keepRef, Ops.callBuiltinValue(v.callable().builtin(), args, location,
                     root.context(frame, bytecode)));
+        }
+
+        static FastBuiltin fastBuiltinFor(ValueCallee v) {
+            return FastBuiltin.lookup(v.callable().builtin().name());
         }
     }
 

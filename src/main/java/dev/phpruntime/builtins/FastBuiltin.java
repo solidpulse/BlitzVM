@@ -91,6 +91,17 @@ public abstract class FastBuiltin {
             case "end" -> PointerMove.END;
             case "next" -> PointerMove.NEXT;
             case "prev" -> PointerMove.PREV;
+            case "is_array" -> IsType.ARRAY;
+            case "is_string" -> IsType.STRING;
+            case "is_int" -> IsType.INT;
+            case "is_integer" -> IsType.INTEGER;
+            case "is_long" -> IsType.LONG;
+            case "is_float" -> IsType.FLOAT;
+            case "is_double" -> IsType.DOUBLE;
+            case "is_bool" -> IsType.BOOL;
+            case "is_null" -> IsType.NULL;
+            case "is_object" -> IsType.OBJECT;
+            case "is_scalar" -> IsType.SCALAR;
             default -> null;
         };
     }
@@ -719,6 +730,47 @@ public abstract class FastBuiltin {
             }
             Object value = writable.pointerValue();
             return value == null ? Boolean.FALSE : value;
+        }
+    }
+
+    /** The is_* type tests: a pure type check that agrees with the builtin's implementation. */
+    private static final class IsType extends FastBuiltin {
+        static final IsType ARRAY = new IsType("is_array", 0);
+        static final IsType STRING = new IsType("is_string", 1);
+        static final IsType INT = new IsType("is_int", 2);
+        static final IsType INTEGER = new IsType("is_integer", 2);
+        static final IsType LONG = new IsType("is_long", 2);
+        static final IsType FLOAT = new IsType("is_float", 3);
+        static final IsType DOUBLE = new IsType("is_double", 3);
+        static final IsType BOOL = new IsType("is_bool", 4);
+        static final IsType NULL = new IsType("is_null", 5);
+        static final IsType OBJECT = new IsType("is_object", 6);
+        static final IsType SCALAR = new IsType("is_scalar", 7);
+
+        private final int test;
+
+        IsType(String name, int test) {
+            super(name);
+            this.test = test;
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length != 1) {
+                return UNHANDLED;
+            }
+            Object value = args[0];
+            return switch (test) {
+                case 0 -> value instanceof PhpArray;
+                case 1 -> value instanceof String;
+                case 2 -> value instanceof Long;
+                case 3 -> value instanceof Double;
+                case 4 -> value instanceof Boolean;
+                case 5 -> value == PhpNull.INSTANCE;
+                case 6 -> value instanceof PhpObject;
+                default -> value instanceof Long || value instanceof Double
+                        || value instanceof String || value instanceof Boolean;
+            };
         }
     }
 

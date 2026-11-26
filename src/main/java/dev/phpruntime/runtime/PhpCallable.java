@@ -125,6 +125,11 @@ public final class PhpCallable {
         return magicMethodName;
     }
 
+    /** The immutable callable a builtin's name denotes; safe to keep for the life of the engine. */
+    public static PhpCallable forBuiltin(Builtins.Def def) {
+        return new PhpCallable(Kind.BUILTIN, null, null, def, PhpNull.INSTANCE, null, null, null);
+    }
+
     @TruffleBoundary
     public static PhpCallable resolve(PhpContext ctx, Object val, Node loc) {
         return resolve(ctx, val, PhpNull.INSTANCE, loc);
@@ -191,7 +196,7 @@ public final class PhpCallable {
             }
             Builtins.Def def = Builtins.lookup(n);
             if (def != null) {
-                PhpCallable cb = new PhpCallable(Kind.BUILTIN, null, null, def, PhpNull.INSTANCE, null, null, null);
+                PhpCallable cb = forBuiltin(def);
                 ctx.cacheFunctionCallable(s, cb);
                 return cb;
             }
