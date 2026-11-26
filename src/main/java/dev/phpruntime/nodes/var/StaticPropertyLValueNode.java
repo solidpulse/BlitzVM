@@ -6,6 +6,7 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import dev.phpruntime.PhpContext;
+import dev.phpruntime.PhpLanguage;
 import dev.phpruntime.nodes.PhpNode;
 import dev.phpruntime.nodes.expr.ClassRefNode;
 import dev.phpruntime.runtime.PhpClass;
@@ -46,6 +47,24 @@ public final class StaticPropertyLValueNode extends LValueNode {
     public StaticPropertyLValueNode(ClassRefNode classRef, String staticName, PhpNode dynamicNameExpr,
                                     String callingClassLower) {
         this(classRef, staticName, dynamicNameExpr, callingClassLower, -1);
+    }
+
+    /** The engine-wide class id of {@link #callingClassLower}; -2 until first needed. */
+    @CompilerDirectives.CompilationFinal private int callingClassId = -2;
+
+    /**
+     * The calling class in this request: one read of the request's by-id table instead of a
+     * lookup by name (a private or protected static property checked it on every write).
+     */
+    private PhpClass callingClass(PhpContext ctx) {
+        int id = callingClassId;
+        if (id == -2) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            id = PhpLanguage.get(this).classId(callingClassLower);
+            callingClassId = id;
+        }
+        PhpClass cls = ctx.classById(id);
+        return cls != null ? cls : ctx.lookupClass(callingClassLower);
     }
 
     public StaticPropertyLValueNode(ClassRefNode classRef, String staticName, PhpNode dynamicNameExpr,
@@ -187,7 +206,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         }
         PhpClass caller = traitCaller;
         if (caller == null && callingClassLower != null) {
-            caller = ctx.lookupClass(callingClassLower);
+            caller = callingClass(ctx);
         }
         if (set == Visibility.PRIVATE) {
             return caller != null && dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(caller.name(),
@@ -206,7 +225,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         } else if (callingClassLower == null) {
             scope = "global scope";
         } else {
-            PhpClass caller = PhpContext.get(this).lookupClass(callingClassLower);
+            PhpClass caller = callingClass(PhpContext.get(this));
             scope = caller == null ? "global scope" : "scope " + caller.name();
         }
         return new PhpError("Cannot " + action + " " + level + " property " + decl.declaringClass().name()
@@ -417,7 +436,7 @@ public final class StaticPropertyLValueNode extends LValueNode {
         if (decl.visibility() == Visibility.PRIVATE) {
             return dev.phpruntime.runtime.PhpStrings.equalsIgnoreCase(decl.declaringClass().name(), callingClassLower);
         }
-        PhpClass caller = ctx.lookupClass(callingClassLower);
+        PhpClass caller = callingClass(ctx);
         return caller != null && (targetClass.isInstanceOf(caller) || caller.isInstanceOf(decl.declaringClass()));
     }
 
