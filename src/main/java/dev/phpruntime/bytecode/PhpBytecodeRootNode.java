@@ -1977,18 +1977,22 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return c.pos >= 0;
         }
 
-        /** A Traversable object: the Iterator's own methods, kept out of the array loop's code. */
+        /**
+         * A Traversable object: the Iterator's own methods, kept out of the array loop's code by
+         * the specialization, and inlined into the loop. They were behind a boundary (972a344),
+         * which kept Graal from inlining small methods such as Tempest's current()/next()/valid()
+         * over an array property: about 6% of the samples on /blog went to those calls.
+         */
         @Specialization(guards = "c.iterator != null")
         static boolean nextIterator(Cursor c, @Bind PhpBytecodeRootNode root, @Bind Node node,
                                     @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                                     @Cached("create(root)") IteratorNode iterator,
                                     @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
             TruffleSafepoint.poll(node);
-            return nextIteratorSlow(c, iterator, location);
+            return nextIteratorStep(c, iterator, location);
         }
 
-        @TruffleBoundary
-        private static boolean nextIteratorSlow(Cursor c, IteratorNode iterator, SiteNode location) {
+        private static boolean nextIteratorStep(Cursor c, IteratorNode iterator, SiteNode location) {
             if (c.started) {
                 iterator.next(c.iterator, location);
             }
@@ -2021,11 +2025,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                   @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
                                   @Cached("create(root)") IteratorNode iterator,
                                   @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location) {
-            return keyIteratorSlow(c, iterator, location);
+            return keyIteratorStep(c, iterator, location);
         }
 
-        @TruffleBoundary
-        private static Object keyIteratorSlow(Cursor c, IteratorNode iterator, SiteNode location) {
+        private static Object keyIteratorStep(Cursor c, IteratorNode iterator, SiteNode location) {
             return iterator.key(c.iterator, location);
         }
 
@@ -2054,11 +2057,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                     @Cached("create(root)") IteratorNode iterator,
                                     @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                                     @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile refSeen) {
-            return valueIteratorSlow(c, iterator, location, refSeen);
+            return valueIteratorStep(c, iterator, location, refSeen);
         }
 
-        @TruffleBoundary
-        private static Object valueIteratorSlow(Cursor c, IteratorNode iterator, SiteNode location,
+        private static Object valueIteratorStep(Cursor c, IteratorNode iterator, SiteNode location,
                                                 com.oracle.truffle.api.profiles.BranchProfile refSeen) {
             Object raw = iterator.current(c.iterator, location);
             if (raw instanceof PhpReference ref) {
