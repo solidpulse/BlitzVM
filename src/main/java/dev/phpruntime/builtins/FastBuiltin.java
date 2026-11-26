@@ -102,6 +102,17 @@ public abstract class FastBuiltin {
             case "is_null" -> IsType.NULL;
             case "is_object" -> IsType.OBJECT;
             case "is_scalar" -> IsType.SCALAR;
+            case "ctype_alnum" -> Ctype.ALNUM;
+            case "ctype_alpha" -> Ctype.ALPHA;
+            case "ctype_cntrl" -> Ctype.CNTRL;
+            case "ctype_digit" -> Ctype.DIGIT;
+            case "ctype_graph" -> Ctype.GRAPH;
+            case "ctype_lower" -> Ctype.LOWER;
+            case "ctype_print" -> Ctype.PRINT;
+            case "ctype_punct" -> Ctype.PUNCT;
+            case "ctype_space" -> Ctype.SPACE;
+            case "ctype_upper" -> Ctype.UPPER;
+            case "ctype_xdigit" -> Ctype.XDIGIT;
             default -> null;
         };
     }
@@ -747,7 +758,7 @@ public abstract class FastBuiltin {
         static final IsType OBJECT = new IsType("is_object", 6);
         static final IsType SCALAR = new IsType("is_scalar", 7);
 
-        private final int test;
+        @com.oracle.truffle.api.CompilerDirectives.CompilationFinal private final int test;
 
         IsType(String name, int test) {
             super(name);
@@ -771,6 +782,48 @@ public abstract class FastBuiltin {
                 default -> value instanceof Long || value instanceof Double
                         || value instanceof String || value instanceof Boolean;
             };
+        }
+    }
+
+    /**
+     * ctype_* on a string: php's ASCII C-locale test, empty strings are false. An int
+     * argument is deprecated and converts through the builtin, so it is not answered here.
+     */
+    private static final class Ctype extends FastBuiltin {
+        static final Ctype ALNUM = new Ctype("ctype_alnum", CtypeFunctions.ALNUM);
+        static final Ctype ALPHA = new Ctype("ctype_alpha", CtypeFunctions.ALPHA);
+        static final Ctype CNTRL = new Ctype("ctype_cntrl", CtypeFunctions.CNTRL);
+        static final Ctype DIGIT = new Ctype("ctype_digit", CtypeFunctions.DIGIT);
+        static final Ctype GRAPH = new Ctype("ctype_graph", CtypeFunctions.GRAPH);
+        static final Ctype LOWER = new Ctype("ctype_lower", CtypeFunctions.LOWER);
+        static final Ctype PRINT = new Ctype("ctype_print", CtypeFunctions.PRINT);
+        static final Ctype PUNCT = new Ctype("ctype_punct", CtypeFunctions.PUNCT);
+        static final Ctype SPACE = new Ctype("ctype_space", CtypeFunctions.SPACE);
+        static final Ctype UPPER = new Ctype("ctype_upper", CtypeFunctions.UPPER);
+        static final Ctype XDIGIT = new Ctype("ctype_xdigit", CtypeFunctions.XDIGIT);
+
+        @com.oracle.truffle.api.CompilerDirectives.CompilationFinal
+        private final java.util.function.IntPredicate test;
+
+        Ctype(String name, java.util.function.IntPredicate test) {
+            super(name);
+            this.test = test;
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length != 1 || !(args[0] instanceof String text)) {
+                return UNHANDLED;
+            }
+            if (text.isEmpty()) {
+                return Boolean.FALSE;
+            }
+            for (int i = 0; i < text.length(); i++) {
+                if (!test.test(text.charAt(i))) {
+                    return Boolean.FALSE;
+                }
+            }
+            return Boolean.TRUE;
         }
     }
 

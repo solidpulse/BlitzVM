@@ -1,0 +1,20 @@
+lower: bool(true)
+lower-mixed: bool(false)
+lower-empty: bool(false)
+upper: bool(true)
+digit: bool(true)
+alpha-bytes: bool(false)
+space: bool(true)
+punct: bool(true)
+graph: bool(true)
+print: bool(true)
+cntrl: bool(true)
+xdigit: bool(true)
+alnum: bool(true)
+deprecated: 8192: ctype_digit(): Argument of type int will be interpreted as string in the future
+digit-int: bool(false)
+named: bool(true)
+value: bool(true)
+call-user-func: bool(true)
+no-arg: string(49) "ctype_lower() expects exactly 1 argument, 0 given"
+too-many: string(49) "ctype_lower() expects exactly 1 argument, 2 given"

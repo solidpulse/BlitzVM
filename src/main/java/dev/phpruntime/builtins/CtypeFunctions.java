@@ -8,18 +8,30 @@ final class CtypeFunctions {
     private CtypeFunctions() {
     }
 
+    static final IntPredicate DIGIT = c -> c >= '0' && c <= '9';
+    static final IntPredicate ALPHA = CtypeFunctions::alpha;
+    static final IntPredicate ALNUM = c -> alpha(c) || DIGIT.test(c);
+    static final IntPredicate UPPER = c -> c >= 'A' && c <= 'Z';
+    static final IntPredicate LOWER = c -> c >= 'a' && c <= 'z';
+    static final IntPredicate SPACE = c -> c == ' ' || (c >= '\t' && c <= '\r');
+    static final IntPredicate XDIGIT = c -> DIGIT.test(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    static final IntPredicate PUNCT = c -> c > ' ' && c < 127 && !alpha(c) && !DIGIT.test(c);
+    static final IntPredicate PRINT = c -> c >= ' ' && c < 127;
+    static final IntPredicate GRAPH = c -> c > ' ' && c < 127;
+    static final IntPredicate CNTRL = c -> c < ' ' || c == 127;
+
     static void register() {
-        ctype("ctype_digit", c -> c >= '0' && c <= '9');
-        ctype("ctype_alpha", CtypeFunctions::alpha);
-        ctype("ctype_alnum", c -> alpha(c) || (c >= '0' && c <= '9'));
-        ctype("ctype_upper", c -> c >= 'A' && c <= 'Z');
-        ctype("ctype_lower", c -> c >= 'a' && c <= 'z');
-        ctype("ctype_space", c -> c == ' ' || (c >= '\t' && c <= '\r'));
-        ctype("ctype_xdigit", c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
-        ctype("ctype_punct", c -> c > ' ' && c < 127 && !alpha(c) && !(c >= '0' && c <= '9'));
-        ctype("ctype_print", c -> c >= ' ' && c < 127);
-        ctype("ctype_graph", c -> c > ' ' && c < 127);
-        ctype("ctype_cntrl", c -> c < ' ' || c == 127);
+        ctype("ctype_digit", DIGIT);
+        ctype("ctype_alpha", ALPHA);
+        ctype("ctype_alnum", ALNUM);
+        ctype("ctype_upper", UPPER);
+        ctype("ctype_lower", LOWER);
+        ctype("ctype_space", SPACE);
+        ctype("ctype_xdigit", XDIGIT);
+        ctype("ctype_punct", PUNCT);
+        ctype("ctype_print", PRINT);
+        ctype("ctype_graph", GRAPH);
+        ctype("ctype_cntrl", CNTRL);
         // mbstring is registered by MbConvertFunctions, at its explicit charset boundary.
     }
 
