@@ -79,6 +79,11 @@ public abstract class FastBuiltin {
             case "is_a" -> IsA.INSTANCE;
             case "class_exists" -> ClassExists.INSTANCE;
             case "interface_exists" -> InterfaceExists.INSTANCE;
+            case "error_clear_last" -> ErrorClearLast.INSTANCE;
+            case "preg_last_error" -> PregLastError.INSTANCE;
+            case "error_reporting" -> ErrorReporting.INSTANCE;
+            case "date_default_timezone_get" -> DefaultTimezoneGet.INSTANCE;
+            case "time" -> Time.INSTANCE;
             default -> null;
         };
     }
@@ -538,6 +543,91 @@ public abstract class FastBuiltin {
                 // A miss with autoload on goes to the builtin, which runs the autoloaders.
             }
             return UNHANDLED;
+        }
+    }
+
+    /** error_clear_last: the runtime keeps no last error to clear, as the builtin already does. */
+    private static final class ErrorClearLast extends FastBuiltin {
+        static final ErrorClearLast INSTANCE = new ErrorClearLast();
+
+        ErrorClearLast() {
+            super("error_clear_last");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            return args.length == 0 ? PhpNull.INSTANCE : UNHANDLED;
+        }
+    }
+
+    /** preg_last_error: the request's last PCRE error code, without arguments. */
+    private static final class PregLastError extends FastBuiltin {
+        static final PregLastError INSTANCE = new PregLastError();
+
+        PregLastError() {
+            super("preg_last_error");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
+            return args.length == 0 ? (long) ContextState.of(ctx).pregLastError : UNHANDLED;
+        }
+    }
+
+    /** error_reporting() with no argument: the current level, read-only. */
+    private static final class ErrorReporting extends FastBuiltin {
+        static final ErrorReporting INSTANCE = new ErrorReporting();
+
+        ErrorReporting() {
+            super("error_reporting");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
+            return args.length == 0 ? ctx.errorReporting() : UNHANDLED;
+        }
+    }
+
+    /** date_default_timezone_get: the request's current default timezone name. */
+    private static final class DefaultTimezoneGet extends FastBuiltin {
+        static final DefaultTimezoneGet INSTANCE = new DefaultTimezoneGet();
+
+        DefaultTimezoneGet() {
+            super("date_default_timezone_get");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            return callImplWith(node, args, PhpContext.get(node));
+        }
+
+        @Override
+        Object callImplWith(Node node, Object[] args, PhpContext ctx) {
+            return args.length == 0 ? ContextState.of(ctx).timezoneName : UNHANDLED;
+        }
+    }
+
+    /** time(): the current Unix time in seconds. */
+    private static final class Time extends FastBuiltin {
+        static final Time INSTANCE = new Time();
+
+        Time() {
+            super("time");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            return args.length == 0 ? System.currentTimeMillis() / 1000 : UNHANDLED;
         }
     }
 

@@ -1,0 +1,12 @@
+reporting-int: int(22527)
+reporting-null: int(12345)
+reporting-after-null: int(12345)
+reporting-null-again: int(12345)
+reporting-after-null-again: int(12345)
+preg: int(0)
+timezone: string(3) "UTC"
+clear: NULL
+time: bool(true)
+preg-value: bool(true)
+timezone-call-user-func: bool(true)
+clear-value: bool(true)

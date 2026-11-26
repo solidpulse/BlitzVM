@@ -1,0 +1,31 @@
+preg-none: int(0)
+preg-invalid: int(1)
+preg-valid: int(1)
+preg-cleared: int(0)
+reporting-set-zero: int(22527)
+reporting-zero: int(0)
+reporting-set-number: int(0)
+reporting-number: int(12345)
+reporting-null: int(12345)
+reporting-after-null: int(12345)
+reporting-named: int(12345)
+reporting-named-value: int(0)
+timezone-default: string(3) "UTC"
+timezone-set: bool(true)
+timezone-paris: string(12) "Europe/Paris"
+timezone-set-back: bool(true)
+timezone-utc: string(3) "UTC"
+clear-last: NULL
+time-int: bool(true)
+time-plausible: bool(true)
+time-value: bool(true)
+time-call-user-func: bool(true)
+time-call-user-func-array: bool(true)
+preg-last-value: bool(true)
+timezone-value: bool(true)
+clear-last-value: bool(true)
+time-too-many: string(43) "time() expects exactly 0 arguments, 1 given"
+preg-too-many: string(54) "preg_last_error() expects exactly 0 arguments, 1 given"
+timezone-too-many: string(64) "date_default_timezone_get() expects exactly 0 arguments, 1 given"
+clear-too-many: string(55) "error_clear_last() expects exactly 0 arguments, 1 given"
+unknown-named: string(28) "Unknown named parameter $foo"
