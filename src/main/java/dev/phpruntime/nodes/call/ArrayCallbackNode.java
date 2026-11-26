@@ -20,7 +20,8 @@ import java.util.List;
 
 /**
  * The per-call-site fast path for the array builtins that run a closure over an array
- * ({@code array_map}, {@code array_filter}, {@code array_reduce}).
+ * ({@code array_map}, {@code array_filter}, {@code array_reduce}, {@code array_any},
+ * {@code array_all}).
  *
  * <p>The builtin itself calls a closure through {@code PhpCallable.invokeClosure*}, which goes
  * through an {@code IndirectCallNode} from host code. This node holds a {@link DispatchCallNode}
@@ -46,6 +47,8 @@ public final class ArrayCallbackNode extends Node {
     private static final int MAP = 0;
     private static final int FILTER = 1;
     private static final int REDUCE = 2;
+    private static final int ANY = 3;
+    private static final int ALL = 4;
 
     private final int kind;
     private final Node site;
@@ -72,6 +75,8 @@ public final class ArrayCallbackNode extends Node {
             case "array_map" -> new ArrayCallbackNode(MAP, lower, site);
             case "array_filter" -> new ArrayCallbackNode(FILTER, lower, site);
             case "array_reduce" -> new ArrayCallbackNode(REDUCE, lower, site);
+            case "array_any" -> new ArrayCallbackNode(ANY, lower, site);
+            case "array_all" -> new ArrayCallbackNode(ALL, lower, site);
             default -> null;
         };
     }
@@ -89,7 +94,8 @@ public final class ArrayCallbackNode extends Node {
         return switch (kind) {
             case MAP -> map(args, ctx);
             case FILTER -> filter(def, args, ctx);
-            default -> reduce(def, args, ctx);
+            case REDUCE -> reduce(def, args, ctx);
+            default -> anyAll(def, args, ctx);
         };
     }
 
@@ -243,6 +249,48 @@ public final class ArrayCallbackNode extends Node {
             ctx.exitBuiltin(previousSite, previousName);
         }
         return acc;
+    }
+
+    /**
+     * array_any/array_all: the builtin's argument order puts the array first, and the callback
+     * receives the value and the key. The walk stops at the first decisive answer.
+     */
+    private Object anyAll(Builtins.Def def, Object[] args, PhpContext ctx) {
+        if (args.length != 2 || !(args[0] instanceof PhpArray src)) {
+            return UNHANDLED;
+        }
+        PhpObject closureObj = closureObject(args[1]);
+        if (closureObj == null) {
+            return UNHANDLED;
+        }
+        boolean any = kind == ANY;
+        PhpClosure closure = closureObj.closure();
+        PhpFunctionRootNode fnRoot = PhpCallable.rootOf(closure.callTarget());
+        RootCallTarget target = closure.callTarget();
+        Object boundThis = closure.boundThis();
+        PhpClass calledClass = closure.calledClass();
+        Node previousSite = ctx.currentBuiltinCallSite();
+        String previousName = ctx.enterBuiltin(site, def.name());
+        CallbackFrame callback = beginCallback(ctx, fnRoot);
+        try {
+            PhpArray view = src.walkView();
+            try {
+                for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                    Object answer = call(ctx, target, fnRoot, boundThis, calledClass, closureObj,
+                            view.valueAt(pos), view.keyAt(pos), true, null);
+                    boolean matched = PhpOps.toBool(answer);
+                    if (any ? matched : !matched) {
+                        return any;
+                    }
+                }
+            } finally {
+                view.releaseShare();
+            }
+        } finally {
+            endCallback(ctx, callback);
+            ctx.exitBuiltin(previousSite, previousName);
+        }
+        return !any;
     }
 
     /** The closure object a callback value denotes, or null when the builtin must resolve it. */
