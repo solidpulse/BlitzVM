@@ -113,6 +113,11 @@ public abstract class FastBuiltin {
             case "ctype_space" -> Ctype.SPACE;
             case "ctype_upper" -> Ctype.UPPER;
             case "ctype_xdigit" -> Ctype.XDIGIT;
+            case "strtoupper" -> StrToUpper.INSTANCE;
+            case "urlencode" -> UrlCodec.ENCODE;
+            case "rawurlencode" -> UrlCodec.RAW_ENCODE;
+            case "urldecode" -> UrlCodec.DECODE;
+            case "rawurldecode" -> UrlCodec.RAW_DECODE;
             default -> null;
         };
     }
@@ -824,6 +829,47 @@ public abstract class FastBuiltin {
                 }
             }
             return Boolean.TRUE;
+        }
+    }
+
+    private static final class StrToUpper extends FastBuiltin {
+        static final StrToUpper INSTANCE = new StrToUpper();
+
+        StrToUpper() {
+            super("strtoupper");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length == 1 && args[0] instanceof String subject) {
+                return PhpStrings.upper(subject);
+            }
+            return UNHANDLED;
+        }
+    }
+
+    /** urlencode/rawurlencode/urldecode/rawurldecode on a string, byte by byte. */
+    private static final class UrlCodec extends FastBuiltin {
+        static final UrlCodec ENCODE = new UrlCodec("urlencode", false, false);
+        static final UrlCodec RAW_ENCODE = new UrlCodec("rawurlencode", true, false);
+        static final UrlCodec DECODE = new UrlCodec("urldecode", false, true);
+        static final UrlCodec RAW_DECODE = new UrlCodec("rawurldecode", true, true);
+
+        private final boolean raw;
+        private final boolean decode;
+
+        UrlCodec(String name, boolean raw, boolean decode) {
+            super(name);
+            this.raw = raw;
+            this.decode = decode;
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length != 1 || !(args[0] instanceof String text)) {
+                return UNHANDLED;
+            }
+            return decode ? UrlFunctions.decode(text, !raw) : UrlFunctions.encode(text, raw);
         }
     }
 
