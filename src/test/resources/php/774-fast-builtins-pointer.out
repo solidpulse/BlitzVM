@@ -1,0 +1,41 @@
+current: int(1)
+key: int(0)
+next: int(2)
+current-after-next: int(2)
+key-after-next: int(1)
+end: int(3)
+key-at-end: int(2)
+next-past-end: bool(false)
+key-past-end: NULL
+current-past-end: bool(false)
+prev-past-end: bool(false)
+reset: int(1)
+key-after-reset: int(0)
+prev-first: bool(false)
+key-after-prev-first: NULL
+pos-empty-pointer: bool(false)
+assoc-key: string(1) "b"
+assoc-prev-key: string(1) "a"
+gapped-key: int(2)
+empty-current: bool(false)
+empty-key: NULL
+empty-next: bool(false)
+empty-reset: bool(false)
+cow-original: int(2)
+cow-copy: int(1)
+ref-value: int(2)
+alias-move: int(1)
+unset-current: int(3)
+unset-key: int(2)
+named-next: int(2)
+named-current: int(2)
+named-key: int(1)
+named-reset: int(1)
+value-current: int(1)
+value-key: int(0)
+cuf-current: int(1)
+cuf-reset: int(1)
+current-string: string(67) "current(): Argument #1 ($array) must be of type array, string given"
+key-null: string(61) "key(): Argument #1 ($array) must be of type array, null given"
+next-literal: string(61) "next(): Argument #1 ($array) could not be passed by reference"
+reset-string: string(65) "reset(): Argument #1 ($array) must be of type array, string given"

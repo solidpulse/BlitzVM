@@ -84,6 +84,13 @@ public abstract class FastBuiltin {
             case "error_reporting" -> ErrorReporting.INSTANCE;
             case "date_default_timezone_get" -> DefaultTimezoneGet.INSTANCE;
             case "time" -> Time.INSTANCE;
+            case "current" -> Current.CURRENT;
+            case "pos" -> Current.POS;
+            case "key" -> ArrayKey.INSTANCE;
+            case "reset" -> PointerMove.RESET;
+            case "end" -> PointerMove.END;
+            case "next" -> PointerMove.NEXT;
+            case "prev" -> PointerMove.PREV;
             default -> null;
         };
     }
@@ -628,6 +635,82 @@ public abstract class FastBuiltin {
         @Override
         Object callImpl(Node node, Object[] args) {
             return args.length == 0 ? System.currentTimeMillis() / 1000 : UNHANDLED;
+        }
+    }
+
+    /** current/pos: the value at the array's internal pointer, or false past either end. */
+    private static final class Current extends FastBuiltin {
+        static final Current CURRENT = new Current("current");
+        static final Current POS = new Current("pos");
+
+        Current(String name) {
+            super(name);
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length == 1 && args[0] instanceof PhpArray array) {
+                Object value = array.pointerValue();
+                return value == null ? Boolean.FALSE : value;
+            }
+            return UNHANDLED;
+        }
+    }
+
+    /** key: the key at the array's internal pointer, or null past either end. */
+    private static final class ArrayKey extends FastBuiltin {
+        static final ArrayKey INSTANCE = new ArrayKey();
+
+        ArrayKey() {
+            super("key");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length == 1 && args[0] instanceof PhpArray array) {
+                Object key = array.pointerKey();
+                return key == null ? PhpNull.INSTANCE : key;
+            }
+            return UNHANDLED;
+        }
+    }
+
+    /**
+     * reset/end/next/prev: move the array's internal pointer. The argument is a reference
+     * cell, and moving separates a shared array first, so the cell must receive the separated
+     * array exactly as the builtin's writeback does.
+     */
+    private static final class PointerMove extends FastBuiltin {
+        static final PointerMove RESET = new PointerMove("reset", 0);
+        static final PointerMove END = new PointerMove("end", 1);
+        static final PointerMove NEXT = new PointerMove("next", 2);
+        static final PointerMove PREV = new PointerMove("prev", 3);
+
+        private final int move;
+
+        PointerMove(String name, int move) {
+            super(name);
+            this.move = move;
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length != 1 || !(args[0] instanceof PhpReference cell)
+                    || !(cell.getValue() instanceof PhpArray array)) {
+                return UNHANDLED;
+            }
+            PhpArray writable = array.forWrite();
+            if (writable != array) {
+                cell.setValue(writable);
+            }
+            switch (move) {
+                case 0 -> writable.pointerReset();
+                case 1 -> writable.pointerEnd();
+                case 2 -> writable.pointerNext();
+                default -> writable.pointerPrev();
+            }
+            Object value = writable.pointerValue();
+            return value == null ? Boolean.FALSE : value;
         }
     }
 
