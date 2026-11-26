@@ -118,6 +118,8 @@ public abstract class FastBuiltin {
             case "rawurlencode" -> UrlCodec.RAW_ENCODE;
             case "urldecode" -> UrlCodec.DECODE;
             case "rawurldecode" -> UrlCodec.RAW_DECODE;
+            case "array_values" -> ArrayValues.INSTANCE;
+            case "array_pop" -> ArrayPop.INSTANCE;
             default -> null;
         };
     }
@@ -870,6 +872,44 @@ public abstract class FastBuiltin {
                 return UNHANDLED;
             }
             return decode ? UrlFunctions.decode(text, !raw) : UrlFunctions.encode(text, raw);
+        }
+    }
+
+    /** array_values of an array: a fresh list, not a copy of the array with its keys. */
+    private static final class ArrayValues extends FastBuiltin {
+        static final ArrayValues INSTANCE = new ArrayValues();
+
+        ArrayValues() {
+            super("array_values");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            return args.length == 1 && args[0] instanceof PhpArray array
+                    ? ArrayFunctions.valuesOf(array) : UNHANDLED;
+        }
+    }
+
+    /** array_pop of the reference cell a by-reference parameter arrives in. */
+    private static final class ArrayPop extends FastBuiltin {
+        static final ArrayPop INSTANCE = new ArrayPop();
+
+        ArrayPop() {
+            super("array_pop");
+        }
+
+        @Override
+        Object callImpl(Node node, Object[] args) {
+            if (args.length != 1 || !(args[0] instanceof PhpReference cell)
+                    || !(cell.getValue() instanceof PhpArray array)) {
+                return UNHANDLED;
+            }
+            PhpArray writable = array.forWrite();
+            Object value = writable.removeLast();
+            if (writable != array) {
+                cell.setValue(writable);
+            }
+            return value;
         }
     }
 

@@ -146,7 +146,7 @@ final class ArrayFunctions {
             }
             return out;
         });
-        Builtins.def("array_values", 1, 1, (ctx, a) -> PhpArray.ofList(shared(arr(a, 0, "array_values").values())));
+        Builtins.def("array_values", 1, 1, (ctx, a) -> valuesOf(arr(a, 0, "array_values")));
         Builtins.def("array_merge", 0, -1, (ctx, a) -> {
             int total = 0;
             boolean stringKeys = false;
@@ -555,6 +555,11 @@ final class ArrayFunctions {
             }
         }
         return n;
+    }
+
+    /** array_values: a list of the array's values, with reference cells copied as php does. */
+    static PhpArray valuesOf(PhpArray src) {
+        return PhpArray.ofList(shared(src.values()));
     }
 
     private static List<Object> shared(List<Object> values) {

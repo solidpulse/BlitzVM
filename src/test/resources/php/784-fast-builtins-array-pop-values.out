@@ -1,0 +1,107 @@
+values-list: array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+values-assoc: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+values-gapped: array(2) {
+  [0]=>
+  string(4) "five"
+  [1]=>
+  string(3) "key"
+}
+values-empty: array(0) {
+}
+values-ref-value: int(1)
+values-nested: array(2) {
+  [0]=>
+  array(1) {
+    [0]=>
+    int(1)
+  }
+  [1]=>
+  array(1) {
+    [2]=>
+    int(3)
+  }
+}
+values-original: array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+pop: int(3)
+pop-after: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+pop-current: int(1)
+pop-key: int(0)
+pop-assoc: int(2)
+pop-assoc-after: array(1) {
+  ["a"]=>
+  int(1)
+}
+pop-empty: NULL
+pop-empty-after: array(0) {
+}
+pop-cow: int(3)
+pop-cow-original: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+pop-cow-copy: array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+pop-ref: int(2)
+pop-ref-cell: int(1)
+pop-alias: int(3)
+pop-alias-target: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+named-values: array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+named-pop: int(3)
+value-values: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+value-pop: int(2)
+values-string: string(72) "array_values(): Argument #1 ($array) must be of type array, string given"
+values-null: string(70) "array_values(): Argument #1 ($array) must be of type array, null given"
+values-no-arg: string(50) "array_values() expects exactly 1 argument, 0 given"
+values-too-many: string(50) "array_values() expects exactly 1 argument, 2 given"
+pop-no-arg: string(47) "array_pop() expects exactly 1 argument, 0 given"
+pop-too-many: string(47) "array_pop() expects exactly 1 argument, 2 given"
+pop-literal: string(66) "array_pop(): Argument #1 ($array) could not be passed by reference"
