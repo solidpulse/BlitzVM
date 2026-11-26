@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BlitzVM</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="BlitzVM is a research runtime for PHP with JIT compilation, per-request isolation and preemptive scheduling.">
+<meta name="description" content="BlitzVM runs unmodified PHP faster than php-fpm, with a fresh state for every request.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -187,23 +187,6 @@ figcaption b { font: 500 12.5px/1 var(--mono); color: var(--ink); margin-right: 
 .aside p { margin: 0 0 10px; }
 .aside p:last-child { margin-bottom: 0; }
 
-/* Reasons */
-.reasons { display: grid; gap: 0; border-top: 1px solid var(--rule); }
-.reason { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 20px; padding-block: 30px; border-bottom: 1px solid var(--rule); }
-.reason > .num { font: 500 13px/1.9 var(--mono); color: var(--amber); }
-.reason h3 { font: 600 19px/1.35 var(--sans); color: var(--ink); margin: 0 0 10px; text-wrap: balance; }
-.reason p { margin: 0 0 12px; max-width: var(--measure); }
-.reason p:last-child { margin-bottom: 0; }
-pre.code {
-  margin: 16px 0 0; padding: 16px 18px; overflow-x: auto; max-width: var(--measure);
-  background: var(--bg); border: 1px solid var(--rule); border-radius: 6px;
-  font: 400 13.5px/1.6 var(--mono); color: var(--soft);
-}
-pre.code .c { color: var(--muted); }
-pre.code .a { color: var(--amber); }
-pre.code .k { color: var(--ink); font-weight: 500; }
-@media (max-width: 560px) { .reason { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
-
 /* Charts */
 .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .charts .wide { grid-column: 1 / -1; }
@@ -241,29 +224,6 @@ pre.code .k { color: var(--ink); font-weight: 500; }
   .sscale > :first-child { display: none; }
 }
 
-/* Architecture (Fig. 4) */
-.diagram { overflow-x: auto; }
-.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
-.diagram .box { fill: var(--raised); stroke: var(--rule-strong); stroke-width: 1.2; }
-.diagram .box.ext { fill: var(--panel); stroke: var(--rule-strong); }
-.diagram .box.hot { fill: color-mix(in srgb, var(--amber) 14%, var(--panel)); stroke: var(--amber); }
-.diagram .boundary { fill: none; stroke: var(--amber-dim); stroke-width: 1.2; stroke-dasharray: 5 5; }
-.diagram .t { fill: var(--ink); font: 600 14px var(--sans); }
-.diagram .ts { fill: var(--muted); font: 400 11px var(--mono); }
-.diagram .ts.hot { fill: var(--amber); }
-.diagram .lbl { fill: var(--soft); font: 400 11px var(--mono); paint-order: stroke; stroke: var(--panel); stroke-width: 6px; stroke-linejoin: round; }
-.diagram .lbl.hot { fill: var(--amber); }
-.diagram .bl { fill: var(--amber); font: 500 11.5px var(--mono); letter-spacing: 0.12em; }
-.diagram .edge { fill: none; stroke: var(--muted); stroke-width: 1.3; }
-.diagram .edge.pre { stroke: var(--amber); stroke-width: 1.6; stroke-dasharray: 5 4; }
-.diagram .head { fill: var(--muted); }
-.diagram .head.pre { fill: var(--amber); }
-.diagram .head.open { fill: var(--panel); stroke: var(--muted); stroke-width: 1.3; }
-.notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 26px; }
-.notes div { min-width: 0; font-size: 15px; }
-.notes b { display: block; margin-bottom: 4px; }
-@media (max-width: 860px) { .notes { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
-
 /* Roadmap */
 .road { display: grid; border-top: 1px solid var(--rule); }
 .road > div { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 24px; padding-block: 22px; border-bottom: 1px solid var(--rule); }
@@ -278,19 +238,6 @@ pre.code .k { color: var(--ink); font-weight: 500; }
 .method dt, .method dd { padding-block: 12px; border-bottom: 1px solid var(--rule); margin: 0; }
 .method dt { font: 400 12.5px/1.9 var(--mono); color: var(--muted); padding-right: 32px; }
 @media (max-width: 560px) { .method { grid-template-columns: minmax(0, 1fr); } .method dt { border-bottom: 0; padding-bottom: 0; } }
-
-/* References */
-.credit { border: 1px solid var(--amber-dim); border-radius: 8px; background: var(--panel); padding: 22px 24px; max-width: 74ch; }
-.credit .who-ref { font: 500 12.5px/1.4 var(--mono); color: var(--amber); margin: 0 0 6px; }
-.credit h3 { font: 600 18px/1.35 var(--sans); color: var(--ink); margin: 0 0 10px; }
-.credit p { margin: 0 0 10px; }
-.credit p:last-child { margin-bottom: 0; }
-.refs { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--rule); }
-.refs li { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 20px; padding-block: 14px; border-bottom: 1px solid var(--rule); font-size: 15px; }
-.refs .topic { font: 400 12.5px/1.8 var(--mono); color: var(--muted); }
-.refs cite { font-style: normal; color: var(--ink); }
-.refs .why { display: block; color: var(--muted); font-size: 14px; margin-top: 2px; }
-@media (max-width: 560px) { .refs li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
 
 /* Access */
 .access { margin-top: 72px; border: 1px solid var(--amber-dim); border-radius: 8px; background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, var(--panel)), var(--panel)); padding: 34px 32px; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: end; }
@@ -324,15 +271,14 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
     <div class="hero-grid">
       <div class="hero-copy">
         <p class="eyebrow"><span>research project</span><span>PHP</span></p>
-        <h1>A <em>preemptive</em> runtime for PHP.</h1>
-        <p class="lede">Every backend hits this eventually: one heavy request ties up a php-fpm worker, and everyone queued behind it waits. BlitzVM JIT-compiles hot code and preemptively schedules requests in short time slices. Each request still starts with clean state, and you write the same plain PHP you would write today.</p>
+        <h1>A <em>faster</em> runtime for PHP.</h1>
+        <p class="lede">Every backend hits this eventually: one heavy request ties up a php-fpm worker, and everyone queued behind it waits. BlitzVM's SS Optimizer runs hot code faster than PHP's own JIT and keeps quick requests quick while slow ones run. Each request still starts with clean state, and you write the same plain PHP you would write today.</p>
         <p class="byline">By <b>Avinash D'Silva</b></p>
         <ul class="components" aria-label="Components">
-          <li class="own">PHP 8 front end</li>
-          <li class="own">self-specializing AST</li>
-          <li class="own">preemptive scheduler</li>
+          <li class="own">PHP 8 compatible</li>
+          <li class="own">SS Optimizer</li>
           <li class="own">per-request isolation</li>
-          <li class="own">epoll HTTP server</li>
+          <li class="own">drop-in for php-fpm</li>
         </ul>
       </div>
       <div class="bench" id="hero-chart" aria-label="Latency while a CPU-bound request runs"></div>
@@ -352,12 +298,10 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
     <ol>
       <li><a href="#benchmarks"><span>02</span>The numbers</a></li>
       <li><a href="#plain"><span>03</span>Plain PHP</a></li>
-      <li><a href="#why"><span>04</span>Why it's fast</a></li>
-      <li><a href="#architecture"><span>05</span>How it fits together</a></li>
-      <li><a href="#roadmap"><span>06</span>What's next</a></li>
-      <li><a href="#method"><span>07</span>How I measured</a></li>
-      <li><a href="#references"><span>08</span>References</a></li>
-      <li><a href="#access"><span>09</span>Code Access</a></li>
+      <li><a href="#optimizer"><span>04</span>SS Optimizer</a></li>
+      <li><a href="#roadmap"><span>05</span>What's next</a></li>
+      <li><a href="#method"><span>06</span>How I measured</a></li>
+      <li><a href="#access"><span>07</span>Code Access</a></li>
     </ol>
   </nav>
 
@@ -366,7 +310,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
       <div class="sh">
         <span class="sn">02</span>
         <h2>The numbers</h2>
-        <p>All of this ran on one 8-core Linux box with the same PHP files on every server. Everything gets 15 seconds of warm-up before I measure, and where my own runs disagreed I used the slower one. The full setup is in section 07.</p>
+        <p>All of this ran on one 8-core Linux box with the same PHP files on every server. Everything gets 15 seconds of warm-up before I measure, and where my own runs disagreed I used the slower one. The full setup is in section 06.</p>
       </div>
       <div class="charts">
         <figure class="fig wide">
@@ -374,7 +318,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
           <p class="unit">one worker, a 4 s CPU loop, then a hello request. Drawn to scale.</p>
           <div id="lanes"></div>
           <div class="axis"><span></span><div class="ticks"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
-          <figcaption><b>Fig. 1</b>With one worker, php-fpm can't answer until the loop is done. BlitzVM pauses the loop at its next safepoint and serves the hello request straight away.</figcaption>
+          <figcaption><b>Fig. 1</b>With one worker, php-fpm can't answer until the loop is done. BlitzVM answers the hello request straight away, and the loop still finishes.</figcaption>
         </figure>
       </div>
       <div class="charts" id="charts" style="margin-top:18px"></div>
@@ -384,7 +328,7 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
       <div class="sh">
         <span class="sn">03</span>
         <h2>You still write plain PHP</h2>
-        <p>Swoole is fast, but you pay for it in how you write code. Your app turns into a long-running server, requests share its memory, and a CPU-heavy handler blocks whichever worker it lands on. I wanted to keep the php-fpm model exactly as it is and do the scheduling underneath it.</p>
+        <p>Swoole is fast, but you pay for it in how you write code. Your app turns into a long-running server, requests share its memory, and a CPU-heavy handler blocks whichever worker it lands on. I wanted to keep the php-fpm model exactly as it is and make it fast underneath.</p>
       </div>
       <div class="compare">
         <figure class="pane us">
@@ -392,10 +336,10 @@ footer { padding-block: 40px; font: 400 12px/1.6 var(--mono); color: var(--muted
 <pre><span class="k">&lt;?php</span>
 <span class="c">// same file you'd put on php-fpm</span>
 $report = build_report($_GET[<span class="g">'id'</span>]);
-<span class="c">// heavy, gets paused every 10 ms</span>
+<span class="c">// heavy, other requests stay fast</span>
 
 usleep(<span class="g">200000</span>);
-<span class="c">// gives up the CPU while it waits</span>
+<span class="c">// waiting holds up nobody else</span>
 
 header(<span class="g">'Content-Type: text/html'</span>);
 <span class="k">echo</span> render($report);
@@ -419,230 +363,78 @@ $server-&gt;start();</pre>
       </div>
       <div class="points">
         <div><b>Same model as php-fpm</b>One file per request. <code>$_GET</code>, <code>echo</code>, <code>header()</code> and <code>exit</code> work the way you'd expect. No bootstrap file, no request objects.</div>
-        <div><b>No coroutines</b>You don't write <code>go()</code>, channels or wait groups. A blocking call is just a blocking call, and the scheduler gives the CPU to someone else while it waits.</div>
+        <div><b>No coroutines</b>You don't write <code>go()</code>, channels or wait groups. A blocking call is just a blocking call, and other requests keep running while it waits.</div>
         <div><b>Nothing leaks between requests</b>Every request starts with a fresh context, so there's no state to reset afterwards. That reset step is exactly what makes Laravel Octane fiddly.</div>
-        <div><b>No yielding by hand</b>You don't have to chop a slow loop into pieces or push it off to a task worker. It gets paused at the next safepoint either way.</div>
+        <div><b>No yielding by hand</b>You don't have to chop a slow loop into pieces or push it off to a task worker. Other requests stay fast either way.</div>
       </div>
       <div class="aside">
-        <h3>What about Swoole's preemptive mode?</h3>
+        <h3>Can't Swoole do this too?</h3>
         <p>Swoole does have one. Set <code>'enable_preemptive_scheduler' =&gt; true</code> and coroutines get time-sliced every 10 ms. In my tests that answers the hello request about as fast as BlitzVM does, so on that one number it's a tie.</p>
         <p>Turning it on also means a coroutine can be paused in the middle of any loop, while every coroutine in the worker shares the app's globals and statics. So a static cache or a singleton that's halfway through being set up can be seen by another request mid-update. It's a big gun, always pointed at your feet. Miss one lock and you get a bug that only shows up under load and never on your laptop. The bigger costs don't go away either: you still have the long-running server, the state you have to reset between requests, and no JIT.</p>
-        <p>BlitzVM pauses requests at the same kind of points. The difference is that BlitzVM requests work like classic php-fpm: they don't share anything, so there's nothing for them to race on.</p>
+        <p>BlitzVM gets the same quick answer without any of that. Its requests work like classic php-fpm: they don't share anything, so there's nothing for them to race on.</p>
       </div>
-      <p style="margin:22px 0 0;max-width:var(--measure);color:var(--muted);font-size:15px">To be clear, Laravel doesn't run yet. It needs classes and <code>require</code>, which are next on the list in section 06. When it does run, it should run unchanged.</p>
+      <p style="margin:22px 0 0;max-width:var(--measure);color:var(--muted);font-size:15px">WordPress and the Tempest framework already run unmodified, with pages byte-identical to PHP's. Laravel is next.</p>
     </section>
 
-    <section id="why">
+    <section id="optimizer">
       <div class="sh">
         <span class="sn">04</span>
-        <h2>Why it's fast</h2>
-        <p>Most of BlitzVM is custom code: the parser, the interpreter nodes, the scheduler, the isolation and the HTTP layer. For turning hot code into machine code I lean on the Graal compiler, the way plenty of languages lean on LLVM. These are the five things that actually move the numbers.</p>
+        <h2>SS Optimizer</h2>
+        <p>BlitzVM's speed comes from the SS Optimizer, its own optimization layer. How it works isn't public yet. What it does is measurable, and every number on this page comes from it.</p>
       </div>
-      <div class="reasons">
-        <article class="reason">
-          <span class="num">4.1</span>
-          <div>
-            <h3>The interpreter rewrites itself, then Graal compiles it</h3>
-            <p>PHP goes through a lexer and a Pratt parser and comes out as a tree of nodes. Each node watches the types that flow through it and specializes. If a <code>+</code> has only ever seen integers, it ends up as one machine add plus an overflow check. If a sum does overflow, that one result becomes a float, the way PHP 8 does it, and the next sum of two ints is an int again.</p>
-            <p>When a function gets hot, Graal compiles the interpreter and the specialized tree together into machine code (partial evaluation). Call sites remember what they call, so small functions get inlined into their callers. That's where the wins over PHP's tracing JIT come from: recursion, integer loops, and code split into lots of little helpers.</p>
-            <pre class="code"><span class="c">// the integer case: one add, one overflow branch</span>
-<span class="a">@Specialization</span>(rewriteOn = ArithmeticException.class)
-<span class="k">long</span> doLong(<span class="k">long</span> a, <span class="k">long</span> b) { <span class="k">return</span> Math.addExact(a, b); }
-
-<span class="a">@Specialization</span>
-<span class="k">double</span> doDouble(<span class="k">double</span> a, <span class="k">double</span> b) { <span class="k">return</span> a + b; }</pre>
-          </div>
-        </article>
-        <article class="reason">
-          <span class="num">4.2</span>
-          <div>
-            <h3>Numbers stay machine numbers</h3>
-            <p>A local variable that only ever holds ints lives in a 64-bit integer slot of the frame, and one that only holds floats lives in a double slot. A hot loop then runs in registers instead of allocating an object for every value it touches. Before this, <code>mandelbrot</code> allocated around 48 GB of short-lived floats in ten seconds.</p>
-            <p>The slot's type tag is PHP's type, so <code>var_dump</code> and <code>is_int</code> see exactly what PHP would show. A variable that holds both kinds, like the result of <code>$a * $t / 8</code>, keeps one boxed value that every read shares. The conformance suite checks these cases against PHP 8.5, including results that depend on what the same code ran before.</p>
-          </div>
-        </article>
-        <article class="reason">
-          <span class="num">4.3</span>
-          <div>
-            <h3>Preemption that keeps working after the JIT kicks in</h3>
-            <p>There are N CPU slots, and a request needs one to run. A ticker looks at the slots every 5 ms. If a request has had its 10 ms and someone is waiting, the scheduler queues an action on that request's thread. The action fires at the next safepoint and the slot goes to whoever is next in line.</p>
-            <p>Those safepoint checks are also in the compiled code, at loop back-edges and calls, so a hot loop can't get away from them. php-fpm can't do this at all, since each process serves one request to the end. Swoole, by default, only switches coroutines at I/O.</p>
-          </div>
-        </article>
-        <article class="reason">
-          <span class="num">4.4</span>
-          <div>
-            <h3>One engine, a fresh context per request</h3>
-            <p>All requests share one engine, which keeps the parsed trees and the machine code. Each request gets its own context with its own globals. So you get php-fpm's shared-nothing behaviour without parsing or compiling anything twice.</p>
-            <p>CPU time is counted per request as well. If a script blows through its budget it gets cancelled with a normal PHP fatal error, and the process (and everyone else) carries on.</p>
-          </div>
-        </article>
-        <article class="reason">
-          <span class="num">4.5</span>
-          <div>
-            <h3>Netty does the HTTP and never runs PHP</h3>
-            <p>HTTP parsing is Netty on native epoll. The event-loop threads only touch sockets, and every request goes to a worker that waits for a CPU slot. It's one process and one hop. php-fpm needs nginx, FastCGI and a pool process to do the same job.</p>
-            <p>Pipelined requests on a connection are answered in order, and the connection stops reading while one is in flight. It's a cheap bit of backpressure against clients that try to queue up a pile of work.</p>
-          </div>
-        </article>
-      </div>
-    </section>
-
-
-    <section id="architecture">
-      <div class="sh">
-        <span class="sn">05</span>
-        <h2>How it fits together</h2>
-        <p>Everything inside the dashed line is BlitzVM. The PHP front end builds its trees on Truffle's node framework, and Graal compiles the hot ones. The bottom row, the scheduler and the per-request contexts, knows nothing about PHP.</p>
-      </div>
-      <figure class="fig">
-        <div class="diagram">
-          <svg viewBox="0 0 900 560" role="img" aria-labelledby="arch-title arch-desc">
-            <title id="arch-title">BlitzVM architecture</title>
-            <desc id="arch-desc">Inside BlitzVM: the PHP language implementation, the lexer and parser, the self-specializing tree, the Netty front end, the scheduler and the request contexts. The Graal compiler compiles and Truffle executes the tree. HTTP requests enter through Netty, wait for a CPU slot in the scheduler, and run in an isolated context. The scheduler preempts running code at safepoints.</desc>
-            <defs>
-              <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0 10 5 0 10z"/></marker>
-              <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head pre" d="M0 0 10 5 0 10z"/></marker>
-              <marker id="tri" viewBox="0 0 14 14" refX="13" refY="7" markerWidth="12" markerHeight="12" orient="auto"><path class="head open" d="M1 1 13 7 1 13z"/></marker>
-            </defs>
-
-            <rect class="box ext" x="285" y="16" width="190" height="58" rx="6"/>
-            <text class="t" x="380" y="41" text-anchor="middle">Graal compiler</text>
-            <text class="ts" x="380" y="60" text-anchor="middle">JIT back end</text>
-            <rect class="box ext" x="640" y="16" width="200" height="58" rx="6"/>
-            <text class="t" x="740" y="41" text-anchor="middle">Truffle</text>
-            <text class="ts" x="740" y="60" text-anchor="middle">node framework</text>
-
-            <rect class="boundary" x="178" y="108" width="702" height="436" rx="8"/>
-            <text class="bl" x="198" y="528">BLITZVM</text>
-
-            <rect class="box hot" x="285" y="150" width="190" height="66" rx="14"/>
-            <text class="t" x="380" y="178" text-anchor="middle">Specializing AST</text>
-            <text class="ts hot" x="380" y="198" text-anchor="middle">typed fast paths</text>
-            <path class="edge" d="M285 196 H238 V128 H330 V148" marker-end="url(#ah)"/>
-            <text class="lbl" x="198" y="166">rewrites</text>
-
-            <rect class="box" x="285" y="270" width="190" height="58" rx="6"/>
-            <text class="t" x="380" y="295" text-anchor="middle">Lexer + Pratt parser</text>
-            <text class="ts" x="380" y="314" text-anchor="middle">PHP 8 syntax</text>
-            <rect class="box" x="640" y="262" width="200" height="74" rx="6"/>
-            <text class="t" x="740" y="290" text-anchor="middle">PHP language</text>
-            <text class="ts" x="740" y="309" text-anchor="middle">semantics, 179 builtins</text>
-            <text class="ts" x="740" y="325" text-anchor="middle">copy-on-write arrays</text>
-
-            <path class="box ext" d="M30 262 H122 L142 282 V338 H30 Z"/>
-            <path class="edge" d="M122 262 V282 H142" style="stroke-width:1.1"/>
-            <text class="t" x="84" y="302" text-anchor="middle">PHP</text>
-            <text class="t" x="84" y="320" text-anchor="middle">source</text>
-
-            <rect class="box ext" x="30" y="420" width="112" height="58" rx="6"/>
-            <text class="t" x="86" y="446" text-anchor="middle">HTTP</text>
-            <text class="t" x="86" y="464" text-anchor="middle">clients</text>
-            <rect class="box" x="208" y="416" width="176" height="66" rx="6"/>
-            <text class="t" x="296" y="442" text-anchor="middle">HTTP front end</text>
-            <text class="ts" x="296" y="462" text-anchor="middle">Netty, native epoll</text>
-            <rect class="box hot" x="428" y="416" width="176" height="66" rx="6"/>
-            <text class="t" x="516" y="442" text-anchor="middle">Scheduler</text>
-            <text class="ts hot" x="516" y="462" text-anchor="middle">N slots · 10 ms quantum</text>
-            <rect class="box" x="648" y="416" width="192" height="66" rx="6"/>
-            <text class="t" x="744" y="442" text-anchor="middle">Request contexts</text>
-            <text class="ts" x="744" y="462" text-anchor="middle">isolated, one per request</text>
-
-            <path class="edge" d="M380 74 V148" marker-end="url(#ah)"/>
-            <text class="lbl" x="390" y="100">compiles</text>
-            <path class="edge" d="M690 74 L478 180" marker-end="url(#ah)"/>
-            <text class="lbl" x="560" y="122">executes</text>
-            <path class="edge" d="M780 262 V76" marker-end="url(#tri)"/>
-            <text class="lbl" x="790" y="176">implements</text>
-            <path class="edge" d="M640 284 L478 206" marker-end="url(#ah)"/>
-            <text class="lbl" x="528" y="236">builds</text>
-            <path class="edge" d="M640 306 H478" marker-end="url(#ah)"/>
-            <text class="lbl" x="540" y="324">uses</text>
-            <path class="edge" d="M285 299 H145" marker-end="url(#ah)"/>
-            <text class="lbl" x="192" y="291">parses</text>
-
-            <path class="edge" d="M142 449 H205" marker-end="url(#ah)"/>
-            <path class="edge" d="M384 449 H425" marker-end="url(#ah)"/>
-            <path class="edge" d="M604 449 H645" marker-end="url(#ah)"/>
-            <path class="edge" d="M744 416 V339" marker-end="url(#ah)"/>
-            <text class="lbl" x="752" y="384">runs in</text>
-            <path class="edge pre" d="M500 416 L438 219" marker-end="url(#ahp)"/>
-            <text class="lbl hot" x="330" y="372">preempts at safepoints</text>
-          </svg>
-        </div>
-        <figcaption><b>Fig. 4</b>Top half is compilation, bottom half is the path a request takes. The amber boxes are the parts section 04 talks about.</figcaption>
-      </figure>
-      <div class="notes">
-        <div><b>Parsed once</b>Each file's tree is cached on the shared engine until the file changes.</div>
-        <div><b>Compiled once</b>Machine code belongs to the engine, so the next request to a hot page is already compiled.</div>
-        <div><b>Thrown away after</b>Globals, the output buffer, headers and the CPU budget all live in the request's context, and the context is dropped when the request ends.</div>
+      <div class="points">
+        <div><b>Hot code beats PHP's own JIT</b>1.2&times; to 2.5&times; faster than opcache's tracing JIT on the kernels in fig. 3, with no changes to the PHP.</div>
+        <div><b>Slow requests don't block quick ones</b>A quick request is answered in milliseconds while a CPU-heavy one holds the only worker (fig. 1).</div>
+        <div><b>Waiting is cheap</b>A request waiting on a database or an API doesn't tie up capacity, so throughput holds up on I/O-heavy pages (fig. 2).</div>
+        <div><b>Nothing shared between requests</b>Every request starts with clean state, the same guarantee php-fpm gives, without paying to start over each time.</div>
       </div>
     </section>
 
     <section id="roadmap">
       <div class="sh">
-        <span class="sn">06</span>
+        <span class="sn">05</span>
         <h2>What's next</h2>
-        <p>The aim is unmodified PHP applications running faster than on php-fpm, with the same one-request-at-a-time model. php-fpm and Swoole are well understood baselines, which makes the gains easy to measure.</p>
+        <p>The aim is unmodified PHP applications running faster than on php-fpm and FrankenPHP, with the same one-request-at-a-time model.</p>
       </div>
       <div class="road">
         <div><span class="tag on">working</span><div><h3>PHP 8 core</h3><p>Functions with defaults and by-reference args, copy-on-write arrays, PHP 8 type juggling and int overflow, alternative syntax, templates, superglobals, headers and status codes, and 179 builtins. I check the output against real PHP 8.5 with a conformance suite.</p></div></div>
-        <div><span class="tag on">prototype</span><div><h3>Virtual threads for waiting requests</h3><p>Request contexts on Java virtual threads, so a request that's sleeping or waiting costs next to nothing. In the prototype, 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. On a 64-thread pool they take <span class="mono" id="vt-pool"></span>.</p></div></div>
-        <div><span class="tag">next</span><div><h3>Classes, closures and require</h3><p>What's missing before real apps, Laravel included, can run.</p></div></div>
-        <div><span class="tag">next</span><div><h3>Builtins as compiled nodes</h3><p>Right now <code>strlen</code>, <code>count</code>, <code>microtime</code> and friends are plain Java calls, so the JIT can't see inside them. Turning the hot ones into nodes fixes that.</p></div></div>
+        <div><span class="tag on">working</span><div><h3>Thousands of waiting requests</h3><p>A request that's sleeping or waiting costs next to nothing. 2,000 requests that each sleep 200 ms finish in <span class="mono" id="vt-virtual"></span>. With 64 conventional workers they take <span class="mono" id="vt-pool"></span>.</p></div></div>
+        <div><span class="tag on">working</span><div><h3>WordPress and Tempest</h3><p>Both run unmodified, with pages byte-identical to PHP's.</p></div></div>
+        <div><span class="tag">next</span><div><h3>Laravel and Symfony</h3><p>The next frameworks to run unmodified.</p></div></div>
       </div>
     </section>
 
     <section id="method">
       <div class="sh">
-        <span class="sn">07</span>
+        <span class="sn">06</span>
         <h2>How I measured</h2>
       </div>
       <dl class="method">
         <dt>date</dt><dd>Compute and API numbers re-measured on 13 November 2026</dd>
         <dt>machine</dt><dd>8 cores, Linux 6.8, load generator and servers on the same host</dd>
-        <dt>blitzvm</dt><dd>v0.1 on JDK 25 with the Graal compiler from GraalVM Community 25.5</dd>
+        <dt>blitzvm</dt><dd>v0.1</dd>
         <dt>php-fpm</dt><dd>PHP 8.5 with opcache, static pool, nginx in front. Compute runs use <code>opcache.jit=tracing</code>, set at process start and confirmed with <code>opcache_get_status()</code></dd>
         <dt>swoole</dt><dd>Swoole 6.2 on PHP 8.4, default configuration with <code>SWOOLE_HOOK_ALL</code>. PHP disables its JIT when Swoole is loaded</dd>
         <dt>load</dt><dd>Closed loop, 32 keep-alive connections over raw sockets, 15 s warm-up, 10 s measured</dd>
-        <dt>workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM CPU slots), 1 for the latency scenario</dd>
+        <dt>workers</dt><dd>4 for throughput (FPM children, Swoole workers, BlitzVM workers), 1 for the latency scenario</dd>
         <dt>compute</dt><dd>Time measured inside the script with <code>microtime</code>; 12 runs per workload, one worker, median of the last three. Kernels in <code>www/compute.php</code></dd>
         <dt>api request</dt><dd><code>compute.php?k=api</code>: <code>usleep(20000)</code>, then the pixel loop on 300 × 300; 15 s warm-up, 10 s measured</dd>
         <dt>latency</dt><dd>Hello requests every 300 ms while a 4 s CPU loop holds the only worker; load-generator start-up excluded</dd>
       </dl>
     </section>
 
-    <section id="references">
-      <div class="sh">
-        <span class="sn">08</span>
-        <h2>References</h2>
-        <p>Where the ideas came from, and the work this builds on.</p>
-      </div>
-      <ol class="refs" style="margin-top:0">
-        <li><span class="topic">truffle</span><span><cite>T. Würthinger et al. Self-Optimizing AST Interpreters. DLS 2012.</cite><span class="why">Nodes that rewrite themselves to the types they see. Section 4.1 is this idea applied to PHP.</span></span></li>
-        <li><span class="topic">graalvm</span><span><cite>T. Würthinger et al. One VM to Rule Them All. Onward! 2013.</cite><span class="why">The case for building language runtimes on a shared VM and compiler.</span></span></li>
-        <li><span class="topic">partial evaluation</span><span><cite>T. Würthinger et al. Practical Partial Evaluation for High-Performance Dynamic Language Runtimes. PLDI 2017.</cite><span class="why">How Graal turns an interpreter plus a tree into machine code.</span></span></li>
-        <li><span class="topic">origin</span><span><cite>A. Bertschi. <a href="https://github.com/abertschi/graalphp">graalphp: a PHP implementation built on GraalVM</a>. Undergraduate thesis, ETH Zurich, 2020.</cite><span class="why">Showed that PHP on Truffle could work.</span></span></li>
-        <li><span class="topic">truffle docs</span><span><cite><a href="https://www.graalvm.org/latest/graalvm-as-a-platform/language-implementation-framework/">Truffle language implementation framework</a></cite><span class="why">Including thread-local actions and safepoints, which the scheduler is built on.</span></span></li>
-        <li><span class="topic">parsing</span><span><cite>V. R. Pratt. Top Down Operator Precedence. POPL 1973.</cite><span class="why">The expression parser in BlitzVM's front end.</span></span></li>
-        <li><span class="topic">java</span><span><cite><a href="https://openjdk.org/jeps/444">JEP 444: Virtual Threads</a> and <a href="https://openjdk.org/jeps/491">JEP 491: Synchronize Virtual Threads without Pinning</a></cite><span class="why">The basis of the virtual-thread prototype in section 06.</span></span></li>
-        <li><span class="topic">http</span><span><cite><a href="https://netty.io">Netty</a></cite><span class="why">The HTTP front end, on its native epoll transport.</span></span></li>
-        <li><span class="topic">compared with</span><span><cite><a href="https://wiki.php.net/rfc/jit">PHP RFC: JIT</a> and <a href="https://github.com/swoole/swoole-src">Swoole</a></cite><span class="why">PHP's tracing JIT and Swoole are what the numbers in section 02 are measured against.</span></span></li>
-      </ol>
-    </section>
-
     <section id="access" class="access">
       <div>
-        <span class="sn">09</span>
+        <span class="sn">07</span>
         <h2>Code Access</h2>
-        <p>The repo is private for now, because I'm writing up the scheduling and isolation work as papers first. If you're reviewing, researching or evaluating this, ask and I'll give you access.</p>
+        <p>The code is private. If you're evaluating BlitzVM, ask and I'll give you access.</p>
       </div>
       <div class="who">By<b>Avinash D'Silva</b></div>
     </section>
   </main>
 </div>
 
-<footer><div class="wrap">BlitzVM is an independent research project. PHP, GraalVM, Swoole, Netty and nginx belong to their respective projects.</div></footer>
+<footer><div class="wrap">BlitzVM is an independent research project. PHP, Swoole, FrankenPHP and nginx belong to their respective projects.</div></footer>
 
 <script>
 /* All benchmark numbers on the page come from this block. */
@@ -665,7 +457,7 @@ const DATA = {
       wide: true,
       title: "PHP: an API-style request",
       unit: "wait 20 ms on a backend, then do some real work. Requests per second, 4 workers, 32 connections, higher is better.",
-      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits but can't JIT the work afterwards. BlitzVM does both, and its p99 is 73 ms against Swoole's 237 ms. php-fpm here has the tracing JIT on.",
+      caption: "Each request waits 20 ms on a pretend database call, then runs the pixel loop on 300 × 300. php-fpm's workers just sit there during each wait. Swoole overlaps the waits, but PHP's JIT is off under Swoole, so the work afterwards is slow. BlitzVM does both, and its p99 is 73 ms against Swoole's 237 ms. php-fpm here has the tracing JIT on.",
       rows: [
         { who: "BlitzVM", us: true, v: 523 },
         { who: "Swoole", note: "default", v: 373 },
@@ -677,7 +469,7 @@ const DATA = {
       fig: 3,
       title: "BlitzVM: how much faster than PHP's own JIT",
       unit: "times faster than php-fpm with opcache's tracing JIT, warm, one worker. The dashed line is the JIT itself.",
-      caption: "Recursion, integer branches, float loops and code made of small helper functions. Graal inlines across the calls and the variables stay in registers. Swoole can't use PHP's JIT at all, so it runs 2.7× to 8.4× behind BlitzVM on these.",
+      caption: "Recursion, integer branches, float loops and code made of small helper functions. Swoole can't use PHP's JIT at all, so it runs 2.7× to 8.4× behind BlitzVM on these.",
       rows: [
         { k: "collatz to 300,000", us: 91.2, jit: 228.5, swoole: 477.9 },
         { k: "pixel loop, tiny helper functions", us: 10.8, jit: 25.6, swoole: 64.7 },
@@ -749,7 +541,7 @@ function renderTimeline() {
              <span class="seg wait" style="left:${pct(at)}%;width:${pct(done - at)}%"></span>
              <span class="seg hello late" style="left:calc(${pct(done)}% - 5px);width:5px"></span>
              <span class="flag right" style="left:100%">answered after ${fmt(t.fpmMs, true)}</span>` },
-    { name: "BlitzVM", sub: "1 CPU slot",
+    { name: "BlitzVM", sub: "1 worker",
       segs: `<span class="seg spin" style="left:0;width:100%"></span>
              <span class="seg hello" style="left:${pct(at)}%;width:${Math.max(pct(t.blitzMs), 0.2)}%"></span>
              <span class="flag" style="left:${pct(at)}%">answered after <em>${fmt(t.blitzMs, true)}</em></span>` }
