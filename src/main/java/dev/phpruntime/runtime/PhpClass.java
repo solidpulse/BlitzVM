@@ -689,8 +689,14 @@ public final class PhpClass {
             for (int i = 0; i < parameters.size(); i++) {
                 PhpParameter parameter = parameters.get(i);
                 declared.add(parameter.name());
-                if (parameter.byRef() && i < 64) {
-                    refMask |= 1L << i;
+                if (parameter.byRef()) {
+                    // Same layout as PhpFunctionRootNode.refMask: bit i below 63, the sign bit
+                    // for parameter 63 and every later position.
+                    if (i < 63) {
+                        refMask |= 1L << i;
+                    } else {
+                        refMask |= Long.MIN_VALUE;
+                    }
                 }
                 if (parameter.variadic()) {
                     variadic = i;
@@ -744,7 +750,8 @@ public final class PhpClass {
                         }
                     }
                     composed.put(mLower, new MethodEntry(
-                            tm.name(), this, tm.visibility(), tm.isStatic(), tm.isFinal(), true, tm.callTarget()));
+                            tm.name(), this, tm.visibility(), tm.isStatic(), tm.isFinal(), true, tm.callTarget(),
+                            tm.parameterNames(), tm.refMask(), tm.variadicIndex()));
                     sourceTrait.put(mLower, tCls.name());
                 }
             }
@@ -758,10 +765,12 @@ public final class PhpClass {
                 if (al.aliasName() != null) {
                     String aLower = PhpStrings.lower(al.aliasName());
                     composed.put(aLower, new MethodEntry(
-                            al.aliasName(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
+                            al.aliasName(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget(),
+                            src.parameterNames(), src.refMask(), src.variadicIndex()));
                 } else {
                     composed.put(mLower, new MethodEntry(
-                            src.name(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
+                            src.name(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget(),
+                            src.parameterNames(), src.refMask(), src.variadicIndex()));
                 }
             }
         }

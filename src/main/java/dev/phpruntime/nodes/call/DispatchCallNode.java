@@ -181,7 +181,7 @@ public final class DispatchCallNode extends Node {
         RootCallTarget target = entry.callTarget();
         DirectCallNode direct = directCall;
         if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(isTraitMethod(direct.getCallTarget()) ? withTraitSelf(args, entry.declaringClass()) : args);
+            return direct.call(entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
         }
         if (indirectCall == null) {
             // First call or a second target: keep the trait check and argument copy below out
