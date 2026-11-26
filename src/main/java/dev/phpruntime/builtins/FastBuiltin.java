@@ -549,14 +549,6 @@ public abstract class FastBuiltin {
                 PhpClass target = ctx.lookupClass(targetName);
                 return target != null && subject.isInstanceOf(target);
             }
-            if (args[0] instanceof String && args.length == 2) {
-                // A string subject without $allow_string is deprecated and always false; the
-                // builtin's wording and error level are kept. node is the call site, so the
-                // diagnostic names the calling line as the builtin's does.
-                ctx.deprecated("Calling is_a() with a string when $allow_string is false",
-                        dev.phpruntime.runtime.PhpBacktrace.callSiteLine(node));
-                return Boolean.FALSE;
-            }
             return UNHANDLED;
         }
     }

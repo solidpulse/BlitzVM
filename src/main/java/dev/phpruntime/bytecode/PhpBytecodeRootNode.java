@@ -3293,7 +3293,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             }
             if (fastPath != null && def == fastPath.def()) {
                 // The usual argument shape of a hot builtin, answered without the boundary.
-                Object fastValue = fastPath.call(location, args, ctx);
+                Object fastValue = fastPath.call(node, args, ctx);
                 if (fastValue != FastBuiltin.UNHANDLED) {
                     return fastValue;
                 }
@@ -5849,7 +5849,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 // fast paths apply (is_a(..., allow_string: true), array_any(array:, callback:)).
                 Object[] values = NamedArgs.boundValues(buffer, plan);
                 if (fastPath != null && builtin == fastPath.def()) {
-                    Object fast = fastPath.call(location, values, root.context(frame, bytecode));
+                    Object fast = fastPath.call(node, values, root.context(frame, bytecode));
                     if (fast != FastBuiltin.UNHANDLED) {
                         return fast;
                     }
