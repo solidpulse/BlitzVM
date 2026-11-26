@@ -24,6 +24,8 @@ import dev.phpruntime.runtime.PhpOps;
 public final class DispatchCallNode extends Node {
 
     @Child private DirectCallNode directCall;
+    /** The second target a site saw: a site that alternates between two classes still calls directly. */
+    @Child private DirectCallNode secondDirectCall;
     @Child private IndirectCallNode indirectCall;
 
     /** The last trait call site wrapped for the backtrace, so a call site does not allocate one per call. */
@@ -49,8 +51,14 @@ public final class DispatchCallNode extends Node {
     public Object call(RootCallTarget target, Object[] args) {
         // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = directCall;
-        if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(args);
+        if (direct != null) {
+            if (direct.getCallTarget() == target) {
+                return direct.call(args);
+            }
+            DirectCallNode second = secondDirectCall;
+            if (second != null && second.getCallTarget() == target) {
+                return second.call(args);
+            }
         }
         IndirectCallNode indirect = indirectCall;
         if (indirect != null) {
@@ -180,11 +188,17 @@ public final class DispatchCallNode extends Node {
     public Object callMethod(PhpClass.MethodEntry entry, Object[] args) {
         RootCallTarget target = entry.callTarget();
         DirectCallNode direct = directCall;
-        if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
+        if (direct != null) {
+            if (direct.getCallTarget() == target) {
+                return direct.call(entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
+            }
+            DirectCallNode second = secondDirectCall;
+            if (second != null && second.getCallTarget() == target) {
+                return second.call(entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
+            }
         }
         if (indirectCall == null) {
-            // First call or a second target: keep the trait check and argument copy below out
+            // First call or a third target: keep the trait check and argument copy below out
             // of compiled code until the site is polymorphic.
             CompilerDirectives.transferToInterpreterAndInvalidate();
         }
@@ -207,28 +221,33 @@ public final class DispatchCallNode extends Node {
 
     private Object callDynamic(RootCallTarget target, Object[] args) {
         CompilerDirectives.transferToInterpreterAndInvalidate();
-        if (prepareCall(target)) {
-            return directCall.call(args);
-        }
-        return indirectCall.call(target, args);
+        DirectCallNode direct = prepareCall(target);
+        return direct != null ? direct.call(args) : indirectCall.call(target, args);
     }
 
     @TruffleBoundary
-    private boolean prepareCall(RootCallTarget target) {
+    private DirectCallNode prepareCall(RootCallTarget target) {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
             if (directCall == null) {
                 directCall = insert(DirectCallNode.create(target));
-                return true;
+                return directCall;
             }
             if (directCall.getCallTarget() == target) {
-                return true;
+                return directCall;
+            }
+            if (secondDirectCall == null) {
+                secondDirectCall = insert(DirectCallNode.create(target));
+                return secondDirectCall;
+            }
+            if (secondDirectCall.getCallTarget() == target) {
+                return secondDirectCall;
             }
             if (indirectCall == null) {
                 indirectCall = insert(Truffle.getRuntime().createIndirectCallNode());
             }
-            return false;
+            return null;
         } finally {
             lock.unlock();
         }
