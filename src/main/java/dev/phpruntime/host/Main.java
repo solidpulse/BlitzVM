@@ -19,8 +19,9 @@ import java.nio.file.Path;
  *     --quantum-ms N   time slice before a busy request is preempted (default 10)
  *     --max-exec-ms N  per-request CPU budget, 0 = unlimited (default 30000)
  *     --http netty|jdk HTTP front end (default netty: native epoll on Linux)
- *     --profile <name|file>  serve eligible requests from boot snapshots (wordpress, or a
- *                       properties file); off without it
+ *     --profile <name|file|none>  serve eligible requests from boot snapshots (wordpress, or a
+ *                       properties file); a WordPress document root is detected and uses the
+ *                       wordpress profile unless --profile names another one or none
  *     --worker <script>     FrankenPHP-style worker mode: boot script once and keep it warm
  *     --workers N       worker threads (default: the --cpus count); may exceed --cpus
  * </pre>
@@ -144,6 +145,10 @@ public final class Main {
                 default -> docRoot = Path.of(args[i]);
             }
         }
+        boolean profileOff = "none".equals(profileName);
+        if (profileOff) {
+            profileName = null;
+        }
         if (workerScript != null && profileName != null) {
             System.err.println("php-truffle: --worker cannot be combined with --profile");
             System.exit(64);
@@ -153,6 +158,13 @@ public final class Main {
             System.err.println("php-truffle: worker script not found: " + workerScript);
             System.exit(64);
             return;
+        }
+        boolean detected = false;
+        if (profileName == null && !profileOff && workerScript == null) {
+            // An application with a built-in profile runs from boot snapshots by default;
+            // --profile names another profile, --profile none turns snapshots off.
+            profileName = SnapshotProfile.detect(docRoot);
+            detected = profileName != null;
         }
         SnapshotProfile profile = null;
         if (profileName != null) {
@@ -221,6 +233,10 @@ public final class Main {
         System.out.printf("php-truffle serving %s on http://localhost:%d (%s, cpus=%d, quantum=%dms, max-exec=%dms)%n",
                 docRoot.toAbsolutePath().normalize(), server.port(), transport, cpus, quantum, maxExec);
         if (profile != null) {
+            if (detected) {
+                System.out.println("blitz snapshot: detected " + profile.name() + " in "
+                        + docRoot.toAbsolutePath().normalize() + "; serving from boot snapshots (--profile none turns this off)");
+            }
             System.out.println("blitz snapshot: profile " + profile.name() + " " + profile.describe());
         }
         final WorkerPool workerPool = workers;
@@ -237,7 +253,7 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file>] [--worker <script> [--workers N]]\n"
+        System.err.println("usage: php-truffle <script.php> | php-truffle serve [--port N] [--cpus N] [--quantum-ms N] [--max-exec-ms N] [--http netty|jdk] [--profile <name|file|none>] [--worker <script> [--workers N]]\n"
                 + "         [--warmup-seconds N [--warmup-path /p ...] [--warmup-host host:port]] [docroot]");
         System.err.println("       php-truffle --snapshot-check <boot.php> <entry.php>   capture, restore twice and compare");
         System.err.println("       php-truffle --engine-options   list runtime and engine option descriptors");
