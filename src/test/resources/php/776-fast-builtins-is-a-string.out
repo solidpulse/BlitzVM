@@ -1,0 +1,18 @@
+deprecated: 8192: Calling is_a() with a string when $allow_string is false
+string-no-allow: bool(false)
+deprecated: 8192: Calling is_a() with a string when $allow_string is false
+string-allow-false: bool(false)
+string-allow-true: bool(true)
+string-interface: bool(true)
+string-missing-subject: bool(false)
+object: bool(true)
+object-interface: bool(true)
+object-missing-target: bool(false)
+suppressed-string: bool(false)
+suppressed-allow-false: bool(false)
+named-string: bool(false)
+named-allow-true: bool(true)
+value-string: bool(false)
+value-object: bool(true)
+cuf-string: bool(false)
+cuf-allow: bool(true)
