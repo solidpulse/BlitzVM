@@ -36,7 +36,7 @@ try {
     $user('1');
     show('user-strict', 'no error');
 } catch (TypeError $e) {
-    show('user-strict', $e->getMessage());
+    show('user-strict', str_replace(__FILE__, basename(__FILE__), $e->getMessage()));
 }
 
 $missing = 'no_such_function_779';

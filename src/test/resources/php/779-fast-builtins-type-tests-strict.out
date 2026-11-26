@@ -10,6 +10,6 @@ named: bool(true)
 first-class: bool(true)
 repeat: bool(true)
 polymorphic: bool(true)
-user-strict: string(188) "takeInt(): Argument #1 ($value) must be of type int, string given, called in /home/silva/code/java/php-runtime-t73/src/test/resources/php/779-fast-builtins-type-tests-strict.php on line 36"
+user-strict: string(127) "takeInt(): Argument #1 ($value) must be of type int, string given, called in 779-fast-builtins-type-tests-strict.php on line 36"
 missing: string(5) "Error"
 cuf: bool(true)
