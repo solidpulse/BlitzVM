@@ -2689,7 +2689,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                               @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             if (container.isPackedLongWritable() && key >= 0 && key < container.packedSize()) {
                 container.setPackedLong(key, value);
-            } else {
+            } else if (!container.packedSetExisting(key, value)) {
                 Places.slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
                         new Object[]{key}, value, bytecode, root);
             }
@@ -2703,7 +2703,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                   @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
             if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
                 container.setPackedDouble(key, value);
-            } else {
+            } else if (!container.packedSetExisting(key, value)) {
                 Places.slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
                         new Object[]{key}, value, bytecode, root);
             }
@@ -2715,6 +2715,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                    Object key, Object value, Object container, @Bind BytecodeNode bytecode,
                                    @Bind PhpBytecodeRootNode root,
                                    @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object fast = Places.inlineElement(container, key, P_WRITE, 0, value);
+            if (fast != null) {
+                return fast;
+            }
             return Places.slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
                     new Object[]{key}, value, bytecode, root);
         }
@@ -2787,6 +2791,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                       int mode, int arg, Object key, Object value, Object container,
                                       @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
                                       @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object fast = Places.inlineElement(container, key, mode, arg, value);
+            if (fast != null) {
+                return fast;
+            }
             return Places.slowIndexPlace(frame, acc, info, engine, mode, arg, container,
                     new Object[]{key}, value, bytecode, root);
         }
@@ -2827,6 +2835,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         static Object writeGeneric(VirtualFrame frame, int globalId, PlaceSpec spec, Object key, Object value,
                                    Object container, @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
                                    @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object fast = Places.inlineElement(container, key, P_WRITE, 0, value);
+            if (fast != null) {
+                return fast;
+            }
             return Places.slowGlobalPlace(frame, engine, P_WRITE, 0,
                     new Object[]{key}, value, bytecode, root);
         }
@@ -2869,6 +2881,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 container.setPackedDouble(key, updated);
                 return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Double.valueOf(updated);
             }
+            Object fast = Places.inlineElement(container, key, mode, arg, value);
+            if (fast != null) {
+                return fast;
+            }
             return Places.slowGlobalPlace(frame, engine, mode, arg, new Object[]{key}, value, bytecode, root);
         }
 
@@ -2884,6 +2900,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 container.setPackedDouble(key, updated);
                 return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Double.valueOf(updated);
             }
+            Object fast = Places.inlineElement(container, key, mode, arg, value);
+            if (fast != null) {
+                return fast;
+            }
             return Places.slowGlobalPlace(frame, engine, mode, arg, new Object[]{key}, value, bytecode, root);
         }
 
@@ -2892,6 +2912,10 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                                       Object key, Object value, Object container,
                                       @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
                                       @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            Object fast = Places.inlineElement(container, key, mode, arg, value);
+            if (fast != null) {
+                return fast;
+            }
             return Places.slowGlobalPlace(frame, engine, mode, arg, new Object[]{key}, value, bytecode, root);
         }
     }
@@ -3501,6 +3525,23 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
          * unshared packed array, inline in compiled code. Null when the shape does not apply
          * (nothing has been changed then) and the general engine handles it.
          */
+        /**
+         * The inline packed-array write or compound assignment of {@link #packedElement}, for the
+         * fixed-arity element operations' generic cases (an object or string into a packed
+         * OBJECT array, ...): null when it does not apply. The discard form of a compound
+         * assignment returns PHP null instead of the updated value.
+         */
+        static Object inlineElement(Object container, Object key, int mode, int arg, Object value) {
+            if (container instanceof PhpArray array && key instanceof Long k) {
+                Object fast = packedElement(array, k, mode == P_COMPOUND_DISCARD ? P_COMPOUND : mode, arg, value);
+                if (fast != null && mode == P_COMPOUND_DISCARD) {
+                    return PhpNull.INSTANCE;
+                }
+                return fast;
+            }
+            return null;
+        }
+
         static Object packedElement(PhpArray array, long key, int mode, int arg, Object value) {
             if (mode == P_READ) {
                 return array.packedGetOrNull(key);
