@@ -141,11 +141,36 @@ public final class IntlClasses {
 
     // ---------------------------------------------------------------- NumberFormatter
 
-    private record NumberState(String locale, long style, int minFractionDigits, int maxFractionDigits,
-                               String defaultRuleset) implements dev.phpruntime.runtime.PhpNativeState {
+    private static final class NumberState implements dev.phpruntime.runtime.PhpNativeState {
+        final String locale;
+        final long style;
+        int minFractionDigits;
+        int maxFractionDigits;
+        String defaultRuleset;
+        int errorCode;
+        String errorMessage = "U_ZERO_ERROR";
+
+        NumberState(String locale, long style, int minFractionDigits, int maxFractionDigits,
+                    String defaultRuleset) {
+            this.locale = locale;
+            this.style = style;
+            this.minFractionDigits = minFractionDigits;
+            this.maxFractionDigits = maxFractionDigits;
+            this.defaultRuleset = defaultRuleset;
+        }
+
+        String locale() { return locale; }
+        long style() { return style; }
+        int minFractionDigits() { return minFractionDigits; }
+        int maxFractionDigits() { return maxFractionDigits; }
+        String defaultRuleset() { return defaultRuleset; }
+
         @Override
         public dev.phpruntime.runtime.PhpNativeState copy() {
-            return this;
+            NumberState copy = new NumberState(locale, style, minFractionDigits, maxFractionDigits, defaultRuleset);
+            copy.errorCode = errorCode;
+            copy.errorMessage = errorMessage;
+            return copy;
         }
     }
 
@@ -173,6 +198,56 @@ public final class IntlClasses {
         instanceMethod(language, methods, "formatCurrency", 2, 2, (ctx, self, args) -> {
             NumberState state = numberState(self);
             return formatNumber(state, PhpOps.toDouble(args[0]), PhpOps.toStr(args[1]));
+        });
+        instanceMethod(language, methods, "parse", 1, 3, (ctx, self, args) -> {
+            NumberState state = numberState(self);
+            long type = args.length > 1 ? PhpOps.toLong(args[1]) : 3;
+            if (type == 4) {
+                throw new PhpError(PhpError.VALUE_ERROR, "NumberFormatter::parse(): Argument #2 ($type) cannot be "
+                        + "NumberFormatter::TYPE_CURRENCY constant, use NumberFormatter::parseCurrency() method instead", null);
+            }
+            if (type != 1 && type != 2 && type != 3) {
+                throw new PhpError(PhpError.VALUE_ERROR, "NumberFormatter::parse(): Argument #2 ($type) must be a "
+                        + "NumberFormatter::TYPE_* constant", null);
+            }
+            state.errorCode = 0;
+            state.errorMessage = "U_ZERO_ERROR";
+            String text = PhpOps.toStr(args[0]);
+            int end = 0;
+            boolean digits = false;
+            boolean dot = false;
+            while (end < text.length()) {
+                char c = text.charAt(end);
+                if (c >= '0' && c <= '9') {
+                    digits = true;
+                    end++;
+                } else if (c == ',') {
+                    end++;
+                } else if (c == '.' && !dot) {
+                    dot = true;
+                    end++;
+                } else if ((c == '-' || c == '+') && end == 0) {
+                    end++;
+                } else {
+                    break;
+                }
+            }
+            if (!digits) {
+                state.errorCode = 9;
+                state.errorMessage = "NumberFormatter::parse(): Number parsing failed: U_PARSE_ERROR";
+                return false;
+            }
+            String normalized = text.substring(0, end).replace(",", "");
+            try {
+                if (type == 1 || type == 2) {
+                    return Long.parseLong(normalized);
+                }
+                return Double.parseDouble(normalized);
+            } catch (NumberFormatException invalid) {
+                state.errorCode = 9;
+                state.errorMessage = "NumberFormatter::parse(): Number parsing failed: U_PARSE_ERROR";
+                return false;
+            }
         });
         instanceMethod(language, methods, "setAttribute", 2, 2, (ctx, self, args) -> {
             NumberState state = numberState(self);
@@ -215,8 +290,8 @@ public final class IntlClasses {
             return ((int) PhpOps.toLong(args[0])) == 6 && state.defaultRuleset() != null
                     ? state.defaultRuleset() : false;
         });
-        instanceMethod(language, methods, "getErrorCode", 0, 0, (ctx, self, args) -> 0L);
-        instanceMethod(language, methods, "getErrorMessage", 0, 0, (ctx, self, args) -> "U_ZERO_ERROR");
+        instanceMethod(language, methods, "getErrorCode", 0, 0, (ctx, self, args) -> (long) numberState(self).errorCode);
+        instanceMethod(language, methods, "getErrorMessage", 0, 0, (ctx, self, args) -> numberState(self).errorMessage);
 
         List<PhpClassTemplate.ConstantDecl> constants = List.of(
                 constant("PATTERN_DECIMAL", 0L), constant("DECIMAL", 1L), constant("CURRENCY", 2L),
@@ -255,7 +330,8 @@ public final class IntlClasses {
                 constant("PERMILL_SYMBOL", 12L), constant("PAD_ESCAPE_SYMBOL", 13L),
                 constant("INFINITY_SYMBOL", 14L), constant("NAN_SYMBOL", 15L),
                 constant("SIGNIFICANT_DIGIT_SYMBOL", 16L), constant("MONETARY_GROUPING_SEPARATOR_SYMBOL", 17L),
-                constant("TYPE_DEFAULT", 0L), constant("TYPE_INT32", 1L));
+                constant("TYPE_DEFAULT", 0L), constant("TYPE_INT32", 1L), constant("TYPE_INT64", 2L),
+                constant("TYPE_DOUBLE", 3L), constant("TYPE_CURRENCY", 4L));
         out.put("numberformatter", new PhpClassTemplate(language.nextTemplateId(), "NumberFormatter", false,
                 false, false, false, null, List.of(), List.of(), constants, methods));
     }
