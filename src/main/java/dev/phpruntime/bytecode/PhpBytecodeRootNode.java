@@ -2587,6 +2587,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     public static final int P_BIND = 10;
     /** Prepares the evaluated keys of a place without reading or writing it ({@code ??=}). */
     public static final int P_KEYS = 11;
+    /** A compound assignment whose result is unused; typed packed stores can skip boxing it. */
+    public static final int P_COMPOUND_DISCARD = 12;
 
     /**
      * A non-local lvalue (an index path or a property). {@code template} is a copy of its AST
@@ -2637,8 +2639,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
             Object container = current(frame, acc, bytecode, buffer);
-            if (spec.arrayKeys == 1 && (mode == P_WRITE || mode == P_COMPOUND || mode == P_READ)
-                    && container instanceof PhpArray array && ops[0] instanceof Long key) {
+            if (spec.arrayKeys == 1 && (mode == P_WRITE || mode == P_COMPOUND || mode == P_COMPOUND_DISCARD
+                    || mode == P_READ) && container instanceof PhpArray array && ops[0] instanceof Long key) {
                 Object fast = Places.packedElement(array, key, mode, arg, Places.value(ops, 1));
                 if (fast != null) {
                     return fast;
@@ -3052,6 +3054,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (mode == P_READ) {
                 return array.packedGetOrNull(key);
             }
+            if (mode == P_COMPOUND_DISCARD) {
+                return array.packedCompoundDiscard(key, arg, value);
+            }
             if (mode == P_WRITE) {
                 return value != null && array.packedSetExisting(key, PhpOps.copyOnAssign(value)) ? value : null;
             }
@@ -3147,6 +3152,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                     return value;
                 case P_COMPOUND:
                     return compound(frame, engine, keys, PhpArith.Op.values()[arg], value, ctx);
+                case P_COMPOUND_DISCARD:
+                    compound(frame, engine, keys, PhpArith.Op.values()[arg], value, ctx);
+                    return PhpNull.INSTANCE;
                 case P_INCDEC:
                     return incDec(frame, engine, keys, (arg & 1) != 0, (arg & 2) != 0, ctx);
                 case P_APPEND:
