@@ -2798,7 +2798,9 @@ public final class Parser {
         if (t.kind() == Kind.VARIABLE) {
             return ClassRefNode.dynamic(postfixOnly(false));
         }
-        if (allowDynamic && t.isOp("(")) {
+        if (t.isOp("(")) {
+            // new ($factory->className())(...), new ('Foo')(...): a parenthesized expression
+            // names the class and the parentheses after it are the constructor's arguments.
             return ClassRefNode.dynamic(primary());
         }
         throw error("syntax error, unexpected " + describe(t) + ", expecting class name");
@@ -2911,7 +2913,10 @@ public final class Parser {
             next();
             return parseStaticMember(makeClassRefFromName(resolveClassName(name)), line);
         }
-        switch (lower) {
+        // \func_num_args() and friends are language constructs: the leading backslash of a
+        // fully qualified name must not hide them from the special forms below.
+        String special = lower.startsWith("\\") ? lower.substring(1) : lower;
+        switch (special) {
             case "true" -> {
                 return new ConstNode(true).at(line);
             }
@@ -3007,7 +3012,7 @@ public final class Parser {
                 if (peek().isOp("(") && !(peek(1).isOp("...") && peek(2).isOp(")"))) {
                     next();
                     PhpNode[] args = parseCallArgs();
-                    return switch (lower) {
+                    return switch (special) {
                         case "func_num_args" -> new FuncArgsNode(FuncArgsNode.Kind.NUM_ARGS, scope.argOffset(),
                                 scope.paramNames(), scope.paramSlots(), scope.paramKinds(),
                                 scope.normalParamCount(), null).at(line);
