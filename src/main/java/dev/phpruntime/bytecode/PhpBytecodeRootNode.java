@@ -1811,7 +1811,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object fromArray(PhpArray array, Object key, @Bind BytecodeNode bytecode,
                                 @Bind("$bytecodeIndex") int bci, @Bind Node node) {
-            if (key instanceof Long l && array.isPackedObject()) {
+            if (key instanceof Long l) {
                 Object packed = array.packedGetOrNull(l);
                 if (packed != null) {
                     return packed;
@@ -1860,7 +1860,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object fromArray(PhpArray array, Object key, @Bind BytecodeNode bytecode,
                                 @Bind("$bytecodeIndex") int bci, @Bind Node node) {
-            if (key instanceof Long l && array.isPackedObject()) {
+            if (key instanceof Long l) {
                 Object packed = array.packedGetOrNull(l);
                 if (packed != null) {
                     return packed;
@@ -3126,8 +3126,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
             Object container = current(frame, acc, bytecode, buffer);
             if (spec.arrayKeys == 1 && (mode == P_WRITE || mode == P_COMPOUND || mode == P_COMPOUND_DISCARD
-                    || mode == P_READ) && container instanceof PhpArray array && array.isPackedObject()
-                    && ops[0] instanceof Long key) {
+                    || mode == P_READ) && container instanceof PhpArray array && ops[0] instanceof Long key) {
                 Object fast = Places.packedElement(array, key, mode, arg, Places.value(ops, 1));
                 if (fast != null) {
                     return fast;
@@ -3582,7 +3581,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
          * assignment returns PHP null instead of the updated value.
          */
         static Object inlineElement(Object container, Object key, int mode, int arg, Object value) {
-            if (container instanceof PhpArray array && array.isPackedObject() && key instanceof Long k) {
+            if (container instanceof PhpArray array && key instanceof Long k) {
                 Object fast = packedElement(array, k, mode == P_COMPOUND_DISCARD ? P_COMPOUND : mode, arg, value);
                 if (fast != null && mode == P_COMPOUND_DISCARD) {
                     return PhpNull.INSTANCE;
