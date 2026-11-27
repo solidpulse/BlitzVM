@@ -19,7 +19,7 @@ public final class CompoundAssignNode extends PhpNode {
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target) && op != PhpArith.Op.COALESCE) {
-            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_COMPOUND, op.ordinal(), () -> e.expr(value));
+            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_COMPOUND, op.ordinal(), () -> e.expr(value), value);
             return;
         }
         if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target) && op == PhpArith.Op.COALESCE) {
@@ -48,7 +48,7 @@ public final class CompoundAssignNode extends PhpNode {
     public void emitStatement(dev.phpruntime.bytecode.BytecodeEmitter e) {
         if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target) && op != PhpArith.Op.COALESCE) {
             e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_COMPOUND_DISCARD,
-                    op.ordinal(), () -> e.expr(value));
+                    op.ordinal(), () -> e.expr(value), value);
             return;
         }
         emit(e);

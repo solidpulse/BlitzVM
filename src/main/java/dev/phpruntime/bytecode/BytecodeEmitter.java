@@ -510,18 +510,59 @@ public final class BytecodeEmitter {
             node.emit(this);
             return;
         }
-        int line = node.line();
-        if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
-            SourceSection s = source.createSection(line);
-            int saved = currentLine;
-            currentLine = line;
-            b.beginSourceSection(s.getCharIndex(), s.getCharLength());
-            node.emit(this);
-            b.endSourceSection();
-            currentLine = saved;
-        } else {
-            node.emit(this);
+        boolean numeric = isNumericExpression(node);
+        if (numeric) {
+            primitiveReads++;
         }
+        try {
+            int line = node.line();
+            if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
+                SourceSection s = source.createSection(line);
+                int saved = currentLine;
+                currentLine = line;
+                b.beginSourceSection(s.getCharIndex(), s.getCharLength());
+                node.emit(this);
+                b.endSourceSection();
+                currentLine = saved;
+            } else {
+                node.emit(this);
+            }
+        } finally {
+            if (numeric) {
+                primitiveReads--;
+            }
+        }
+    }
+
+    /**
+     * True while emitting an expression whose result is consumed as a number. Element reads
+     * there use the primitive-capable read operation, so an int or float element can stay
+     * unboxed into the arithmetic or comparison.
+     */
+    private int primitiveReads;
+
+    public boolean primitiveReadWanted() {
+        return primitiveReads > 0;
+    }
+
+    private void primitiveValue(Runnable value) {
+        primitiveReads++;
+        try {
+            value.run();
+        } finally {
+            primitiveReads--;
+        }
+    }
+
+    private static boolean isNumericExpression(PhpNode node) {
+        return node instanceof dev.phpruntime.nodes.expr.AddNode
+                || node instanceof dev.phpruntime.nodes.expr.SubNode
+                || node instanceof dev.phpruntime.nodes.expr.MulNode
+                || node instanceof dev.phpruntime.nodes.expr.DivNode
+                || node instanceof dev.phpruntime.nodes.expr.ModNode
+                || node instanceof dev.phpruntime.nodes.expr.NegNode
+                || node instanceof dev.phpruntime.nodes.expr.ArithNode
+                || node instanceof dev.phpruntime.nodes.expr.CompareNode;
     }
 
     private static boolean isGotoStructure(PhpNode node) {
@@ -656,14 +697,45 @@ public final class BytecodeEmitter {
      * site starts with. Reads of single elements stay in {@code Index} for locals and in
      * {@code GlobalIndexRead} for globals.
      */
+    /**
+     * False when a key expression is a constant that evaluates to something other than a long.
+     * Such a key can never select a primitive element operation; the fixed-arity operations
+     * would only add their fallback in front of the general place engine.
+     */
+    public static boolean mayBeIntKey(dev.phpruntime.nodes.PhpNode key) {
+        return !(key instanceof dev.phpruntime.nodes.expr.ConstNode c) || c.value() instanceof Long;
+    }
+
+    /**
+     * True when the right-hand side can arrive unboxed at a fixed element operation: a numeric
+     * literal, an arithmetic result, an increment, or an element read (which the emitter turns
+     * into the primitive-capable read). A plain local or object-producing expression cannot,
+     * so the general place engine is smaller and just as fast for it.
+     */
+    private static boolean primitiveElementValue(dev.phpruntime.nodes.PhpNode value) {
+        if (value instanceof dev.phpruntime.nodes.expr.ConstNode c) {
+            return c.value() instanceof Long || c.value() instanceof Double;
+        }
+        return value instanceof dev.phpruntime.nodes.expr.AddNode
+                || value instanceof dev.phpruntime.nodes.expr.SubNode
+                || value instanceof dev.phpruntime.nodes.expr.MulNode
+                || value instanceof dev.phpruntime.nodes.expr.DivNode
+                || value instanceof dev.phpruntime.nodes.expr.ModNode
+                || value instanceof dev.phpruntime.nodes.expr.NegNode
+                || value instanceof dev.phpruntime.nodes.var.IncDecNode
+                || value instanceof dev.phpruntime.nodes.var.IndexLValueNode
+                || value instanceof dev.phpruntime.nodes.var.IndexReadNode;
+    }
+
     private boolean emitPrimitiveIndexPlace(dev.phpruntime.nodes.var.IndexLValueNode il,
-                                            int mode, int arg, Runnable value) {
+                                            int mode, int arg, Runnable value,
+                                            dev.phpruntime.nodes.PhpNode valueNode) {
         dev.phpruntime.nodes.PhpNode[] keys = il.keyNodes();
         if (keys.length == 0 || keys.length > 2 || value == null) {
             return false;
         }
         for (dev.phpruntime.nodes.PhpNode key : keys) {
-            if (key == null) {
+            if (key == null || !mayBeIntKey(key)) {
                 return false;
             }
         }
@@ -677,6 +749,12 @@ public final class BytecodeEmitter {
                 && arg != dev.phpruntime.runtime.PhpArith.Op.MUL.ordinal()) {
             return false;
         }
+        // The two-level write is the only primitive path for a packed typed row, and its value
+        // usually comes from a local. Single-key operations only pay for themselves when the
+        // value can reach them unboxed.
+        if (keys.length == 1 && !primitiveElementValue(valueNode)) {
+            return false;
+        }
         Form f = form(il);
         if (f.local() != null) {
             if (keys.length == 2) {
@@ -686,19 +764,19 @@ public final class BytecodeEmitter {
                 b.beginLocalIndexWrite2(accessor(f.local()), info(f.local()), f.spec());
                 expr(keys[0]);
                 expr(keys[1]);
-                value.run();
+                primitiveValue(value);
                 b.emitReadVarCurrent(accessor(f.local()));
                 b.endLocalIndexWrite2();
             } else if (compound) {
                 b.beginLocalIndexCompound(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
                 expr(keys[0]);
-                value.run();
+                primitiveValue(value);
                 b.emitReadVarCurrent(accessor(f.local()));
                 b.endLocalIndexCompound();
             } else {
                 b.beginLocalIndexWrite(accessor(f.local()), info(f.local()), f.spec());
                 expr(keys[0]);
-                value.run();
+                primitiveValue(value);
                 b.emitReadVarCurrent(accessor(f.local()));
                 b.endLocalIndexWrite();
             }
@@ -709,13 +787,13 @@ public final class BytecodeEmitter {
             if (compound) {
                 b.beginGlobalIndexCompound(g.globalId(), f.spec(), mode, arg);
                 expr(keys[0]);
-                value.run();
+                primitiveValue(value);
                 b.emitReadGlobal(g.globalId());
                 b.endGlobalIndexCompound();
             } else {
                 b.beginGlobalIndexWrite(g.globalId(), f.spec());
                 expr(keys[0]);
-                value.run();
+                primitiveValue(value);
                 b.emitReadGlobal(g.globalId());
                 b.endGlobalIndexWrite();
             }
@@ -744,8 +822,13 @@ public final class BytecodeEmitter {
     }
 
     public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value) {
+        place(lv, mode, arg, value, null);
+    }
+
+    public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value,
+                      dev.phpruntime.nodes.PhpNode valueNode) {
         if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il
-                && emitPrimitiveIndexPlace(il, mode, arg, value)) {
+                && emitPrimitiveIndexPlace(il, mode, arg, value, valueNode)) {
             return;
         }
         Form f = form(lv);

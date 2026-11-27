@@ -635,8 +635,10 @@ public final class IndexLValueNode extends LValueNode {
         }
         var b = e.builder();
         boolean single = keyNodes.length == 1;
+        boolean plain = single && mode == 0 && !e.primitiveReadWanted()
+                && dev.phpruntime.bytecode.BytecodeEmitter.mayBeIntKey(keyNodes[0]);
         switch (mode) {
-            case 0 -> { if (single) { b.beginIndex(); } else { b.beginIndexPath(); } }
+            case 0 -> { if (plain) { b.beginIndexPlain(); } else if (single) { b.beginIndex(); } else { b.beginIndexPath(); } }
             case 1 -> { if (single) { b.beginIndexIfSet(); } else { b.beginIndexPathIfSet(); } }
             default -> { if (single) { b.beginIssetIndex(); } else { b.beginIssetPath(); } }
         }
@@ -645,7 +647,7 @@ public final class IndexLValueNode extends LValueNode {
             e.expr(k);
         }
         switch (mode) {
-            case 0 -> { if (single) { b.endIndex(); } else { b.endIndexPath(); } }
+            case 0 -> { if (plain) { b.endIndexPlain(); } else if (single) { b.endIndex(); } else { b.endIndexPath(); } }
             case 1 -> { if (single) { b.endIndexIfSet(); } else { b.endIndexPathIfSet(); } }
             default -> { if (single) { b.endIssetIndex(); } else { b.endIssetPath(); } }
         }

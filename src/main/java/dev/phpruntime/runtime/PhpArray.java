@@ -117,19 +117,20 @@ public final class PhpArray implements TruffleObject {
             shared--;
         }
         PhpArray result = new PhpArray();
-        if (longValues != null) {
-            result.values = null;
-            result.longValues = Arrays.copyOf(longValues, longValues.length);
-        } else if (doubleValues != null) {
-            result.values = null;
-            result.doubleValues = Arrays.copyOf(doubleValues, doubleValues.length);
-        } else {
-            result.values = Arrays.copyOf(values, values.length);
+        Object[] vs = values;
+        if (vs != null) {
+            result.values = Arrays.copyOf(vs, vs.length);
             for (int pos = 0; pos < used; pos++) {
                 if (result.values[pos] instanceof PhpArray inner) {
                     inner.share();
                 }
             }
+        } else if (longValues != null) {
+            result.values = null;
+            result.longValues = Arrays.copyOf(longValues, longValues.length);
+        } else {
+            result.values = null;
+            result.doubleValues = Arrays.copyOf(doubleValues, doubleValues.length);
         }
         if (keys != null) {
             result.keys = Arrays.copyOf(keys, keys.length);
@@ -268,16 +269,7 @@ public final class PhpArray implements TruffleObject {
      */
     public Object packedGetOrNull(long key) {
         if (keys == null && key >= 0 && key < size) {
-            int i = (int) key;
-            long[] longs = longValues;
-            if (longs != null) {
-                return Long.valueOf(longs[i]);
-            }
-            double[] doubles = doubleValues;
-            if (doubles != null) {
-                return Double.valueOf(doubles[i]);
-            }
-            Object v = values[i];
+            Object v = values[(int) key];
             if (!(v instanceof PhpReference)) {
                 return v;
             }
@@ -293,24 +285,8 @@ public final class PhpArray implements TruffleObject {
      */
     public boolean packedSetExisting(long key, Object value) {
         if (keys == null && shared == 0 && !immutable && key >= 0 && key < size) {
-            int i = (int) key;
-            long[] longs = longValues;
-            if (longs != null) {
-                if (value instanceof Long l) {
-                    longs[i] = l;
-                    return true;
-                }
-                return false;
-            }
-            double[] doubles = doubleValues;
-            if (doubles != null) {
-                if (value instanceof Double d) {
-                    doubles[i] = d;
-                    return true;
-                }
-                return false;
-            }
             Object[] vs = values;
+            int i = (int) key;
             Object old = vs[i];
             if (old != null && !(old instanceof PhpReference)) {
                 vs[i] = value;
@@ -321,63 +297,37 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
-     * A compound assignment whose result is discarded ({@code $a[$i] += $b[$j];}). When both
-     * storage and the right-hand value fit, the arithmetic and the store stay primitive, so
-     * the statement produces no box at all; otherwise null sends the caller to the general
-     * path (which reads and writes through Objects).
+     * {@link #packedSetExisting} for the primitive element operations, which also recognize
+     * int/float storage. The generic place engine uses the object-only method above so a
+     * framework-shaped site carries no typed branches.
      */
-    public Object packedCompoundDiscard(long key, int op, Object value) {
-        if (keys != null || shared != 0 || immutable || key < 0 || key >= size) {
-            return null;
-        }
-        int i = (int) key;
-        boolean add = op == PhpArith.Op.ADD.ordinal();
-        boolean sub = op == PhpArith.Op.SUB.ordinal();
-        boolean mul = op == PhpArith.Op.MUL.ordinal();
-        if (!add && !sub && !mul) {
-            return null;
-        }
-        long[] longs = longValues;
-        if (longs != null) {
-            if (!(value instanceof Long b)) {
-                return null;
-            }
-            long a = longs[i];
-            long r;
-            if (add) {
-                r = a + b;
-                if (((a ^ r) & (b ^ r)) < 0) {
-                    return null;
+    public boolean packedSetExistingTyped(long key, Object value) {
+        if (keys == null && shared == 0 && !immutable && key >= 0 && key < size) {
+            int i = (int) key;
+            Object[] vs = values;
+            if (vs != null) {
+                Object old = vs[i];
+                if (old != null && !(old instanceof PhpReference)) {
+                    vs[i] = value;
+                    return true;
                 }
-            } else if (sub) {
-                r = a - b;
-                if (((a ^ b) & (a ^ r)) < 0) {
-                    return null;
-                }
-            } else {
-                r = a * b;
-                if (Math.multiplyHigh(a, b) != (r >> 63)) {
-                    return null;
-                }
+                return false;
             }
-            longs[i] = r;
-            return PhpNull.INSTANCE;
-        }
-        double[] doubles = doubleValues;
-        if (doubles != null) {
-            double a = doubles[i];
-            double b;
-            if (value instanceof Long l) {
-                b = l;
-            } else if (value instanceof Double d) {
-                b = d;
-            } else {
-                return null;
+            long[] longs = longValues;
+            if (longs != null) {
+                if (value instanceof Long l) {
+                    longs[i] = l;
+                    return true;
+                }
+                return false;
             }
-            doubles[i] = add ? a + b : sub ? a - b : a * b;
-            return PhpNull.INSTANCE;
+            double[] doubles = doubleValues;
+            if (doubles != null && value instanceof Double d) {
+                doubles[i] = d;
+                return true;
+            }
         }
-        return null;
+        return false;
     }
 
     @TruffleBoundary
@@ -613,6 +563,13 @@ public final class PhpArray implements TruffleObject {
             return;
         }
         int needed = size + additional;
+        Object[] vs = values;
+        if (vs != null) {
+            if (needed > vs.length) {
+                values = Arrays.copyOf(vs, needed);
+            }
+            return;
+        }
         long[] longs = longValues;
         if (longs != null) {
             if (needed > longs.length) {
@@ -620,15 +577,8 @@ public final class PhpArray implements TruffleObject {
             }
             return;
         }
-        double[] doubles = doubleValues;
-        if (doubles != null) {
-            if (needed > doubles.length) {
-                doubleValues = Arrays.copyOf(doubles, needed);
-            }
-            return;
-        }
-        if (needed > values.length) {
-            values = Arrays.copyOf(values, needed);
+        if (needed > doubleValues.length) {
+            doubleValues = Arrays.copyOf(doubleValues, needed);
         }
     }
 
@@ -640,35 +590,40 @@ public final class PhpArray implements TruffleObject {
     public void appendReserved(Object value) {
         int capacity = valueCapacity();
         assert keys == null && size < capacity && !immutable : "appendReserved without reserved room";
-        long[] longs = longValues;
-        if (longs != null) {
-            if (value instanceof Long l) {
-                longs[size] = l;
-            } else {
-                appendReservedSlow(value);
-                return;
-            }
+        Object[] vs = values;
+        if (vs != null && size != 0) {
+            vs[size] = value;
         } else {
-            double[] doubles = doubleValues;
-            if (doubles != null) {
-                if (value instanceof Double d) {
-                    doubles[size] = d;
+            long[] longs = longValues;
+            if (longs != null) {
+                if (value instanceof Long l) {
+                    longs[size] = l;
                 } else {
                     appendReservedSlow(value);
                     return;
                 }
-            } else if (size == 0 && value instanceof Long l) {
-                long[] created = new long[values.length];
-                created[0] = l;
-                longValues = created;
-                values = null;
-            } else if (size == 0 && value instanceof Double d) {
-                double[] created = new double[values.length];
-                created[0] = d;
-                doubleValues = created;
-                values = null;
             } else {
-                values[size] = value;
+                double[] doubles = doubleValues;
+                if (doubles != null) {
+                    if (value instanceof Double d) {
+                        doubles[size] = d;
+                    } else {
+                        appendReservedSlow(value);
+                        return;
+                    }
+                } else if (size == 0 && value instanceof Long l) {
+                    long[] created = new long[vs.length];
+                    created[0] = l;
+                    longValues = created;
+                    values = null;
+                } else if (size == 0 && value instanceof Double d) {
+                    double[] created = new double[vs.length];
+                    created[0] = d;
+                    doubleValues = created;
+                    values = null;
+                } else {
+                    vs[size] = value;
+                }
             }
         }
         if (pointer < 0) {
@@ -697,12 +652,12 @@ public final class PhpArray implements TruffleObject {
 
     /** Length of the live storage array. */
     private int valueCapacity() {
-        long[] longs = longValues;
-        if (longs != null) {
-            return longs.length;
+        Object[] vs = values;
+        if (vs != null) {
+            return vs.length;
         }
-        double[] doubles = doubleValues;
-        return doubles != null ? doubles.length : values.length;
+        long[] longs = longValues;
+        return longs != null ? longs.length : doubleValues.length;
     }
 
     /**
@@ -711,7 +666,7 @@ public final class PhpArray implements TruffleObject {
      */
     @TruffleBoundary
     public boolean hasValueThatCanRunPhp() {
-        if (longValues != null || doubleValues != null) {
+        if (values == null) {
             return false;
         }
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
@@ -1008,73 +963,84 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     private void replace(int pos, Object value, boolean replaceRef) {
         assert !immutable : "write to an immutable array";
-        long[] longs = longValues;
-        if (longs != null) {
-            if (value instanceof Long l) {
-                longs[pos] = l;
-                return;
-            }
-            generalize();
-        } else {
-            double[] doubles = doubleValues;
-            if (doubles != null) {
-                if (value instanceof Double d) {
+        Object[] vs = values;
+        if (vs == null) {
+            long[] longs = longValues;
+            if (longs != null) {
+                if (value instanceof Long l) {
+                    longs[pos] = l;
+                    return;
+                }
+            } else {
+                double[] doubles = doubleValues;
+                if (doubles != null && value instanceof Double d) {
                     doubles[pos] = d;
                     return;
                 }
-                generalize();
             }
+            generalize();
+            vs = values;
         }
-        if (!replaceRef && values[pos] instanceof PhpReference ref && !(value instanceof PhpReference)) {
+        if (!replaceRef && vs[pos] instanceof PhpReference ref && !(value instanceof PhpReference)) {
             ref.setValue(value);
         } else {
-            values[pos] = value;
+            vs[pos] = value;
         }
     }
 
     @TruffleBoundary
     private void insertPacked(Object value) {
         assert !immutable : "write to an immutable array";
-        long[] longs = longValues;
-        if (longs != null) {
-            if (!(value instanceof Long l)) {
-                generalize();
-                insertPacked(value);
-                return;
+        Object[] vs = values;
+        if (vs != null && size != 0) {
+            if (size == vs.length) {
+                vs = Arrays.copyOf(vs, Math.max(8, size * 2));
+                values = vs;
             }
-            if (size == longs.length) {
-                longs = Arrays.copyOf(longs, Math.max(8, size * 2));
-                longValues = longs;
-            }
-            longs[size] = l;
+            vs[size] = value;
         } else {
-            double[] doubles = doubleValues;
-            if (doubles != null) {
-                if (!(value instanceof Double d)) {
+            long[] longs = longValues;
+            if (longs != null) {
+                if (!(value instanceof Long l)) {
                     generalize();
                     insertPacked(value);
                     return;
                 }
-                if (size == doubles.length) {
-                    doubles = Arrays.copyOf(doubles, Math.max(8, size * 2));
-                    doubleValues = doubles;
+                if (size == longs.length) {
+                    longs = Arrays.copyOf(longs, Math.max(8, size * 2));
+                    longValues = longs;
                 }
-                doubles[size] = d;
-            } else if (size == 0 && value instanceof Long l) {
-                long[] created = new long[Math.max(8, values.length)];
-                created[0] = l;
-                longValues = created;
-                values = null;
-            } else if (size == 0 && value instanceof Double d) {
-                double[] created = new double[Math.max(8, values.length)];
-                created[0] = d;
-                doubleValues = created;
-                values = null;
+                longs[size] = l;
             } else {
-                if (size == values.length) {
-                    values = Arrays.copyOf(values, Math.max(8, size * 2));
+                double[] doubles = doubleValues;
+                if (doubles != null) {
+                    if (!(value instanceof Double d)) {
+                        generalize();
+                        insertPacked(value);
+                        return;
+                    }
+                    if (size == doubles.length) {
+                        doubles = Arrays.copyOf(doubles, Math.max(8, size * 2));
+                        doubleValues = doubles;
+                    }
+                    doubles[size] = d;
+                } else if (size == 0 && value instanceof Long l) {
+                    long[] created = new long[Math.max(8, vs.length)];
+                    created[0] = l;
+                    longValues = created;
+                    values = null;
+                } else if (size == 0 && value instanceof Double d) {
+                    double[] created = new double[Math.max(8, vs.length)];
+                    created[0] = d;
+                    doubleValues = created;
+                    values = null;
+                } else {
+                    if (size == vs.length) {
+                        vs = Arrays.copyOf(vs, Math.max(8, size * 2));
+                        values = vs;
+                    }
+                    vs[size] = value;
                 }
-                values[size] = value;
             }
         }
         if (pointer < 0) {
@@ -1189,7 +1155,7 @@ public final class PhpArray implements TruffleObject {
             pointer = nextPos(pos);
         }
         if (keys == null) {
-            if (longValues == null && doubleValues == null) {
+            if (values != null) {
                 values[pos] = null;
             }
             size--;
@@ -1254,15 +1220,15 @@ public final class PhpArray implements TruffleObject {
     }
 
     public Object rawValueAt(int pos) {
+        Object[] vs = values;
+        if (vs != null) {
+            return vs[pos];
+        }
         long[] longs = longValues;
         if (longs != null) {
             return Long.valueOf(longs[pos]);
         }
-        double[] doubles = doubleValues;
-        if (doubles != null) {
-            return Double.valueOf(doubles[pos]);
-        }
-        return values[pos];
+        return Double.valueOf(doubleValues[pos]);
     }
 
     // ---------------------------------------------------------------- internal pointer
