@@ -62,6 +62,12 @@ public final class BytecodeEmitter {
     private final Map<Integer, PhpBytecodeRootNode.VarInfo> infos = new HashMap<>();
     private final Deque<Loop> loops = new ArrayDeque<>();
     private int currentLine = -1;
+    /**
+     * Nonzero while emitting an expression whose result is consumed as a number. Element reads
+     * there use the primitive-capable read operation, so an int or float element can stay
+     * unboxed into the arithmetic or comparison.
+     */
+    private int primitiveReads;
 
     private BytecodeLocal hoisted;
     /** The local the root prolog stores the request's context in; see PhpBytecodeRootNode#context. */
@@ -534,13 +540,6 @@ public final class BytecodeEmitter {
         }
     }
 
-    /**
-     * True while emitting an expression whose result is consumed as a number. Element reads
-     * there use the primitive-capable read operation, so an int or float element can stay
-     * unboxed into the arithmetic or comparison.
-     */
-    private int primitiveReads;
-
     public boolean primitiveReadWanted() {
         return primitiveReads > 0;
     }
@@ -691,13 +690,6 @@ public final class BytecodeEmitter {
     }
 
     /**
-     * The fixed-operand forms of an element write. They exist so key and value can stay unboxed
-     * from their producers into the store; every shape they cannot handle inside their
-     * specializations reuses the general place engine, so this only decides which operation a
-     * site starts with. Reads of single elements stay in {@code Index} for locals and in
-     * {@code GlobalIndexRead} for globals.
-     */
-    /**
      * False when a key expression is a constant that evaluates to something other than a long.
      * Such a key can never select a primitive element operation; the fixed-arity operations
      * would only add their fallback in front of the general place engine.
@@ -727,6 +719,12 @@ public final class BytecodeEmitter {
                 || value instanceof dev.phpruntime.nodes.var.IndexReadNode;
     }
 
+    /**
+     * The fixed-operand forms of an element write. They exist so key and value can stay unboxed
+     * from their producers into the store; every shape they cannot handle inside their
+     * specializations reuses the general place engine, so this only decides which operation a
+     * site starts with.
+     */
     private boolean emitPrimitiveIndexPlace(dev.phpruntime.nodes.var.IndexLValueNode il,
                                             int mode, int arg, Runnable value,
                                             dev.phpruntime.nodes.PhpNode valueNode) {

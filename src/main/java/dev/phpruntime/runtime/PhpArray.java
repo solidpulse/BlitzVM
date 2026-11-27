@@ -33,9 +33,10 @@ public final class PhpArray implements TruffleObject {
      * A null keys array means packed: values[0..size) have implicit integer keys. Packed arrays
      * whose elements are all PHP ints or all PHP floats store them in {@link #longValues} or
      * {@link #doubleValues}; storage says which array is live. Hashed arrays always use
-     * {@link #values}. Values below {@link #S_LONG} are boxed, which lets the object fast paths
-     * use one comparison.
+     * {@link #values}. Storage kinds below {@link #S_LONG} are boxed, so the object fast paths
+     * need one comparison and never touch a null array.
      */
+    /** Which of the three value arrays (or the hashed layout) is live; zero is S_OBJECT. */
     private int storage;
     private Object[] values = EMPTY_VALUES;
     private long[] longValues;
@@ -275,9 +276,9 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
-     * The element at a non-negative int key of a packed array, read inline in compiled code (no
-     * boundary). Null when the array is hashed, the key is outside it, or the slot holds a
-     * reference cell: callers then take the general path.
+     * The element at a non-negative int key of a packed OBJECT array, read inline in compiled
+     * code (no boundary). Null when the array is hashed or typed, the key is outside it, or the
+     * slot holds a reference cell: callers then take the general path.
      */
     public Object packedGetOrNull(long key) {
         if (storage == S_OBJECT && key >= 0 && key < size) {
@@ -290,10 +291,9 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
-     * Overwrites an existing element of an unshared, mutable packed array inline (no boundary).
-     * False when that does not apply (hashed, shared, immutable, key outside, reference slot,
-     * or a value that does not fit the typed storage), and nothing is written: callers then
-     * take the general path.
+     * Overwrites an existing element of an unshared, mutable packed OBJECT array inline (no
+     * boundary). False when that does not apply (hashed or typed storage, shared, immutable,
+     * key outside, reference slot), and nothing is written: callers then take the general path.
      */
     public boolean packedSetExisting(long key, Object value) {
         if (storage == S_OBJECT && shared == 0 && !immutable && key >= 0 && key < size) {
