@@ -1789,6 +1789,25 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             return v == null ? undefinedKey(key, bytecode, bci, node) : v;
         }
 
+        /** A primitive element of a typed packed array, kept unboxed into the consumer. */
+        @Specialization(guards = "hasPackedLong(array, key)")
+        static long fromArrayLong(PhpArray array, long key) {
+            return array.packedLongAt(key);
+        }
+
+        @Specialization(guards = "hasPackedDouble(array, key)")
+        static double fromArrayDouble(PhpArray array, long key) {
+            return array.packedDoubleAt(key);
+        }
+
+        static boolean hasPackedLong(PhpArray array, long key) {
+            return array.isPackedLong() && key >= 0 && key < array.packedSize();
+        }
+
+        static boolean hasPackedDouble(PhpArray array, long key) {
+            return array.isPackedDouble() && key >= 0 && key < array.packedSize();
+        }
+
         @Specialization
         static Object fromArray(PhpArray array, Object key, @Bind BytecodeNode bytecode,
                                 @Bind("$bytecodeIndex") int bci, @Bind Node node) {
@@ -2625,6 +2644,400 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
+    /**
+     * The current value of a local for an index-write fast path: unwrapped from a reference cell
+     * and flattened from an append buffer, with Java null for an undefined variable. Unlike
+     * {@link ReadVarIfSet} this keeps "undefined" distinct from PHP null.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    public static final class ReadVarCurrent {
+        @Specialization
+        static Object read(VirtualFrame frame, LocalAccessor acc, @Bind BytecodeNode bytecode,
+                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
+            return current(frame, acc, bytecode, buffer);
+        }
+    }
+
+    /** The current value of a global for an index-write fast path; null when still undefined. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "globalId")
+    public static final class ReadGlobal {
+        @Specialization
+        static Object read(VirtualFrame frame, int globalId, @Bind BytecodeNode bytecode,
+                           @Bind PhpBytecodeRootNode root) {
+            return root.context(frame, bytecode).readGlobalById(globalId);
+        }
+    }
+
+    /**
+     * {@code $local[$key] = $value} with a fixed operand layout. The container is the last
+     * operand so the key and value are evaluated first, exactly as in {@link VarPlace}. The
+     * primitive specializations always match a long/double key and value (no guard that can
+     * fail permanently for a site), so a shared or hashed array simply takes the general path
+     * inside the specialization and a later execution of the same site can still be primitive.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class LocalIndexWrite {
+        @Specialization
+        static long writeLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                              long key, long value, PhpArray container, @Bind BytecodeNode bytecode,
+                              @Bind PhpBytecodeRootNode root,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedLongWritable() && key >= 0 && key < container.packedSize()) {
+                container.setPackedLong(key, value);
+            } else {
+                Places.slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
+                        new Object[]{key}, value, bytecode, root);
+            }
+            return value;
+        }
+
+        @Specialization
+        static double writeDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                                  long key, double value, PhpArray container, @Bind BytecodeNode bytecode,
+                                  @Bind PhpBytecodeRootNode root,
+                                  @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
+                container.setPackedDouble(key, value);
+            } else {
+                Places.slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
+                        new Object[]{key}, value, bytecode, root);
+            }
+            return value;
+        }
+
+        @Fallback
+        static Object writeGeneric(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                                   Object key, Object value, Object container, @Bind BytecodeNode bytecode,
+                                   @Bind PhpBytecodeRootNode root,
+                                   @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
+                    new Object[]{key}, value, bytecode, root);
+        }
+    }
+
+    /**
+     * {@code $local[$key] +=|-=|= $value} with a fixed operand layout. The statement form
+     * returns PHP null without boxing; the expression form returns the updated number as an
+     * Object (the store itself is still primitive).
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class LocalIndexCompound {
+        @Specialization
+        static Object compoundLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec, int mode,
+                                   int arg, long key, long value, PhpArray container,
+                                   @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                   @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedLongWritable() && key >= 0 && key < container.packedSize()) {
+                long old = container.packedLongAt(key);
+                long updated;
+                boolean overflow;
+                if (arg == PhpArith.Op.ADD.ordinal()) {
+                    updated = old + value;
+                    overflow = ((old ^ updated) & (value ^ updated)) < 0;
+                } else if (arg == PhpArith.Op.SUB.ordinal()) {
+                    updated = old - value;
+                    overflow = ((old ^ value) & (old ^ updated)) < 0;
+                } else {
+                    updated = old * value;
+                    overflow = Math.multiplyHigh(old, value) != (updated >> 63);
+                }
+                if (!overflow) {
+                    container.setPackedLong(key, updated);
+                    return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Long.valueOf(updated);
+                }
+            } else if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
+                double old = container.packedDoubleAt(key);
+                double updated = arg == PhpArith.Op.ADD.ordinal() ? old + value
+                        : arg == PhpArith.Op.SUB.ordinal() ? old - value : old * value;
+                container.setPackedDouble(key, updated);
+                return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Double.valueOf(updated);
+            }
+            return Places.slowIndexPlace(frame, acc, info, engine, mode, arg, container,
+                    new Object[]{key}, value, bytecode, root);
+        }
+
+        @Specialization
+        static Object compoundDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                                     int mode, int arg, long key, double value, PhpArray container,
+                                     @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                     @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
+                double old = container.packedDoubleAt(key);
+                double updated = arg == PhpArith.Op.ADD.ordinal() ? old + value
+                        : arg == PhpArith.Op.SUB.ordinal() ? old - value : old * value;
+                container.setPackedDouble(key, updated);
+                return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Double.valueOf(updated);
+            }
+            return Places.slowIndexPlace(frame, acc, info, engine, mode, arg, container,
+                    new Object[]{key}, value, bytecode, root);
+        }
+
+        @Fallback
+        static Object compoundGeneric(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                                      int mode, int arg, Object key, Object value, Object container,
+                                      @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                      @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.slowIndexPlace(frame, acc, info, engine, mode, arg, container,
+                    new Object[]{key}, value, bytecode, root);
+        }
+    }
+
+    /** {@code $global[$key] = $value} with the fixed primitive write layout. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "globalId")
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class GlobalIndexWrite {
+        @Specialization
+        static long writeLong(VirtualFrame frame, int globalId, PlaceSpec spec, long key, long value,
+                              PhpArray container, @Bind BytecodeNode bytecode,
+                              @Bind PhpBytecodeRootNode root,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedLongWritable() && key >= 0 && key < container.packedSize()) {
+                container.setPackedLong(key, value);
+            } else {
+                Places.slowGlobalPlace(frame, engine, P_WRITE, 0, new Object[]{key}, value, bytecode, root);
+            }
+            return value;
+        }
+
+        @Specialization
+        static double writeDouble(VirtualFrame frame, int globalId, PlaceSpec spec, long key, double value,
+                                  PhpArray container, @Bind BytecodeNode bytecode,
+                                  @Bind PhpBytecodeRootNode root,
+                                  @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
+                container.setPackedDouble(key, value);
+            } else {
+                Places.slowGlobalPlace(frame, engine, P_WRITE, 0, new Object[]{key}, value, bytecode, root);
+            }
+            return value;
+        }
+
+        @Fallback
+        static Object writeGeneric(VirtualFrame frame, int globalId, PlaceSpec spec, Object key, Object value,
+                                   Object container, @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                   @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.slowGlobalPlace(frame, engine, P_WRITE, 0,
+                    new Object[]{key}, value, bytecode, root);
+        }
+    }
+
+    /** {@code $global[$key] +=|-=|= $value} with the fixed primitive layout. */
+    @Operation
+    @ConstantOperand(type = int.class, name = "globalId")
+    @ConstantOperand(type = PlaceSpec.class)
+    @ConstantOperand(type = int.class, name = "mode")
+    @ConstantOperand(type = int.class, name = "arg")
+    public static final class GlobalIndexCompound {
+        @Specialization
+        static Object compoundLong(VirtualFrame frame, int globalId, PlaceSpec spec, int mode, int arg,
+                                   long key, long value, PhpArray container,
+                                   @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                   @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedLongWritable() && key >= 0 && key < container.packedSize()) {
+                long old = container.packedLongAt(key);
+                long updated;
+                boolean overflow;
+                if (arg == PhpArith.Op.ADD.ordinal()) {
+                    updated = old + value;
+                    overflow = ((old ^ updated) & (value ^ updated)) < 0;
+                } else if (arg == PhpArith.Op.SUB.ordinal()) {
+                    updated = old - value;
+                    overflow = ((old ^ value) & (old ^ updated)) < 0;
+                } else {
+                    updated = old * value;
+                    overflow = Math.multiplyHigh(old, value) != (updated >> 63);
+                }
+                if (!overflow) {
+                    container.setPackedLong(key, updated);
+                    return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Long.valueOf(updated);
+                }
+            } else if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
+                double old = container.packedDoubleAt(key);
+                double updated = arg == PhpArith.Op.ADD.ordinal() ? old + value
+                        : arg == PhpArith.Op.SUB.ordinal() ? old - value : old * value;
+                container.setPackedDouble(key, updated);
+                return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Double.valueOf(updated);
+            }
+            return Places.slowGlobalPlace(frame, engine, mode, arg, new Object[]{key}, value, bytecode, root);
+        }
+
+        @Specialization
+        static Object compoundDouble(VirtualFrame frame, int globalId, PlaceSpec spec, int mode, int arg,
+                                     long key, double value, PhpArray container,
+                                     @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                     @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (container.isPackedDoubleWritable() && key >= 0 && key < container.packedSize()) {
+                double old = container.packedDoubleAt(key);
+                double updated = arg == PhpArith.Op.ADD.ordinal() ? old + value
+                        : arg == PhpArith.Op.SUB.ordinal() ? old - value : old * value;
+                container.setPackedDouble(key, updated);
+                return mode == P_COMPOUND_DISCARD ? PhpNull.INSTANCE : Double.valueOf(updated);
+            }
+            return Places.slowGlobalPlace(frame, engine, mode, arg, new Object[]{key}, value, bytecode, root);
+        }
+
+        @Fallback
+        static Object compoundGeneric(VirtualFrame frame, int globalId, PlaceSpec spec, int mode, int arg,
+                                      Object key, Object value, Object container,
+                                      @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                      @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.slowGlobalPlace(frame, engine, mode, arg, new Object[]{key}, value, bytecode, root);
+        }
+    }
+
+    /**
+     * {@code $local[$i][$j] = $value} for a packed OBJECT outer array whose selected row is a
+     * packed typed array. Both arrays must be unshared; anything else takes the general path.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class LocalIndexWrite2 {
+        static boolean isLongRow(PhpArray outer, long first, long second) {
+            if (!outer.isPackedObjectWritable() || first < 0 || first >= outer.packedSize()) {
+                return false;
+            }
+            Object row = outer.packedRawAt(first);
+            return row instanceof PhpArray inner && inner.isPackedLongWritable()
+                    && second >= 0 && second < inner.packedSize();
+        }
+
+        static boolean isDoubleRow(PhpArray outer, long first, long second) {
+            if (!outer.isPackedObjectWritable() || first < 0 || first >= outer.packedSize()) {
+                return false;
+            }
+            Object row = outer.packedRawAt(first);
+            return row instanceof PhpArray inner && inner.isPackedDoubleWritable()
+                    && second >= 0 && second < inner.packedSize();
+        }
+
+        @Specialization
+        static long writeLong(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                              long first, long second, long value, PhpArray container,
+                              @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                              @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (isLongRow(container, first, second)) {
+                ((PhpArray) container.packedRawAt(first)).setPackedLong(second, value);
+            } else {
+                Places.slowIndexPlace2(frame, acc, info, engine, container, first, second, value,
+                        bytecode, root);
+            }
+            return value;
+        }
+
+        @Specialization
+        static double writeDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                                  long first, long second, double value, PhpArray container,
+                                  @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                  @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            if (isDoubleRow(container, first, second)) {
+                ((PhpArray) container.packedRawAt(first)).setPackedDouble(second, value);
+            } else {
+                Places.slowIndexPlace2(frame, acc, info, engine, container, first, second, value,
+                        bytecode, root);
+            }
+            return value;
+        }
+
+        @Fallback
+        static Object writeGeneric(VirtualFrame frame, LocalAccessor acc, VarInfo info, PlaceSpec spec,
+                                   Object first, Object second, Object value, Object container,
+                                   @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                   @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.slowIndexPlace2(frame, acc, info, engine, container, first, second, value,
+                    bytecode, root);
+        }
+    }
+
+    /**
+     * {@code $global[$key]} read for a packed typed array. The fast specializations return a
+     * primitive; a miss, a hashed array or a non-array falls back to the global place engine,
+     * so warnings and ArrayAccess behaviour are the same as {@link GlobalPlace}.
+     */
+    @Operation
+    @ConstantOperand(type = int.class, name = "globalId")
+    @ConstantOperand(type = PlaceSpec.class)
+    public static final class GlobalIndexRead {
+        @Specialization(guards = {"container.isPackedLong()", "key >= 0", "key < container.packedSize()"})
+        static long readLong(int globalId, PlaceSpec spec, long key, PhpArray container) {
+            return container.packedLongAt(key);
+        }
+
+        @Specialization(guards = {"container.isPackedDouble()", "key >= 0", "key < container.packedSize()"})
+        static double readDouble(int globalId, PlaceSpec spec, long key, PhpArray container) {
+            return container.packedDoubleAt(key);
+        }
+
+        @Fallback
+        static Object readGeneric(VirtualFrame frame, int globalId, PlaceSpec spec, Object key, Object container,
+                                  @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
+                                  @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine) {
+            return Places.slowGlobalRead(frame, engine, key, bytecode, root);
+        }
+    }
+
+    /**
+     * {@code $local[$i][$j]} read for a packed OBJECT outer array whose row is a packed typed
+     * array. The row's value stays primitive into the consumer; anything else uses the same
+     * path as {@link IndexPath}, including its warning for the last key.
+     */
+    @Operation
+    @ConstantOperand(type = LocalAccessor.class)
+    @ConstantOperand(type = VarInfo.class)
+    public static final class LocalIndexRead2 {
+        static boolean isLongRow(PhpArray outer, long first, long second) {
+            if (!outer.isPackedObject() || first < 0 || first >= outer.packedSize()) {
+                return false;
+            }
+            Object row = outer.packedRawAt(first);
+            return row instanceof PhpArray inner && inner.isPackedLong()
+                    && second >= 0 && second < inner.packedSize();
+        }
+
+        static boolean isDoubleRow(PhpArray outer, long first, long second) {
+            if (!outer.isPackedObject() || first < 0 || first >= outer.packedSize()) {
+                return false;
+            }
+            Object row = outer.packedRawAt(first);
+            return row instanceof PhpArray inner && inner.isPackedDouble()
+                    && second >= 0 && second < inner.packedSize();
+        }
+
+        @Specialization(guards = "isLongRow(container, first, second)")
+        static long readLong(VirtualFrame frame, LocalAccessor acc, VarInfo info,
+                             PhpArray container, long first, long second) {
+            return ((PhpArray) container.packedRawAt(first)).packedLongAt(second);
+        }
+
+        @Specialization(guards = "isDoubleRow(container, first, second)")
+        static double readDouble(VirtualFrame frame, LocalAccessor acc, VarInfo info,
+                                 PhpArray container, long first, long second) {
+            return ((PhpArray) container.packedRawAt(first)).packedDoubleAt(second);
+        }
+
+        @Fallback
+        static Object readGeneric(VirtualFrame frame, LocalAccessor acc, VarInfo info,
+                                  Object container, Object first, Object second,
+                                  @Bind BytecodeNode bytecode, @Bind("$bytecodeIndex") int bci,
+                                  @Bind Node node, @Bind PhpBytecodeRootNode root,
+                                  @Cached("create(root)") ArrayAccessNode access) {
+            Object v = Ops.path(container, new Object[]{first, second}, access, false);
+            return v == null ? undefinedKey(second, bytecode, bci, node) : v;
+        }
+    }
+
     /** A place on an index path rooted in a local: operands are the keys, then the value if any. */
     @Operation
     @ConstantOperand(type = LocalAccessor.class)
@@ -3043,6 +3456,44 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         static Object value(Object[] ops, int index) {
             return index < ops.length ? ops[index] : null;
+        }
+
+        /**
+         * The general place engine for a fast index-write operation whose primitive shape did
+         * not apply. Kept behind a boundary: the primitive path is the one compiled into hot
+         * loops, and a shared, hashed or otherwise unusual place should not grow every site.
+         */
+        static Object slowIndexPlace(VirtualFrame frame, LocalAccessor acc, VarInfo info,
+                                     dev.phpruntime.nodes.var.LValueNode engine, int mode, int arg,
+                                     Object container, Object[] keyOperands, Object value,
+                                     BytecodeNode bytecode, PhpBytecodeRootNode root) {
+            Object[] holder = {HOLDER_EMPTY};
+            Object[] keys = varKeys(container, holder, keyOperands, keyOperands.length);
+            Object result = run(frame, engine, keys, mode, arg, value, root.context(frame, bytecode));
+            if (holder[0] != HOLDER_EMPTY) {
+                store(frame, acc, info, bytecode, holder[0]);
+            }
+            return result;
+        }
+
+        static Object slowGlobalPlace(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine,
+                                      int mode, int arg, Object[] keyOperands, Object value,
+                                      BytecodeNode bytecode, PhpBytecodeRootNode root) {
+            return run(frame, engine, keyOperands, mode, arg, value, root.context(frame, bytecode));
+        }
+
+        static Object slowGlobalRead(VirtualFrame frame, dev.phpruntime.nodes.var.LValueNode engine,
+                                     Object key, BytecodeNode bytecode, PhpBytecodeRootNode root) {
+            return run(frame, engine, new Object[]{key}, P_READ, 0, null, root.context(frame, bytecode));
+        }
+
+        /** {@code $local[$first][$second] = $value} when neither level is a primitive shape. */
+        static Object slowIndexPlace2(VirtualFrame frame, LocalAccessor acc, VarInfo info,
+                                      dev.phpruntime.nodes.var.LValueNode engine, Object container,
+                                      Object first, Object second, Object value,
+                                      BytecodeNode bytecode, PhpBytecodeRootNode root) {
+            return slowIndexPlace(frame, acc, info, engine, P_WRITE, 0, container,
+                    new Object[]{first, second}, value, bytecode, root);
         }
 
         /**

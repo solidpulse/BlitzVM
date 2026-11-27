@@ -649,7 +649,105 @@ public final class BytecodeEmitter {
         return form(lv).spec();
     }
 
+    /**
+     * The fixed-operand forms of an element write. They exist so key and value can stay unboxed
+     * from their producers into the store; every shape they cannot handle inside their
+     * specializations reuses the general place engine, so this only decides which operation a
+     * site starts with. Reads of single elements stay in {@code Index} for locals and in
+     * {@code GlobalIndexRead} for globals.
+     */
+    private boolean emitPrimitiveIndexPlace(dev.phpruntime.nodes.var.IndexLValueNode il,
+                                            int mode, int arg, Runnable value) {
+        dev.phpruntime.nodes.PhpNode[] keys = il.keyNodes();
+        if (keys.length == 0 || keys.length > 2 || value == null) {
+            return false;
+        }
+        for (dev.phpruntime.nodes.PhpNode key : keys) {
+            if (key == null) {
+                return false;
+            }
+        }
+        boolean compound = mode == PhpBytecodeRootNode.P_COMPOUND
+                || mode == PhpBytecodeRootNode.P_COMPOUND_DISCARD;
+        if (mode != PhpBytecodeRootNode.P_WRITE && !compound) {
+            return false;
+        }
+        if (compound && arg != dev.phpruntime.runtime.PhpArith.Op.ADD.ordinal()
+                && arg != dev.phpruntime.runtime.PhpArith.Op.SUB.ordinal()
+                && arg != dev.phpruntime.runtime.PhpArith.Op.MUL.ordinal()) {
+            return false;
+        }
+        Form f = form(il);
+        if (f.local() != null) {
+            if (keys.length == 2) {
+                if (compound) {
+                    return false;
+                }
+                b.beginLocalIndexWrite2(accessor(f.local()), info(f.local()), f.spec());
+                expr(keys[0]);
+                expr(keys[1]);
+                value.run();
+                b.emitReadVarCurrent(accessor(f.local()));
+                b.endLocalIndexWrite2();
+            } else if (compound) {
+                b.beginLocalIndexCompound(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
+                expr(keys[0]);
+                value.run();
+                b.emitReadVarCurrent(accessor(f.local()));
+                b.endLocalIndexCompound();
+            } else {
+                b.beginLocalIndexWrite(accessor(f.local()), info(f.local()), f.spec());
+                expr(keys[0]);
+                value.run();
+                b.emitReadVarCurrent(accessor(f.local()));
+                b.endLocalIndexWrite();
+            }
+            return true;
+        }
+        if (keys.length == 1 && il.base() instanceof dev.phpruntime.nodes.var.GlobalVarNode g
+                && !g.isGlobalsSuperglobal()) {
+            if (compound) {
+                b.beginGlobalIndexCompound(g.globalId(), f.spec(), mode, arg);
+                expr(keys[0]);
+                value.run();
+                b.emitReadGlobal(g.globalId());
+                b.endGlobalIndexCompound();
+            } else {
+                b.beginGlobalIndexWrite(g.globalId(), f.spec());
+                expr(keys[0]);
+                value.run();
+                b.emitReadGlobal(g.globalId());
+                b.endGlobalIndexWrite();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** {@code $global[$key]} read with the key first, as {@code GlobalPlace} does. */
+    public void globalIndexRead(dev.phpruntime.nodes.var.IndexLValueNode lv,
+                                dev.phpruntime.nodes.var.GlobalVarNode global) {
+        Form f = form(lv);
+        b.beginGlobalIndexRead(global.globalId(), f.spec());
+        expr(lv.keyNodes()[0]);
+        b.emitReadGlobal(global.globalId());
+        b.endGlobalIndexRead();
+    }
+
+    /** {@code $local[$i][$j]} read with the container first, as {@code IndexPath} does. */
+    public void indexRead2(LocalVarNode local, dev.phpruntime.nodes.PhpNode[] keys) {
+        b.beginLocalIndexRead2(accessor(local), info(local));
+        b.emitReadVarIfSet(accessor(local), info(local));
+        expr(keys[0]);
+        expr(keys[1]);
+        b.endLocalIndexRead2();
+    }
+
     public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value) {
+        if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il
+                && emitPrimitiveIndexPlace(il, mode, arg, value)) {
+            return;
+        }
         Form f = form(lv);
         if (f.local() != null) {
             b.beginVarPlace(accessor(f.local()), info(f.local()), f.spec(), mode, arg);

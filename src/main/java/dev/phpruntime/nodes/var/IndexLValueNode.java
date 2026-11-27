@@ -624,6 +624,15 @@ public final class IndexLValueNode extends LValueNode {
                 throw e.unsupported("read of []");
             }
         }
+        if (mode == 0 && keyNodes.length == 2) {
+            e.indexRead2(lv, keyNodes);
+            return;
+        }
+        if (mode == 0 && keyNodes.length == 1 && base instanceof GlobalVarNode global
+                && !global.isGlobalsSuperglobal()) {
+            e.globalIndexRead(this, global);
+            return;
+        }
         var b = e.builder();
         boolean single = keyNodes.length == 1;
         switch (mode) {

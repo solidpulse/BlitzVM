@@ -20,8 +20,6 @@ import java.util.Map;
 public final class PhpArray implements TruffleObject {
 
     private static final Object[] EMPTY_VALUES = new Object[0];
-    private static final int BOX_CACHE_LIMIT = 8192;
-    private static final Object[] NO_BOX_CACHE = new Object[0];
     /**
      * A null keys array means packed: values[0..size) have implicit integer keys. Packed arrays
      * whose elements are all PHP ints or all PHP floats store them in {@link #longValues} or
@@ -31,13 +29,6 @@ public final class PhpArray implements TruffleObject {
     private Object[] values = EMPTY_VALUES;
     private long[] longValues;
     private double[] doubleValues;
-    /**
-     * Boxed elements of a typed array, created on the first read: a primitive stored in a
-     * frame slot is consumed through an Object, and without this every element read would
-     * allocate the box again. Null means "not created yet"; a zero-length array means the
-     * array is too large to cache and reads box on every access.
-     */
-    private Object[] boxedValues;
     private Object[] keys;
     private int[] hashes;
     /** Open-addressed index: 0 is empty, -1 is deleted, otherwise slot + 1. */
@@ -213,6 +204,64 @@ public final class PhpArray implements TruffleObject {
     }
 
     /**
+     * Storage-kind and shape checks for the primitive element paths in compiled code. These are
+     * field reads only (no boundary), so a guard can call them on every execution.
+     */
+    public boolean isPackedLong() {
+        return keys == null && longValues != null;
+    }
+
+    public boolean isPackedDouble() {
+        return keys == null && doubleValues != null;
+    }
+
+    public boolean isPackedObject() {
+        return keys == null && values != null;
+    }
+
+    public int packedSize() {
+        return size;
+    }
+
+    /** True when a matching primitive write can stay in this array in place. */
+    public boolean isPackedLongWritable() {
+        return keys == null && longValues != null && shared == 0 && !immutable;
+    }
+
+    public boolean isPackedDoubleWritable() {
+        return keys == null && doubleValues != null && shared == 0 && !immutable;
+    }
+
+    public boolean isPackedObjectWritable() {
+        return keys == null && values != null && shared == 0 && !immutable;
+    }
+
+    /** Primitive element read; callers check {@link #isPackedLong()} and the key range first. */
+    public long packedLongAt(long key) {
+        return longValues[(int) key];
+    }
+
+    public double packedDoubleAt(long key) {
+        return doubleValues[(int) key];
+    }
+
+    /** Raw element of a packed OBJECT array; callers check the kind and key range first. */
+    public Object packedRawAt(long key) {
+        return values[(int) key];
+    }
+
+    /** Primitive element write; callers check the writable kind and key range first. */
+    public void setPackedLong(long key, long value) {
+        int pos = (int) key;
+        longValues[pos] = value;
+    }
+
+    public void setPackedDouble(long key, double value) {
+        int pos = (int) key;
+        doubleValues[pos] = value;
+    }
+
+    /**
      * The element at a non-negative int key of a packed array, read inline in compiled code (no
      * boundary). Null when the array is hashed, the key is outside it, or the slot holds a
      * reference cell: callers then take the general path.
@@ -222,11 +271,11 @@ public final class PhpArray implements TruffleObject {
             int i = (int) key;
             long[] longs = longValues;
             if (longs != null) {
-                return boxedLong(longs, i);
+                return Long.valueOf(longs[i]);
             }
             double[] doubles = doubleValues;
             if (doubles != null) {
-                return boxedDouble(doubles, i);
+                return Double.valueOf(doubles[i]);
             }
             Object v = values[i];
             if (!(v instanceof PhpReference)) {
@@ -249,7 +298,6 @@ public final class PhpArray implements TruffleObject {
             if (longs != null) {
                 if (value instanceof Long l) {
                     longs[i] = l;
-                    cacheBoxed(i, value);
                     return true;
                 }
                 return false;
@@ -258,7 +306,6 @@ public final class PhpArray implements TruffleObject {
             if (doubles != null) {
                 if (value instanceof Double d) {
                     doubles[i] = d;
-                    cacheBoxed(i, value);
                     return true;
                 }
                 return false;
@@ -314,7 +361,6 @@ public final class PhpArray implements TruffleObject {
                 }
             }
             longs[i] = r;
-            invalidateBoxed(i);
             return PhpNull.INSTANCE;
         }
         double[] doubles = doubleValues;
@@ -329,7 +375,6 @@ public final class PhpArray implements TruffleObject {
                 return null;
             }
             doubles[i] = add ? a + b : sub ? a - b : a * b;
-            invalidateBoxed(i);
             return PhpNull.INSTANCE;
         }
         return null;
@@ -599,7 +644,6 @@ public final class PhpArray implements TruffleObject {
         if (longs != null) {
             if (value instanceof Long l) {
                 longs[size] = l;
-                cacheBoxed(size, value);
             } else {
                 appendReservedSlow(value);
                 return;
@@ -609,7 +653,6 @@ public final class PhpArray implements TruffleObject {
             if (doubles != null) {
                 if (value instanceof Double d) {
                     doubles[size] = d;
-                    cacheBoxed(size, value);
                 } else {
                     appendReservedSlow(value);
                     return;
@@ -809,7 +852,6 @@ public final class PhpArray implements TruffleObject {
         values = fresh.values;
         longValues = fresh.longValues;
         doubleValues = fresh.doubleValues;
-        boxedValues = fresh.boxedValues;
         keys = fresh.keys;
         hashes = fresh.hashes;
         index = fresh.index;
@@ -970,7 +1012,6 @@ public final class PhpArray implements TruffleObject {
         if (longs != null) {
             if (value instanceof Long l) {
                 longs[pos] = l;
-                cacheBoxed(pos, value);
                 return;
             }
             generalize();
@@ -979,7 +1020,6 @@ public final class PhpArray implements TruffleObject {
             if (doubles != null) {
                 if (value instanceof Double d) {
                     doubles[pos] = d;
-                    cacheBoxed(pos, value);
                     return;
                 }
                 generalize();
@@ -1007,7 +1047,6 @@ public final class PhpArray implements TruffleObject {
                 longValues = longs;
             }
             longs[size] = l;
-            cacheBoxed(size, value);
         } else {
             double[] doubles = doubleValues;
             if (doubles != null) {
@@ -1021,7 +1060,6 @@ public final class PhpArray implements TruffleObject {
                     doubleValues = doubles;
                 }
                 doubles[size] = d;
-                cacheBoxed(size, value);
             } else if (size == 0 && value instanceof Long l) {
                 long[] created = new long[Math.max(8, values.length)];
                 created[0] = l;
@@ -1051,27 +1089,21 @@ public final class PhpArray implements TruffleObject {
         long[] longs = longValues;
         if (longs != null) {
             Object[] boxed = new Object[longs.length];
-            Object[] cached = boxedValues;
             for (int i = 0; i < size; i++) {
-                Object v = cached != null && i < cached.length ? cached[i] : null;
-                boxed[i] = v != null ? v : Long.valueOf(longs[i]);
+                boxed[i] = Long.valueOf(longs[i]);
             }
             values = boxed;
             longValues = null;
-            boxedValues = null;
             return;
         }
         double[] doubles = doubleValues;
         if (doubles != null) {
             Object[] boxed = new Object[doubles.length];
-            Object[] cached = boxedValues;
             for (int i = 0; i < size; i++) {
-                Object v = cached != null && i < cached.length ? cached[i] : null;
-                boxed[i] = v != null ? v : Double.valueOf(doubles[i]);
+                boxed[i] = Double.valueOf(doubles[i]);
             }
             values = boxed;
             doubleValues = null;
-            boxedValues = null;
         }
     }
 
@@ -1159,8 +1191,6 @@ public final class PhpArray implements TruffleObject {
         if (keys == null) {
             if (longValues == null && doubleValues == null) {
                 values[pos] = null;
-            } else {
-                invalidateBoxed(pos);
             }
             size--;
             used = size;
@@ -1226,69 +1256,13 @@ public final class PhpArray implements TruffleObject {
     public Object rawValueAt(int pos) {
         long[] longs = longValues;
         if (longs != null) {
-            return boxedLong(longs, pos);
+            return Long.valueOf(longs[pos]);
         }
         double[] doubles = doubleValues;
         if (doubles != null) {
-            return boxedDouble(doubles, pos);
+            return Double.valueOf(doubles[pos]);
         }
         return values[pos];
-    }
-
-    /** The box for one element, cached after the first read and updated by writes. */
-    private Object boxedLong(long[] longs, int pos) {
-        Object[] boxed = boxedValues;
-        if (boxed == null) {
-            boxed = createBoxCache(longs.length);
-        }
-        if (pos < boxed.length) {
-            Object v = boxed[pos];
-            if (v != null) {
-                return v;
-            }
-            Long created = Long.valueOf(longs[pos]);
-            boxed[pos] = created;
-            return created;
-        }
-        return Long.valueOf(longs[pos]);
-    }
-
-    private Object boxedDouble(double[] doubles, int pos) {
-        Object[] boxed = boxedValues;
-        if (boxed == null) {
-            boxed = createBoxCache(doubles.length);
-        }
-        if (pos < boxed.length) {
-            Object v = boxed[pos];
-            if (v != null) {
-                return v;
-            }
-            Double created = Double.valueOf(doubles[pos]);
-            boxed[pos] = created;
-            return created;
-        }
-        return Double.valueOf(doubles[pos]);
-    }
-
-    @TruffleBoundary
-    private Object[] createBoxCache(int length) {
-        Object[] cache = length <= BOX_CACHE_LIMIT ? new Object[length] : NO_BOX_CACHE;
-        boxedValues = cache;
-        return cache;
-    }
-
-    private void cacheBoxed(int pos, Object value) {
-        Object[] boxed = boxedValues;
-        if (boxed != null && pos < boxed.length) {
-            boxed[pos] = value;
-        }
-    }
-
-    private void invalidateBoxed(int pos) {
-        Object[] boxed = boxedValues;
-        if (boxed != null && pos < boxed.length) {
-            boxed[pos] = null;
-        }
     }
 
     // ---------------------------------------------------------------- internal pointer
