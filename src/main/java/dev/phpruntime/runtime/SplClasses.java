@@ -45,10 +45,34 @@ public final class SplClasses {
                 false, false, false, null, List.of("Countable", "Iterator", "Serializable", "ArrayAccess"),
                 List.of(), List.of(), storageMethods);
         out.put(storage.lowerName(), storage);
+        weakClasses(language, out);
         out.put("__php_incomplete_class", new PhpClassTemplate(language.nextTemplateId(),
                 "__PHP_Incomplete_Class", false, false, false, false, null, List.of(),
                 List.of(), List.of(), Map.of()));
         return out;
+    }
+
+    private static void weakClasses(PhpLanguage language, Map<String, PhpClassTemplate> out) {
+        Map<String, PhpClassTemplate.MethodDecl> mapMethods = new LinkedHashMap<>();
+        for (String method : List.of("offsetGet", "offsetSet", "offsetExists", "offsetUnset", "count", "getIterator")) {
+            String lower = method.toLowerCase();
+            mapMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, false, false, false,
+                    new dev.phpruntime.nodes.call.SplWeakMapMethodRootNode(language, method).getCallTarget()));
+        }
+        out.put("weakmap", new PhpClassTemplate(language.nextTemplateId(), "WeakMap", false,
+                false, true, false, null, List.of("ArrayAccess", "Countable", "IteratorAggregate"),
+                List.of(), List.of(), mapMethods));
+
+        Map<String, PhpClassTemplate.MethodDecl> referenceMethods = new LinkedHashMap<>();
+        for (String method : List.of("__construct", "create", "get")) {
+            String lower = method.toLowerCase();
+            referenceMethods.put(lower, new PhpClassTemplate.MethodDecl(method, lower, language.methodId(method),
+                    Visibility.PUBLIC, method.equals("create"), false, true,
+                    new dev.phpruntime.nodes.call.SplWeakReferenceMethodRootNode(language, method).getCallTarget()));
+        }
+        out.put("weakreference", new PhpClassTemplate(language.nextTemplateId(), "WeakReference", false,
+                false, true, false, null, List.of(), List.of(), List.of(), referenceMethods));
     }
 
     private static void iface(PhpLanguage language, Map<String, PhpClassTemplate> out,

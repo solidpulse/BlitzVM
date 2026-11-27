@@ -1,0 +1,70 @@
+int(2)
+string(1) "a"
+bool(true)
+bool(false)
+stdClass => a
+stdClass => b
+bool(false)
+bool(false)
+int(2)
+bool(true)
+int(1)
+TypeError: WeakMap key must be an object
+TypeError: WeakMap key must be an object
+TypeError: WeakMap key must be an object
+TypeError: WeakMap key must be an object
+Error: Object stdClass#id not contained in WeakMap
+ArgumentCountError: WeakMap::offsetSet() expects exactly 2 arguments, 0 given
+ArgumentCountError: WeakMap::offsetGet() expects exactly 1 argument, 2 given
+ArgumentCountError: WeakMap::count() expects exactly 0 arguments, 1 given
+int(1)
+bool(false)
+bool(false)
+int(1)
+int(2)
+InternalIterator
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+array(4) {
+  [0]=>
+  string(11) "ArrayAccess"
+  [1]=>
+  string(9) "Countable"
+  [2]=>
+  string(17) "IteratorAggregate"
+  [3]=>
+  string(11) "Traversable"
+}
+Array
+(
+    [0] => offsetGet
+    [1] => offsetSet
+    [2] => offsetExists
+    [3] => offsetUnset
+    [4] => count
+    [5] => getIterator
+)
+Exception: Serialization of 'WeakMap' is not allowed
+array(0) {
+}
+string(2) "{}"
+1
+3
+4
+int(3)
+bool(true)
+bool(true)
+bool(true)
+Array
+(
+    [0] => __construct
+    [1] => create
+    [2] => get
+)
+TypeError: WeakReference::create(): Argument #1 ($object) must be of type object, string given
+Error: Direct instantiation of WeakReference is not allowed, use WeakReference::create instead
+ArgumentCountError: WeakReference::create() expects exactly 1 argument, 0 given
+Exception: Serialization of 'WeakReference' is not allowed
