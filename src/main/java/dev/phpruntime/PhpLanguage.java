@@ -88,6 +88,8 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
                     dev.phpruntime.builtins.DateTimeClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.IntlClasses.buildTemplates(this, all);
                     all.putAll(SplClasses.buildTemplates(this));
+                    dev.phpruntime.builtins.SessionClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.FiberClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.DirClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.PdoClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.ReflectionClasses.buildTemplates(this, all);

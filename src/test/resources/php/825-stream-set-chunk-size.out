@@ -1,0 +1,6 @@
+int(8192)
+ValueError: stream_set_chunk_size(): Argument #2 ($size) must be greater than 0
+ValueError: stream_set_chunk_size(): Argument #2 ($size) must be greater than 0
+TypeError: stream_set_chunk_size(): Argument #1 ($stream) must be of type resource, string given
+ArgumentCountError: stream_set_chunk_size() expects exactly 2 arguments, 1 given
+string(4) "data"

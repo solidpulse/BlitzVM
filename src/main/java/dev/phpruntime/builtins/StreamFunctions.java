@@ -490,6 +490,14 @@ final class StreamFunctions {
             return true;
         });
         Builtins.def("stream_set_write_buffer", 2, 2, (ctx, a) -> 0L);
+        Builtins.def("stream_set_chunk_size", 2, 2, (ctx, a) -> {
+            stream(a[0], "stream_set_chunk_size");
+            long size = PhpOps.toLong(a[1]);
+            if (size <= 0) {
+                throw new PhpError("ValueError", "stream_set_chunk_size(): Argument #2 ($size) must be greater than 0", null);
+            }
+            return size;
+        });
         Builtins.def("stream_is_local", 1, 1, (ctx, a) -> {
             if (a[0] instanceof PhpResource) {
                 return true;
