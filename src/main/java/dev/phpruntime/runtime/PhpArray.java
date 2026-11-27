@@ -29,12 +29,12 @@ public final class PhpArray implements TruffleObject {
     /** A packed DOUBLE array in {@link #doubleValues}. */
     private static final int S_DOUBLE = 3;
 
-    /**
+    /*
      * A null keys array means packed: values[0..size) have implicit integer keys. Packed arrays
-     * whose elements are all PHP ints or all PHP floats store them in {@link #longValues} or
-     * {@link #doubleValues}; storage says which array is live. Hashed arrays always use
-     * {@link #values}. Storage kinds below {@link #S_LONG} are boxed, so the object fast paths
-     * need one comparison and never touch a null array.
+     * whose elements are all PHP ints or all PHP floats store them in longValues or
+     * doubleValues; storage says which array is live. Hashed arrays always use values. Storage
+     * kinds below S_LONG are boxed, so the object fast paths need one comparison and never
+     * touch a null array.
      */
     /** Which of the three value arrays (or the hashed layout) is live; zero is S_OBJECT. */
     private int storage;
