@@ -188,6 +188,39 @@ public final class PhpArray implements TruffleObject {
         return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
+    /**
+     * The element at a non-negative int key of a packed array, read inline in compiled code (no
+     * boundary). Null when the array is hashed, the key is outside it, or the slot holds a
+     * reference cell: callers then take the general path.
+     */
+    public Object packedGetOrNull(long key) {
+        if (keys == null && key >= 0 && key < size) {
+            Object v = values[(int) key];
+            if (!(v instanceof PhpReference)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Overwrites an existing element of an unshared, mutable packed array inline (no boundary).
+     * False when that does not apply (hashed, shared, immutable, key outside, reference slot),
+     * and nothing is written: callers then take the general path.
+     */
+    public boolean packedSetExisting(long key, Object value) {
+        if (keys == null && shared == 0 && !immutable && key >= 0 && key < size) {
+            Object[] vs = values;
+            int i = (int) key;
+            Object old = vs[i];
+            if (old != null && !(old instanceof PhpReference)) {
+                vs[i] = value;
+                return true;
+            }
+        }
+        return false;
+    }
+
     @TruffleBoundary
     public Object getRaw(Object key) {
         int pos = find(normalizeKey(key));

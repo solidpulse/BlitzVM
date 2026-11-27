@@ -644,9 +644,40 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = VarInfo.class)
     @ConstantOperand(type = boolean.class, name = "increment")
     public static final class StepVar {
-        @Specialization
-        static void step(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean increment,
-                         @Bind BytecodeNode bytecode) {
+        /**
+         * incrementExact rather than comparing with MAX/MIN: it compiles to inc + jo, and Graal
+         * recognises the variable as a counted-loop induction variable, so a for loop loses its
+         * strip-mined safepoint counter (and a loop whose result is unused or computable folds).
+         * The overflow is not caught here: a caught ArithmeticException compiles to a
+         * deoptimization, so a site that overflows every time would recompile forever. It
+         * rewrites the site to {@link #stepChecked} instead, once.
+         */
+        @Specialization(rewriteOn = ArithmeticException.class)
+        static void stepExact(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean increment,
+                              @Bind BytecodeNode bytecode) {
+            if (!info.kind().isCell() && info.kind().longSlot()) {
+                long l;
+                try {
+                    l = acc.getLong(bytecode, frame);
+                } catch (UnexpectedResultException e) {
+                    IncDecVar.generic(frame, acc, info, increment, true, bytecode);
+                    return;
+                }
+                long updated = increment ? Math.incrementExact(l) : Math.decrementExact(l);
+                if (info.kind().longBoxed()) {
+                    acc.setObject(bytecode, frame, updated);
+                } else {
+                    acc.setLong(bytecode, frame, updated);
+                }
+                return;
+            }
+            IncDecVar.generic(frame, acc, info, increment, true, bytecode);
+        }
+
+        /** After an overflow at this site: the bounds are tested, an overflow goes generic. */
+        @Specialization(replaces = "stepExact")
+        static void stepChecked(VirtualFrame frame, LocalAccessor acc, VarInfo info, boolean increment,
+                                @Bind BytecodeNode bytecode) {
             if (!info.kind().isCell() && info.kind().longSlot()) {
                 try {
                     long l = acc.getLong(bytecode, frame);
@@ -698,10 +729,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             } catch (UnexpectedResultException e) {
                 throw new UnexpectedResultException(generic(frame, acc, info, increment, prefix, bytecode));
             }
-            if (l == Long.MAX_VALUE || l == Long.MIN_VALUE) {
+            long u;
+            try {
+                u = increment ? Math.incrementExact(l) : Math.decrementExact(l);
+            } catch (ArithmeticException overflow) {
                 throw new UnexpectedResultException(generic(frame, acc, info, increment, prefix, bytecode));
             }
-            long u = increment ? l + 1 : l - 1;
             if (info.kind().longBoxed()) {
                 acc.setObject(bytecode, frame, u);
             } else {
@@ -1748,6 +1781,12 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         @Specialization
         static Object fromArray(PhpArray array, Object key, @Bind BytecodeNode bytecode,
                                 @Bind("$bytecodeIndex") int bci, @Bind Node node) {
+            if (key instanceof Long l) {
+                Object packed = array.packedGetOrNull(l);
+                if (packed != null) {
+                    return packed;
+                }
+            }
             Object v = Ops.arrayGet(array, key);
             return v == null ? undefinedKey(key, bytecode, bci, node) : v;
         }
@@ -2567,8 +2606,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                           @Variadic Object[] ops, @Bind BytecodeNode bytecode, @Bind PhpBytecodeRootNode root,
                           @Cached("spec.newEngine()") dev.phpruntime.nodes.var.LValueNode engine,
                           @Cached("create()") com.oracle.truffle.api.profiles.BranchProfile buffer) {
+            Object container = current(frame, acc, bytecode, buffer);
+            if (spec.arrayKeys == 1 && (mode == P_WRITE || mode == P_COMPOUND || mode == P_READ)
+                    && container instanceof PhpArray array && ops[0] instanceof Long key) {
+                Object fast = Places.packedElement(array, key, mode, arg, Places.value(ops, 1));
+                if (fast != null) {
+                    return fast;
+                }
+            }
             Object[] holder = {HOLDER_EMPTY};
-            Object[] keys = Places.varKeys(current(frame, acc, bytecode, buffer), holder, ops, spec.arrayKeys);
+            Object[] keys = Places.varKeys(container, holder, ops, spec.arrayKeys);
             if (mode == P_KEYS) {
                 return new PreparedPlace(keys, holder);
             }
@@ -2964,6 +3011,56 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         static Object value(Object[] ops, int index) {
             return index < ops.length ? ops[index] : null;
+        }
+
+        /**
+         * {@code $var[int]} read, write or compound assignment on an existing element of an
+         * unshared packed array, inline in compiled code. Null when the shape does not apply
+         * (nothing has been changed then) and the general engine handles it.
+         */
+        static Object packedElement(PhpArray array, long key, int mode, int arg, Object value) {
+            if (mode == P_READ) {
+                return array.packedGetOrNull(key);
+            }
+            if (mode == P_WRITE) {
+                return value != null && array.packedSetExisting(key, PhpOps.copyOnAssign(value)) ? value : null;
+            }
+            Object old = array.packedGetOrNull(key);
+            if (old == null) {
+                return null;
+            }
+            Object updated = numericCompound(arg, old, value);
+            return updated != null && array.packedSetExisting(key, updated) ? updated : null;
+        }
+
+        /**
+         * +=, -= and *= on ints (exact; an overflow returns null so the general path makes the
+         * float) and floats. Null for anything else: the general path applies PhpArith.
+         */
+        static Object numericCompound(int op, Object a, Object b) {
+            boolean add = op == PhpArith.Op.ADD.ordinal();
+            boolean sub = op == PhpArith.Op.SUB.ordinal();
+            boolean mul = op == PhpArith.Op.MUL.ordinal();
+            if (!add && !sub && !mul) {
+                return null;
+            }
+            if (a instanceof Long x && b instanceof Long y) {
+                long r = add ? x + y : sub ? x - y : x * y;
+                boolean overflow = add ? ((x ^ r) & (y ^ r)) < 0
+                        : sub ? ((x ^ y) & (x ^ r)) < 0
+                        : Math.multiplyHigh(x, y) != (r >> 63);
+                return overflow ? null : r;
+            }
+            if (a instanceof Double x && b instanceof Double y) {
+                return add ? x + y : sub ? x - y : x * y;
+            }
+            if (a instanceof Double x && b instanceof Long y) {
+                return add ? x + y : sub ? x - y : x * y;
+            }
+            if (a instanceof Long x && b instanceof Double y) {
+                return add ? x + y : sub ? x - y : x * y;
+            }
+            return null;
         }
 
         /**
