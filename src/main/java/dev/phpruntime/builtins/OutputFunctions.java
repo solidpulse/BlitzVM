@@ -66,6 +66,17 @@ final class OutputFunctions {
             ctx.echo(s);
             return (long) s.length();
         });
+        Builtins.def("vprintf", 2, 2, (ctx, a) -> {
+            java.util.List<Object> vals = ((PhpArray) a[1]).values();
+            Object[] args = new Object[vals.size() + 1];
+            args[0] = a[0];
+            for (int i = 0; i < vals.size(); i++) {
+                args[i + 1] = vals.get(i);
+            }
+            String s = StringFunctions.sprintf(ctx, args);
+            ctx.echo(s);
+            return (long) s.length();
+        });
         Builtins.def("flush", 0, 0, (ctx, a) -> {
             ctx.flushOutput();
             return PhpNull.INSTANCE;

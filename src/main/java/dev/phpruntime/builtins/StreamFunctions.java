@@ -340,6 +340,23 @@ final class StreamFunctions {
             }
         });
         Builtins.def("fwrite", 2, 3, StreamFunctions::fwrite);
+        // fprintf/vfprintf: sprintf's formatting, written with fwrite; they return the length.
+        Builtins.def("fprintf", 2, -1, (ctx, a) -> {
+            String s = StringFunctions.sprintf(ctx, java.util.Arrays.copyOfRange(a, 1, a.length));
+            fwrite(ctx, new Object[]{a[0], s});
+            return (long) PhpStrings.bytes(s).length;
+        });
+        Builtins.def("vfprintf", 3, 3, (ctx, a) -> {
+            List<Object> vals = ((PhpArray) a[2]).values();
+            Object[] args = new Object[vals.size() + 1];
+            args[0] = a[1];
+            for (int i = 0; i < vals.size(); i++) {
+                args[i + 1] = vals.get(i);
+            }
+            String s = StringFunctions.sprintf(ctx, args);
+            fwrite(ctx, new Object[]{a[0], s});
+            return (long) PhpStrings.bytes(s).length;
+        });
         Builtins.def("fputs", 2, 3, StreamFunctions::fwrite);
         Builtins.def("feof", 1, 1, (ctx, a) -> stream(a[0], "feof").eof);
         Builtins.def("ftell", 1, 1, (ctx, a) -> stream(a[0], "ftell").tell());
