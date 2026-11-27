@@ -1,0 +1,24 @@
+int(100)
+int(40)
+bool(true)
+bool(true)
+int(-1)
+float(7.5)
+float(3)
+float(3.5)
+bool(true)
+float(-2)
+int(200)
+float(5)
+NULL
+NULL
+NULL
+int(4)
+string(1) "x"
+int(5)
+int(8)
+float(7)
+float(6)
+NULL
+int(10100000)
+float(200000)
