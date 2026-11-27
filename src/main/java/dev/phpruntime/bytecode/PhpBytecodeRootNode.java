@@ -1067,6 +1067,17 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
     @ConstantOperand(type = DeclaredType.class)
     @ConstantOperand(type = boolean.class, name = "implicit")
     public static final class CheckReturn {
+        /**
+         * A void function returning (implicitly or by {@code return;}) null: accepted inline. Every
+         * other specialization excludes void, so this used to reach {@link #slow} and its boundary
+         * on every call, which also made the caller's argument array escape (an allocation per
+         * call to any void function). A non-null value still goes to {@link #slow} for the TypeError.
+         */
+        @Specialization(guards = "type.isVoid()")
+        static PhpNull voidNull(DeclaredType type, boolean implicit, PhpNull value) {
+            return value;
+        }
+
         @Specialization(guards = {"!type.isVoid()", "!type.isNever()", "type.isMixed()"})
         static Object mixed(DeclaredType type, boolean implicit, Object value) {
             return value;
