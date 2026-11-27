@@ -62,12 +62,6 @@ public final class BytecodeEmitter {
     private final Map<Integer, PhpBytecodeRootNode.VarInfo> infos = new HashMap<>();
     private final Deque<Loop> loops = new ArrayDeque<>();
     private int currentLine = -1;
-    /**
-     * Nonzero while emitting an expression whose result is consumed as a number. Element reads
-     * there use the primitive-capable read operation, so an int or float element can stay
-     * unboxed into the arithmetic or comparison.
-     */
-    private int primitiveReads;
 
     private BytecodeLocal hoisted;
     /** The local the root prolog stores the request's context in; see PhpBytecodeRootNode#context. */
@@ -516,52 +510,18 @@ public final class BytecodeEmitter {
             node.emit(this);
             return;
         }
-        boolean numeric = isNumericExpression(node);
-        if (numeric) {
-            primitiveReads++;
+        int line = node.line();
+        if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
+            SourceSection s = source.createSection(line);
+            int saved = currentLine;
+            currentLine = line;
+            b.beginSourceSection(s.getCharIndex(), s.getCharLength());
+            node.emit(this);
+            b.endSourceSection();
+            currentLine = saved;
+        } else {
+            node.emit(this);
         }
-        try {
-            int line = node.line();
-            if (line > 0 && line != currentLine && source != null && line <= source.getLineCount()) {
-                SourceSection s = source.createSection(line);
-                int saved = currentLine;
-                currentLine = line;
-                b.beginSourceSection(s.getCharIndex(), s.getCharLength());
-                node.emit(this);
-                b.endSourceSection();
-                currentLine = saved;
-            } else {
-                node.emit(this);
-            }
-        } finally {
-            if (numeric) {
-                primitiveReads--;
-            }
-        }
-    }
-
-    public boolean primitiveReadWanted() {
-        return primitiveReads > 0;
-    }
-
-    private void primitiveValue(Runnable value) {
-        primitiveReads++;
-        try {
-            value.run();
-        } finally {
-            primitiveReads--;
-        }
-    }
-
-    private static boolean isNumericExpression(PhpNode node) {
-        return node instanceof dev.phpruntime.nodes.expr.AddNode
-                || node instanceof dev.phpruntime.nodes.expr.SubNode
-                || node instanceof dev.phpruntime.nodes.expr.MulNode
-                || node instanceof dev.phpruntime.nodes.expr.DivNode
-                || node instanceof dev.phpruntime.nodes.expr.ModNode
-                || node instanceof dev.phpruntime.nodes.expr.NegNode
-                || node instanceof dev.phpruntime.nodes.expr.ArithNode
-                || node instanceof dev.phpruntime.nodes.expr.CompareNode;
     }
 
     private static boolean isGotoStructure(PhpNode node) {
@@ -762,19 +722,19 @@ public final class BytecodeEmitter {
                 b.beginLocalIndexWrite2(accessor(f.local()), info(f.local()), f.spec());
                 expr(keys[0]);
                 expr(keys[1]);
-                primitiveValue(value);
+                value.run();
                 b.emitReadVarCurrent(accessor(f.local()));
                 b.endLocalIndexWrite2();
             } else if (compound) {
                 b.beginLocalIndexCompound(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
                 expr(keys[0]);
-                primitiveValue(value);
+                value.run();
                 b.emitReadVarCurrent(accessor(f.local()));
                 b.endLocalIndexCompound();
             } else {
                 b.beginLocalIndexWrite(accessor(f.local()), info(f.local()), f.spec());
                 expr(keys[0]);
-                primitiveValue(value);
+                value.run();
                 b.emitReadVarCurrent(accessor(f.local()));
                 b.endLocalIndexWrite();
             }
@@ -785,13 +745,13 @@ public final class BytecodeEmitter {
             if (compound) {
                 b.beginGlobalIndexCompound(g.globalId(), f.spec(), mode, arg);
                 expr(keys[0]);
-                primitiveValue(value);
+                value.run();
                 b.emitReadGlobal(g.globalId());
                 b.endGlobalIndexCompound();
             } else {
                 b.beginGlobalIndexWrite(g.globalId(), f.spec());
                 expr(keys[0]);
-                primitiveValue(value);
+                value.run();
                 b.emitReadGlobal(g.globalId());
                 b.endGlobalIndexWrite();
             }

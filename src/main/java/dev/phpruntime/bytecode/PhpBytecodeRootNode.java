@@ -1836,55 +1836,6 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
         }
     }
 
-    /**
-     * The single element read for values that are not consumed as numbers. It is exactly
-     * {@code Index} as it was before typed storage: no packed int/float specializations, so a
-     * framework-shaped site that only ever reads object values pays nothing for typed arrays.
-     */
-    @Operation
-    public static final class IndexPlain {
-        static PhpArray.KnownKey knownKey(String key) {
-            return PhpArray.knownKey(key);
-        }
-
-        /** A constant string key: see {@link Index#fromArrayConstKey}. */
-        @Specialization(guards = "key == cachedKey", limit = "1")
-        static Object fromArrayConstKey(PhpArray array, String key, @Bind BytecodeNode bytecode,
-                                        @Bind("$bytecodeIndex") int bci, @Bind Node node,
-                                        @Cached("key") String cachedKey,
-                                        @Cached("knownKey(key)") PhpArray.KnownKey known) {
-            Object v = array.get(known);
-            return v == null ? undefinedKey(key, bytecode, bci, node) : v;
-        }
-
-        @Specialization
-        static Object fromArray(PhpArray array, Object key, @Bind BytecodeNode bytecode,
-                                @Bind("$bytecodeIndex") int bci, @Bind Node node) {
-            if (key instanceof Long l) {
-                Object packed = array.packedGetOrNull(l);
-                if (packed != null) {
-                    return packed;
-                }
-            }
-            Object v = Ops.arrayGet(array, key);
-            return v == null ? undefinedKey(key, bytecode, bci, node) : v;
-        }
-
-        @Specialization
-        static Object fromObject(PhpObject object, Object key, @Bind PhpBytecodeRootNode root,
-                                 @Cached("create(root)") ArrayAccessNode access) {
-            Object v = access.get(object, key);
-            return v == null ? PhpNull.INSTANCE : v;
-        }
-
-        @Fallback
-        static Object other(Object container, Object key, @Bind BytecodeNode bytecode,
-                            @Bind("$bytecodeIndex") int bci, @Bind Node node) {
-            Object v = Ops.index(container, key);
-            return v == null ? undefinedKey(key, bytecode, bci, node) : v;
-        }
-    }
-
     /** The element if it exists and is not null, else PHP null, with no warning. */
     @Operation
     public static final class IndexIfSet {
