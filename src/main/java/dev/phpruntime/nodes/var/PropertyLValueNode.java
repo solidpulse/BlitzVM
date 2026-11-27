@@ -889,10 +889,8 @@ public final class PropertyLValueNode extends LValueNode {
             dispatch = insert(dev.phpruntime.nodes.call.DispatchCallNode.create());
             magicDispatch = dispatch;
         }
-        Object[] args = entry.fromTrait()
-                ? new Object[]{obj, obj.phpClass(), entry.declaringClass(), name}
-                : new Object[]{obj, obj.phpClass(), name};
-        return dispatch.callUnsitedMethod(entry, args);
+        // callUnsitedMethod inserts the using class for a trait method itself.
+        return dispatch.callUnsitedMethod(entry, new Object[]{obj, obj.phpClass(), name});
     }
 
     @TruffleBoundary

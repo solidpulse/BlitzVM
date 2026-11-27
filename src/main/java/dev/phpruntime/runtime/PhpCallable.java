@@ -163,7 +163,7 @@ public final class PhpCallable {
                     case USER_FUNCTION -> new PhpCallable(Kind.USER_FUNCTION, null, c.callTarget(), null, PhpNull.INSTANCE, null, null, null);
                     case METHOD -> new PhpCallable(Kind.METHOD, null, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), null,
                             c.methodEntry() == null ? java.util.List.of() : c.methodEntry().parameterNames(), c.methodEntry());
-                    case MAGIC_CALL -> new PhpCallable(Kind.MAGIC_CALL, null, c.callTarget(), null, c.boundThis(), c.calledClass(), null, c.magicMethodName());
+                    case MAGIC_CALL -> new PhpCallable(Kind.MAGIC_CALL, null, c.callTarget(), null, c.boundThis(), c.calledClass(), c.traitSelf(), c.magicMethodName());
                     case BUILTIN -> new PhpCallable(Kind.BUILTIN, null, null, c.builtin(), PhpNull.INSTANCE, null, null, null);
                 };
                 obj.cacheCallable(resolved);
@@ -221,7 +221,8 @@ public final class PhpCallable {
                 }
                 PhpClass.MethodEntry magic = cls.callMethod();
                 if (magic != null && magic.callTarget() != null) {
-                    return new PhpCallable(Kind.MAGIC_CALL, null, magic.callTarget(), null, obj, cls, null, methName);
+                    return new PhpCallable(Kind.MAGIC_CALL, null, magic.callTarget(), null, obj, cls,
+                            magic.fromTrait() ? magic.declaringClass() : null, methName);
                 }
                 return null;
             }
@@ -268,7 +269,8 @@ public final class PhpCallable {
         }
         PhpClass.MethodEntry magicStatic = cls.callStaticMethod();
         if (magicStatic != null && magicStatic.callTarget() != null) {
-            return new PhpCallable(Kind.MAGIC_CALL, null, magicStatic.callTarget(), null, PhpNull.INSTANCE, cls, null, methName);
+            return new PhpCallable(Kind.MAGIC_CALL, null, magicStatic.callTarget(), null, PhpNull.INSTANCE, cls,
+                    magicStatic.fromTrait() ? magicStatic.declaringClass() : null, methName);
         }
         return null;
     }
@@ -284,7 +286,8 @@ public final class PhpCallable {
             case CLOSURE -> throw new IllegalStateException();
             case USER_FUNCTION -> PhpClosure.userFunction(cb.callTarget);
             case METHOD -> PhpClosure.method(cb.callTarget, cb.boundThis, cb.calledClass, cb.traitSelf, cb.methodEntry);
-            case MAGIC_CALL -> PhpClosure.magicCall(cb.callTarget, cb.boundThis, cb.calledClass, cb.magicMethodName);
+            case MAGIC_CALL -> PhpClosure.magicCall(cb.callTarget, cb.boundThis, cb.calledClass,
+                    cb.traitSelf, cb.magicMethodName);
             case BUILTIN -> PhpClosure.builtin(cb.builtin);
         };
         return ctx.newClosure(closure);
@@ -389,7 +392,8 @@ public final class PhpCallable {
                         CallArgHelper.bindForwardedToFunction(ctx, root, prefix, positional, named, loc));
             }
             case MAGIC_CALL -> invokeTarget(ctx, null, callTarget,
-                    new Object[]{boundThis, calledClass, magicMethodName, namedMagicArray(positional, named)});
+                    withTraitSelf(new Object[]{boundThis, calledClass, magicMethodName,
+                            namedMagicArray(positional, named)}, traitSelf));
             case BUILTIN -> CallArgHelper.callForwardedBuiltin(ctx, builtin, positional, named, loc);
         };
         return CallArgHelper.unwrapReturn(res);
@@ -421,7 +425,8 @@ public final class PhpCallable {
             case METHOD -> invokeTarget(ctx, indirectCall, callTarget,
                     withTraitSelf(buildMethodArgs(callTarget, boundThis, calledClass, userArgs, ctx, loc), traitSelf));
             case MAGIC_CALL -> invokeTarget(ctx, indirectCall, callTarget,
-                    new Object[]{boundThis, calledClass, magicMethodName, buildMagicArray(userArgs)});
+                    withTraitSelf(new Object[]{boundThis, calledClass, magicMethodName, buildMagicArray(userArgs)},
+                            traitSelf));
             case BUILTIN -> callBuiltin(ctx, builtin, userArgs, loc);
         };
     }
@@ -440,7 +445,7 @@ public final class PhpCallable {
                     c.methodEntry() == null ? java.util.List.of() : c.methodEntry().parameterNames(),
                     c.methodEntry());
             case MAGIC_CALL -> new PhpCallable(Kind.MAGIC_CALL, null, c.callTarget(), null, c.boundThis(),
-                    c.calledClass(), null, c.magicMethodName());
+                    c.calledClass(), c.traitSelf(), c.magicMethodName());
             case BUILTIN -> new PhpCallable(Kind.BUILTIN, null, null, c.builtin(), PhpNull.INSTANCE,
                     null, null, null);
         };
@@ -460,7 +465,8 @@ public final class PhpCallable {
                     withTraitSelf(buildMethodArgs(c.callTarget(), c.boundThis(), c.calledClass(), userArgs, ctx, loc),
                             c.traitSelf()));
             case MAGIC_CALL -> invokeTarget(ctx, indirectCall, c.callTarget(),
-                    new Object[]{c.boundThis(), c.calledClass(), c.magicMethodName(), buildMagicArray(userArgs)});
+                    withTraitSelf(new Object[]{c.boundThis(), c.calledClass(), c.magicMethodName(),
+                            buildMagicArray(userArgs)}, c.traitSelf()));
             case BUILTIN -> callBuiltin(ctx, c.builtin(), userArgs, loc);
         };
         return CallArgHelper.unwrapReturn(res);

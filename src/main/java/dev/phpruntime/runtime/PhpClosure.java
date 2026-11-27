@@ -83,6 +83,12 @@ public final class PhpClosure {
         return new PhpClosure(Kind.MAGIC_CALL, callTarget, null, boundThis, calledClass, null, null, magicMethodName);
     }
 
+    /** A magic method declared in a trait runs for the using class passed as traitSelf. */
+    public static PhpClosure magicCall(RootCallTarget callTarget, Object boundThis, PhpClass calledClass,
+                                       PhpClass traitSelf, String magicMethodName) {
+        return new PhpClosure(Kind.MAGIC_CALL, callTarget, null, boundThis, calledClass, traitSelf, null, magicMethodName);
+    }
+
     public static PhpClosure builtin(Builtins.Def builtin) {
         return new PhpClosure(Kind.BUILTIN, null, builtin, PhpNull.INSTANCE, null, null, null, null);
     }

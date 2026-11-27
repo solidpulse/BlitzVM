@@ -2294,7 +2294,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
     /** A method call resolved on its receiver; {@code entry} is null for a {@code __call} fallback. */
     public record MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
-                               Object obj, String name, RootCallTarget magic, PhpFunctionRootNode signature) {
+                               Object obj, String name, RootCallTarget magic, PhpFunctionRootNode signature,
+                               PhpClass magicTraitSelf) {
         public MethodCallee {
             // The target's guest function is fixed when the callee is resolved; a call that needs
             // its parameters (spread or named arguments) must not walk from the target to its root.
@@ -2303,7 +2304,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         public MethodCallee(PhpClass.MethodEntry entry, Object thisArg, PhpClass cls, RootCallTarget sigTarget,
                             Object obj, String name, RootCallTarget magic) {
-            this(entry, thisArg, cls, sigTarget, obj, name, magic, null);
+            this(entry, thisArg, cls, sigTarget, obj, name, magic, null, null);
+        }
+
+        /** The frame arguments of a magic-method call, with the using class a trait adds. */
+        Object[] magicArgs(PhpArray arguments) {
+            if (magicTraitSelf == null) {
+                return new Object[]{obj, cls, name, arguments};
+            }
+            return new Object[]{obj, cls, magicTraitSelf, name, arguments};
         }
     }
 
@@ -2319,6 +2328,15 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
          */
         public int kindOrdinal() {
             return callable.kind().ordinal();
+        }
+
+        /** The frame arguments of a magic call, with the using class a trait adds. */
+        Object[] magicArgs(PhpArray arguments) {
+            var cb = callable;
+            if (cb.traitSelf() == null) {
+                return new Object[]{cb.boundThis(), cb.calledClass(), cb.magicMethodName(), arguments};
+            }
+            return new Object[]{cb.boundThis(), cb.calledClass(), cb.traitSelf(), cb.magicMethodName(), arguments};
         }
     }
 
@@ -2501,7 +2519,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             if (entry == null) {
                 PhpClass.MethodEntry magic = cls.callMethod();
                 if (magic != null && magic.callTarget() != null) {
-                    callee.setObject(bytecode, frame, new MethodCallee(null, obj, cls, null, obj, name, magic.callTarget()));
+                    callee.setObject(bytecode, frame, new MethodCallee(null, obj, cls, null, obj, name,
+                            magic.callTarget(), null, magic.fromTrait() ? magic.declaringClass() : null));
                     return;
                 }
                 CompilerDirectives.transferToInterpreter();
@@ -2540,8 +2559,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 // __call: rare at most sites, so its dispatch stays out of compiled code until
                 // a site takes it.
                 magicSeen.enter();
-                return Ops.ret(keepRef, dispatch.callTraced(m.magic(),
-                        new Object[]{m.obj(), m.cls(), m.name(), Ops.packArgs(args)}, location, m.cls(), ctx));
+                return Ops.ret(keepRef, dispatch.callTraced(m.magic(), m.magicArgs(Ops.packArgs(args)),
+                        location, m.cls(), ctx));
             }
             Object[] callArgs = new Object[2 + args.length];
             callArgs[0] = m.thisArg();
@@ -4819,14 +4838,16 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 if (forwarding && thisValue instanceof PhpObject thisObj
                         && magic != null && magic.callTarget() != null) {
                     calleeLocal.setObject(bytecode, frame,
-                            new MethodCallee(null, thisObj, calledArg, null, thisObj, name, magic.callTarget()));
+                            new MethodCallee(null, thisObj, calledArg, null, thisObj, name, magic.callTarget(),
+                                    null, magic.fromTrait() ? magic.declaringClass() : null));
                     return;
                 }
                 PhpClass.MethodEntry magicStatic = targetClass.callStaticMethod();
                 if (magicStatic != null && magicStatic.callTarget() != null) {
                     calleeLocal.setObject(bytecode, frame,
                             new MethodCallee(null, PhpNull.INSTANCE, calledArg, null, PhpNull.INSTANCE, name,
-                                    magicStatic.callTarget()));
+                                    magicStatic.callTarget(), null,
+                                    magicStatic.fromTrait() ? magicStatic.declaringClass() : null));
                     return;
                 }
                 CompilerDirectives.transferToInterpreter();
@@ -5296,8 +5317,11 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
 
         private static Object callMagic(dev.phpruntime.runtime.PhpCallable cb, Object[] args, SiteNode location,
                                         DispatchCallNode dispatch, PhpContext ctx) {
-            return dispatch.callTraced(cb.callTarget(), new Object[]{
-                    cb.boundThis(), cb.calledClass(), cb.magicMethodName(), Ops.magicArgs(args)}, location, ctx);
+            PhpArray arguments = Ops.magicArgs(args);
+            Object[] frameArgs = cb.traitSelf() == null
+                    ? new Object[]{cb.boundThis(), cb.calledClass(), cb.magicMethodName(), arguments}
+                    : new Object[]{cb.boundThis(), cb.calledClass(), cb.traitSelf(), cb.magicMethodName(), arguments};
+            return dispatch.callTraced(cb.callTarget(), frameArgs, location, ctx);
         }
 
         /**
@@ -6025,8 +6049,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
             NamedArgs.Buffer buffer = (NamedArgs.Buffer) argsObj;
             PhpContext ctx = root.context(frame, bytecode);
             if (m.entry() == null) {
-                return Ops.ret(keepRef, dispatch.callTraced(m.magic(), new Object[]{
-                        m.obj(), m.cls(), m.name(), NamedArgs.magicArray(buffer)}, location, ctx));
+                return Ops.ret(keepRef, dispatch.callTraced(m.magic(), m.magicArgs(NamedArgs.magicArray(buffer)),
+                        location, m.cls(), ctx));
             }
             Object[] args = methodArgs(m, buffer, profile.profile(buffer.plan), location);
             if (m.entry().fromTrait()) {
@@ -6126,8 +6150,7 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                 case USER_FUNCTION -> namedValueArgs(plan, buffer, 0, null, null, null, v.sig(), null, location);
                 case METHOD -> namedValueArgs(plan, buffer, cb.traitSelf() != null ? 3 : 2, cb.boundThis(),
                         cb.calledClass(), cb.traitSelf(), v.sig(), cb, location);
-                case MAGIC_CALL -> new Object[]{
-                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), NamedArgs.magicArray(buffer)};
+                case MAGIC_CALL -> v.magicArgs(NamedArgs.magicArray(buffer));
                 default -> throw CompilerDirectives.shouldNotReachHere();
             };
             return Ops.ret(keepRef, dispatch.callTraced(cb.callTarget(), args,
@@ -6321,9 +6344,9 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             @Bind PhpBytecodeRootNode root,
                             @Cached(value = "create(bytecode, bci)", neverDefault = true) SiteNode location,
                             @Cached("create()") DispatchCallNode dispatch) {
-            return Ops.ret(keepRef, dispatch.callTraced(m.magic(), new Object[]{
-                    m.obj(), m.cls(), m.name(), CallArgHelper.magicArray((CallArgHelper.RawCallArgs) rawArgs)},
-                    location, root.context(frame, bytecode)));
+            return Ops.ret(keepRef, dispatch.callTraced(m.magic(),
+                    m.magicArgs(CallArgHelper.magicArray((CallArgHelper.RawCallArgs) rawArgs)),
+                    location, m.cls(), root.context(frame, bytecode)));
         }
     }
 
@@ -6380,8 +6403,8 @@ public abstract class PhpBytecodeRootNode extends PhpRootNode implements Bytecod
                             : new Object[]{cb.boundThis(), cb.calledClass()};
                     yield dispatch.callTraced(cb.callTarget(), CallArgHelper.bindToFunction(prefix, raw, fnRoot, location), location, ctx);
                 }
-                case MAGIC_CALL -> dispatch.callTraced(cb.callTarget(), new Object[]{
-                        cb.boundThis(), cb.calledClass(), cb.magicMethodName(), CallArgHelper.magicArray(raw)}, location, ctx);
+                case MAGIC_CALL -> dispatch.callTraced(cb.callTarget(),
+                        v.magicArgs(CallArgHelper.magicArray(raw)), location, ctx);
                 case BUILTIN -> Ops.callComplexBuiltinBoundary(frame.materialize(), cb.builtin(), raw, location);
             };
             return Ops.ret(keepRef, result);

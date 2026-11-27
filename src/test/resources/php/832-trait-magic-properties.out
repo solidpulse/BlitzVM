@@ -1,0 +1,12 @@
+get:foo:Properties:UsesProperties
+string(1) "v"
+set:bar=1:Properties:UsesProperties
+isset:baz:Properties:UsesProperties
+bool(true)
+unset:qux:Properties:UsesProperties
+isset:nope:Properties:UsesProperties
+get:nope:Properties:UsesProperties
+bool(false)
+get:first:Properties:Collection
+v
+empty
