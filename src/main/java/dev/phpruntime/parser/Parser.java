@@ -2167,7 +2167,10 @@ public final class Parser {
                 }
                 case "++", "--" -> {
                     next();
-                    LValueNode target = lvalue(postfixOnly());
+                    PhpNode operand = postfixOnly();
+                    // --f()['n']: a prefix step on an element of a temporary value, as php allows.
+                    LValueNode target = operand instanceof IndexReadNode read
+                            ? tempIndexTarget(read, line) : lvalue(operand);
                     return new IncDecNode(target, t.text().equals("++"), true).at(line);
                 }
                 case "(" -> {
@@ -2312,6 +2315,9 @@ public final class Parser {
             PhpNode rhs = binary(4);
             return new DestructureAssignNode(dest, rhs, lvalueOrNull(rhs)).at(line);
         }
+        if (e instanceof IndexReadNode read && peek().kind() == Kind.OP && isAssignmentOp(peek().text())) {
+            e = tempIndexTarget(read, line);
+        }
         if (e instanceof LValueNode target) {
             Token t = peek();
             if (t.kind() == Kind.OP) {
@@ -2354,6 +2360,25 @@ public final class Parser {
             }
         }
         return e;
+    }
+
+    private boolean isAssignmentOp(String op) {
+        return op.equals("=") || op.equals("++") || op.equals("--") || compoundOp(op) != null;
+    }
+
+    /**
+     * {@code f()[a][b]} parsed as reads, followed by an assignment: the same keys as a write
+     * target whose base is the temporary value of {@code f()}.
+     */
+    private LValueNode tempIndexTarget(IndexReadNode read, int line) {
+        List<PhpNode> keys = new ArrayList<>();
+        PhpNode base = read;
+        while (base instanceof IndexReadNode r) {
+            keys.add(0, r.key());
+            base = r.target();
+        }
+        return new IndexLValueNode(language, new TempValueBase(base).at(line),
+                keys.toArray(new PhpNode[0])).at(line);
     }
 
     /** The binary operator for a compound assignment that has a typed operator node. */
@@ -2406,6 +2431,11 @@ public final class Parser {
         } else {
             e = primary();
         }
+        return postfixLoop(e, allowCall, line);
+    }
+
+    /** The postfix chain ([...], ->, ::, calls when allowed) after an already parsed base. */
+    private PhpNode postfixLoop(PhpNode e, boolean allowCall, int line) {
         boolean nullsafeChain = false;
         while (true) {
             if (acceptOp("[")) {
@@ -2439,6 +2469,18 @@ public final class Parser {
                     } else {
                         e = new IndexLValueNode(language, lv, keys.toArray(new PhpNode[0])).at(line);
                     }
+                } else if (peek().isOp("]")) {
+                    // f()[] = $v: an append can only be a write target, on a temporary value.
+                    List<PhpNode> keys = new ArrayList<>();
+                    keys.add(null);
+                    expectOp("]");
+                    while (peek().isOp("[")) {
+                        next();
+                        keys.add(peek().isOp("]") ? null : expression());
+                        expectOp("]");
+                    }
+                    e = new IndexLValueNode(language, new TempValueBase(e).at(line),
+                            keys.toArray(new PhpNode[0])).at(line);
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
@@ -2446,9 +2488,9 @@ public final class Parser {
                 }
             } else if (acceptOp("?->")) {
                 nullsafeChain = true;
-                e = parseMemberAccess(e, line, true);
+                e = parseMemberAccess(e, line, true, allowCall);
             } else if (acceptOp("->")) {
-                e = parseMemberAccess(e, line, nullsafeChain);
+                e = parseMemberAccess(e, line, nullsafeChain, allowCall);
             } else if (acceptOp("::")) {
                 if (e instanceof StaticPropertyLValueNode sp && peek().kind() == Kind.IDENT
                         && peek(1).isOp("(")
@@ -2494,11 +2536,19 @@ public final class Parser {
     }
 
     private PhpNode parseMemberAccess(PhpNode target, int line, boolean nullsafe) {
+        return parseMemberAccess(target, line, nullsafe, true);
+    }
+
+    /**
+     * With {@code allowCall} false (the class expression of {@code new $o->cls(...)}), a following
+     * "(" is not a method call: it belongs to the caller (the constructor's arguments).
+     */
+    private PhpNode parseMemberAccess(PhpNode target, int line, boolean nullsafe, boolean allowCall) {
         PhpNode nodeTarget = nullsafe ? null : target;
         PhpNode access;
         if (peek().kind() == Kind.IDENT) {
             String member = next().text();
-            if (acceptOp("(")) {
+            if (allowCall && acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, member, language.methodId(member), null, line, nullsafe);
             } else {
                 if (hookBackingProp != null && member.equals(hookBackingProp)) {
@@ -2509,7 +2559,7 @@ public final class Parser {
         } else if (peek().kind() == Kind.VARIABLE) {
             Token vt = next();
             PhpNode nameExpr = scope.variable(vt.text()).at(vt.line());
-            if (acceptOp("(")) {
+            if (allowCall && acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, null, -1, nameExpr, line, nullsafe);
             } else {
                 access = new PropertyLValueNode(nodeTarget, null, nameExpr, currentClassLower(), scope.traitSelfSlot()).at(line);
@@ -2517,7 +2567,7 @@ public final class Parser {
         } else if (acceptOp("{")) {
             PhpNode nameExpr = expression();
             expectOp("}");
-            if (acceptOp("(")) {
+            if (allowCall && acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, null, -1, nameExpr, line, nullsafe);
             } else {
                 access = new PropertyLValueNode(nodeTarget, null, nameExpr, currentClassLower(), scope.traitSelfSlot()).at(line);
@@ -2731,7 +2781,19 @@ public final class Parser {
         Token t = peek();
         if (t.kind() == Kind.IDENT) {
             next();
-            return makeClassRefFromName(resolveClassName(t.text()));
+            ClassRefNode named = makeClassRefFromName(resolveClassName(t.text()));
+            if (!allowDynamic && peek().isOp("::") && peek(1).kind() == Kind.VARIABLE) {
+                // new static::$builder(...), new Foo::$cls[0](...): the class name is the value
+                // of a static property (and its index/property chain); the parentheses that
+                // follow are the constructor's arguments.
+                int line = t.line();
+                next();
+                Token vt = next();
+                PhpNode prop = new StaticPropertyLValueNode(
+                        named, vt.text(), null, currentClassLower(), scope.traitSelfSlot()).at(line);
+                return ClassRefNode.dynamic(postfixLoop(prop, false, line));
+            }
+            return named;
         }
         if (t.kind() == Kind.VARIABLE) {
             return ClassRefNode.dynamic(postfixOnly(false));

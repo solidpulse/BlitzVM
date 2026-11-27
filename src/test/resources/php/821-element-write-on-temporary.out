@@ -1,0 +1,47 @@
+set(NULL, 'a')
+set('k', 'b')
+set('m', 'c')
+set(NULL, 'd')
+get('s')
+set('s', 'xy')
+get('n')
+set('n', 6)
+get('n')
+error 8: Indirect modification of overloaded element of Bag has no effect
+get('n')
+error 8: Indirect modification of overloaded element of Bag has no effect
+set('once', 1)
+int(1)
+set(NULL, 'e')
+set('z', 'f')
+set(NULL, 'g')
+string(1) "g"
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+NULL
+array(10) {
+  ["s"]=>
+  string(2) "xy"
+  ["n"]=>
+  int(6)
+  [0]=>
+  string(1) "a"
+  ["k"]=>
+  string(1) "b"
+  ["m"]=>
+  string(1) "c"
+  [1]=>
+  string(1) "d"
+  ["once"]=>
+  int(1)
+  [2]=>
+  string(1) "e"
+  ["z"]=>
+  string(1) "f"
+  [3]=>
+  string(1) "g"
+}

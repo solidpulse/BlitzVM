@@ -1055,6 +1055,12 @@ public final class BytecodeEmitter {
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length,
                         globalsBaseCount(g)), null, globalsBase(g), il.keyNodes(), false, false);
             }
+            if (il.base() instanceof dev.phpruntime.nodes.var.TempValueBase temp) {
+                // f()[k] = v: the temporary is evaluated once as the place's single base operand.
+                var template = il.headless(language, temp.headless());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length, 1),
+                        null, () -> expr(temp.expr()), il.keyNodes(), false, false);
+            }
             if (isTableVar(il.base())) {
                 var template = il.headless(language, tableHeadless(il.base()));
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),

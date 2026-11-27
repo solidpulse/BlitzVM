@@ -30,6 +30,14 @@ public final class IndexReadNode extends PhpNode {
         this.key = key;
     }
 
+    public PhpNode target() {
+        return target;
+    }
+
+    public PhpNode key() {
+        return key;
+    }
+
     /** Element of an array or character of a string; null when absent. */
     @TruffleBoundary
     public static Object index(Object container, Object k) {
