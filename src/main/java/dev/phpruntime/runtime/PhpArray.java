@@ -20,8 +20,24 @@ import java.util.Map;
 public final class PhpArray implements TruffleObject {
 
     private static final Object[] EMPTY_VALUES = new Object[0];
-    /** A null keys array means packed: values[0..size) have implicit integer keys. */
+    private static final int BOX_CACHE_LIMIT = 8192;
+    private static final Object[] NO_BOX_CACHE = new Object[0];
+    /**
+     * A null keys array means packed: values[0..size) have implicit integer keys. Packed arrays
+     * whose elements are all PHP ints or all PHP floats store them in {@link #longValues} or
+     * {@link #doubleValues}; exactly one of the three arrays is live at a time. Hashed arrays
+     * always use {@link #values}.
+     */
     private Object[] values = EMPTY_VALUES;
+    private long[] longValues;
+    private double[] doubleValues;
+    /**
+     * Boxed elements of a typed array, created on the first read: a primitive stored in a
+     * frame slot is consumed through an Object, and without this every element read would
+     * allocate the box again. Null means "not created yet"; a zero-length array means the
+     * array is too large to cache and reads box on every access.
+     */
+    private Object[] boxedValues;
     private Object[] keys;
     private int[] hashes;
     /** Open-addressed index: 0 is empty, -1 is deleted, otherwise slot + 1. */
@@ -110,10 +126,18 @@ public final class PhpArray implements TruffleObject {
             shared--;
         }
         PhpArray result = new PhpArray();
-        result.values = Arrays.copyOf(values, values.length);
-        for (int pos = 0; pos < used; pos++) {
-            if (result.values[pos] instanceof PhpArray inner) {
-                inner.share();
+        if (longValues != null) {
+            result.values = null;
+            result.longValues = Arrays.copyOf(longValues, longValues.length);
+        } else if (doubleValues != null) {
+            result.values = null;
+            result.doubleValues = Arrays.copyOf(doubleValues, doubleValues.length);
+        } else {
+            result.values = Arrays.copyOf(values, values.length);
+            for (int pos = 0; pos < used; pos++) {
+                if (result.values[pos] instanceof PhpArray inner) {
+                    inner.share();
+                }
             }
         }
         if (keys != null) {
@@ -195,7 +219,16 @@ public final class PhpArray implements TruffleObject {
      */
     public Object packedGetOrNull(long key) {
         if (keys == null && key >= 0 && key < size) {
-            Object v = values[(int) key];
+            int i = (int) key;
+            long[] longs = longValues;
+            if (longs != null) {
+                return boxedLong(longs, i);
+            }
+            double[] doubles = doubleValues;
+            if (doubles != null) {
+                return boxedDouble(doubles, i);
+            }
+            Object v = values[i];
             if (!(v instanceof PhpReference)) {
                 return v;
             }
@@ -205,13 +238,32 @@ public final class PhpArray implements TruffleObject {
 
     /**
      * Overwrites an existing element of an unshared, mutable packed array inline (no boundary).
-     * False when that does not apply (hashed, shared, immutable, key outside, reference slot),
-     * and nothing is written: callers then take the general path.
+     * False when that does not apply (hashed, shared, immutable, key outside, reference slot,
+     * or a value that does not fit the typed storage), and nothing is written: callers then
+     * take the general path.
      */
     public boolean packedSetExisting(long key, Object value) {
         if (keys == null && shared == 0 && !immutable && key >= 0 && key < size) {
-            Object[] vs = values;
             int i = (int) key;
+            long[] longs = longValues;
+            if (longs != null) {
+                if (value instanceof Long l) {
+                    longs[i] = l;
+                    cacheBoxed(i, value);
+                    return true;
+                }
+                return false;
+            }
+            double[] doubles = doubleValues;
+            if (doubles != null) {
+                if (value instanceof Double d) {
+                    doubles[i] = d;
+                    cacheBoxed(i, value);
+                    return true;
+                }
+                return false;
+            }
+            Object[] vs = values;
             Object old = vs[i];
             if (old != null && !(old instanceof PhpReference)) {
                 vs[i] = value;
@@ -221,10 +273,72 @@ public final class PhpArray implements TruffleObject {
         return false;
     }
 
+    /**
+     * A compound assignment whose result is discarded ({@code $a[$i] += $b[$j];}). When both
+     * storage and the right-hand value fit, the arithmetic and the store stay primitive, so
+     * the statement produces no box at all; otherwise null sends the caller to the general
+     * path (which reads and writes through Objects).
+     */
+    public Object packedCompoundDiscard(long key, int op, Object value) {
+        if (keys != null || shared != 0 || immutable || key < 0 || key >= size) {
+            return null;
+        }
+        int i = (int) key;
+        boolean add = op == PhpArith.Op.ADD.ordinal();
+        boolean sub = op == PhpArith.Op.SUB.ordinal();
+        boolean mul = op == PhpArith.Op.MUL.ordinal();
+        if (!add && !sub && !mul) {
+            return null;
+        }
+        long[] longs = longValues;
+        if (longs != null) {
+            if (!(value instanceof Long b)) {
+                return null;
+            }
+            long a = longs[i];
+            long r;
+            if (add) {
+                r = a + b;
+                if (((a ^ r) & (b ^ r)) < 0) {
+                    return null;
+                }
+            } else if (sub) {
+                r = a - b;
+                if (((a ^ b) & (a ^ r)) < 0) {
+                    return null;
+                }
+            } else {
+                r = a * b;
+                if (Math.multiplyHigh(a, b) != (r >> 63)) {
+                    return null;
+                }
+            }
+            longs[i] = r;
+            invalidateBoxed(i);
+            return PhpNull.INSTANCE;
+        }
+        double[] doubles = doubleValues;
+        if (doubles != null) {
+            double a = doubles[i];
+            double b;
+            if (value instanceof Long l) {
+                b = l;
+            } else if (value instanceof Double d) {
+                b = d;
+            } else {
+                return null;
+            }
+            doubles[i] = add ? a + b : sub ? a - b : a * b;
+            invalidateBoxed(i);
+            return PhpNull.INSTANCE;
+        }
+        return null;
+    }
+
     @TruffleBoundary
     public Object getRaw(Object key) {
         int pos = find(normalizeKey(key));
-        return pos < 0 ? null : values[pos];
+        return pos < 0 ? null : rawValueAt(pos);
     }
 
     @TruffleBoundary
@@ -249,7 +363,7 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public Object get(KnownKey key) {
         int pos = find(key.key(), key.hash());
-        Object v = pos < 0 ? null : values[pos];
+        Object v = pos < 0 ? null : rawValueAt(pos);
         return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
@@ -271,6 +385,7 @@ public final class PhpArray implements TruffleObject {
      */
     @TruffleBoundary
     public PhpReference elementRefIfPresent(Object key) {
+        generalize();
         Object k = normalizeKey(key);
         int pos = find(k);
         if (pos < 0) {
@@ -288,6 +403,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     public PhpReference obtainElementRef(Object key) {
+        generalize();
         Object k = normalizeKey(key);
         int pos = find(k);
         Object existing = pos < 0 ? null : values[pos];
@@ -345,8 +461,7 @@ public final class PhpArray implements TruffleObject {
     public List<Object> values() {
         List<Object> out = new ArrayList<>(size);
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-            Object v = values[pos];
-            out.add(v instanceof PhpReference ref ? ref.getValue() : v);
+            out.add(valueAt(pos));
         }
         return out;
     }
@@ -368,13 +483,10 @@ public final class PhpArray implements TruffleObject {
     /** The raw values (reference cells kept) in order, as a new array: {@link #rawValues} without a list. */
     @TruffleBoundary
     public Object[] rawValueArray() {
-        if (keys == null) {
-            return Arrays.copyOf(values, size);
-        }
         Object[] out = new Object[size];
         int i = 0;
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-            out[i++] = values[pos];
+            out[i++] = rawValueAt(pos);
         }
         return out;
     }
@@ -383,7 +495,7 @@ public final class PhpArray implements TruffleObject {
     public List<Object> rawValues() {
         List<Object> out = new ArrayList<>(size);
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-            out.add(values[pos]);
+            out.add(rawValueAt(pos));
         }
         return out;
     }
@@ -393,8 +505,7 @@ public final class PhpArray implements TruffleObject {
     public List<Map.Entry<Object, Object>> entries() {
         List<Map.Entry<Object, Object>> list = new ArrayList<>(size);
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-            Object v = values[pos];
-            list.add(Map.entry(keyAt(pos), v instanceof PhpReference ref ? ref.getValue() : v));
+            list.add(Map.entry(keyAt(pos), valueAt(pos)));
         }
         return list;
     }
@@ -404,7 +515,7 @@ public final class PhpArray implements TruffleObject {
     public List<Map.Entry<Object, Object>> rawEntries() {
         List<Map.Entry<Object, Object>> list = new ArrayList<>(size);
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-            list.add(Map.entry(keyAt(pos), values[pos]));
+            list.add(Map.entry(keyAt(pos), rawValueAt(pos)));
         }
         return list;
     }
@@ -420,8 +531,7 @@ public final class PhpArray implements TruffleObject {
         }
         Object[] out = new Object[size];
         for (int i = 0; i < size; i++) {
-            Object v = values[i];
-            out[i] = v instanceof PhpReference ref ? ref.getValue() : v;
+            out[i] = valueAt(i);
         }
         return out;
     }
@@ -444,8 +554,7 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public void forEachEntry(java.util.function.BiConsumer<Object, Object> action) {
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-            Object v = values[pos];
-            action.accept(keyAt(pos), v instanceof PhpReference ref ? ref.getValue() : v);
+            action.accept(keyAt(pos), valueAt(pos));
         }
     }
 
@@ -459,6 +568,20 @@ public final class PhpArray implements TruffleObject {
             return;
         }
         int needed = size + additional;
+        long[] longs = longValues;
+        if (longs != null) {
+            if (needed > longs.length) {
+                longValues = Arrays.copyOf(longs, needed);
+            }
+            return;
+        }
+        double[] doubles = doubleValues;
+        if (doubles != null) {
+            if (needed > doubles.length) {
+                doubleValues = Arrays.copyOf(doubles, needed);
+            }
+            return;
+        }
         if (needed > values.length) {
             values = Arrays.copyOf(values, needed);
         }
@@ -470,7 +593,54 @@ public final class PhpArray implements TruffleObject {
      * result in a compiled loop use it. The caller guarantees a packed array with spare capacity.
      */
     public void appendReserved(Object value) {
-        assert keys == null && size < values.length && !immutable : "appendReserved without reserved room";
+        int capacity = valueCapacity();
+        assert keys == null && size < capacity && !immutable : "appendReserved without reserved room";
+        long[] longs = longValues;
+        if (longs != null) {
+            if (value instanceof Long l) {
+                longs[size] = l;
+                cacheBoxed(size, value);
+            } else {
+                appendReservedSlow(value);
+                return;
+            }
+        } else {
+            double[] doubles = doubleValues;
+            if (doubles != null) {
+                if (value instanceof Double d) {
+                    doubles[size] = d;
+                    cacheBoxed(size, value);
+                } else {
+                    appendReservedSlow(value);
+                    return;
+                }
+            } else if (size == 0 && value instanceof Long l) {
+                long[] created = new long[values.length];
+                created[0] = l;
+                longValues = created;
+                values = null;
+            } else if (size == 0 && value instanceof Double d) {
+                double[] created = new double[values.length];
+                created[0] = d;
+                doubleValues = created;
+                values = null;
+            } else {
+                values[size] = value;
+            }
+        }
+        if (pointer < 0) {
+            pointer = size;
+        }
+        used = ++size;
+        if (!nextIndexInitialized || size - 1 >= nextIndex) {
+            nextIndex = size;
+            nextIndexInitialized = true;
+        }
+    }
+
+    @TruffleBoundary
+    private void appendReservedSlow(Object value) {
+        generalize();
         values[size] = value;
         if (pointer < 0) {
             pointer = size;
@@ -482,12 +652,25 @@ public final class PhpArray implements TruffleObject {
         }
     }
 
+    /** Length of the live storage array. */
+    private int valueCapacity() {
+        long[] longs = longValues;
+        if (longs != null) {
+            return longs.length;
+        }
+        double[] doubles = doubleValues;
+        return doubles != null ? doubles.length : values.length;
+    }
+
     /**
      * True when converting an element to a string can run PHP: an object's __toString(), or the
      * "Array to string conversion" warning of a nested array reaching a user error handler.
      */
     @TruffleBoundary
     public boolean hasValueThatCanRunPhp() {
+        if (longValues != null || doubleValues != null) {
+            return false;
+        }
         for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
             Object v = values[pos];
             if (v instanceof PhpReference ref) {
@@ -519,7 +702,7 @@ public final class PhpArray implements TruffleObject {
         if (!hasValueThatCanRunPhp()) {
             long chars = (long) glue.length() * (size - 1);
             for (int pos = firstPos(); pos >= 0; pos = nextPos(pos)) {
-                chars += estimateText(values[pos]);
+                chars += estimateText(valueAt(pos));
             }
             if (chars > Integer.MAX_VALUE - 16) {
                 chars = Integer.MAX_VALUE - 16;
@@ -539,7 +722,7 @@ public final class PhpArray implements TruffleObject {
         int n = 0;
         long chars = (long) glue.length() * (size - 1);
         for (int pos = firstPos(); pos >= 0 && n < size; pos = nextPos(pos)) {
-            Object v = values[pos];
+            Object v = rawValueAt(pos);
             if (v instanceof PhpReference ref) {
                 v = ref.getValue();
             }
@@ -577,7 +760,7 @@ public final class PhpArray implements TruffleObject {
         }
         int pos = lastPos();
         Object lastKey = keyAt(pos);
-        Object v = values[pos];
+        Object v = rawValueAt(pos);
         delete(pos);
         // PHP only rewinds the append counter when popping its most recent integer key.
         // Unset history and negative keys survive; MAX_VALUE is a saturated counter.
@@ -594,7 +777,7 @@ public final class PhpArray implements TruffleObject {
             return PhpNull.INSTANCE;
         }
         int pos = firstPos();
-        Object v = values[pos];
+        Object v = rawValueAt(pos);
         delete(pos);
         reindex();
         pointer = firstPos();
@@ -624,6 +807,9 @@ public final class PhpArray implements TruffleObject {
             }
         }
         values = fresh.values;
+        longValues = fresh.longValues;
+        doubleValues = fresh.doubleValues;
+        boxedValues = fresh.boxedValues;
         keys = fresh.keys;
         hashes = fresh.hashes;
         index = fresh.index;
@@ -652,8 +838,32 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     public static PhpArray ofList(List<?> values) {
         PhpArray a = new PhpArray();
-        a.values = values.toArray();
-        a.size = a.used = values.size();
+        int n = values.size();
+        boolean allLongs = n > 0;
+        boolean allDoubles = n > 0;
+        for (int i = 0; i < n && (allLongs || allDoubles); i++) {
+            Object v = values.get(i);
+            allLongs &= v instanceof Long;
+            allDoubles &= v instanceof Double;
+        }
+        if (allLongs) {
+            long[] longs = new long[n];
+            for (int i = 0; i < n; i++) {
+                longs[i] = (Long) values.get(i);
+            }
+            a.values = null;
+            a.longValues = longs;
+        } else if (allDoubles) {
+            double[] doubles = new double[n];
+            for (int i = 0; i < n; i++) {
+                doubles[i] = (Double) values.get(i);
+            }
+            a.values = null;
+            a.doubleValues = doubles;
+        } else {
+            a.values = values.toArray();
+        }
+        a.size = a.used = n;
         a.nextIndex = a.size;
         a.nextIndexInitialized = a.size != 0;
         a.pointer = a.size == 0 ? -1 : 0;
@@ -756,6 +966,25 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     private void replace(int pos, Object value, boolean replaceRef) {
         assert !immutable : "write to an immutable array";
+        long[] longs = longValues;
+        if (longs != null) {
+            if (value instanceof Long l) {
+                longs[pos] = l;
+                cacheBoxed(pos, value);
+                return;
+            }
+            generalize();
+        } else {
+            double[] doubles = doubleValues;
+            if (doubles != null) {
+                if (value instanceof Double d) {
+                    doubles[pos] = d;
+                    cacheBoxed(pos, value);
+                    return;
+                }
+                generalize();
+            }
+        }
         if (!replaceRef && values[pos] instanceof PhpReference ref && !(value instanceof PhpReference)) {
             ref.setValue(value);
         } else {
@@ -766,14 +995,84 @@ public final class PhpArray implements TruffleObject {
     @TruffleBoundary
     private void insertPacked(Object value) {
         assert !immutable : "write to an immutable array";
-        if (size == values.length) {
-            values = Arrays.copyOf(values, Math.max(8, size * 2));
+        long[] longs = longValues;
+        if (longs != null) {
+            if (!(value instanceof Long l)) {
+                generalize();
+                insertPacked(value);
+                return;
+            }
+            if (size == longs.length) {
+                longs = Arrays.copyOf(longs, Math.max(8, size * 2));
+                longValues = longs;
+            }
+            longs[size] = l;
+            cacheBoxed(size, value);
+        } else {
+            double[] doubles = doubleValues;
+            if (doubles != null) {
+                if (!(value instanceof Double d)) {
+                    generalize();
+                    insertPacked(value);
+                    return;
+                }
+                if (size == doubles.length) {
+                    doubles = Arrays.copyOf(doubles, Math.max(8, size * 2));
+                    doubleValues = doubles;
+                }
+                doubles[size] = d;
+                cacheBoxed(size, value);
+            } else if (size == 0 && value instanceof Long l) {
+                long[] created = new long[Math.max(8, values.length)];
+                created[0] = l;
+                longValues = created;
+                values = null;
+            } else if (size == 0 && value instanceof Double d) {
+                double[] created = new double[Math.max(8, values.length)];
+                created[0] = d;
+                doubleValues = created;
+                values = null;
+            } else {
+                if (size == values.length) {
+                    values = Arrays.copyOf(values, Math.max(8, size * 2));
+                }
+                values[size] = value;
+            }
         }
-        values[size] = value;
         if (pointer < 0) {
             pointer = size;
         }
         used = ++size;
+    }
+
+    /** Converts packed typed storage to boxed {@link #values}; positions and capacity are kept. */
+    @TruffleBoundary
+    private void generalize() {
+        long[] longs = longValues;
+        if (longs != null) {
+            Object[] boxed = new Object[longs.length];
+            Object[] cached = boxedValues;
+            for (int i = 0; i < size; i++) {
+                Object v = cached != null && i < cached.length ? cached[i] : null;
+                boxed[i] = v != null ? v : Long.valueOf(longs[i]);
+            }
+            values = boxed;
+            longValues = null;
+            boxedValues = null;
+            return;
+        }
+        double[] doubles = doubleValues;
+        if (doubles != null) {
+            Object[] boxed = new Object[doubles.length];
+            Object[] cached = boxedValues;
+            for (int i = 0; i < size; i++) {
+                Object v = cached != null && i < cached.length ? cached[i] : null;
+                boxed[i] = v != null ? v : Double.valueOf(doubles[i]);
+            }
+            values = boxed;
+            doubleValues = null;
+            boxedValues = null;
+        }
     }
 
     @TruffleBoundary
@@ -795,6 +1094,7 @@ public final class PhpArray implements TruffleObject {
 
     @TruffleBoundary
     private void toHash() {
+        generalize();
         int capacity = Math.max(8, values.length);
         values = Arrays.copyOf(values, capacity);
         keys = new Object[capacity];
@@ -856,11 +1156,17 @@ public final class PhpArray implements TruffleObject {
         if (pointer == pos) {
             pointer = nextPos(pos);
         }
-        values[pos] = null;
-        size--;
         if (keys == null) {
+            if (longValues == null && doubleValues == null) {
+                values[pos] = null;
+            } else {
+                invalidateBoxed(pos);
+            }
+            size--;
             used = size;
         } else {
+            values[pos] = null;
+            size--;
             int bucket = hashes[pos] & (index.length - 1);
             while (index[bucket] != pos + 1) {
                 bucket = (bucket + 1) & (index.length - 1);
@@ -913,12 +1219,76 @@ public final class PhpArray implements TruffleObject {
 
     /** Value at a cursor position, unwrapping a reference cell like {@link #entries()}. */
     public Object valueAt(int pos) {
-        Object v = values[pos];
+        Object v = rawValueAt(pos);
         return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
     public Object rawValueAt(int pos) {
+        long[] longs = longValues;
+        if (longs != null) {
+            return boxedLong(longs, pos);
+        }
+        double[] doubles = doubleValues;
+        if (doubles != null) {
+            return boxedDouble(doubles, pos);
+        }
         return values[pos];
+    }
+
+    /** The box for one element, cached after the first read and updated by writes. */
+    private Object boxedLong(long[] longs, int pos) {
+        Object[] boxed = boxedValues;
+        if (boxed == null) {
+            boxed = createBoxCache(longs.length);
+        }
+        if (pos < boxed.length) {
+            Object v = boxed[pos];
+            if (v != null) {
+                return v;
+            }
+            Long created = Long.valueOf(longs[pos]);
+            boxed[pos] = created;
+            return created;
+        }
+        return Long.valueOf(longs[pos]);
+    }
+
+    private Object boxedDouble(double[] doubles, int pos) {
+        Object[] boxed = boxedValues;
+        if (boxed == null) {
+            boxed = createBoxCache(doubles.length);
+        }
+        if (pos < boxed.length) {
+            Object v = boxed[pos];
+            if (v != null) {
+                return v;
+            }
+            Double created = Double.valueOf(doubles[pos]);
+            boxed[pos] = created;
+            return created;
+        }
+        return Double.valueOf(doubles[pos]);
+    }
+
+    @TruffleBoundary
+    private Object[] createBoxCache(int length) {
+        Object[] cache = length <= BOX_CACHE_LIMIT ? new Object[length] : NO_BOX_CACHE;
+        boxedValues = cache;
+        return cache;
+    }
+
+    private void cacheBoxed(int pos, Object value) {
+        Object[] boxed = boxedValues;
+        if (boxed != null && pos < boxed.length) {
+            boxed[pos] = value;
+        }
+    }
+
+    private void invalidateBoxed(int pos) {
+        Object[] boxed = boxedValues;
+        if (boxed != null && pos < boxed.length) {
+            boxed[pos] = null;
+        }
     }
 
     // ---------------------------------------------------------------- internal pointer
@@ -935,7 +1305,7 @@ public final class PhpArray implements TruffleObject {
         if (pointer < 0) {
             return null;
         }
-        Object v = values[pointer];
+        Object v = rawValueAt(pointer);
         return v instanceof PhpReference ref ? ref.getValue() : v;
     }
 
