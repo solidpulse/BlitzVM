@@ -67,6 +67,19 @@ final class StreamFunctions {
         return new PhpResource(streamId(ctx), "stream", s);
     }
 
+    /**
+     * The CLI SAPI's STDIN, STDOUT and STDERR constants, defined before the main script runs.
+     * They take php's fixed resource ids 1, 2 and 3; ContextState numbers everything else from 4.
+     */
+    static void defineCliStdio(PhpContext ctx) {
+        ctx.defineConstant("STDIN", new PhpResource(1, "stream",
+                new PhpStream.InputStreamStream(ctx.env().in(), "php://stdin")), 0);
+        ctx.defineConstant("STDOUT", new PhpResource(2, "stream",
+                new PhpStream.OutputStreamStream(ctx, ctx.env().out(), "wb", "php://stdout")), 0);
+        ctx.defineConstant("STDERR", new PhpResource(3, "stream",
+                new PhpStream.OutputStreamStream(ctx, ctx.env().err(), "wb", "php://stderr")), 0);
+    }
+
     static void register() {
         open();
         readWrite();
@@ -172,6 +185,7 @@ final class StreamFunctions {
                 case "input" -> new PhpStream.MemoryStream("rb", "php://input", "Input",
                         PhpStrings.bytes(ctx.request().body));
                 case "output" -> new PhpStream.OutputStreamStream(ctx, null, "wb", "php://output");
+                case "stdin" -> new PhpStream.InputStreamStream(ctx.env().in(), "php://stdin");
                 case "stdout" -> new PhpStream.OutputStreamStream(ctx, ctx.env().out(), mode, "php://stdout");
                 case "stderr" -> new PhpStream.OutputStreamStream(ctx, ctx.env().err(), mode, "php://stderr");
                 default -> {

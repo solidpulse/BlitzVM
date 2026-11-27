@@ -44,6 +44,13 @@ public final class Lexer {
     }
 
     private List<Token> run() {
+        // A leading "#!" line is skipped in every file, main script and includes alike, as php does.
+        // It still counts as line 1.
+        if (!inCode && src.startsWith("#!")) {
+            int nl = src.indexOf('\n');
+            pos = nl < 0 ? src.length() : nl + 1;
+            line = nl < 0 ? 1 : 2;
+        }
         while (pos < src.length()) {
             if (inCode) {
                 lexCode();

@@ -170,6 +170,9 @@ public final class PhpMainRootNode extends PhpRootNode {
         ctx.writeGlobal("_FILES", new PhpArray());
         // PHP_SAPI: php-fpm's name for HTTP requests (code checks 'cli', 'cgi-fcgi', 'fpm-fcgi').
         ctx.defineConstant("PHP_SAPI", request.http ? "fpm-fcgi" : "cli", 0);
+        if (!request.http) {
+            dev.phpruntime.builtins.Builtins.defineCliStdio(ctx);
+        }
         PhpArray environment = new PhpArray();
         request.environment.forEach((key, value) -> environment.put(dev.phpruntime.runtime.PhpStrings.fromJava(key),
                 dev.phpruntime.runtime.PhpStrings.fromJava(value)));

@@ -415,6 +415,62 @@ abstract class PhpStream {
         }
     }
 
+    /** php://stdin: the process's standard input, read-only and not seekable. */
+    static final class InputStreamStream extends PhpStream {
+
+        private final java.io.InputStream raw;
+        private long consumed;
+
+        InputStreamStream(java.io.InputStream raw, String uri) {
+            super("rb", uri);
+            this.raw = raw;
+        }
+
+        @Override
+        int read(byte[] buf, int off, int len) throws IOException {
+            int n = raw.read(buf, off, len);
+            if (n > 0) {
+                consumed += n;
+            }
+            return n;
+        }
+
+        @Override
+        void write(byte[] data) {
+            // canWrite is false for "rb", so fwrite() refuses before reaching this.
+        }
+
+        @Override
+        long tell() {
+            return consumed;
+        }
+
+        @Override
+        boolean seek(long pos) {
+            return false;
+        }
+
+        @Override
+        boolean seekable() {
+            return false;
+        }
+
+        @Override
+        long size() {
+            return 0;
+        }
+
+        @Override
+        String wrapperType() {
+            return "PHP";
+        }
+
+        @Override
+        String streamType() {
+            return "STDIO";
+        }
+    }
+
     // ------------------------------------------------------------------ directories
 
     /** The handle behind opendir(): the names in directory order, "." and ".." first. */

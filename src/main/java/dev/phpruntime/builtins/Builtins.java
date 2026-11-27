@@ -9,6 +9,11 @@ import java.util.Map;
 /** Registry of Java-implemented PHP functions, looked up case-insensitively. */
 public final class Builtins {
 
+    /** Defines the CLI SAPI's STDIN, STDOUT and STDERR stream constants. */
+    public static void defineCliStdio(dev.phpruntime.PhpContext ctx) {
+        StreamFunctions.defineCliStdio(ctx);
+    }
+
     /**
      * @param minArgs fewest arguments accepted
      * @param maxArgs most arguments accepted, or -1 for variadic

@@ -1,0 +1,20 @@
+5
+int(1)
+string(6) "stream"
+string(11) "php://stdin"
+string(3) "PHP"
+string(5) "STDIO"
+int(2)
+string(6) "stream"
+string(12) "php://stdout"
+string(3) "PHP"
+string(5) "STDIO"
+int(3)
+string(6) "stream"
+string(12) "php://stderr"
+string(3) "PHP"
+string(5) "STDIO"
+bool(true)
+bool(true)
+int(5)
+included at line 3
