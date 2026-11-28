@@ -273,6 +273,18 @@ class WorkerModeTest {
                             echo is_array($_ENV) && ($_ENV['T82_ENV'] ?? '') === 'env-value'
                                 ? 'env' : 'bad';
                             break;
+                        case 'foreachRef':
+                            foreach ($_ENV as $k => &$v) {
+                                if ($k === 'T82_ENV') {
+                                    $v = 'changed';
+                                }
+                            }
+                            unset($v);
+                            echo $_ENV['T82_ENV'] ?? 'missing';
+                            break;
+                        case 'checkenv':
+                            echo $_ENV['T82_ENV'] ?? 'missing';
+                            break;
                         case 'getenv':
                             echo getenv('PATH') !== false ? 'getenv-ok' : 'getenv-missing';
                             break;
@@ -302,6 +314,8 @@ class WorkerModeTest {
         expected.put("request", "v/d");
         expected.put("files", "array");
         expected.put("envArray", "env");
+        expected.put("foreachRef", "changed");
+        expected.put("checkenv", "env-value");
         expected.put("getenv", "getenv-ok");
         for (Map.Entry<String, String> e : expected.entrySet()) {
             PhpDispatcher.Response response = send("POST", "/lazy", "p=" + e.getKey(), headers, "k=v");
