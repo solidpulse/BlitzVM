@@ -29,8 +29,9 @@ final class BlitzServerWorker {
     private final PhpCallable callback;
     private final PhpClass requestClass;
     private final PhpClass responseClass;
-    private final ByteArrayOutputStream out = new ByteArrayOutputStream(256);
-    private final ByteArrayOutputStream err = new ByteArrayOutputStream(128);
+    private static final int RETAIN = 4 << 20;
+    private ByteArrayOutputStream out = new ByteArrayOutputStream(256);
+    private ByteArrayOutputStream err = new ByteArrayOutputStream(128);
     /** The request object the PHP builtins see; one per worker, reset for every request. */
     private final PhpRequest hostRequest = PhpRequest.worker();
     /** The request whose body php://input will read, or null between requests. */
@@ -86,8 +87,16 @@ final class BlitzServerWorker {
 
     /** Called on this worker's selector thread for one complete request. */
     void handle(BlitzHttpRequest request, BlitzHttpConnection connection) {
-        out.reset();
-        err.reset();
+        if (out.size() > RETAIN) {
+            out = new ByteArrayOutputStream(256);
+        } else {
+            out.reset();
+        }
+        if (err.size() > RETAIN) {
+            err = new ByteArrayOutputStream(128);
+        } else {
+            err.reset();
+        }
         PhpRequest host = hostRequest;
         host.http = false;
         host.method = request.method();
