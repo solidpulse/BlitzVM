@@ -136,7 +136,7 @@ final class BlitzServerWorker {
             host.closeResources();
         }
 
-        BlitzHttpResponseWriter response = new BlitzHttpResponseWriter(connection, request);
+        BlitzHttpResponseWriter response = connection.responseWriter(request);
         BlitzRequestState requestState = new BlitzRequestState(request, connection.id());
         PhpObject requestObject = new PhpObject(requestClass, php.nextObjectId());
         requestObject.setNativeState(requestState);

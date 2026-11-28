@@ -776,7 +776,6 @@ public final class PhpContext {
      * server API passes the request object to the handler and does not populate them, as
      * Swoole does.
      */
-    @TruffleBoundary
     public void beginServerRequest(PhpRequest req, OutputStream out, OutputStream err) {
         bindRequest(req);
         if (buffers != null) {
@@ -791,7 +790,6 @@ public final class PhpContext {
     }
 
     /** Ends one server request; the worker keeps its context for the next one. */
-    @TruffleBoundary
     public void endServerRequest() {
         if (buffers != null) {
             buffers.clear();

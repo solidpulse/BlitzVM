@@ -40,6 +40,8 @@ final class BlitzHttpConnection {
     private boolean closeAfterFlush;
     private boolean closed;
     private boolean inFlush;
+    /** One response writer per connection; reused while the connection stays open. */
+    private BlitzHttpResponseWriter responseWriter;
     /**
      * The common response is one byte array and the queue is empty: keep it here so a hello
      * request does not allocate a queue node and a wrapper for it. Anything behind it uses
@@ -102,6 +104,18 @@ final class BlitzHttpConnection {
 
     long createdMillis() {
         return createdMillis;
+    }
+
+    /** The writer for the next request on this connection, allocated on first use. */
+    BlitzHttpResponseWriter responseWriter(BlitzHttpRequest request) {
+        BlitzHttpResponseWriter writer = responseWriter;
+        if (writer == null) {
+            writer = new BlitzHttpResponseWriter(this, request);
+            responseWriter = writer;
+        } else {
+            writer.reset(request);
+        }
+        return writer;
     }
 
     int maxBodyBytes() {

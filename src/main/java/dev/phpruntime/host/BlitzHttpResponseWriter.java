@@ -33,7 +33,7 @@ public final class BlitzHttpResponseWriter {
     private static final byte[][] STATUS_LINES = new byte[600][];
 
     private final BlitzHttpConnection connection;
-    private final BlitzHttpRequest request;
+    private BlitzHttpRequest request;
     private final List<String[]> headers = new ArrayList<>(4);
     private final List<String> cookies = new ArrayList<>(0);
     private int status = 200;
@@ -46,6 +46,19 @@ public final class BlitzHttpResponseWriter {
     BlitzHttpResponseWriter(BlitzHttpConnection connection, BlitzHttpRequest request) {
         this.connection = connection;
         this.request = request;
+    }
+
+    /** Reuses one writer for the next request on the same connection. */
+    void reset(BlitzHttpRequest next) {
+        request = next;
+        headers.clear();
+        cookies.clear();
+        status = 200;
+        reason = null;
+        headersSent = false;
+        chunked = false;
+        ended = false;
+        forceClose = false;
     }
 
     public int status() {
@@ -65,8 +78,6 @@ public final class BlitzHttpResponseWriter {
     }
 
     public void setHeader(String name, String value) {
-        checked(name, "header name");
-        checked(value, "header value");
         if (name.isEmpty()) {
             throw new PhpError(PhpError.VALUE_ERROR,
                     "Blitz\\Http\\Response::header(): invalid header name", null);
@@ -78,6 +89,7 @@ public final class BlitzHttpResponseWriter {
                         "Blitz\\Http\\Response::header(): invalid header name", null);
             }
         }
+        checked(value, "header value");
         for (int i = 0; i < headers.size(); i++) {
             if (headers.get(i)[0].equalsIgnoreCase(name)) {
                 headers.set(i, new String[]{name, value});
