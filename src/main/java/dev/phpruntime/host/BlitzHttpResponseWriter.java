@@ -125,8 +125,9 @@ public final class BlitzHttpResponseWriter {
         } else {
             connection.enqueue(data);
         }
+        boolean writable = !connection.isBackpressured();
         connection.flushWrites();
-        return true;
+        return writable;
     }
 
     public boolean end(byte[] body) {

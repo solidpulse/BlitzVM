@@ -255,8 +255,12 @@ class BlitzServerModeTest {
             return line.toString(StandardCharsets.ISO_8859_1);
         }
 
-        private byte[] readExactly(int length) throws IOException {
-            byte[] bytes = new byte[length];
+        /** One byte from the socket, or -1 when the peer closed. */
+        int readByte() throws IOException {
+            return in.read();
+        }
+
+        private byte[] readExactly(int length) throws IOException {            byte[] bytes = new byte[length];
             int read = 0;
             while (read < length) {
                 int n = in.read(bytes, read, length - read);
@@ -649,6 +653,74 @@ class BlitzServerModeTest {
             workers.add(Integer.parseInt(parts[0]));
         }
         assertTrue(workers.size() > 1, "every connection was served by one worker: " + workers);
+    }
+
+    @Test
+    void keepAliveTimeoutClosesIdleConnections() throws Exception {
+        String code = """
+                <?php
+                $server = new Blitz\\Http\\Server('127.0.0.1', __PORT__);
+                $server->set(['worker_num' => 1, 'keepalive_timeout' => 1]);
+                $server->on('request', function (Blitz\\Http\\Request $req, Blitz\\Http\\Response $res) {
+                    $res->end("ok");
+                });
+                $server->start();
+                """;
+        start(code);
+
+        try (Client client = new Client()) {
+            client.write("GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+            assertEquals(200, client.read(false).status);
+            Thread.sleep(3_000);
+            assertEquals(-1, client.readByte(), "the idle keep-alive connection was not closed");
+        }
+
+        try (Client client = new Client()) {
+            for (int i = 0; i < 5; i++) {
+                client.write("GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+                assertEquals(200, client.read(false).status);
+                Thread.sleep(300);
+            }
+        }
+    }
+
+    @Test
+    void writeReturnsFalseWhenTheOutboundQueueIsFull() throws Exception {
+        String code = """
+                <?php
+                $server = new Blitz\\Http\\Server('127.0.0.1', __PORT__);
+                $server->set(['worker_num' => 1, 'buffer_output_size' => 65536]);
+                $server->on('request', function (Blitz\\Http\\Request $req, Blitz\\Http\\Response $res) {
+                    if ($req->server['path_info'] === '/big') {
+                        $chunk = str_repeat('x', 65536);
+                        for ($i = 0; $i < 400; $i++) {
+                            if (!$res->write($chunk)) {
+                                $GLOBALS['backpressured'] = 1;
+                                break;
+                            }
+                        }
+                        $res->end();
+                        return;
+                    }
+                    $res->end((string)($GLOBALS['backpressured'] ?? 0));
+                });
+                $server->start();
+                """;
+        start(code);
+        try (Client big = new Client()) {
+            big.write("GET /big HTTP/1.1\r\nHost: x\r\n\r\n");
+            String flag = "0";
+            for (int i = 0; i < 40 && !flag.equals("1"); i++) {
+                Thread.sleep(50);
+                try (Client probe = new Client()) {
+                    probe.write("GET /flag HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+                    Response response = probe.read(false);
+                    assertEquals(200, response.status);
+                    flag = response.text();
+                }
+            }
+            assertEquals("1", flag, "write() never reported a full outbound queue");
+        }
     }
 
     @Test

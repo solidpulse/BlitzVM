@@ -76,7 +76,8 @@ public final class BlitzServerRuntime {
         BlitzServerInfo info = new BlitzServerInfo(state.host(), state.requestedPort(),
                 scriptPath, root);
         BlitzServerCore core = new BlitzServerCore(info, state.host(), state.requestedPort(),
-                state.workerNum(), state.backlog(), state.maxBodyBytes());
+                state.workerNum(), state.backlog(), state.maxBodyBytes(),
+                state.keepAliveTimeoutSeconds(), state.bufferOutputBytes());
         state.setCore(core);
         currentCore = core;
         inheritedCore.set(core);

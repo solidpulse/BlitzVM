@@ -32,6 +32,8 @@ final class BlitzHttpConnection {
     private final int localPort;
     private final long createdMillis;
     private final int maxBodyBytes;
+    private final long idleTimeoutMillis;
+    private final int bufferOutputBytes;
     private final String scriptFilename;
     private final String documentRoot;
 
@@ -40,6 +42,11 @@ final class BlitzHttpConnection {
     private boolean closeAfterFlush;
     private boolean closed;
     private boolean inFlush;
+    private boolean processing;
+    private boolean readEnabled = true;
+    private boolean writeArmed;
+    private long lastActiveNanos = System.nanoTime();
+    private long queuedBytes;
     /** One response writer per connection; reused while the connection stays open. */
     private BlitzHttpResponseWriter responseWriter;
     /**
@@ -51,13 +58,16 @@ final class BlitzHttpConnection {
     private int pendingOffset;
 
     BlitzHttpConnection(SocketChannel channel, BlitzServerWorker worker, long id, int maxBodyBytes,
-                        String scriptFilename, String documentRoot) {
+                        long idleTimeoutMillis, int bufferOutputBytes, String scriptFilename,
+                        String documentRoot) {
         this.channel = channel;
         this.worker = worker;
         this.id = id;
         this.parser = new BlitzHttpParser(this);
         this.createdMillis = System.currentTimeMillis();
         this.maxBodyBytes = maxBodyBytes;
+        this.idleTimeoutMillis = idleTimeoutMillis;
+        this.bufferOutputBytes = bufferOutputBytes;
         this.scriptFilename = scriptFilename;
         this.documentRoot = documentRoot;
         SocketAddress remote = channel.socket().getRemoteSocketAddress();
@@ -138,6 +148,7 @@ final class BlitzHttpConnection {
         if (closed) {
             return;
         }
+        lastActiveNanos = System.nanoTime();
         try {
             if (!inputClosed) {
                 int total = 0;
@@ -165,13 +176,29 @@ final class BlitzHttpConnection {
         if (closed) {
             return;
         }
+        lastActiveNanos = System.nanoTime();
         if (inputClosed && !hasPendingOutput()) {
             close();
         }
     }
 
     private void process() {
+        if (processing) {
+            return;
+        }
+        processing = true;
+        try {
+            processRequests();
+        } finally {
+            processing = false;
+        }
+    }
+
+    private void processRequests() {
         while (!closed) {
+            if (isBackpressured()) {
+                return;
+            }
             BlitzHttpRequest request;
             try {
                 request = parser.parse(input);
@@ -204,6 +231,30 @@ final class BlitzHttpConnection {
 
     void onWritable() {
         flushWrites();
+        if (!closed && !isBackpressured() && input.readable() > 0) {
+            // Reading stopped while this connection was over the output limit; there may be
+            // pipelined requests in the window that nobody parsed yet.
+            process();
+            flushWrites();
+        }
+    }
+
+    /** True while the outbound queue is over {@code buffer_output_size}. */
+    boolean isBackpressured() {
+        return bufferOutputBytes > 0 && queuedBytes > bufferOutputBytes;
+    }
+
+    /** Closes a keep-alive connection that has been quiet for the configured timeout. */
+    boolean closeIfIdle(long nowNanos) {
+        if (idleTimeoutMillis <= 0 || closed || processing || input.readable() > 0
+                || hasPendingOutput()) {
+            return false;
+        }
+        if (nowNanos - lastActiveNanos < idleTimeoutMillis * 1_000_000L) {
+            return false;
+        }
+        close();
+        return true;
     }
 
     private boolean hasPendingOutput() {
@@ -218,12 +269,14 @@ final class BlitzHttpConnection {
         if (closed || bytes.length == 0) {
             return;
         }
+        queuedBytes += bytes.length;
         if (pendingBytes == null && outbound.isEmpty()) {
             pendingBytes = bytes;
             pendingOffset = 0;
-            return;
+        } else {
+            outbound.add(new BytesOut(ByteBuffer.wrap(bytes)));
         }
-        outbound.add(new BytesOut(ByteBuffer.wrap(bytes)));
+        updateReadArm();
     }
 
     void enqueue(FileOut file) {
@@ -231,7 +284,21 @@ final class BlitzHttpConnection {
             file.close();
             return;
         }
+        queuedBytes += file.size();
         outbound.add(file);
+        updateReadArm();
+    }
+
+    /** Stops reading from a client that is not draining its responses, and resumes when it does. */
+    private void updateReadArm() {
+        boolean backpressured = isBackpressured();
+        if (backpressured && readEnabled) {
+            readEnabled = false;
+            applyInterest();
+        } else if (!backpressured && !readEnabled) {
+            readEnabled = true;
+            applyInterest();
+        }
     }
 
     /** Writes as much of the queued response as the socket accepts, then arms OP_WRITE. */
@@ -239,6 +306,7 @@ final class BlitzHttpConnection {
         if (closed || inFlush) {
             return;
         }
+        lastActiveNanos = System.nanoTime();
         inFlush = true;
         try {
             while (true) {
@@ -255,12 +323,17 @@ final class BlitzHttpConnection {
                         }
                         if (n == 0) {
                             pendingOffset = buffer.position();
-                            arm(true);
+                            if (!writeArmed) {
+                                writeArmed = true;
+                                applyInterest();
+                            }
                             return;
                         }
                     }
+                    queuedBytes -= pendingBytes.length;
                     pendingBytes = null;
                     pendingOffset = 0;
+                    drained();
                     continue;
                 }
                 if (outbound.isEmpty()) {
@@ -275,13 +348,21 @@ final class BlitzHttpConnection {
                     return;
                 }
                 if (!done) {
-                    arm(true);
+                    if (!writeArmed) {
+                        writeArmed = true;
+                        applyInterest();
+                    }
                     return;
                 }
                 outbound.poll();
+                queuedBytes -= item.size();
                 item.close();
+                drained();
             }
-            arm(false);
+            if (writeArmed) {
+                writeArmed = false;
+                applyInterest();
+            }
             if (closeAfterFlush) {
                 close();
             }
@@ -290,14 +371,26 @@ final class BlitzHttpConnection {
         }
     }
 
-    private void arm(boolean write) {
+    private void drained() {
+        if (!readEnabled && queuedBytes <= bufferOutputBytes) {
+            readEnabled = true;
+            applyInterest();
+        }
+    }
+
+    private void applyInterest() {
         if (key == null || !key.isValid()) {
             return;
         }
-        int ops = key.interestOps();
-        int wanted = write ? ops | SelectionKey.OP_WRITE : ops & ~SelectionKey.OP_WRITE;
-        if (wanted != ops) {
-            key.interestOps(wanted);
+        int ops = 0;
+        if (readEnabled && !inputClosed) {
+            ops |= SelectionKey.OP_READ;
+        }
+        if (writeArmed) {
+            ops |= SelectionKey.OP_WRITE;
+        }
+        if (ops != key.interestOps()) {
+            key.interestOps(ops);
         }
     }
 
@@ -333,6 +426,8 @@ final class BlitzHttpConnection {
         outbound.clear();
         pendingBytes = null;
         pendingOffset = 0;
+        queuedBytes = 0;
+        writeArmed = false;
         try {
             channel.close();
         } catch (IOException ignored) {
@@ -341,6 +436,9 @@ final class BlitzHttpConnection {
     }
 
     interface Outbound {
+        /** Bytes this item adds to the connection's outbound queue. */
+        long size();
+
         /** Writes what the socket accepts; true when the item is fully written. */
         boolean write(SocketChannel channel) throws IOException;
 
@@ -349,9 +447,16 @@ final class BlitzHttpConnection {
 
     static final class BytesOut implements Outbound {
         private final ByteBuffer buffer;
+        private final int size;
 
         BytesOut(ByteBuffer buffer) {
             this.buffer = buffer;
+            this.size = buffer.remaining();
+        }
+
+        @Override
+        public long size() {
+            return size;
         }
 
         @Override
@@ -374,13 +479,20 @@ final class BlitzHttpConnection {
     /** A file queued by {@code $response->sendfile()}; the channel may use sendfile. */
     static final class FileOut implements Outbound {
         private final FileChannel file;
+        private final long size;
         private long position;
         private long remaining;
 
         FileOut(FileChannel file, long position, long remaining) {
             this.file = file;
+            this.size = remaining;
             this.position = position;
             this.remaining = remaining;
+        }
+
+        @Override
+        public long size() {
+            return size;
         }
 
         @Override

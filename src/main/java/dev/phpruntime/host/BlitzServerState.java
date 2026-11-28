@@ -20,6 +20,8 @@ public final class BlitzServerState implements PhpNativeState {
     private int workerNum = 1;
     private int backlog = 511;
     private int maxBodyBytes = 8 * 1024 * 1024;
+    private int keepAliveTimeoutSeconds = 60;
+    private int bufferOutputBytes = 2 * 1024 * 1024;
     private String documentRoot;
     private PhpCallable requestCallback;
     private PhpCallable workerStartCallback;
@@ -59,6 +61,14 @@ public final class BlitzServerState implements PhpNativeState {
 
     public int maxBodyBytes() {
         return maxBodyBytes;
+    }
+
+    public int keepAliveTimeoutSeconds() {
+        return keepAliveTimeoutSeconds;
+    }
+
+    public int bufferOutputBytes() {
+        return bufferOutputBytes;
     }
 
     public String documentRoot() {
@@ -129,6 +139,22 @@ public final class BlitzServerState implements PhpNativeState {
                 }
                 maxBodyBytes = (int) n;
             }
+            case "keepalive_timeout" -> {
+                long n = PhpOps.toLong(value);
+                if (n < 0 || n > 86_400) {
+                    throw new PhpError(PhpError.VALUE_ERROR,
+                            "Blitz\\Http\\Server::set(): keepalive_timeout must be between 0 and 86400 seconds", null);
+                }
+                keepAliveTimeoutSeconds = (int) n;
+            }
+            case "buffer_output_size" -> {
+                long n = PhpOps.toLong(value);
+                if (n < 1 || n > 1L << 30) {
+                    throw new PhpError(PhpError.VALUE_ERROR,
+                            "Blitz\\Http\\Server::set(): buffer_output_size must be between 1 and 1 GiB", null);
+                }
+                bufferOutputBytes = (int) n;
+            }
             case "document_root" -> documentRoot = PhpOps.toStr(value);
             case "max_request", "max_conn", "log_level", "enable_coroutine",
                  "hook_flags", "enable_preemptive_scheduler", "enable_static_handler" ->
@@ -165,7 +191,8 @@ public final class BlitzServerState implements PhpNativeState {
             }
             String script = ctx.request().scriptFilename;
             BlitzServerInfo info = new BlitzServerInfo(host, requestedPort, script, parentOf(script));
-            core = new BlitzServerCore(info, host, requestedPort, 1, backlog, maxBodyBytes);
+            core = new BlitzServerCore(info, host, requestedPort, 1, backlog, maxBodyBytes,
+                    keepAliveTimeoutSeconds, bufferOutputBytes);
             workerId = 0;
             boundPort = core.port();
             started = true;

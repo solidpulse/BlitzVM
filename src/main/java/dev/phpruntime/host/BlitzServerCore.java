@@ -34,6 +34,8 @@ final class BlitzServerCore {
     private final BlitzServerInfo info;
     private final int workerNum;
     private final int maxBodyBytes;
+    private final long keepAliveTimeoutMillis;
+    private final int bufferOutputBytes;
     private final String host;
     private final int backlog;
     private final ServerSocketChannel listener;
@@ -54,10 +56,13 @@ final class BlitzServerCore {
     private Thread shutdownHook;
 
     BlitzServerCore(BlitzServerInfo info, String host, int requestedPort,
-                    int workerNum, int backlog, int maxBodyBytes) {
+                    int workerNum, int backlog, int maxBodyBytes,
+                    int keepAliveTimeoutSeconds, int bufferOutputBytes) {
         this.info = info;
         this.workerNum = workerNum;
         this.maxBodyBytes = maxBodyBytes;
+        this.keepAliveTimeoutMillis = Math.max(0, keepAliveTimeoutSeconds) * 1000L;
+        this.bufferOutputBytes = bufferOutputBytes;
         this.host = host;
         this.backlog = backlog;
         this.reusePort = reusePortSupported();
@@ -161,6 +166,14 @@ final class BlitzServerCore {
         return maxBodyBytes;
     }
 
+    long keepAliveTimeoutMillis() {
+        return keepAliveTimeoutMillis;
+    }
+
+    int bufferOutputBytes() {
+        return bufferOutputBytes;
+    }
+
     Throwable failure() {
         return failure.get();
     }
@@ -259,6 +272,7 @@ final class BlitzServerCore {
                         System.err.println("blitz http: workerStart failed: " + t);
                     }
                 }
+                long lastIdleCheck = System.nanoTime();
                 while (running.get()) {
                     int selected;
                     try {
@@ -273,6 +287,9 @@ final class BlitzServerCore {
                         break;
                     }
                     if (selected == 0) {
+                        long now = System.nanoTime();
+                        sweepIdle(selector, now);
+                        lastIdleCheck = now;
                         continue;
                     }
                     Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
@@ -309,6 +326,11 @@ final class BlitzServerCore {
                             }
                         }
                     }
+                    long now = System.nanoTime();
+                    if (now - lastIdleCheck >= 1_000_000_000L) {
+                        sweepIdle(selector, now);
+                        lastIdleCheck = now;
+                    }
                 }
             } finally {
                 worker.uninstallHostRequest();
@@ -344,6 +366,18 @@ final class BlitzServerCore {
         }
     }
 
+    /** Once a second, closes keep-alive connections that have been quiet for the timeout. */
+    private void sweepIdle(Selector selector, long nowNanos) {
+        if (keepAliveTimeoutMillis <= 0) {
+            return;
+        }
+        for (SelectionKey key : selector.keys()) {
+            if (key.attachment() instanceof BlitzHttpConnection connection) {
+                connection.closeIfIdle(nowNanos);
+            }
+        }
+    }
+
     private void accept(Selector selector, BlitzServerWorker worker,
                         ServerSocketChannel acceptChannel) {
         for (int i = 0; i < 64; i++) {
@@ -366,8 +400,8 @@ final class BlitzServerCore {
                 channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                 worker.countConnection();
                 BlitzHttpConnection connection = new BlitzHttpConnection(channel, worker,
-                        connectionIds.incrementAndGet(), maxBodyBytes, info.scriptFilename(),
-                        info.documentRoot());
+                        connectionIds.incrementAndGet(), maxBodyBytes, keepAliveTimeoutMillis,
+                        bufferOutputBytes, info.scriptFilename(), info.documentRoot());
                 SelectionKey key = channel.register(selector, SelectionKey.OP_READ, connection);
                 connection.attach(key);
             } catch (IOException | RuntimeException e) {
