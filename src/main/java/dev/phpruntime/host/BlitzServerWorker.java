@@ -123,18 +123,13 @@ final class BlitzServerWorker {
         host.serverHost = request.localAddr();
         host.serverPort = request.localPort();
         host.scriptFilename = info().scriptFilename();
-        host.body = "";
+        if (!host.body.isEmpty()) {
+            host.body = "";
+        }
         pendingBody = request;
         host.bodySupplier = bodySupplier;
         host.scheduler = GuestScheduler.NONE;
-        host.status = 200;
-        host.jsonLastError = 0;
-        if (!host.responseHeaders.isEmpty()) {
-            host.responseHeaders.clear();
-        }
-        if (!host.resources.isEmpty()) {
-            host.closeResources();
-        }
+        host.resetServerState();
 
         BlitzHttpResponseWriter response = connection.responseWriter(request);
         BlitzRequestState requestState = new BlitzRequestState(request, connection.id());

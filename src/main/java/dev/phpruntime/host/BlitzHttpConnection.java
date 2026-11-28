@@ -148,7 +148,6 @@ final class BlitzHttpConnection {
         if (closed) {
             return;
         }
-        lastActiveNanos = System.nanoTime();
         try {
             if (!inputClosed) {
                 int total = 0;
@@ -231,6 +230,9 @@ final class BlitzHttpConnection {
 
     void onWritable() {
         flushWrites();
+        if (!closed) {
+            lastActiveNanos = System.nanoTime();
+        }
         if (!closed && !isBackpressured() && input.readable() > 0) {
             // Reading stopped while this connection was over the output limit; there may be
             // pipelined requests in the window that nobody parsed yet.
@@ -306,7 +308,6 @@ final class BlitzHttpConnection {
         if (closed || inFlush) {
             return;
         }
-        lastActiveNanos = System.nanoTime();
         inFlush = true;
         try {
             while (true) {

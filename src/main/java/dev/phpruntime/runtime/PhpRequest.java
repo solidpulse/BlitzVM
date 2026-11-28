@@ -126,6 +126,27 @@ public final class PhpRequest {
         resources.clear();
     }
 
+    /**
+     * Clears only what the previous request could have changed on a long-lived worker. The
+     * request fields themselves are overwritten by the host for every request; this is the
+     * response state that the PHP builtins write, and each check is cheaper than carrying a
+     * dirty mask through every writer.
+     */
+    public void resetServerState() {
+        if (status != 200) {
+            status = 200;
+        }
+        if (jsonLastError != 0) {
+            jsonLastError = 0;
+        }
+        if (!responseHeaders.isEmpty()) {
+            responseHeaders.clear();
+        }
+        if (!resources.isEmpty()) {
+            closeResources();
+        }
+    }
+
     public void install() {
         CURRENT.set(this);
     }

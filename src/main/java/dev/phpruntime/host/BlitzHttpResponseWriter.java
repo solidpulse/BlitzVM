@@ -8,8 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * One response being built for one request. Headers are collected until the first
@@ -34,8 +32,11 @@ public final class BlitzHttpResponseWriter {
 
     private final BlitzHttpConnection connection;
     private BlitzHttpRequest request;
-    private final List<String[]> headers = new ArrayList<>(4);
-    private final List<String> cookies = new ArrayList<>(0);
+    private String[] headerNames = new String[4];
+    private String[] headerValues = new String[4];
+    private int headerCount;
+    private String[] cookieLines = new String[2];
+    private int cookieCount;
     private int status = 200;
     private String reason;
     private boolean headersSent;
@@ -51,8 +52,8 @@ public final class BlitzHttpResponseWriter {
     /** Reuses one writer for the next request on the same connection. */
     void reset(BlitzHttpRequest next) {
         request = next;
-        headers.clear();
-        cookies.clear();
+        headerCount = 0;
+        cookieCount = 0;
         status = 200;
         reason = null;
         headersSent = false;
@@ -90,18 +91,28 @@ public final class BlitzHttpResponseWriter {
             }
         }
         checked(value, "header value");
-        for (int i = 0; i < headers.size(); i++) {
-            if (headers.get(i)[0].equalsIgnoreCase(name)) {
-                headers.set(i, new String[]{name, value});
+        for (int i = 0; i < headerCount; i++) {
+            if (headerNames[i].equalsIgnoreCase(name)) {
+                headerValues[i] = value;
                 return;
             }
         }
-        headers.add(new String[]{name, value});
+        if (headerCount == headerNames.length) {
+            int grown = headerCount + (headerCount >> 1) + 1;
+            headerNames = java.util.Arrays.copyOf(headerNames, grown);
+            headerValues = java.util.Arrays.copyOf(headerValues, grown);
+        }
+        headerNames[headerCount] = name;
+        headerValues[headerCount] = value;
+        headerCount++;
     }
 
     public void addCookie(String line) {
         checked(line, "cookie");
-        cookies.add(line);
+        if (cookieCount == cookieLines.length) {
+            cookieLines = java.util.Arrays.copyOf(cookieLines, cookieCount + (cookieCount >> 1) + 1);
+        }
+        cookieLines[cookieCount++] = line;
     }
 
     public boolean write(byte[] data) {
@@ -256,15 +267,14 @@ public final class BlitzHttpResponseWriter {
     private int headSize(int contentLength, boolean useChunked, boolean omitLength,
                          boolean closeConnection) {
         int size = statusLine().length;
-        for (int i = 0; i < headers.size(); i++) {
-            String[] header = headers.get(i);
-            if (skipped(header[0])) {
+        for (int i = 0; i < headerCount; i++) {
+            if (skipped(headerNames[i])) {
                 continue;
             }
-            size += header[0].length() + header[1].length() + 4; // ": " and CRLF
+            size += headerNames[i].length() + headerValues[i].length() + 4; // ": " and CRLF
         }
-        for (int i = 0; i < cookies.size(); i++) {
-            size += SET_COOKIE.length + cookies.get(i).length() + 2;
+        for (int i = 0; i < cookieCount; i++) {
+            size += SET_COOKIE.length + cookieLines[i].length() + 2;
         }
         if (useChunked) {
             size += TRANSFER_CHUNKED.length;
@@ -286,21 +296,20 @@ public final class BlitzHttpResponseWriter {
         byte[] statusLine = statusLine();
         System.arraycopy(statusLine, 0, out, p, statusLine.length);
         p += statusLine.length;
-        for (int i = 0; i < headers.size(); i++) {
-            String[] header = headers.get(i);
-            if (skipped(header[0])) {
+        for (int i = 0; i < headerCount; i++) {
+            if (skipped(headerNames[i])) {
                 continue;
             }
-            p = putAscii(out, p, header[0]);
+            p = putAscii(out, p, headerNames[i]);
             out[p++] = ':';
             out[p++] = ' ';
-            p = putAscii(out, p, header[1]);
+            p = putAscii(out, p, headerValues[i]);
             out[p++] = '\r';
             out[p++] = '\n';
         }
-        for (int i = 0; i < cookies.size(); i++) {
+        for (int i = 0; i < cookieCount; i++) {
             p = putBytes(out, p, SET_COOKIE);
-            p = putAscii(out, p, cookies.get(i));
+            p = putAscii(out, p, cookieLines[i]);
             out[p++] = '\r';
             out[p++] = '\n';
         }
