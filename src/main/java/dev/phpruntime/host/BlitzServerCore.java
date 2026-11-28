@@ -244,7 +244,7 @@ final class BlitzServerCore {
                 return;
             }
             selectors[index] = selector;
-            ServerSocketChannel acceptChannel;
+            ServerSocketChannel acceptChannel = null;
             try {
                 if (index == 0 || !reusePort) {
                     acceptChannel = listener;
@@ -255,6 +255,13 @@ final class BlitzServerCore {
                 acceptChannel.register(selector, SelectionKey.OP_ACCEPT);
             } catch (IOException | RuntimeException e) {
                 workerFailed(e);
+                if (acceptChannel != null && acceptChannel != listener) {
+                    try {
+                        acceptChannel.close();
+                    } catch (IOException ignored) {
+                        // it never became usable
+                    }
+                }
                 closeSelector(selector);
                 if (index != 0) {
                     finished.countDown();
@@ -344,6 +351,13 @@ final class BlitzServerCore {
                     }
                 }
                 closeSelector(selector);
+                if (acceptChannel != listener) {
+                    try {
+                        acceptChannel.close();
+                    } catch (IOException ignored) {
+                        // already closed by stop()
+                    }
+                }
                 if (index != 0) {
                     finished.countDown();
                 }
