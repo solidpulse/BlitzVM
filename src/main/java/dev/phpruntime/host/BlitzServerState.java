@@ -1,7 +1,6 @@
 package dev.phpruntime.host;
 
 import dev.phpruntime.PhpContext;
-import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNativeState;
