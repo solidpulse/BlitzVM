@@ -94,6 +94,7 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
                     dev.phpruntime.builtins.PdoClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.ReflectionClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.RandomClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.BlitzClasses.buildTemplates(this, all);
                     m = Map.copyOf(all);
                     int max = -1;
                     for (String lower : m.keySet()) {

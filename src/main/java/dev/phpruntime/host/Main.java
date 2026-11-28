@@ -109,8 +109,23 @@ public final class Main {
         request.argv = java.util.Arrays.stream(args).map(PhpStrings::fromJava).toArray(String[]::new);
         int code;
         try (PhpEngine engine = new PhpEngine(null)) {
-            code = engine.executeStreaming(script, request, System.out, System.err);
-            System.out.flush();
+            // A CLI script may be a Blitz\Http\Server application; the runtime boots the other
+            // workers by evaluating the same script in their own contexts.
+            BlitzServerRuntime servers = new BlitzServerRuntime(engine, engine.source(script),
+                    script.toAbsolutePath().normalize().toString());
+            engine.setServerHost(servers);
+            Thread shutdown = new Thread(servers::stop, "blitz-server-shutdown");
+            Runtime.getRuntime().addShutdownHook(shutdown);
+            try {
+                code = engine.executeStreaming(script, request, System.out, System.err);
+                System.out.flush();
+            } finally {
+                try {
+                    Runtime.getRuntime().removeShutdownHook(shutdown);
+                } catch (IllegalStateException ignored) {
+                    // already shutting down
+                }
+            }
         }
         // Exit after the engine closes, so engine-level statistics and logs are flushed.
         System.exit(code);
