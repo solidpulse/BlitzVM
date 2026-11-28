@@ -220,6 +220,10 @@ class WorkerModeTest {
                         case 'globals':
                             echo $GLOBALS['_SERVER']['HTTP_X_PROBE'];
                             break;
+                        case 'globalsDynamic':
+                            $name = '_SERVER';
+                            echo $GLOBALS[$name]['HTTP_X_PROBE'];
+                            break;
                         case 'globalsEnv':
                             echo $GLOBALS['_ENV']['T82_ENV'] ?? 'missing';
                             break;
@@ -285,6 +289,7 @@ class WorkerModeTest {
 
         Map<String, String> expected = new LinkedHashMap<>();
         expected.put("globals", "probe");
+        expected.put("globalsDynamic", "probe");
         expected.put("globalsEnv", "env-value");
         expected.put("extract", "probe");
         expected.put("compact", "missing");
