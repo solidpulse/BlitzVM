@@ -33,6 +33,12 @@ final class BlitzServerWorker {
     private final ByteArrayOutputStream err = new ByteArrayOutputStream(128);
     /** The request object the PHP builtins see; one per worker, reset for every request. */
     private final PhpRequest hostRequest = PhpRequest.worker();
+    /** The request whose body php://input will read, or null between requests. */
+    private BlitzHttpRequest pendingBody;
+    private final java.util.function.Supplier<String> bodySupplier = () -> {
+        BlitzHttpRequest request = pendingBody;
+        return request == null ? "" : request.bodyText();
+    };
     private int index;
 
     BlitzServerWorker(BlitzServerCore core, PhpContext php, BlitzServerState state,
@@ -92,7 +98,9 @@ final class BlitzServerWorker {
         host.serverHost = request.localAddr();
         host.serverPort = request.localPort();
         host.scriptFilename = info().scriptFilename();
-        host.body = request.bodyText();
+        host.body = "";
+        pendingBody = request;
+        host.bodySupplier = bodySupplier;
         host.scheduler = GuestScheduler.NONE;
         host.status = 200;
         host.jsonLastError = 0;
@@ -156,6 +164,7 @@ final class BlitzServerWorker {
                 }
             }
             php.endServerRequest();
+            pendingBody = null;
             host.closeResources();
             requestState.release();
         }

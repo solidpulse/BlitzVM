@@ -183,7 +183,7 @@ final class StreamFunctions {
                 case "memory" -> new PhpStream.MemoryStream("w+b", "php://memory", "MEMORY", null);
                 case "temp" -> new PhpStream.MemoryStream("w+b", "php://temp", "TEMP", null);
                 case "input" -> new PhpStream.MemoryStream("rb", "php://input", "Input",
-                        PhpStrings.bytes(ctx.request().body));
+                        PhpStrings.bytes(ctx.request().bodyText()));
                 case "output" -> new PhpStream.OutputStreamStream(ctx, null, "wb", "php://output");
                 case "stdin" -> new PhpStream.InputStreamStream(ctx.env().in(), "php://stdin");
                 case "stdout" -> new PhpStream.OutputStreamStream(ctx, ctx.env().out(), mode, "php://stdout");

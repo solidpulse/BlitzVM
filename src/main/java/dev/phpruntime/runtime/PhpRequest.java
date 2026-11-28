@@ -31,6 +31,12 @@ public final class PhpRequest {
     public String scriptFilename = "";
     public String remoteAddr = "";
     public String body = "";
+    /**
+     * Supplies {@link #body} on first access. A native server keeps the body bytes in its own
+     * request object and installs a supplier, so a handler that never reads {@code php://input}
+     * never converts the body to a PHP string.
+     */
+    public java.util.function.Supplier<String> bodySupplier;
     /** The request's HTTP version and local endpoint, as the CGI variables report them. */
     public String protocol = "HTTP/1.1";
     public String serverHost = "localhost";
@@ -97,6 +103,15 @@ public final class PhpRequest {
     public static PhpRequest current() {
         PhpRequest r = CURRENT.get();
         return r != null ? r : new PhpRequest();
+    }
+
+    /** The body, asking the supplier once if a host installed one. */
+    public String bodyText() {
+        if (bodySupplier != null) {
+            body = bodySupplier.get();
+            bodySupplier = null;
+        }
+        return body;
     }
 
     /** Closes whatever the script left open. Called by the host after the script finishes. */
