@@ -19,20 +19,26 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * The listening socket and the fixed set of worker selector loops.
+ * The listening sockets and the fixed set of worker selector loops.
  *
- * <p>Every worker owns a {@link Selector} and registers the listening channel for accept. A
- * worker that is running PHP is not selecting, so only idle workers race for new connections;
- * a blocking handler therefore stalls its own connections, not the accept path for the whole
- * server. Existing connections on other workers keep being served. There is no acceptor thread
- * and no queue of requests: accept, parse, run the handler, write, all on one worker thread.
+ * <p>Every worker owns a {@link Selector}. Where SO_REUSEPORT is available each worker also
+ * binds its own listening socket, so the kernel spreads new connections across the workers
+ * instead of letting whichever worker selects first take a burst. Where it is not available,
+ * every worker registers the one shared listening channel and only idle workers race for new
+ * connections. A worker that is running PHP is not selecting, so a blocking handler stalls its
+ * own connections, not the accept path for the whole server. There is no acceptor thread and
+ * no queue of requests: accept, parse, run the handler, write, all on one worker thread.
  */
 final class BlitzServerCore {
 
     private final BlitzServerInfo info;
     private final int workerNum;
     private final int maxBodyBytes;
+    private final String host;
+    private final int backlog;
     private final ServerSocketChannel listener;
+    private final boolean reusePort;
+    private final ServerSocketChannel[] listeners;
     private final int port;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicInteger nextIndex = new AtomicInteger(1);
@@ -52,19 +58,18 @@ final class BlitzServerCore {
         this.info = info;
         this.workerNum = workerNum;
         this.maxBodyBytes = maxBodyBytes;
+        this.host = host;
+        this.backlog = backlog;
+        this.reusePort = reusePortSupported();
         this.ready = new CountDownLatch(Math.max(0, workerNum - 1));
         this.finished = new CountDownLatch(Math.max(0, workerNum - 1));
         this.allFinished = new CountDownLatch(workerNum);
         this.selectors = new Selector[workerNum];
         this.workers = new BlitzServerWorker[workerNum];
+        this.listeners = new ServerSocketChannel[workerNum];
         try {
-            this.listener = ServerSocketChannel.open();
-            this.listener.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-            InetSocketAddress address = host == null || host.isEmpty()
-                    ? new InetSocketAddress(requestedPort)
-                    : new InetSocketAddress(host, requestedPort);
-            this.listener.bind(address, backlog);
-            this.listener.configureBlocking(false);
+            this.listener = openListener(requestedPort);
+            this.listeners[0] = listener;
             this.port = ((InetSocketAddress) listener.getLocalAddress()).getPort();
         } catch (IOException e) {
             throw new IllegalStateException("cannot listen on " + host + ":" + requestedPort + ": "
@@ -85,6 +90,58 @@ final class BlitzServerCore {
 
     BlitzServerInfo info() {
         return info;
+    }
+
+    /**
+     * One listening socket per worker needs SO_REUSEPORT: the kernel then hashes a new
+     * connection to one of the bound sockets, which spreads keep-alive connections before
+     * they are accepted. The shared-listener fallback is used where the option or a second
+     * bind is not available.
+     */
+    private ServerSocketChannel openListener(int bindPort) throws IOException {
+        ServerSocketChannel channel = ServerSocketChannel.open();
+        try {
+            channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+            if (reusePort) {
+                channel.setOption(StandardSocketOptions.SO_REUSEPORT, true);
+            }
+            InetSocketAddress address = host == null || host.isEmpty()
+                    ? new InetSocketAddress(bindPort)
+                    : new InetSocketAddress(host, bindPort);
+            channel.bind(address, backlog);
+            channel.configureBlocking(false);
+            return channel;
+        } catch (IOException | RuntimeException e) {
+            try {
+                channel.close();
+            } catch (IOException ignored) {
+                // it never listened
+            }
+            throw e;
+        }
+    }
+
+    /** Probes for a usable SO_REUSEPORT on this JVM and kernel; bind twice to be sure. */
+    static boolean reusePortSupported() {
+        if (!Boolean.parseBoolean(System.getProperty("blitz.server.reusePort", "true"))) {
+            return false;
+        }
+        try (ServerSocketChannel first = ServerSocketChannel.open()) {
+            first.setOption(StandardSocketOptions.SO_REUSEPORT, true);
+            first.bind(new InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
+            int probePort = ((InetSocketAddress) first.getLocalAddress()).getPort();
+            try (ServerSocketChannel second = ServerSocketChannel.open()) {
+                second.setOption(StandardSocketOptions.SO_REUSEPORT, true);
+                second.bind(new InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), probePort));
+                return true;
+            }
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    boolean reusePort() {
+        return reusePort;
     }
 
     int port() {
@@ -174,8 +231,15 @@ final class BlitzServerCore {
                 return;
             }
             selectors[index] = selector;
+            ServerSocketChannel acceptChannel;
             try {
-                listener.register(selector, SelectionKey.OP_ACCEPT);
+                if (index == 0 || !reusePort) {
+                    acceptChannel = listener;
+                } else {
+                    acceptChannel = openListener(port);
+                    listeners[index] = acceptChannel;
+                }
+                acceptChannel.register(selector, SelectionKey.OP_ACCEPT);
             } catch (IOException | RuntimeException e) {
                 workerFailed(e);
                 closeSelector(selector);
@@ -220,7 +284,7 @@ final class BlitzServerCore {
                         }
                         try {
                             if (key.isAcceptable()) {
-                                accept(selector, worker);
+                                accept(selector, worker, acceptChannel);
                             } else {
                                 BlitzHttpConnection connection = (BlitzHttpConnection) key.attachment();
                                 if (connection == null) {
@@ -280,11 +344,12 @@ final class BlitzServerCore {
         }
     }
 
-    private void accept(Selector selector, BlitzServerWorker worker) {
+    private void accept(Selector selector, BlitzServerWorker worker,
+                        ServerSocketChannel acceptChannel) {
         for (int i = 0; i < 64; i++) {
             SocketChannel channel;
             try {
-                channel = listener.accept();
+                channel = acceptChannel.accept();
             } catch (AcceptPendingException e) {
                 return;
             } catch (IOException e) {
@@ -345,10 +410,14 @@ final class BlitzServerCore {
     }
 
     private void closeListener() {
-        try {
-            listener.close();
-        } catch (IOException ignored) {
-            // already closed
+        for (ServerSocketChannel channel : listeners) {
+            if (channel != null) {
+                try {
+                    channel.close();
+                } catch (IOException ignored) {
+                    // already closed
+                }
+            }
         }
     }
 

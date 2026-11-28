@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The Blitz\Http\Server API over real sockets: the request/response objects, lazy request
@@ -64,9 +65,13 @@ class BlitzServerModeTest {
     }
 
     private void start(String code) throws Exception {
-        port = freePort();
+        startOnPort(code, freePort());
+    }
+
+    private void startOnPort(String code, int requestedPort) throws Exception {
+        port = requestedPort;
         Path script = dir.resolve("server.php");
-        Files.writeString(script, code.replace("__PORT__", Integer.toString(port)));
+        Files.writeString(script, code.replace("__PORT__", Integer.toString(requestedPort)));
         engine = new PhpEngine(null);
         runtime = new BlitzServerRuntime(engine, engine.source(script), script.toString());
         engine.setServerHost(runtime);
@@ -82,7 +87,33 @@ class BlitzServerModeTest {
         }, "blitz-test-server");
         serverThread.setDaemon(true);
         serverThread.start();
-        awaitPort();
+        if (requestedPort == 0) {
+            awaitBoundPort();
+        } else {
+            awaitPort();
+        }
+    }
+
+    /** For {@code port = 0}: the runtime picks the port when the first worker binds. */
+    private void awaitBoundPort() throws Exception {
+        long deadline = System.nanoTime() + 30_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            if (failure.get() != null) {
+                throw new AssertionError("server failed", failure.get());
+            }
+            PhpEngine.Result done = result.get();
+            if (done != null) {
+                fail("server exited before listening: " + done.bodyText() + done.errors());
+            }
+            int bound = runtime.port();
+            if (bound > 0) {
+                port = bound;
+                awaitPort();
+                return;
+            }
+            Thread.sleep(20);
+        }
+        fail("server did not bind a port");
     }
 
     private void awaitPort() throws Exception {
@@ -570,6 +601,54 @@ class BlitzServerModeTest {
             sawNonZero |= id != 0;
         }
         assertTrue(sawNonZero, "every request was served by worker 0");
+    }
+
+    @Test
+    void reusePortSpreadsConnectionsAcrossWorkers() throws Exception {
+        assumeTrue(BlitzServerCore.reusePortSupported(), "SO_REUSEPORT is not available");
+        String code = """
+                <?php
+                $server = new Blitz\\Http\\Server('127.0.0.1', __PORT__);
+                $server->set(['worker_num' => 3]);
+                $server->on('request', function (Blitz\\Http\\Request $req, Blitz\\Http\\Response $res) use ($server) {
+                    $res->end((string) $server->getWorkerId());
+                });
+                $server->start();
+                """;
+        start(code);
+        Map<Integer, Integer> connections = new LinkedHashMap<>();
+        for (int i = 0; i < 30; i++) {
+            int id = Integer.parseInt(get("/").text());
+            assertTrue(id >= 0 && id < 3, "worker id " + id);
+            connections.merge(id, 1, Integer::sum);
+        }
+        assertEquals(3, connections.size(), "connections per worker: " + connections);
+        for (Map.Entry<Integer, Integer> entry : connections.entrySet()) {
+            assertTrue(entry.getValue() >= 2,
+                    "worker " + entry.getKey() + " served " + entry.getValue() + " connections");
+        }
+    }
+
+    @Test
+    void portZeroWithSeveralWorkersBindsOnePortTheyAllServe() throws Exception {
+        String code = """
+                <?php
+                $server = new Blitz\\Http\\Server('127.0.0.1', 0);
+                $server->set(['worker_num' => 3]);
+                $server->on('request', function (Blitz\\Http\\Request $req, Blitz\\Http\\Response $res) use ($server) {
+                    $res->end($server->getWorkerId() . '/' . $server->getPort());
+                });
+                $server->start();
+                """;
+        startOnPort(code, 0);
+        assertTrue(port > 0, "no port was bound");
+        java.util.Set<Integer> workers = new java.util.HashSet<>();
+        for (int i = 0; i < 30; i++) {
+            String[] parts = get("/").text().split("/");
+            assertEquals(Integer.toString(port), parts[1], "a worker bound a different port");
+            workers.add(Integer.parseInt(parts[0]));
+        }
+        assertTrue(workers.size() > 1, "every connection was served by one worker: " + workers);
     }
 
     @Test
