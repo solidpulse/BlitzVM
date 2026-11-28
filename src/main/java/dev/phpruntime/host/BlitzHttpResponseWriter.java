@@ -7,17 +7,30 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * One response being built for one request. Headers are collected until the first
  * {@code write()}/{@code end()}/{@code sendfile()}, then the status line and header block are
- * written straight into one byte array together with (for a normal response) the body. No
- * intermediate response object graph and no headers that the handler did not ask for, apart
- * from Content-Length/Transfer-Encoding and Connection where HTTP/1.1 needs them.
+ * written straight into one exactly sized byte array. For a small body the head and the body
+ * share that array, so the common hello response is one allocation and one write. There are no
+ * headers that the handler did not ask for, apart from Content-Length/Transfer-Encoding and
+ * Connection where HTTP/1.1 needs them.
  */
 public final class BlitzHttpResponseWriter {
+
+    private static final java.nio.charset.Charset BYTES = StandardCharsets.ISO_8859_1;
+    private static final byte[] TRANSFER_CHUNKED = "Transfer-Encoding: chunked\r\n".getBytes(BYTES);
+    private static final byte[] CONNECTION_CLOSE = "Connection: close\r\n".getBytes(BYTES);
+    private static final byte[] CONNECTION_KEEP_ALIVE = "Connection: keep-alive\r\n".getBytes(BYTES);
+    private static final byte[] CONTENT_LENGTH = "Content-Length: ".getBytes(BYTES);
+    private static final byte[] SET_COOKIE = "Set-Cookie: ".getBytes(BYTES);
+    /** A body up to this size travels in the same array, and the same write, as the head. */
+    private static final int COMBINE_LIMIT = 16 * 1024;
+    /** One status line per code, built on first use; only about forty codes are ever used. */
+    private static final byte[][] STATUS_LINES = new byte[600][];
 
     private final BlitzHttpConnection connection;
     private final BlitzHttpRequest request;
@@ -112,8 +125,23 @@ public final class BlitzHttpResponseWriter {
         boolean noContent = status == 204 || status == 304;
         boolean suppressBody = noContent || request.head();
         if (!headersSent) {
-            sendHead(noContent ? -1 : data.length, false, noContent, false);
-            if (!suppressBody && data.length > 0) {
+            headersSent = true;
+            boolean close = !request.keepAlive();
+            if (suppressBody || data.length == 0) {
+                int contentLength = noContent ? -1 : data.length;
+                byte[] head = new byte[headSize(contentLength, false, noContent, close)];
+                writeHead(head, 0, contentLength, false, noContent, close);
+                connection.enqueue(head);
+            } else if (data.length <= COMBINE_LIMIT) {
+                int headSize = headSize(data.length, false, false, close);
+                byte[] response = new byte[headSize + data.length];
+                writeHead(response, 0, data.length, false, false, close);
+                System.arraycopy(data, 0, response, headSize, data.length);
+                connection.enqueue(response);
+            } else {
+                byte[] head = new byte[headSize(data.length, false, false, close)];
+                writeHead(head, 0, data.length, false, false, close);
+                connection.enqueue(head);
                 connection.enqueue(data);
             }
         } else if (chunked) {
@@ -198,39 +226,106 @@ public final class BlitzHttpResponseWriter {
         setStatus(code, null);
         setHeader("Content-Type", "text/plain; charset=UTF-8");
         ended = false; // end() must be allowed to run
-        return end(message.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+        return end(message.getBytes(StandardCharsets.ISO_8859_1));
     }
 
-    private static final byte[] FINAL_CHUNK = "0\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+    private static final byte[] FINAL_CHUNK = "0\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
 
     private void sendHead(int contentLength, boolean useChunked, boolean omitLength, boolean close) {
         headersSent = true;
-        HeadBuilder head = new HeadBuilder(128);
-        head.ascii("HTTP/1.1 ").ascii(Integer.toString(status)).space().ascii(reason()).crlf();
-        for (String[] h : headers) {
-            if (h[0].equalsIgnoreCase("Content-Length")
-                    || h[0].equalsIgnoreCase("Transfer-Encoding")
-                    || h[0].equalsIgnoreCase("Connection")) {
+        boolean closeConnection = close || !request.keepAlive();
+        byte[] head = new byte[headSize(contentLength, useChunked, omitLength, closeConnection)];
+        writeHead(head, 0, contentLength, useChunked, omitLength, closeConnection);
+        connection.enqueue(head);
+    }
+
+    /** The exact number of bytes {@link #writeHead} writes, so the head needs no growth or copy. */
+    private int headSize(int contentLength, boolean useChunked, boolean omitLength,
+                         boolean closeConnection) {
+        int size = statusLine().length;
+        for (int i = 0; i < headers.size(); i++) {
+            String[] header = headers.get(i);
+            if (skipped(header[0])) {
                 continue;
             }
-            head.ascii(h[0]).ascii(": ").ascii(h[1]).crlf();
+            size += header[0].length() + header[1].length() + 4; // ": " and CRLF
         }
-        for (String cookie : cookies) {
-            head.ascii("Set-Cookie: ").ascii(cookie).crlf();
+        for (int i = 0; i < cookies.size(); i++) {
+            size += SET_COOKIE.length + cookies.get(i).length() + 2;
         }
         if (useChunked) {
-            head.ascii("Transfer-Encoding: chunked").crlf();
+            size += TRANSFER_CHUNKED.length;
         } else if (!omitLength && contentLength >= 0) {
-            head.ascii("Content-Length: ").ascii(Integer.toString(contentLength)).crlf();
+            size += CONTENT_LENGTH.length + decimalLength(contentLength) + 2;
         }
-        if (close || !request.keepAlive()) {
-            head.ascii("Connection: close").crlf();
+        if (closeConnection) {
+            size += CONNECTION_CLOSE.length;
+        } else if (request.version().equals("HTTP/1.0")) {
+            size += CONNECTION_KEEP_ALIVE.length;
+        }
+        return size + 2; // the empty line ending the head
+    }
+
+    /** Writes the head into {@code out} at {@code offset}; returns the number of bytes written. */
+    private int writeHead(byte[] out, int offset, int contentLength, boolean useChunked,
+                          boolean omitLength, boolean closeConnection) {
+        int p = offset;
+        byte[] statusLine = statusLine();
+        System.arraycopy(statusLine, 0, out, p, statusLine.length);
+        p += statusLine.length;
+        for (int i = 0; i < headers.size(); i++) {
+            String[] header = headers.get(i);
+            if (skipped(header[0])) {
+                continue;
+            }
+            p = putAscii(out, p, header[0]);
+            out[p++] = ':';
+            out[p++] = ' ';
+            p = putAscii(out, p, header[1]);
+            out[p++] = '\r';
+            out[p++] = '\n';
+        }
+        for (int i = 0; i < cookies.size(); i++) {
+            p = putBytes(out, p, SET_COOKIE);
+            p = putAscii(out, p, cookies.get(i));
+            out[p++] = '\r';
+            out[p++] = '\n';
+        }
+        if (useChunked) {
+            p = putBytes(out, p, TRANSFER_CHUNKED);
+        } else if (!omitLength && contentLength >= 0) {
+            p = putBytes(out, p, CONTENT_LENGTH);
+            p = putDecimal(out, p, contentLength);
+            out[p++] = '\r';
+            out[p++] = '\n';
+        }
+        if (closeConnection) {
+            p = putBytes(out, p, CONNECTION_CLOSE);
             connection.markCloseAfterFlush();
         } else if (request.version().equals("HTTP/1.0")) {
-            head.ascii("Connection: keep-alive").crlf();
+            p = putBytes(out, p, CONNECTION_KEEP_ALIVE);
         }
-        head.crlf();
-        connection.enqueue(head.toArray());
+        out[p++] = '\r';
+        out[p++] = '\n';
+        return p - offset;
+    }
+
+    private static boolean skipped(String name) {
+        return name.equalsIgnoreCase("Content-Length")
+                || name.equalsIgnoreCase("Transfer-Encoding")
+                || name.equalsIgnoreCase("Connection");
+    }
+
+    private byte[] statusLine() {
+        if (reason != null) {
+            return ("HTTP/1.1 " + status + " " + reason + "\r\n").getBytes(BYTES);
+        }
+        byte[] line = STATUS_LINES[status];
+        if (line == null) {
+            line = ("HTTP/1.1 " + status + " " + reason(status) + "\r\n").getBytes(BYTES);
+            STATUS_LINES[status] = line;
+        }
+        return line;
     }
 
     private byte[] chunkFrame(byte[] data) {
@@ -248,10 +343,6 @@ public final class BlitzHttpResponseWriter {
         frame[p++] = '\r';
         frame[p] = '\n';
         return frame;
-    }
-
-    private String reason() {
-        return reason != null ? reason : reason(status);
     }
 
     public static String reason(int code) {
@@ -303,44 +394,57 @@ public final class BlitzHttpResponseWriter {
         }
     }
 
-    /** A growable response head; strings are written as PHP's ISO-8859-1 bytes. */
-    private static final class HeadBuilder {
-        private byte[] data;
-        private int length;
-
-        HeadBuilder(int capacity) {
-            data = new byte[Math.max(64, capacity)];
+    private static int putAscii(byte[] out, int offset, String value) {
+        for (int i = 0; i < value.length(); i++) {
+            out[offset++] = (byte) value.charAt(i);
         }
+        return offset;
+    }
 
-        HeadBuilder ascii(String s) {
-            if (length + s.length() > data.length) {
-                grow(length + s.length());
-            }
-            for (int i = 0; i < s.length(); i++) {
-                data[length++] = (byte) s.charAt(i);
-            }
-            return this;
-        }
+    private static int putBytes(byte[] out, int offset, byte[] value) {
+        System.arraycopy(value, 0, out, offset, value.length);
+        return offset + value.length;
+    }
 
-        HeadBuilder space() {
-            return ascii(" ");
+    private static int putDecimal(byte[] out, int offset, int value) {
+        int digits = decimalLength(value);
+        int p = offset + digits - 1;
+        int v = value;
+        while (p >= offset) {
+            out[p--] = (byte) ('0' + v % 10);
+            v /= 10;
         }
+        return offset + digits;
+    }
 
-        HeadBuilder crlf() {
-            return ascii("\r\n");
+    private static int decimalLength(int value) {
+        if (value < 10) {
+            return 1;
         }
-
-        private void grow(int need) {
-            int want = Math.max(need, data.length + (data.length >> 1));
-            byte[] grown = new byte[want];
-            System.arraycopy(data, 0, grown, 0, length);
-            data = grown;
+        if (value < 100) {
+            return 2;
         }
-
-        byte[] toArray() {
-            byte[] out = new byte[length];
-            System.arraycopy(data, 0, out, 0, length);
-            return out;
+        if (value < 1_000) {
+            return 3;
         }
+        if (value < 10_000) {
+            return 4;
+        }
+        if (value < 100_000) {
+            return 5;
+        }
+        if (value < 1_000_000) {
+            return 6;
+        }
+        if (value < 10_000_000) {
+            return 7;
+        }
+        if (value < 100_000_000) {
+            return 8;
+        }
+        if (value < 1_000_000_000) {
+            return 9;
+        }
+        return 10;
     }
 }

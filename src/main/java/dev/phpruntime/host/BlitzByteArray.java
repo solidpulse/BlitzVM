@@ -53,9 +53,16 @@ final class BlitzByteArray {
         data = grown;
     }
 
+    private ByteBuffer view;
+
     /** A writable view of the free tail, for {@code SocketChannel.read}. The caller adds to end. */
     ByteBuffer writeBuffer() {
-        return ByteBuffer.wrap(data, end, data.length - end);
+        if (view == null || view.array() != data) {
+            view = ByteBuffer.wrap(data);
+        }
+        view.position(end);
+        view.limit(data.length);
+        return view;
     }
 
     /** Moves unread bytes to the front; shrinks a buffer that one large request grew. */

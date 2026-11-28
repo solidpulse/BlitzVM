@@ -40,6 +40,13 @@ final class BlitzHttpConnection {
     private boolean closeAfterFlush;
     private boolean closed;
     private boolean inFlush;
+    /**
+     * The common response is one byte array and the queue is empty: keep it here so a hello
+     * request does not allocate a queue node and a wrapper for it. Anything behind it uses
+     * {@link #outbound}.
+     */
+    private byte[] pendingBytes;
+    private int pendingOffset;
 
     BlitzHttpConnection(SocketChannel channel, BlitzServerWorker worker, long id, int maxBodyBytes,
                         String scriptFilename, String documentRoot) {
@@ -144,7 +151,7 @@ final class BlitzHttpConnection {
         if (closed) {
             return;
         }
-        if (inputClosed && outbound.isEmpty()) {
+        if (inputClosed && !hasPendingOutput()) {
             close();
         }
     }
@@ -159,11 +166,11 @@ final class BlitzHttpConnection {
                 return;
             }
             if (parser.takeContinuePending()) {
-                outbound.add(new BytesOut(ByteBuffer.wrap(CONTINUE_100)));
+                enqueue(CONTINUE_100);
                 flushWrites();
             }
             if (request == null) {
-                if (inputClosed && outbound.isEmpty()) {
+                if (inputClosed && !hasPendingOutput()) {
                     close();
                 } else if (inputClosed) {
                     closeAfterFlush = true;
@@ -183,6 +190,10 @@ final class BlitzHttpConnection {
         flushWrites();
     }
 
+    private boolean hasPendingOutput() {
+        return pendingBytes != null || !outbound.isEmpty();
+    }
+
     void markCloseAfterFlush() {
         closeAfterFlush = true;
     }
@@ -191,14 +202,12 @@ final class BlitzHttpConnection {
         if (closed || bytes.length == 0) {
             return;
         }
-        outbound.add(new BytesOut(ByteBuffer.wrap(bytes)));
-    }
-
-    void enqueue(ByteBuffer buffer) {
-        if (closed || !buffer.hasRemaining()) {
+        if (pendingBytes == null && outbound.isEmpty()) {
+            pendingBytes = bytes;
+            pendingOffset = 0;
             return;
         }
-        outbound.add(new BytesOut(buffer));
+        outbound.add(new BytesOut(ByteBuffer.wrap(bytes)));
     }
 
     void enqueue(FileOut file) {
@@ -216,7 +225,31 @@ final class BlitzHttpConnection {
         }
         inFlush = true;
         try {
-            while (!outbound.isEmpty()) {
+            while (true) {
+                if (pendingBytes != null) {
+                    ByteBuffer buffer = ByteBuffer.wrap(pendingBytes, pendingOffset,
+                            pendingBytes.length - pendingOffset);
+                    while (buffer.hasRemaining()) {
+                        int n;
+                        try {
+                            n = channel.write(buffer);
+                        } catch (IOException e) {
+                            close();
+                            return;
+                        }
+                        if (n == 0) {
+                            pendingOffset = buffer.position();
+                            arm(true);
+                            return;
+                        }
+                    }
+                    pendingBytes = null;
+                    pendingOffset = 0;
+                    continue;
+                }
+                if (outbound.isEmpty()) {
+                    break;
+                }
                 Outbound item = outbound.peek();
                 boolean done;
                 try {
@@ -264,7 +297,7 @@ final class BlitzHttpConnection {
         byte[] response = new byte[head.length + bodyBytes.length];
         System.arraycopy(head, 0, response, 0, head.length);
         System.arraycopy(bodyBytes, 0, response, head.length, bodyBytes.length);
-        outbound.add(new BytesOut(ByteBuffer.wrap(response)));
+        enqueue(response);
         closeAfterFlush = true;
         flushWrites();
     }
@@ -282,6 +315,8 @@ final class BlitzHttpConnection {
             item.close();
         }
         outbound.clear();
+        pendingBytes = null;
+        pendingOffset = 0;
         try {
             channel.close();
         } catch (IOException ignored) {
