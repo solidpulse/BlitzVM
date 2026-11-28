@@ -52,6 +52,11 @@ public final class PhpEngine implements AutoCloseable {
     private final ContextPool pool;
     private final int maxRequestsPerContext;
     private final ConcurrentHashMap<Path, CachedSource> sources = new ConcurrentHashMap<>();
+    /**
+     * Host services installed on every {@link PhpContext} this engine builds: the CLI uses it
+     * to let a script start a Blitz\Http\Server, which needs the engine to boot worker scripts.
+     */
+    private volatile Object serverHost;
 
     private record CachedSource(long modified, long size, Source source) {
     }
@@ -109,6 +114,10 @@ public final class PhpEngine implements AutoCloseable {
 
     public Scheduler scheduler() {
         return scheduler;
+    }
+
+    public void setServerHost(Object host) {
+        this.serverHost = host;
     }
 
     /** Test hook: polyglot contexts built by the pool so far. */
@@ -173,7 +182,9 @@ public final class PhpEngine implements AutoCloseable {
             if (!holder.isBound()) {
                 throw new IllegalStateException("PHP language context was not created");
             }
-            return new WorkerContext(context, holder, streams, holder.install());
+            PhpContext php = holder.install();
+            php.setServerHost(serverHost);
+            return new WorkerContext(context, holder, streams, php);
         } catch (RuntimeException | Error e) {
             if (context != null) {
                 try {
@@ -227,7 +238,15 @@ public final class PhpEngine implements AutoCloseable {
     /** Today's path: one polyglot context per execution, for CLI runs and JavaScript. */
     private int runSingleUse(Source source, PhpRequest request, OutputStream out, OutputStream err,
                              SnapshotRun snapshotRun, Scheduler.Task task, boolean js) {
+        // A PHP context prepared here is bound before the script runs, so host services are
+        // installed before the first guest instruction.
+        PhpContextHolder holder = js ? null : PhpContextHolder.prepare();
         try (Context ctx = Context.newBuilder(source.getLanguage()).engine(engine).allowIO(IOAccess.ALL).out(out).err(err).build()) {
+            if (holder != null) {
+                ctx.initialize("php");
+                PhpContext php = holder.install();
+                php.setServerHost(serverHost);
+            }
             if (task != null) {
                 task.bindContext(ctx);
                 task.acquire();
@@ -250,6 +269,10 @@ public final class PhpEngine implements AutoCloseable {
             // close() of a cancelled context rethrows the cancellation; report it only once
             return request.status >= 500 ? request.status : fail(request, out, task, e, js);
         } finally {
+            if (holder != null) {
+                PhpContextHolder.finishPrepare();
+                holder.clear();
+            }
             cleanup(request, snapshotRun);
         }
     }
@@ -278,6 +301,7 @@ public final class PhpEngine implements AutoCloseable {
             borrowed.streams.install(out, err);
             PhpContext php = borrowed.holder.install();
             borrowed.uses++;
+            php.setServerHost(serverHost);
             php.bindRequest(request);
             Context ctx = borrowed.context;
             if (task != null) {

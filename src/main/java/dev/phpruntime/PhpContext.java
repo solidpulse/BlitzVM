@@ -146,7 +146,15 @@ public final class PhpContext {
     private byte[] outputBytes;
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
     private PrintStream err;
+    /**
+     * Per-request streams for a long-lived server context (Blitz\Http\Server). When null, output
+     * and diagnostics go to the polyglot context's streams, as CLI and server requests need.
+     */
+    private OutputStream requestOut;
+    private OutputStream requestErr;
     private PhpRequest request;
+    /** Host services for scripts that drive a server, installed once per context. */
+    private Object serverHost;
     /**
      * The host handler for a long-lived worker context, or null for an ordinary request
      * context. It lives as long as the context, unlike the per-request {@link PhpRequest}.
@@ -207,10 +215,20 @@ public final class PhpContext {
     private PrintStream errStream() {
         PrintStream e = err;
         if (e == null) {
-            e = new PrintStream(env.err(), true, StandardCharsets.ISO_8859_1);
+            OutputStream target = requestErr != null ? requestErr : env.err();
+            e = new PrintStream(target, true, StandardCharsets.ISO_8859_1);
             err = e;
         }
         return e;
+    }
+
+    /** The host runtime a script can use to start a server; null outside the CLI. */
+    public Object serverHost() {
+        return serverHost;
+    }
+
+    public void setServerHost(Object host) {
+        this.serverHost = host;
     }
 
     public PhpClass stdClass() {
@@ -749,6 +767,41 @@ public final class PhpContext {
         lazyCookies = null;
         installLazyIds();
         lazyMask = SG_ALL;
+    }
+
+    /**
+     * Starts one request on a long-lived server context (Blitz\Http\Server): the script's
+     * globals, functions, classes and statics stay, while the output state and the request-bound
+     * resources belong to this request. Superglobals are deliberately left alone: a native
+     * server API passes the request object to the handler and does not populate them, as
+     * Swoole does.
+     */
+    @TruffleBoundary
+    public void beginServerRequest(PhpRequest req, OutputStream out, OutputStream err) {
+        bindRequest(req);
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        envOut = null;
+        requestOut = out;
+        requestErr = err;
+        this.err = null;
+    }
+
+    /** Ends one server request; the worker keeps its context for the next one. */
+    @TruffleBoundary
+    public void endServerRequest() {
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        envOut = null;
+        requestOut = null;
+        requestErr = null;
+        err = null;
     }
 
     /** Maps the seven superglobal names to their global ids once per worker context. */
@@ -2295,7 +2348,7 @@ public final class PhpContext {
         try {
             OutputStream out = envOut;
             if (out == null) {
-                out = env.out();
+                out = requestOut != null ? requestOut : env.out();
                 envOut = out;
             }
             int length = output.length();
