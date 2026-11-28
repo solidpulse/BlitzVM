@@ -1,0 +1,12 @@
+bool(true)
+bool(true)
+bool(true)
+int(1)
+string(2) "s2"
+bool(true)
+ok
+TypeError: Cannot assign stdClass to property Base::$self of type ?Base
+TypeError: Cannot assign Base to property Child::$next of type ?self
+TypeError: Cannot assign stdClass to property Base::$countable of type ?Countable
+TypeError: Cannot assign float to property Base::$scalar of type string|int
+Error: Cannot modify readonly property Child::$owner

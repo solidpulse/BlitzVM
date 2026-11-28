@@ -22,8 +22,11 @@ final class CoreFunctions {
         types();
         time();
         http();
-        Builtins.def("function_exists", 1, 1, (ctx, a) ->
-                ctx.lookupFunction(PhpOps.toStr(a[0])) != null || Builtins.lookup(PhpOps.toStr(a[0])) != null);
+        Builtins.def("function_exists", 1, 1, (ctx, a) -> {
+            String name = PhpOps.toStr(a[0]);
+            return ctx.lookupFunction(name) != null
+                    || (WorkerFunctions.available(ctx, name) && Builtins.lookup(name) != null);
+        });
         Builtins.def("define", 2, 2, (ctx, a) ->
                 ctx.defineConstant(PhpOps.toStr(a[0]), PhpOps.copyOnAssign(a[1]), 0));
         Builtins.def("defined", 1, 1, (ctx, a) ->
@@ -40,8 +43,26 @@ final class CoreFunctions {
         Builtins.def("phpversion", 0, 1, (ctx, a) -> "8.3.0-truffle");
         Builtins.def("memory_get_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
         Builtins.def("memory_get_peak_usage", 0, 1, (ctx, a) -> Runtime.getRuntime().totalMemory());
-        Builtins.def("error_reporting", 0, 1, (ctx, a) -> 32767L);
+        Builtins.def("error_reporting", 0, 1, (ctx, a) -> {
+            long old = ctx.errorReporting();
+            if (a.length > 0 && a[0] != null && a[0] != PhpNull.INSTANCE) {
+                long level = PhpOps.toLong(a[0]);
+                // php leaves the ini entry alone when the level would not change.
+                if (level != old) {
+                    ctx.setErrorReporting(level);
+                    ctx.setErrorReportingIni(level);
+                }
+            }
+            return old;
+        });
         Builtins.def("ini_set", 2, 2, (ctx, a) -> {
+            if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("error_reporting")) {
+                String previous = String.valueOf(ctx.errorReportingIni());
+                long level = PhpOps.toLong(a[1]);
+                ctx.setErrorReporting(level);
+                ctx.setErrorReportingIni(level);
+                return previous;
+            }
             if (PhpStrings.lower(PhpOps.toStr(a[0])).equals("unserialize_callback_func")) {
                 ContextState state = ContextState.of(ctx);
                 String previous = state.unserializeCallbackFunc;
@@ -89,8 +110,9 @@ final class CoreFunctions {
             int limit = a.length >= 2 ? (int) PhpOps.toLong(a[1]) : 0;
             boolean provideObj = (options & dev.phpruntime.runtime.PhpBacktrace.PROVIDE_OBJECT) != 0;
             boolean omitArgs = (options & dev.phpruntime.runtime.PhpBacktrace.IGNORE_ARGS) != 0;
-            dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames =
-                    dev.phpruntime.runtime.PhpBacktrace.captureDebug(options, limit);
+            dev.phpruntime.runtime.PhpBacktrace.FrameEntry[] frames = omitArgs && !provideObj
+                    ? dev.phpruntime.runtime.PhpBacktrace.captureDebugFromContext(ctx, limit)
+                    : dev.phpruntime.runtime.PhpBacktrace.captureDebug(options, limit);
             return dev.phpruntime.runtime.PhpBacktrace.buildTraceArray(frames, provideObj, omitArgs);
         });
         Builtins.def("debug_print_backtrace", 0, 2, (ctx, a) -> {

@@ -1,0 +1,62 @@
+values: array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+pop: int(3)
+after: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+current: int(1)
+assoc-values: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+assoc-pop: int(2)
+assoc-after: array(1) {
+  ["x"]=>
+  int(1)
+}
+cow-pop: int(3)
+cow-copy: array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+ref-pop: int(2)
+ref-cell: int(1)
+named-values: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+named-pop: int(2)
+value-values: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+cuf-values: array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+values-string: string(72) "array_values(): Argument #1 ($array) must be of type array, string given"
+values-int: string(69) "array_values(): Argument #1 ($array) must be of type array, int given"
+values-null: string(70) "array_values(): Argument #1 ($array) must be of type array, null given"
+values-too-many: string(50) "array_values() expects exactly 1 argument, 2 given"
+pop-literal: string(66) "array_pop(): Argument #1 ($array) could not be passed by reference"

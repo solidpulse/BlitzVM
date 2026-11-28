@@ -1,0 +1,8 @@
+Square:4:Square:Square:Square:Square
+describe(): Argument #1 ($s) must be of type Shape, Other given
+describe(): Argument #2 ($b) must be of type Base, Other given
+describe(): Argument #3 ($n) must be of type Named, Other given
+describe(): Argument #4 ($t) must be of type Tagged, Other given
+describe(): Argument #5 ($q) must be of type Square, Other given
+Deep
+Square

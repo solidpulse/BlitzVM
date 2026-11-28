@@ -1,0 +1,23 @@
+handler: 8192 Calling is_a() with a string when $allow_string is false in 688-builtin-diagnostic-location.php on line 6
+bool(false)
+handler: 8192 Calling is_a() with a string when $allow_string is false in 688-builtin-diagnostic-location.php on line 8
+bool(false)
+handler: 8192 Calling is_a() with a string when $allow_string is false in 688-diag-include.php on line 5
+bool(false)
+handler: 8192 Calling is_a() with a string when $allow_string is false in 688-diag-include.php on line 3
+bool(false)
+handler: 8192 Calling is_a() with a string when $allow_string is false in 688-builtin-diagnostic-location.php on line 13
+array(1) {
+  [0]=>
+  bool(false)
+}
+handler: 8192 Calling is_a() with a string when $allow_string is false in 688-builtin-diagnostic-location.php on line 15
+bool(false)
+bool(false)
+bool(false)
+nested: 688-builtin-diagnostic-location.php:30
+array(1) {
+  [0]=>
+  string(8) "stdClass"
+}
+done

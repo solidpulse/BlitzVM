@@ -1,0 +1,13 @@
+int(42)
+int(42)
+float(42)
+float(1234.56)
+int(5)
+float(0.5)
+bool(false)
+int(9)
+string(62) "NumberFormatter::parse(): Number parsing failed: U_PARSE_ERROR"
+int(9)
+string(62) "NumberFormatter::parse(): Number parsing failed: U_PARSE_ERROR"
+ValueError: NumberFormatter::parse(): Argument #2 ($type) must be a NumberFormatter::TYPE_* constant
+ValueError: NumberFormatter::parse(): Argument #2 ($type) cannot be NumberFormatter::TYPE_CURRENCY constant, use NumberFormatter::parseCurrency() method instead

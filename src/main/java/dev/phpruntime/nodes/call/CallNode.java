@@ -21,19 +21,20 @@ public final class CallNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final String[] argNames;
     @CompilationFinal(dimensions = 1) private final boolean[] spreads;
     private final boolean hasSpreadOrNamed;
+    private final boolean hasSpread;
 
     @Child private SplBuiltinNode spl;
 
-    private static final int NO_INTRINSIC = 0;
-    private static final int IS_ARRAY = 1;
-    private static final int IS_STRING = 2;
-    private static final int IS_INT = 3;
-    private static final int IS_FLOAT = 4;
-    private static final int IS_BOOL = 5;
-    private static final int IS_NULL = 6;
-    private static final int IS_OBJECT = 7;
-    private static final int STRLEN = 8;
-    private static final int ARRAY_KEY_EXISTS = 9;
+    public static final int NO_INTRINSIC = 0;
+    public static final int IS_ARRAY = 1;
+    public static final int IS_STRING = 2;
+    public static final int IS_INT = 3;
+    public static final int IS_FLOAT = 4;
+    public static final int IS_BOOL = 5;
+    public static final int IS_NULL = 6;
+    public static final int IS_OBJECT = 7;
+    public static final int STRLEN = 8;
+    public static final int ARRAY_KEY_EXISTS = 9;
 
     public CallNode(String name, int functionId, PhpNode[] args, LValueNode[] refTargets) {
         this(null, -1, name, functionId, args, refTargets, null, null);
@@ -61,6 +62,7 @@ public final class CallNode extends PhpNode {
         this.argNames = argNames;
         this.spreads = spreads;
         boolean complex = false;
+        boolean spreadSeen = false;
         if (argNames != null) {
             for (String s : argNames) {
                 if (s != null) {
@@ -69,15 +71,17 @@ public final class CallNode extends PhpNode {
                 }
             }
         }
-        if (!complex && spreads != null) {
+        if (spreads != null) {
             for (boolean b : spreads) {
                 if (b) {
                     complex = true;
+                    spreadSeen = true;
                     break;
                 }
             }
         }
         this.hasSpreadOrNamed = complex;
+        this.hasSpread = spreadSeen;
     }
 
     public CallNode withSpl(dev.phpruntime.PhpLanguage language) {
@@ -94,6 +98,20 @@ public final class CallNode extends PhpNode {
      * of machine code each, and these are among the most called functions in WordPress. Any
      * other argument type takes the generic path, which owns coercion and errors.
      */
+    /**
+     * The intrinsic kind a builtin name has with its usual argument count ({@link #intrinsicArgc}),
+     * for call sites that resolve at run time: a namespaced {@code is_string($x)} reaches the
+     * builtin only once the namespace has no function of that name.
+     */
+    public static int intrinsicForName(String name) {
+        int kind = intrinsicFor(name, 1);
+        return kind != NO_INTRINSIC ? kind : intrinsicFor(name, 2);
+    }
+
+    public static int intrinsicArgc(int kind) {
+        return kind == ARRAY_KEY_EXISTS ? 2 : 1;
+    }
+
     private static int intrinsicFor(String name, int argc) {
         if (argc == 1) {
             return switch (name) {
@@ -159,13 +177,22 @@ public final class CallNode extends PhpNode {
             b.beginBlock();
             b.beginStoreLocal(result);
             if (hasSpreadOrNamed) {
-                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
-                e.beginRawArgs(raw);
-                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexFunction(keepRef);
-                b.emitLoadLocal(callee);
-                b.emitLoadLocal(raw);
-                b.endDoComplexFunction();
+                if (!hasSpread) {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal args = e.temp();
+                    e.namedArgs(this.args, this.refTargets, this.argNames, callee, args);
+                    b.beginDoNamedFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(args);
+                    b.endDoNamedFunction();
+                } else {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                    e.beginRawArgs(raw);
+                    e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                    b.beginDoComplexFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(raw);
+                    b.endDoComplexFunction();
+                }
             } else {
                 b.beginDoCall(site.withKeepRef(keepRef), callee);
                 for (int i = 0; i < args.length; i++) {
@@ -229,13 +256,22 @@ public final class CallNode extends PhpNode {
             b.beginBlock();
             b.emitResolveFunction(site, callee);
             if (hasSpreadOrNamed) {
-                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
-                e.beginRawArgs(raw);
-                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexFunction(keepRef);
-                b.emitLoadLocal(callee);
-                b.emitLoadLocal(raw);
-                b.endDoComplexFunction();
+                if (!hasSpread) {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal args = e.temp();
+                    e.namedArgs(this.args, this.refTargets, this.argNames, callee, args);
+                    b.beginDoNamedFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(args);
+                    b.endDoNamedFunction();
+                } else {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                    e.beginRawArgs(raw);
+                    e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                    b.beginDoComplexFunction(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(raw);
+                    b.endDoComplexFunction();
+                }
             } else {
                 b.beginDoCall(site.withKeepRef(keepRef), callee);
                 for (int i = 0; i < args.length; i++) {

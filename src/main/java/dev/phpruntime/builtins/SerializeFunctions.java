@@ -405,7 +405,7 @@ final class SerializeFunctions {
                 withTrait[2] = entry.declaringClass();
                 args = withTrait;
             }
-            return CallArgHelper.unwrapReturn(entry.callTarget().call(args));
+            return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), args));
         }
     }
 
@@ -1238,7 +1238,7 @@ final class SerializeFunctions {
                 System.arraycopy(callArgs, 2, withTrait, 3, args.length);
                 callArgs = withTrait;
             }
-            return CallArgHelper.unwrapReturn(entry.callTarget().call(callArgs));
+            return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(entry.callTarget(), callArgs));
         }
 
         private static void putProperty(PhpObject obj, String key, Object value) {

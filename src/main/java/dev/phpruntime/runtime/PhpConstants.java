@@ -14,9 +14,12 @@ public final class PhpConstants {
             Map.entry("DIRECTORY_SEPARATOR", "/"),
             Map.entry("PATH_SEPARATOR", ":"),
             Map.entry("PHP_EOL", "\n"),
+            Map.entry("MT_RAND_MT19937", 0L),
+            Map.entry("MT_RAND_PHP", 1L),
             Map.entry("PHP_INT_MAX", Long.MAX_VALUE),
             Map.entry("PHP_INT_MIN", Long.MIN_VALUE),
             Map.entry("PHP_INT_SIZE", 8L),
+            Map.entry("PHP_MAXPATHLEN", 4096L),
             Map.entry("PHP_FLOAT_EPSILON", Math.ulp(1.0)),
             Map.entry("PHP_FLOAT_MAX", Double.MAX_VALUE),
             Map.entry("PHP_VERSION", "8.3.0-truffle"),
@@ -59,6 +62,39 @@ public final class PhpConstants {
             Map.entry("E_DEPRECATED", 8192L),
             Map.entry("E_USER_DEPRECATED", 16384L),
             Map.entry("E_ALL", 32767L),
+            Map.entry("LOG_EMERG", 0L),
+            Map.entry("LOG_ALERT", 1L),
+            Map.entry("LOG_CRIT", 2L),
+            Map.entry("LOG_ERR", 3L),
+            Map.entry("LOG_WARNING", 4L),
+            Map.entry("LOG_NOTICE", 5L),
+            Map.entry("LOG_INFO", 6L),
+            Map.entry("LOG_DEBUG", 7L),
+            Map.entry("LOG_KERN", 0L),
+            Map.entry("LOG_USER", 8L),
+            Map.entry("LOG_MAIL", 16L),
+            Map.entry("LOG_DAEMON", 24L),
+            Map.entry("LOG_AUTH", 32L),
+            Map.entry("LOG_SYSLOG", 40L),
+            Map.entry("LOG_LPR", 48L),
+            Map.entry("LOG_NEWS", 56L),
+            Map.entry("LOG_UUCP", 64L),
+            Map.entry("LOG_CRON", 72L),
+            Map.entry("LOG_AUTHPRIV", 80L),
+            Map.entry("LOG_LOCAL0", 128L),
+            Map.entry("LOG_LOCAL1", 136L),
+            Map.entry("LOG_LOCAL2", 144L),
+            Map.entry("LOG_LOCAL3", 152L),
+            Map.entry("LOG_LOCAL4", 160L),
+            Map.entry("LOG_LOCAL5", 168L),
+            Map.entry("LOG_LOCAL6", 176L),
+            Map.entry("LOG_LOCAL7", 184L),
+            Map.entry("LOG_PID", 1L),
+            Map.entry("LOG_CONS", 2L),
+            Map.entry("LOG_ODELAY", 4L),
+            Map.entry("LOG_NDELAY", 8L),
+            Map.entry("LOG_NOWAIT", 16L),
+            Map.entry("LOG_PERROR", 32L),
             Map.entry("COUNT_RECURSIVE", 1L),
             Map.entry("COUNT_NORMAL", 0L),
             Map.entry("EXTR_OVERWRITE", 0L),
@@ -482,14 +518,14 @@ public final class PhpConstants {
 
     /** Looks up a built-in constant (including case-insensitive true/false/null), or null if absent. */
     public static Object lookupBuiltin(String name) {
-        String lower = PhpStrings.lower(name);
-        if (lower.equals("true")) {
+        // Most names are upper-case constants; compare in place instead of lowercasing a copy.
+        if (PhpStrings.equalsIgnoreCase(name, "true")) {
             return Boolean.TRUE;
         }
-        if (lower.equals("false")) {
+        if (PhpStrings.equalsIgnoreCase(name, "false")) {
             return Boolean.FALSE;
         }
-        if (lower.equals("null")) {
+        if (PhpStrings.equalsIgnoreCase(name, "null")) {
             return PhpNull.INSTANCE;
         }
         return compileTime(name);

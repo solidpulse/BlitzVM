@@ -1,0 +1,27 @@
+start er=22527
+after @counted() er=22527
+  gen start er=22527
+  gen after @ er=22527
+value 1
+  loop er=22527
+  gen resumed er=22527
+value 2
+  loop er=22527
+end er=22527
+start2 er=22527
+  suspended start er=22527
+suspended 0 => 10
+  suspended loop er=4437
+  suspended resumed er=22527
+suspended 1 => NULL
+  suspended loop er=22527
+end2 er=22527
+start3 er=22527
+  gen start er=4437
+  gen after @ er=4437
+  collected 1
+  collector er=4437
+  gen resumed er=4437
+  collected 2
+  collector er=4437
+end3 er=22527

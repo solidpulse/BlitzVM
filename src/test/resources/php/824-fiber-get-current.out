@@ -1,0 +1,3 @@
+NULL
+ArgumentCountError: Fiber::getCurrent() expects exactly 0 arguments, 1 given
+bool(true)

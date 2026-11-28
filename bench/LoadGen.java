@@ -29,6 +29,9 @@ public class LoadGen {
             .build();
 
     public static void main(String[] args) throws Exception {
+        if (!args[0].equals("once") && !Boolean.getBoolean("skipPreflight")) {
+            preflight(args[1]);
+        }
         switch (args[0]) {
             case "load" -> load(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
             case "probe" -> probe(args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
@@ -70,6 +73,45 @@ public class LoadGen {
         }
     }
 
+    /**
+     * One request before any load: a run against a URL that answers 404, 500 or a redirect measures
+     * nothing, so refuse to start (-DskipPreflight=true to bypass, -Dexpect=TEXT to also require
+     * TEXT in the body).
+     */
+    private static void preflight(String url) throws Exception {
+        // Sent like the load phase (raw connection, same -Dhost Host header), so a site that
+        // redirects unless it sees its configured host passes here exactly when the run would.
+        URI uri = URI.create(url);
+        int port = uri.getPort() < 0 ? 80 : uri.getPort();
+        String target = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        String hostHeader = System.getProperty("host", uri.getHost() + ":" + port);
+        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + hostHeader
+                + "\r\nUser-Agent: loadgen\r\nConnection: close\r\n\r\n")
+                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        int status;
+        String text;
+        RawConnection conn = null;
+        try {
+            conn = new RawConnection(uri.getHost(), port);
+            conn.body = new java.io.ByteArrayOutputStream();
+            status = conn.exchange(request);
+            text = conn.body.toString(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.out.println("PREFLIGHT FAILED " + url + ": " + e);
+            System.exit(2);
+            return;
+        } finally {
+            if (conn != null) { conn.close(); }
+        }
+        String expect = System.getProperty("expect");
+        if (status != 200 || (expect != null && !text.contains(expect))) {
+            String body = text.length() > 200 ? text.substring(0, 200) + "..." : text;
+            System.out.println("PREFLIGHT FAILED " + url + ": status " + status + ", "
+                    + text.length() + " bytes: " + body.replace('\n', ' '));
+            System.exit(2);
+        }
+    }
+
     private static void load(String url, int concurrency, int seconds) throws Exception {
         // Warm-up: lets JITs (Graal, opcache) settle before measuring.
         long warmEnd = System.nanoTime() + Duration.ofSeconds(Long.getLong("warmup", 5)).toNanos();
@@ -86,8 +128,9 @@ public class LoadGen {
         perThread.forEach(all::addAll);
         Collections.sort(all);
         int n = all.size();
-        System.out.printf("requests=%d errors=%d rps=%.0f p50=%.2fms p99=%.2fms max=%.2fms%n",
-                n, errors.get(), n / elapsed, pct(all, 50), pct(all, 99), n == 0 ? 0 : all.get(n - 1) / 1e6);
+        System.out.printf("requests=%d errors=%d rps=%.0f p50=%.2fms p99=%.2fms max=%.2fms%s%n",
+                n, errors.get(), n / elapsed, pct(all, 50), pct(all, 99), n == 0 ? 0 : all.get(n - 1) / 1e6,
+                errors.get() * 100 > Math.max(n, 1) ? "  INVALID: more than 1% errors" : "");
     }
 
     private static void run(String url, int concurrency, long end, List<List<Long>> sink, AtomicLong errors) throws Exception {
@@ -97,8 +140,11 @@ public class LoadGen {
         String target = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
         // -Dhost overrides the Host header (WordPress renders and redirects by its configured site URL).
         String hostHeader = System.getProperty("host", host + ":" + port);
-        byte[] request = ("GET " + target + " HTTP/1.1\r\nHost: " + hostHeader + "\r\nUser-Agent: loadgen\r\n\r\n")
-                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        String head = "GET " + target + " HTTP/1.1\r\nHost: " + hostHeader + "\r\nUser-Agent: loadgen\r\n";
+        byte[] request = (head + "\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        // -Dcookies=true: each connection acts as one browser, sending back the cookies it was given
+        // (otherwise an app with sessions creates a new session on every request).
+        boolean cookies = Boolean.getBoolean("cookies");
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < concurrency; i++) {
             List<Long> lat = new ArrayList<>();
@@ -109,6 +155,8 @@ public class LoadGen {
             }
             threads.add(Thread.ofPlatform().start(() -> {
                 RawConnection conn = null;
+                java.util.Map<String, String> jar = new java.util.LinkedHashMap<>();
+                byte[] withCookies = request;
                 try {
                     while (System.nanoTime() < end) {
                         long t = System.nanoTime();
@@ -116,7 +164,15 @@ public class LoadGen {
                             if (conn == null) {
                                 conn = new RawConnection(host, port);
                             }
-                            int status = conn.exchange(request);
+                            conn.jar = cookies ? jar : null;
+                            int status = conn.exchange(withCookies);
+                            if (cookies && conn.jarChanged) {
+                                StringBuilder c = new StringBuilder(head).append("Cookie: ");
+                                jar.forEach((k, v) -> c.append(k).append('=').append(v).append("; "));
+                                c.setLength(c.length() - 2);
+                                withCookies = c.append("\r\n\r\n").toString()
+                                        .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+                            }
                             if (status != 200) {
                                 errors.incrementAndGet();
                             }
@@ -146,6 +202,10 @@ public class LoadGen {
         private final java.io.OutputStream out;
         private final java.io.BufferedInputStream in;
         boolean closed;
+        /** When set, the response body is kept here instead of skipped. */
+        java.io.ByteArrayOutputStream body;
+        java.util.Map<String, String> jar;
+        boolean jarChanged;
 
         RawConnection(String host, int port) throws java.io.IOException {
             socket = new java.net.Socket(host, port);
@@ -167,6 +227,7 @@ public class LoadGen {
             int status = Integer.parseInt(statusLine.split(" ")[1]);
             long length = -1;
             boolean chunked = false;
+            jarChanged = false;
             for (String h = line(); !h.isEmpty(); h = line()) {
                 int c = h.indexOf(':');
                 String name = h.substring(0, c).trim();
@@ -177,6 +238,12 @@ public class LoadGen {
                     chunked = true;
                 } else if (name.equalsIgnoreCase("Connection") && value.equalsIgnoreCase("close")) {
                     closed = true;
+                } else if (jar != null && name.equalsIgnoreCase("Set-Cookie")) {
+                    String pair = value.split(";", 2)[0];
+                    int eq = pair.indexOf('=');
+                    if (eq > 0 && !pair.substring(eq + 1).equals(jar.put(pair.substring(0, eq), pair.substring(eq + 1)))) {
+                        jarChanged = true;
+                    }
                 }
             }
             if (chunked) {
@@ -187,6 +254,8 @@ public class LoadGen {
                 line();
             } else if (length > 0) {
                 skip(length);
+            } else if (length < 0 && closed && body != null) {
+                in.transferTo(body); // no length on a closing connection: the body runs to EOF
             }
             if (closed) {
                 socket.close();
@@ -208,6 +277,18 @@ public class LoadGen {
         }
 
         private void skip(long n) throws java.io.IOException {
+            if (body != null) {
+                byte[] buf = new byte[8192];
+                while (n > 0) {
+                    int k = in.read(buf, 0, (int) Math.min(buf.length, n));
+                    if (k < 0) {
+                        throw new java.io.EOFException();
+                    }
+                    body.write(buf, 0, k);
+                    n -= k;
+                }
+                return;
+            }
             while (n > 0) {
                 long k = in.skip(n);
                 if (k <= 0) {

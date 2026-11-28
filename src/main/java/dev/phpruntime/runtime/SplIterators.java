@@ -32,7 +32,7 @@ public final class SplIterators {
             raw[offset++] = method.declaringClass();
         }
         System.arraycopy(args, 0, raw, offset, args.length);
-        return CallArgHelper.unwrapReturn(method.callTarget().call(raw));
+        return CallArgHelper.unwrapReturn(dev.phpruntime.runtime.PhpBacktrace.callUnsited(method.callTarget(), raw));
     }
 
     public static PhpObject resolve(PhpObject object) {

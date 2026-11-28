@@ -1,0 +1,14 @@
+0: Error: Unknown named parameter $wat
+1: Error: Named parameter $length overwrites previous argument
+2: Error: Named parameter $pad_string overwrites previous argument
+3: ArgumentCountError: str_pad() expects at least 2 arguments, 1 given
+4: ArgumentCountError: str_pad(): Argument #1 ($string) not passed
+5: ArgumentCountError: array_keys(): Argument #2 ($filter_value) must be passed explicitly, because the default value is not known
+6: ArgumentCountError: array_slice(): Argument #2 ($offset) not passed
+7: Error: preg_match(): Argument #3 ($matches) could not be passed by reference
+8: Error: sort(): Argument #1 ($array) could not be passed by reference
+9: Error: str_replace(): Argument #4 ($count) could not be passed by reference
+10: ArgumentCountError: Internal function sprintf() does not accept named variadic arguments
+11: ArgumentCountError: Internal function array_push() does not accept named variadic arguments
+12: TypeError: implode(): If argument #1 ($separator) is of type string, argument #2 ($array) must be of type array, null given
+13: Error: Unknown named parameter $wat

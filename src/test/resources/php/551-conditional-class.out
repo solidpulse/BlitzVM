@@ -1,0 +1,12 @@
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+cond
+bool(false)
+bool(false)
+takeMissing(): Argument #1 ($x) must be of type NeverDeclared, Solid given
+bool(true)
+Cannot assign Solid to property Holder::$item of type Cond

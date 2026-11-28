@@ -2563,6 +2563,10 @@ final class PdoFunctions {
     }
 
     static Object iteratorRewind(PhpContext ctx, PhpObject self, Object[] args) {
+        if (self.nativeState() instanceof dev.phpruntime.runtime.WeakMapIteratorState weak) {
+            weak.rewind();
+            return PhpNull.INSTANCE;
+        }
         IteratorState is = iterator(ctx, self, "InternalIterator::rewind");
         is.hasPending = false;
         is.pending = null;
@@ -2571,24 +2575,37 @@ final class PdoFunctions {
     }
 
     static Object iteratorValid(PhpContext ctx, PhpObject self, Object[] args) {
+        if (self.nativeState() instanceof dev.phpruntime.runtime.WeakMapIteratorState weak) {
+            return weak.valid();
+        }
         IteratorState is = iterator(ctx, self, "InternalIterator::valid");
         fillPending(ctx, is);
         return is.hasPending;
     }
 
     static Object iteratorCurrent(PhpContext ctx, PhpObject self, Object[] args) {
+        if (self.nativeState() instanceof dev.phpruntime.runtime.WeakMapIteratorState weak) {
+            return weak.current();
+        }
         IteratorState is = iterator(ctx, self, "InternalIterator::current");
         fillPending(ctx, is);
         return is.hasPending ? is.pending : PhpNull.INSTANCE;
     }
 
     static Object iteratorKey(PhpContext ctx, PhpObject self, Object[] args) {
+        if (self.nativeState() instanceof dev.phpruntime.runtime.WeakMapIteratorState weak) {
+            return weak.key();
+        }
         IteratorState is = iterator(ctx, self, "InternalIterator::key");
         fillPending(ctx, is);
         return is.hasPending ? is.pendingKey : PhpNull.INSTANCE;
     }
 
     static Object iteratorNext(PhpContext ctx, PhpObject self, Object[] args) {
+        if (self.nativeState() instanceof dev.phpruntime.runtime.WeakMapIteratorState weak) {
+            weak.next();
+            return PhpNull.INSTANCE;
+        }
         IteratorState is = iterator(ctx, self, "InternalIterator::next");
         is.hasPending = false;
         is.pending = null;

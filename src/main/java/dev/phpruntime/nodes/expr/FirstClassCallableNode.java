@@ -115,7 +115,8 @@ public final class FirstClassCallableNode extends PhpNode {
         if (entry == null) {
             PhpClass.MethodEntry magic = cls.callMethod();
             if (magic != null && magic.callTarget() != null) {
-                return ctx.newClosure(PhpClosure.magicCall(magic.callTarget(), obj, cls, name));
+                return ctx.newClosure(PhpClosure.magicCall(magic.callTarget(), obj, cls,
+                        magic.fromTrait() ? magic.declaringClass() : null, name));
             }
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + cls.name() + "::" + name + "()", site);
@@ -126,7 +127,7 @@ public final class FirstClassCallableNode extends PhpNode {
         }
         Object thisArg = entry.isStatic() ? PhpNull.INSTANCE : obj;
         return ctx.newClosure(PhpClosure.method(
-                entry.callTarget(), thisArg, cls, entry.fromTrait() ? entry.declaringClass() : null));
+                entry.callTarget(), thisArg, cls, entry.fromTrait() ? entry.declaringClass() : null, entry));
     }
 
     @TruffleBoundary
@@ -137,11 +138,14 @@ public final class FirstClassCallableNode extends PhpNode {
         if (entry == null) {
             if (forwarding && thisValue instanceof PhpObject thisObj
                     && targetClass.callMethod() != null && targetClass.callMethod().callTarget() != null) {
-                return ctx.newClosure(PhpClosure.magicCall(targetClass.callMethod().callTarget(), thisObj, calledArg, name));
+                PhpClass.MethodEntry magic = targetClass.callMethod();
+                return ctx.newClosure(PhpClosure.magicCall(magic.callTarget(), thisObj, calledArg,
+                        magic.fromTrait() ? magic.declaringClass() : null, name));
             }
             PhpClass.MethodEntry magicStatic = targetClass.callStaticMethod();
             if (magicStatic != null && magicStatic.callTarget() != null) {
-                return ctx.newClosure(PhpClosure.magicCall(magicStatic.callTarget(), PhpNull.INSTANCE, calledArg, name));
+                return ctx.newClosure(PhpClosure.magicCall(magicStatic.callTarget(), PhpNull.INSTANCE, calledArg,
+                        magicStatic.fromTrait() ? magicStatic.declaringClass() : null, name));
             }
             CompilerDirectives.transferToInterpreter();
             throw new PhpError("Call to undefined method " + targetClass.name() + "::" + name + "()", site);
@@ -162,7 +166,7 @@ public final class FirstClassCallableNode extends PhpNode {
                     + "() cannot be called statically", site);
         }
         return ctx.newClosure(PhpClosure.method(
-                entry.callTarget(), thisArg, calledArg, entry.fromTrait() ? entry.declaringClass() : null));
+                entry.callTarget(), thisArg, calledArg, entry.fromTrait() ? entry.declaringClass() : null, entry));
     }
 
     @Override

@@ -1,0 +1,40 @@
+int: false false true true true false false false false false
+float: false false false false false true true false false false
+string: true false false false false false false false false false
+empty: true false false false false false false false false false
+array: false true false false false false false false false false
+null: false false false false false false false false true false
+true: false false false false false false false true false false
+false: false false false false false false false true false false
+object: false false false false false false false false false true
+closure: false false false false false false false false false true
+string strlen: 6
+int strlen: 5
+float strlen: 3
+null strlen: 0
+bool strlen: 1
+zero strlen: 1
+neg strlen: 3
+'a' => true
+'n' => true
+'z' => false
+5 => true
+'5' => true
+5.7 => true
+NULL => true
+true => false
+false => false
+TypeError: array_key_exists(): Argument #2 ($array) must be of type array, ArrayObject given
+TypeError: array_key_exists(): Argument #1 ($key) must be a valid array offset type
+ArgumentCountError: is_string() expects exactly 1 argument, 0 given
+ArgumentCountError: strlen() expects exactly 1 argument, 2 given
+bool(true)
+string(13) "shadow:string"
+string(12) "shadow:array"
+int(99)
+string(7) "changed"
+int(99)
+string(7) "changed"
+bool(true)
+bool(false)
+3000

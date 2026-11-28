@@ -1,0 +1,11 @@
+strict-int: bool(true)
+strict-all: bool(true)
+strict-named: bool(true)
+strict-first-class: bool(true)
+closure-int: string(8) "no error"
+named-function: string(8) "no error"
+first-class: string(8) "no error"
+return-type: string(49) "Return value must be of type string, int returned"
+non-array: string(69) "array_any(): Argument #1 ($array) must be of type array, string given"
+value-call: bool(true)
+call-user-func: bool(true)

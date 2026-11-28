@@ -1,0 +1,72 @@
+RuntimeException top @2
+  #0 641-exception-trace-stack.php:18 mk641 [file,line,function]
+#0 641-exception-trace-stack.php(18): mk641()
+#1 {main}
+RuntimeException method @2
+  #0 641-exception-trace-stack.php:13 mk641 [file,line,function]
+  #1 641-exception-trace-stack.php:19 K->m [file,line,function,class,type]
+#0 641-exception-trace-stack.php(13): mk641()
+#1 641-exception-trace-stack.php(19): K->m()
+#2 {main}
+RuntimeException arrow in array_map @2
+  #0 641-exception-trace-stack.php:14 mk641 [file,line,function]
+  #1 [internal] K::{closure:K::s():14} [function,class,type]
+  #2 641-exception-trace-stack.php:14 array_map [file,line,function]
+  #3 641-exception-trace-stack.php:20 K::s [file,line,function,class,type]
+#0 641-exception-trace-stack.php(14): mk641()
+#1 [internal function]: K::{closure}()
+#2 641-exception-trace-stack.php(14): array_map()
+#3 641-exception-trace-stack.php(20): K::s()
+#4 {main}
+RuntimeException method @2
+  #0 641-exception-trace-stack.php:13 mk641 [file,line,function]
+  #1 641-exception-trace-stack.php:15 K->m [file,line,function,class,type]
+  #2 641-exception-trace-stack.php:21 K->viaCall [file,line,function,class,type]
+#0 641-exception-trace-stack.php(13): mk641()
+#1 641-exception-trace-stack.php(15): K->m()
+#2 641-exception-trace-stack.php(21): K->viaCall()
+#3 {main}
+RuntimeException include @2
+  #0 641-ex-include.php:2 mk641 [file,line,function]
+  #1 641-exception-trace-stack.php:22 include [file,line,args,function]
+#0 641-ex-include.php(2): mk641()
+#1 641-exception-trace-stack.php(22): include('...')
+#2 {main}
+RuntimeException bound @2
+  #0 641-exception-trace-stack.php:23 mk641 [file,line,function]
+  #1 641-exception-trace-stack.php:24 K->{closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/641-exception-trace-stack.php:23} [file,line,function,class,type]
+#0 641-exception-trace-stack.php(23): mk641()
+#1 641-exception-trace-stack.php(24): K->{closure}()
+#2 {main}
+RuntimeException outer @25
+  #0 641-exception-trace-stack.php:26 rethrow [file,line,function]
+#0 641-exception-trace-stack.php(26): rethrow()
+#1 {main}
+DomainException inner @25
+  #0 641-exception-trace-stack.php:26 rethrow [file,line,function]
+#0 641-exception-trace-stack.php(26): rethrow()
+#1 {main}
+RuntimeException generator @2
+  #0 641-exception-trace-stack.php:27 mk641 [file,line,function]
+  #1 641-exception-trace-stack.php:28 gen641 [file,line,function]
+#0 641-exception-trace-stack.php(27): mk641()
+#1 641-exception-trace-stack.php(28): gen641()
+#2 {main}
+DivisionByZeroError Division by zero @29
+  #0 641-exception-trace-stack.php:29 intdiv [file,line,function]
+#0 641-exception-trace-stack.php(29): intdiv()
+#1 {main}
+ArgumentCountError strlen() expects exactly 1 argument, 0 given @30
+  #0 641-exception-trace-stack.php:30 strlen [file,line,function]
+  #1 [internal] {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/641-exception-trace-stack.php:30} [function]
+  #2 641-exception-trace-stack.php:30 array_map [file,line,function]
+#0 641-exception-trace-stack.php(30): strlen()
+#1 [internal function]: {closure}()
+#2 641-exception-trace-stack.php(30): array_map()
+#3 {main}
+Exception in usort @32
+  #0 [internal] {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/641-exception-trace-stack.php:32} [function]
+  #1 641-exception-trace-stack.php:32 usort [file,line,function]
+#0 [internal function]: {closure}()
+#1 641-exception-trace-stack.php(32): usort()
+#2 {main}

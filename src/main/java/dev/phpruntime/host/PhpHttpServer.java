@@ -26,11 +26,8 @@ public final class PhpHttpServer implements PhpServer {
     public PhpHttpServer(PhpDispatcher dispatcher, int port, int maxConnections) throws IOException {
         this.dispatcher = dispatcher;
         this.server = HttpServer.create(new InetSocketAddress(port), 1024);
-        this.workers = Executors.newFixedThreadPool(maxConnections, r -> {
-            Thread t = new Thread(r, "php-http-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        this.workers = Executors.newFixedThreadPool(maxConnections,
+                r -> PhpThreads.newThread(r, "php-http-worker", true));
         server.setExecutor(workers);
         server.createContext("/", this::handle);
     }

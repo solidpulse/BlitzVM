@@ -1,0 +1,9 @@
+ArgumentCountError: Internal function forward_static_call() does not accept named variadic arguments
+string(3) "1-2"
+ArgumentCountError: Internal function sprintf() does not accept named variadic arguments
+ArgumentCountError: Internal function max() does not accept named variadic arguments
+ArgumentCountError: Internal function register_shutdown_function() does not accept named variadic arguments
+ArgumentCountError: Internal function array_merge() does not accept named variadic arguments
+ArgumentCountError: Internal function var_dump() does not accept named variadic arguments
+ArgumentCountError: Internal function printf() does not accept named variadic arguments
+ArgumentCountError: Internal function sprintf() does not accept named variadic arguments

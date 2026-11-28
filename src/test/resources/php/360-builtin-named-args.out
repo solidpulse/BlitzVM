@@ -16,8 +16,8 @@ ArgumentCountError: str_pad(): Argument #2 ($length) not passed
 ArgumentCountError: str_pad(): Argument #1 ($string) not passed
 ArgumentCountError: str_pad() expects at least 2 arguments, 1 given
 ArgumentCountError: array_keys(): Argument #2 ($filter_value) must be passed explicitly, because the default value is not known
-ArgumentCountError: array_push() does not accept unknown named parameters
-ArgumentCountError: sprintf() does not accept unknown named parameters
+ArgumentCountError: Internal function array_push() does not accept named variadic arguments
+ArgumentCountError: Internal function sprintf() does not accept named variadic arguments
 int(2)
 array(1) {
   [0]=>

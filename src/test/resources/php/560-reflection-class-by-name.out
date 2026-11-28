@@ -1,0 +1,25 @@
+Shop\Model\Post|Post|Shop\Model|1|00|01
+Shop\Model\Post|Post|Shop\Model|1|00|01
+Shop\Model\Post|Post|Shop\Model|1|00|01
+Shop\Model\Post|Post|Shop\Model|1|00|01
+Shop\Model\Post|Post|Shop\Model|1|00|01
+Shop\Model\Post|Post|Shop\Model|1|00|01
+Shop\Model\Repo|Repo|Shop\Model|1|10|00
+Shop\Model\Repo|Repo|Shop\Model|1|10|00
+Shop\Model\Greets|Greets|Shop\Model|1|01|00
+Shop\Model\Suit|Suit|Shop\Model|1|00|11
+anonymous=1|0|Shop\Model\Base
+autoload:LazyWidget
+LazyWidget|LazyWidget||0|00|00
+LazyWidget|LazyWidget||0|00|00
+autoload:NoSuchClass
+ReflectionException: Class "NoSuchClass" does not exist
+autoload:Shop\Model\Nope
+ReflectionException: Class "Shop\Model\Nope" does not exist
+ReflectionException: Class "not a name" does not exist
+bool(true)
+bool(false)
+bool(false)
+bool(false)
+file
+line

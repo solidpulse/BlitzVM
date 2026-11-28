@@ -39,6 +39,33 @@ final class MiscFunctions {
                 a.length > 2 ? PhpOps.toStr(a[2]) : "UTF-8"));
         Builtins.def("session_status", 0, 0, (ctx, a) -> 1L); // PHP_SESSION_NONE: sessions are not supported
         Builtins.def("opcache_get_status", 0, 1, (ctx, a) -> false);
+        // BlitzVM's parsed-file cache plays opcache's part for a server: these drop or fill it.
+        Builtins.def("opcache_invalidate", 1, 2, (ctx, a) -> {
+            String path = canonicalScript(ctx, PhpOps.toStr(a[0]));
+            if (path == null) {
+                return false;
+            }
+            ctx.language().invalidateInclude(path);
+            return true;
+        });
+        Builtins.def("opcache_is_script_cached", 1, 1, (ctx, a) -> {
+            String path = canonicalScript(ctx, PhpOps.toStr(a[0]));
+            return path != null && ctx.language().isIncludeCached(path);
+        });
+        Builtins.def("opcache_compile_file", 1, 1, (ctx, a) -> {
+            String name = PhpOps.toStr(a[0]);
+            String path = canonicalScript(ctx, name);
+            if (path == null) {
+                ctx.warning("opcache_compile_file(): Failed opening " + name + " for compilation", 0);
+                return false;
+            }
+            try {
+                ctx.env().parsePublic(ctx.language().loadSource(ctx.env().getPublicTruffleFile(path)));
+                return true;
+            } catch (java.io.IOException | dev.phpruntime.parser.PhpParseError e) {
+                return false;
+            }
+        });
         Builtins.def("getcwd", 0, 0, (ctx, a) -> {
             try {
                 return PhpStrings.fromJava(ctx.env().getCurrentWorkingDirectory().getPath());
@@ -46,7 +73,7 @@ final class MiscFunctions {
                 return false;
             }
         });
-        Builtins.def("array_rand", 1, 2, (ctx, a) -> arrayRand(a));
+        Builtins.def("array_rand", 1, 2, (ctx, a) -> RandomFunctions.arrayRand(ctx, a));
         Builtins.def("normalizer_normalize", 1, 2, (ctx, a) -> {
             java.text.Normalizer.Form form = form(a.length > 1 ? PhpOps.toLong(a[1]) : 16);
             return form == null ? false : PhpStrings.fromJava(java.text.Normalizer.normalize(PhpStrings.toJava(PhpOps.toStr(a[0])), form));
@@ -482,5 +509,20 @@ final class MiscFunctions {
             case 32 -> java.text.Normalizer.Form.NFKC;
             default -> null;
         };
+    }
+
+    /** The canonical path of an existing file, resolved like an include from the working directory. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    private static String canonicalScript(dev.phpruntime.PhpContext ctx, String name) {
+        try {
+            com.oracle.truffle.api.TruffleFile file = ctx.env().getPublicTruffleFile(name);
+            if (!file.isRegularFile()) {
+                return null;
+            }
+            return file.getCanonicalFile().getPath();
+        } catch (java.io.IOException | SecurityException | UnsupportedOperationException
+                 | IllegalArgumentException e) {
+            return null;
+        }
     }
 }

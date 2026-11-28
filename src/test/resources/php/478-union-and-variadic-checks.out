@@ -1,0 +1,28 @@
+0: 'Square'
+1: 'Base'
+2: 'string:abc'
+3: 'string:42'
+4: 4: TypeError: unionArg(): Argument #1 ($v) must be of type Shape|Named|string, Lone given
+5: 'null'
+6: 'Lone'
+7: 'Square'
+8: 8: TypeError: unionNullable(): Argument #1 ($v) must be of type Lone|Named|null, Base given
+9: 'Square'
+10: 10: TypeError: unionMissing(): Argument #1 ($v) must be of type NotDeclaredAnywhere|Shape, Lone given
+11: 'a,text,b'
+12: 'a,5,2.5,1'
+13: 13: TypeError: strs(): Argument #2 must be of type Stringable|string, array given
+14: ''
+15: '[1,2,3]'
+16: 16: TypeError: ints(): Argument #2 must be of type int, string given
+17: warning: Implicit conversion from float 2.5 to int loses precision
+'[1,2]'
+18: 5
+19: '[1,2.5,3]'
+20: 'v,7'
+Square Base x,text
+s0: 'Square'
+s1: s1: TypeError: unionArg(): Argument #1 ($v) must be of type Shape|Named|string, int given
+s2: s2: TypeError: strs(): Argument #2 must be of type Stringable|string, int given
+s3: s3: TypeError: ints(): Argument #2 must be of type int, string given
+s4: '[1,2]'

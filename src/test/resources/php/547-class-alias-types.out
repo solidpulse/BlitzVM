@@ -1,0 +1,18 @@
+bool(true)
+bool(true)
+7
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+takeAlias(): Argument #1 ($x) must be of type Alias, Other given
+takeAliasIface(): Argument #1 ($x) must be of type AliasIface, Other given
+Cannot assign Other to property AliasBox::$item of type Alias
+bool(true)
+bool(true)

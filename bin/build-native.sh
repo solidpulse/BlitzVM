@@ -40,6 +40,7 @@ exec "$GRAALVM_HOME/bin/native-image" \
   --parallelism=4 -J-Xmx6g \
   -H:+AddAllCharsets \
   -H:+UnlockExperimentalVMOptions \
+  -H:-OutlineIndyStringConcatenations -H:-OutlineStringBuilderAppends -H:-OutlineStringBufferAppends \
   -H:+IncludeAllLocales \
   "${CACHE_FLAGS[@]}" \
   -J--enable-native-access=ALL-UNNAMED \

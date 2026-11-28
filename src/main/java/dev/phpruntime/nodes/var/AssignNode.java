@@ -16,7 +16,7 @@ public final class AssignNode extends PhpNode {
     @Override
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         if (dev.phpruntime.bytecode.BytecodeEmitter.isPlace(target)) {
-            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_WRITE, 0, () -> e.expr(value));
+            e.place(target, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_WRITE, 0, () -> e.expr(value), value);
             return;
         }
         if (!(target instanceof LocalVarNode lv) || "this".equals(lv.varName())) {

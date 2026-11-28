@@ -29,12 +29,19 @@ final class MbConvertFunctions {
         }
     }
 
+    private static final Encoding UTF8 = new Encoding("UTF-8", StandardCharsets.UTF_8);
+    private static final Encoding ASCII = new Encoding("ASCII", StandardCharsets.US_ASCII);
+    private static final Encoding LATIN1 = new Encoding("ISO-8859-1", StandardCharsets.ISO_8859_1);
+
     static Encoding encoding(String name) {
+        if (name.length() == 5 && name.equalsIgnoreCase("UTF-8")) {
+            return UTF8;
+        }
         String n = PhpStrings.upper(name.trim()).replace('_', '-');
         return switch (n) {
-            case "UTF-8", "UTF8" -> new Encoding("UTF-8", StandardCharsets.UTF_8);
-            case "ASCII", "US-ASCII" -> new Encoding("ASCII", StandardCharsets.US_ASCII);
-            case "ISO-8859-1", "ISO8859-1", "LATIN1", "LATIN-1", "8BIT", "BINARY" -> new Encoding("ISO-8859-1", StandardCharsets.ISO_8859_1);
+            case "UTF-8", "UTF8" -> UTF8;
+            case "ASCII", "US-ASCII" -> ASCII;
+            case "ISO-8859-1", "ISO8859-1", "LATIN1", "LATIN-1", "8BIT", "BINARY" -> LATIN1;
             case "WINDOWS-1252", "CP1252" -> new Encoding("Windows-1252", Charset.forName("windows-1252"));
             case "UTF-16", "UTF-16BE" -> new Encoding(n, StandardCharsets.UTF_16BE);
             case "UTF-16LE" -> new Encoding("UTF-16LE", StandardCharsets.UTF_16LE);
@@ -50,10 +57,11 @@ final class MbConvertFunctions {
         strings();
         iconv();
         Builtins.def("mb_convert_encoding", 2, 3, (ctx, a) -> {
-            Encoding to = encoding(PhpOps.toStr(a[1]));
+            String target = str(ctx, a, 1);
+            Encoding to = encoding(target);
             if (to == null) {
                 throw new PhpError("ValueError", "mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, \""
-                        + PhpOps.toStr(a[1]) + "\" given", null);
+                        + target + "\" given", null);
             }
             List<Encoding> from = a.length < 3 || a[2] == PhpNull.INSTANCE
                     ? List.of(require(ContextState.of(ctx).mbEncoding, "mb_convert_encoding", 3))
@@ -62,10 +70,10 @@ final class MbConvertFunctions {
         });
         Builtins.def("mb_scrub", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_scrub");
-            return encode(ctx, decode(ctx, PhpOps.toStr(a[0]), e), e);
+            return encode(ctx, decode(ctx, str(ctx, a, 0), e), e);
         });
         Builtins.def("mb_detect_encoding", 1, 3, (ctx, a) -> {
-            String s = PhpOps.toStr(a[0]);
+            String s = str(ctx, a, 0);
             List<Encoding> candidates = a.length < 2 || a[1] == PhpNull.INSTANCE
                     ? encodings(PhpArray.ofList(ContextState.of(ctx).mbDetectOrder), "mb_detect_encoding", 2)
                     : encodings(a[1], "mb_detect_encoding", 2);
@@ -251,7 +259,7 @@ final class MbConvertFunctions {
     private static void strings() {
         Builtins.def("mb_strlen", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_strlen");
-            String s = PhpOps.toStr(a[0]);
+            String s = str(ctx, a, 0);
             if (StandardCharsets.UTF_8.equals(e.charset())) {
                 return (long) PhpStrings.utf8Length(s);
             }
@@ -261,15 +269,15 @@ final class MbConvertFunctions {
         Builtins.def("mb_substr", 2, 4, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 3, "mb_substr");
             if (StandardCharsets.UTF_8.equals(e.charset())) {
-                return PhpStrings.utf8Substr(PhpOps.toStr(a[0]), PhpOps.toLong(a[1]),
+                return PhpStrings.utf8Substr(str(ctx, a, 0), PhpOps.toLong(a[1]),
                         a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : null, substitute(ctx));
             }
-            String text = decode(ctx, PhpOps.toStr(a[0]), e);
+            String text = decode(ctx, str(ctx, a, 0), e);
             return encode(ctx, cpSubstr(text, PhpOps.toLong(a[1]), a.length > 2 && a[2] != PhpNull.INSTANCE ? PhpOps.toLong(a[2]) : null), e);
         });
         Builtins.def("mb_convert_case", 2, 3, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 2, "mb_convert_case");
-            String text = decode(ctx, PhpOps.toStr(a[0]), e);
+            String text = decode(ctx, str(ctx, a, 0), e);
             long mode = PhpOps.toLong(a[1]);
             if (mode < 0 || mode > 7) {
                 throw new PhpError(PhpError.VALUE_ERROR,
@@ -301,17 +309,21 @@ final class MbConvertFunctions {
         });
         Builtins.def("mb_strtoupper", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_strtoupper");
-            return encode(ctx, decode(ctx, PhpOps.toStr(a[0]), e).toUpperCase(Locale.ROOT), e);
+            return encode(ctx, decode(ctx, str(ctx, a, 0), e).toUpperCase(Locale.ROOT), e);
         });
         Builtins.def("mb_strtolower", 1, 2, (ctx, a) -> {
+            String value = str(ctx, a, 0);
             Encoding e = argumentEncoding(ctx, a, 1, "mb_strtolower");
-            return encode(ctx, decode(ctx, PhpOps.toStr(a[0]), e).toLowerCase(Locale.ROOT), e);
+            if (StandardCharsets.UTF_8.equals(e.charset()) && PhpStrings.isAscii(value)) {
+                return PhpStrings.lower(value);
+            }
+            return encode(ctx, decode(ctx, value, e).toLowerCase(Locale.ROOT), e);
         });
         Builtins.def("mb_ord", 1, 2, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 1, "mb_ord");
-            String s = PhpOps.toStr(a[0]);
+            String s = str(ctx, a, 0);
             if (s.isEmpty()) {
-                return false;
+                throw new PhpError(PhpError.VALUE_ERROR, "mb_ord(): Argument #1 ($string) must not be empty", null);
             }
             if (StandardCharsets.UTF_8.equals(e.charset()) && PhpStrings.utf8SequenceLength(s, 0) == 0) {
                 return false;
@@ -340,7 +352,7 @@ final class MbConvertFunctions {
             if (n < 1) {
                 throw new PhpError(PhpError.VALUE_ERROR, "mb_str_split(): Argument #2 ($length) must be greater than 0", null);
             }
-            String text = decode(ctx, PhpOps.toStr(a[0]), e);
+            String text = decode(ctx, str(ctx, a, 0), e);
             int count = text.codePointCount(0, text.length());
             PhpArray out = new PhpArray();
             for (int i = 0; i < count; i += n) {
@@ -350,8 +362,8 @@ final class MbConvertFunctions {
         });
         Builtins.def("mb_substr_count", 2, 3, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 2, "mb_substr_count");
-            String hay = decode(ctx, PhpOps.toStr(a[0]), e);
-            String needle = decode(ctx, PhpOps.toStr(a[1]), e);
+            String hay = decode(ctx, str(ctx, a, 0), e);
+            String needle = decode(ctx, str(ctx, a, 1), e);
             if (needle.isEmpty()) {
                 throw new PhpError(PhpError.VALUE_ERROR, "mb_substr_count(): Argument #2 ($needle) must not be empty", null);
             }
@@ -362,7 +374,7 @@ final class MbConvertFunctions {
             return count;
         });
         Builtins.def("mb_strwidth", 1, 2, (ctx, a) -> {
-            String text = decode(ctx, PhpOps.toStr(a[0]), argumentEncoding(ctx, a, 1, "mb_strwidth"));
+            String text = decode(ctx, str(ctx, a, 0), argumentEncoding(ctx, a, 1, "mb_strwidth"));
             long width = 0;
             for (int i = 0; i < text.length();) {
                 int cp = text.codePointAt(i);
@@ -373,12 +385,12 @@ final class MbConvertFunctions {
         });
         Builtins.def("mb_str_pad", 2, 5, (ctx, a) -> {
             Encoding e = argumentEncoding(ctx, a, 4, "mb_str_pad");
-            String text = decode(ctx, PhpOps.toStr(a[0]), e);
-            String pad = a.length > 2 ? decode(ctx, PhpOps.toStr(a[2]), e) : " ";
+            String text = decode(ctx, str(ctx, a, 0), e);
+            String pad = a.length > 2 ? decode(ctx, str(ctx, a, 2), e) : " ";
             int length = (int) PhpOps.toLong(a[1]);
             int extra = length - text.codePointCount(0, text.length());
             if (pad.isEmpty()) {
-                throw new PhpError(PhpError.VALUE_ERROR, "mb_str_pad(): Argument #3 ($pad_string) must be a non-empty string", null);
+                throw new PhpError(PhpError.VALUE_ERROR, "mb_str_pad(): Argument #3 ($pad_string) must not be empty", null);
             }
             int type = a.length > 3 ? (int) PhpOps.toLong(a[3]) : 1;
             int left = extra <= 0 ? 0 : type == 0 ? extra : type == 2 ? extra / 2 : 0;
@@ -410,8 +422,8 @@ final class MbConvertFunctions {
 
     private static Object position(dev.phpruntime.PhpContext ctx, Object[] a, boolean last, boolean insensitive) {
         Encoding e = argumentEncoding(ctx, a, 3, "mb_strpos");
-        String hay = decode(ctx, PhpOps.toStr(a[0]), e);
-        String needle = decode(ctx, PhpOps.toStr(a[1]), e);
+        String hay = decode(ctx, str(ctx, a, 0), e);
+        String needle = decode(ctx, str(ctx, a, 1), e);
         long offset = a.length > 2 ? PhpOps.toLong(a[2]) : 0;
         int length = hay.codePointCount(0, hay.length());
         long from = offset < 0 ? length + offset : offset;
@@ -444,16 +456,21 @@ final class MbConvertFunctions {
     }
 
     private static void iconv() {
-        Builtins.def("utf8_encode", 1, 1, (ctx, a) -> PhpStrings.fromJava(PhpOps.toStr(a[0])));
-        Builtins.def("utf8_decode", 1, 1, (ctx, a) -> PhpStrings.encode(PhpStrings.decodeUtf8(PhpOps.toStr(a[0]), "?"), StandardCharsets.ISO_8859_1, "?"));
+        Builtins.def("utf8_encode", 1, 1, (ctx, a) -> PhpStrings.fromJava(str(ctx, a, 0)));
+        Builtins.def("utf8_decode", 1, 1, (ctx, a) -> PhpStrings.encode(PhpStrings.decodeUtf8(str(ctx, a, 0), "?"), StandardCharsets.ISO_8859_1, "?"));
         Builtins.def("iconv", 3, 3, (ctx, a) -> {
-            Encoding from = require(PhpOps.toStr(a[0]), "iconv", 1);
-            String target = PhpOps.toStr(a[1]);
-            String[] parts = target.split("//");
-            Encoding to = require(parts[0], "iconv", 2);
+            String source = str(ctx, a, 0);
+            String target = str(ctx, a, 1);
+            Encoding from = iconvEncoding(source);
+            Encoding to = from == null ? null : iconvEncoding(target.split("//")[0]);
+            if (from == null || to == null) {
+                ctx.warning("iconv(): Wrong encoding, conversion from \"" + source + "\" to \""
+                        + target + "\" is not allowed", 0);
+                return false;
+            }
             boolean ignore = PhpStrings.upper(target).contains("//IGNORE");
             boolean translit = PhpStrings.upper(target).contains("//TRANSLIT");
-            String data = PhpOps.toStr(a[2]);
+            String data = str(ctx, a, 2);
             if (from.charset() != null && !PhpStrings.isEncoding(data, from.charset()) && !ignore) {
                 return false;
             }
@@ -469,7 +486,7 @@ final class MbConvertFunctions {
         });
         Builtins.def("iconv_strlen", 1, 2, (ctx, a) -> {
             Encoding e = iconvEncoding(a, 1, "iconv_strlen");
-            String s = PhpOps.toStr(a[0]);
+            String s = str(ctx, a, 0);
             boolean ignore = iconvIgnore(a, 1);
             if (e.charset() != null && !PhpStrings.isEncoding(s, e.charset()) && !ignore) {
                 return false;
@@ -479,7 +496,7 @@ final class MbConvertFunctions {
         });
         Builtins.def("iconv_substr", 2, 4, (ctx, a) -> {
             Encoding e = iconvEncoding(a, 3, "iconv_substr");
-            String s = PhpOps.toStr(a[0]);
+            String s = str(ctx, a, 0);
             boolean ignore = iconvIgnore(a, 3);
             if (e.charset() != null && !PhpStrings.isEncoding(s, e.charset()) && !ignore) {
                 return false;
@@ -490,8 +507,11 @@ final class MbConvertFunctions {
         });
         Builtins.def("iconv_strpos", 2, 4, (ctx, a) -> {
             Encoding e = iconvEncoding(a, 3, "iconv_strpos");
-            String hay = PhpOps.toStr(a[0]);
-            String needle = PhpOps.toStr(a[1]);
+            String hay = str(ctx, a, 0);
+            String needle = str(ctx, a, 1);
+            if (hay.isEmpty() || needle.isEmpty()) {
+                return false;
+            }
             if (e.charset() != null && (!PhpStrings.isEncoding(hay, e.charset()) || !PhpStrings.isEncoding(needle, e.charset()))
                     && !iconvIgnore(a, 3)) {
                 return false;
@@ -506,6 +526,16 @@ final class MbConvertFunctions {
             int at = text.indexOf(sought, text.offsetByCodePoints(0, (int) offset));
             return at < 0 ? false : (long) text.codePointCount(0, at);
         });
+    }
+
+    /** A {@code string} parameter of the running builtin. */
+    private static String str(dev.phpruntime.PhpContext ctx, Object[] a, int i) {
+        return StringParams.of(ctx, a, i);
+    }
+
+    /** iconv's own rule: an empty name means the current encoding (UTF-8 here), unknown returns null. */
+    private static Encoding iconvEncoding(String name) {
+        return name.isEmpty() ? UTF8 : encoding(name);
     }
 
     private static Encoding iconvEncoding(Object[] a, int i, String fn) {

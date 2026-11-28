@@ -20,6 +20,7 @@ import dev.phpruntime.runtime.PhpNull;
 import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
+import dev.phpruntime.runtime.PhpQuery;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpStrings;
 
@@ -63,9 +64,29 @@ public final class PhpContext {
     private PhpFunction[] functionsById = new PhpFunction[16];
     private final Map<String, PhpClass> classes = new HashMap<>();
     private PhpClass[] classesById;
-    /** Null until a class's static properties or constants are used. */
+    /**
+     * lookupClass() results keyed by the name exactly as given. Builtins such as is_a() and
+     * class_exists() receive the same class-name strings over and over (literals keep their
+     * cached hash), so a hit skips lowercasing and rehashing. A found class is checked against
+     * {@link #classesById}, so it cannot outlive the class it names. A miss is stored as the
+     * {@link #classGeneration} it was seen at: Tempest asks is_a() and class_exists() about
+     * names that are not classes (type names, optional integrations) thousands of times per
+     * request, and any class declaration makes those entries stale.
+     */
+    private final HashMap<String, Object> classByExactName = new HashMap<>();
+    /** Bumped whenever a class or alias is added to {@link #classes}. */
+    private int classGeneration;
+    private int missingClassEntries;
+    /** Null until a class's static properties or constants are used; the by-id array mirrors it. */
     private IdentityHashMap<PhpClass, PhpClass.RequestState> classStates;
     private final Map<String, Object> constants = new java.util.LinkedHashMap<>();
+    /**
+     * Names that {@link #hasConstant} has already found. A found constant never becomes
+     * undefined and php does not allow redefining one, so a hit stays valid for the request;
+     * missing names are not stored because define() can add them later. Keyed as given minus a
+     * leading backslash.
+     */
+    private final HashMap<String, Boolean> foundConstants = new HashMap<>();
     private final Set<String> includedFiles = new HashSet<>();
     private long nextObjectId = 1;
     private long nextEnumObjectId = 1L << 32;
@@ -79,19 +100,70 @@ public final class PhpContext {
     }
 
     /** Autoload registrations, allocated on the first spl_autoload_register(); null means empty. */
-    private List<Object> autoloaders;
+    private Object[] autoloaders;
+    /** Resolved {@link #autoloaders}, parallel to it; null whenever the registration list changes. */
+    private PhpCallable[] autoloadCallables;
     private Set<String> autoloadingInProgress;
     private List<ShutdownEntry> shutdownFunctions;
     private Deque<ErrorHandlerEntry> errorHandlers;
     private Deque<Object> exceptionHandlers;
     private IdentityHashMap<Object, Map<String, PhpReference>> staticLocals;
     private boolean inErrorHandler;
+    /** php.ini-production's error_reporting, E_ALL &amp; ~E_DEPRECATED, as ini_get reports. */
+    public static final long DEFAULT_ERROR_REPORTING = 22527L;
+    /**
+     * The levels {@code @expr} leaves enabled while the operand runs: E_ERROR, E_PARSE,
+     * E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR and E_RECOVERABLE_ERROR (php 8's 4437).
+     */
+    public static final long SILENCE_MASK = 4437L;
+    /** The error_reporting level: which diagnostics the default handler displays. */
+    private long errorReporting = DEFAULT_ERROR_REPORTING;
+    /**
+     * The "error_reporting" ini entry. It is normally equal to {@link #errorReporting}, but
+     * {@code @expr} masks the runtime level only, so ini_get keeps reporting the full level.
+     */
+    private long errorReportingIni = DEFAULT_ERROR_REPORTING;
+
+    public long errorReporting() {
+        return errorReporting;
+    }
+
+    public void setErrorReporting(long level) {
+        errorReporting = level;
+    }
+
+    public long errorReportingIni() {
+        return errorReportingIni;
+    }
+
+    public void setErrorReportingIni(long level) {
+        errorReportingIni = level;
+    }
     private final StringBuilder output = new StringBuilder();
+    /** The polyglot output stream, cached for the request because {@code env.out()} allocates one. */
+    private OutputStream envOut;
+    /** Reused ISO-8859-1 bytes for the response body, so a flush does not allocate a String. */
+    private byte[] outputBytes;
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
     private PrintStream err;
+    /**
+     * Per-request streams for a long-lived server context (Blitz\Http\Server). When null, output
+     * and diagnostics go to the polyglot context's streams, as CLI and server requests need.
+     */
+    private OutputStream requestOut;
+    private OutputStream requestErr;
     private PhpRequest request;
+    /** Host services for scripts that drive a server, installed once per context. */
+    private Object serverHost;
+    /**
+     * The host handler for a long-lived worker context, or null for an ordinary request
+     * context. It lives as long as the context, unlike the per-request {@link PhpRequest}.
+     */
+    private dev.phpruntime.runtime.WorkerHandler workerHandler;
     /** Per-request state owned by builtins (strtok position, default timezone); see builtins.ContextState. */
     private Object builtinState;
+    /** Reflection class handles and layout caches, built on first reflection use. */
+    private dev.phpruntime.builtins.ReflectionClasses.Handles reflectionHandles;
     private Node currentBuiltinCallSite;
     private String byteStringOrigin;
     private Boolean hostFileSystem;
@@ -129,6 +201,7 @@ public final class PhpContext {
         if (linked != null && linked.matches(null, List.of(), List.of())) {
             PhpClass cls = linked.cls();
             classes.put(template.lowerName(), cls);
+            classGeneration++;
             int id = cls.classId();
             if (id >= classesById.length) {
                 classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
@@ -142,10 +215,20 @@ public final class PhpContext {
     private PrintStream errStream() {
         PrintStream e = err;
         if (e == null) {
-            e = new PrintStream(env.err(), true, StandardCharsets.ISO_8859_1);
+            OutputStream target = requestErr != null ? requestErr : env.err();
+            e = new PrintStream(target, true, StandardCharsets.ISO_8859_1);
             err = e;
         }
         return e;
+    }
+
+    /** The host runtime a script can use to start a server; null outside the CLI. */
+    public Object serverHost() {
+        return serverHost;
+    }
+
+    public void setServerHost(Object host) {
+        this.serverHost = host;
     }
 
     public PhpClass stdClass() {
@@ -220,12 +303,69 @@ public final class PhpContext {
         this.request = request;
     }
 
+    /** The worker-mode handler for this context, or null when it is not a worker. */
+    public dev.phpruntime.runtime.WorkerHandler workerHandler() {
+        return workerHandler;
+    }
+
+    public void setWorkerHandler(dev.phpruntime.runtime.WorkerHandler handler) {
+        this.workerHandler = handler;
+    }
+
     public Object builtinState() {
         return builtinState;
     }
 
     public void setBuiltinState(Object state) {
         builtinState = state;
+    }
+
+    /** Reflection class handles for this request, created on first use. */
+    public dev.phpruntime.builtins.ReflectionClasses.Handles reflectionHandles() {
+        dev.phpruntime.builtins.ReflectionClasses.Handles handles = reflectionHandles;
+        if (handles == null) {
+            handles = new dev.phpruntime.builtins.ReflectionClasses.Handles();
+            reflectionHandles = handles;
+        }
+        return handles;
+    }
+
+    /** The name of the builtin running at {@link #currentBuiltinCallSite}, for its trace frame. */
+    private String currentBuiltinName;
+
+    public String currentBuiltinName() {
+        return currentBuiltinName;
+    }
+
+    /** Sets the running builtin's call site and name; returns the previous name to restore. */
+    public String enterBuiltin(Node site, String name) {
+        String previous = currentBuiltinName;
+        currentBuiltinCallSite = site;
+        currentBuiltinName = name;
+        return previous;
+    }
+
+    public void exitBuiltin(Node site, String name) {
+        currentBuiltinCallSite = site;
+        currentBuiltinName = name;
+    }
+
+    /**
+     * True while a builtin runs that another builtin called (array_map('trim', ...),
+     * call_user_func('strlen', ...)): php checks its parameters in weak mode whatever the
+     * user file declares, because its caller is internal.
+     */
+    private boolean builtinInternalCaller;
+
+    public boolean builtinInternalCaller() {
+        return builtinInternalCaller;
+    }
+
+    /** Sets the flag and returns the previous value, for the caller to restore. */
+    public boolean setBuiltinInternalCaller(boolean value) {
+        boolean previous = builtinInternalCaller;
+        builtinInternalCaller = value;
+        return previous;
     }
 
     public Node currentBuiltinCallSite() {
@@ -333,6 +473,9 @@ public final class PhpContext {
     }
 
     public Object readGlobalById(int id) {
+        if (isLazy(id)) {
+            return materializeSuperglobal(id);
+        }
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
@@ -342,6 +485,7 @@ public final class PhpContext {
     }
 
     public void writeGlobalById(int id, Object value) {
+        consumeLazy(id);
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
@@ -354,6 +498,9 @@ public final class PhpContext {
     }
 
     public String appendGlobalById(int id, String suffix, boolean resultNeeded) {
+        if (isLazy(id)) {
+            materializeSuperglobal(id);
+        }
         PhpReference[] table = globalsById;
         PhpReference cell = id < table.length ? table[id] : null;
         if (cell == null) { cell = createGlobalCellById(id, null); }
@@ -377,6 +524,9 @@ public final class PhpContext {
     }
 
     public PhpReference globalRefById(int id) {
+        if (isLazy(id)) {
+            materializeSuperglobal(id);
+        }
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
@@ -389,6 +539,7 @@ public final class PhpContext {
     }
 
     public void bindGlobalById(int id, PhpReference cell) {
+        consumeLazy(id);
         if (id >= globalsById.length) {
             growGlobalsTable(id);
         }
@@ -405,6 +556,7 @@ public final class PhpContext {
     }
 
     public void unsetGlobalById(int id) {
+        consumeLazy(id);
         PhpReference[] table = globalsById;
         if (id < table.length) {
             table[id] = null;
@@ -469,6 +621,9 @@ public final class PhpContext {
         }
         Integer id = language.lookupGlobalId(name);
         if (id != null) {
+            if (isLazy(id)) {
+                materializeSuperglobal(id);
+            }
             PhpReference[] table = globalsById;
             return id < table.length && table[id] != null && table[id].getValue() != null;
         }
@@ -503,6 +658,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpArray buildGlobalsSnapshot() {
+        materializeAllSuperglobals();
         PhpArray snap = new PhpArray();
         for (var entry : globalOrder.entrySet()) {
             int i = entry.getValue();
@@ -525,6 +681,397 @@ public final class PhpContext {
             }
         }
         return snap;
+    }
+
+    // ------------------------------------------------------------ worker mode
+
+    private static final String[] WORKER_SUPERGLOBALS =
+            {"_GET", "_POST", "_COOKIE", "_FILES", "_REQUEST", "_SERVER", "_ENV"};
+
+    private static final int SG_GET = 1;
+    private static final int SG_POST = 1 << 1;
+    private static final int SG_COOKIE = 1 << 2;
+    private static final int SG_FILES = 1 << 3;
+    private static final int SG_REQUEST = 1 << 4;
+    private static final int SG_SERVER = 1 << 5;
+    private static final int SG_ENV = 1 << 6;
+    private static final int SG_ALL = SG_GET | SG_POST | SG_COOKIE | SG_FILES | SG_REQUEST | SG_SERVER | SG_ENV;
+
+    /** The superglobals a worker had before its first request; restored after every request. */
+    public static final class Superglobals {
+        private final Map<String, Object> values;
+
+        private Superglobals(Map<String, Object> values) {
+            this.values = values;
+        }
+    }
+
+    /**
+     * The request a worker is serving, while at least one of its superglobals has not been
+     * built yet. Accessing a global consults {@link #lazyIdBit}; when nothing is pending (the
+     * common case outside worker requests, and after all seven were touched) every check is
+     * one field read.
+     */
+    private PhpRequest lazyRequest;
+    /** Bit per global id for the seven names in {@link #WORKER_SUPERGLOBALS}; 0 for others. */
+    private byte[] lazyIdBit;
+    private int lazyMask;
+    /** The worker's environment as a frozen array, built once and shared by every request. */
+    private PhpArray lazyEnvironment;
+    /** Environment entries as PHP strings in environment order, for building {@code $_SERVER}. */
+    private List<String[]> lazyServerEnvironment;
+    /**
+     * The request's parsed GET, POST and cookie arrays, kept separate from the globals so
+     * {@code $_REQUEST} is a copy of what the request carried even after the script changed
+     * {@code $_GET} or {@code $_POST}.
+     */
+    private PhpArray lazyGet;
+    private PhpArray lazyPost;
+    private PhpArray lazyCookies;
+
+    /** Captures the worker's own superglobal values before the first request replaces them. */
+    @TruffleBoundary
+    public Superglobals captureSuperglobals() {
+        Map<String, Object> values = new java.util.LinkedHashMap<>();
+        for (String name : WORKER_SUPERGLOBALS) {
+            values.put(name, peekGlobal(name));
+        }
+        return new Superglobals(values);
+    }
+
+    /**
+     * Starts one request on a long-lived worker context. Unlike a fresh context, the script's
+     * globals, functions, classes and static state stay; only what a request owns is replaced.
+     *
+     * <p>The superglobals are not built here. Until the script reads or writes one its global
+     * still holds the worker's own value, and the first access builds the request's value from
+     * {@code req}; a handler that never touches them (hello world, most API endpoints) allocates
+     * nothing for them. {@code environment} and {@code serverEnvironment} are the worker's
+     * prebuilt environment, shared by every request it handles.
+     */
+    @TruffleBoundary
+    public void beginWorkerRequest(PhpRequest req, PhpArray environment, List<String[]> serverEnvironment) {
+        bindRequest(req);
+        // A request starts with no output buffers and a response that has not been sent.
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        envOut = null;
+        lazyRequest = req;
+        lazyEnvironment = environment;
+        lazyServerEnvironment = serverEnvironment;
+        lazyGet = null;
+        lazyPost = null;
+        lazyCookies = null;
+        installLazyIds();
+        lazyMask = SG_ALL;
+    }
+
+    /**
+     * Starts one request on a long-lived server context (Blitz\Http\Server): the script's
+     * globals, functions, classes and statics stay, while the output state and the request-bound
+     * resources belong to this request. Superglobals are deliberately left alone: a native
+     * server API passes the request object to the handler and does not populate them, as
+     * Swoole does.
+     */
+    public void beginServerRequest(PhpRequest req, OutputStream out, OutputStream err) {
+        bindRequest(req);
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        envOut = null;
+        requestOut = out;
+        requestErr = err;
+        this.err = null;
+    }
+
+    /** Ends one server request; the worker keeps its context for the next one. */
+    public void endServerRequest() {
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        envOut = null;
+        requestOut = null;
+        requestErr = null;
+        err = null;
+    }
+
+    /** Maps the seven superglobal names to their global ids once per worker context. */
+    @TruffleBoundary
+    private void installLazyIds() {
+        if (lazyIdBit != null) {
+            return;
+        }
+        byte[] bits = new byte[language.globalIdCount()];
+        for (int i = 0; i < WORKER_SUPERGLOBALS.length; i++) {
+            int id = language.globalId(WORKER_SUPERGLOBALS[i]);
+            if (id >= bits.length) {
+                bits = Arrays.copyOf(bits, id + 1);
+            }
+            bits[id] = (byte) (1 << i);
+        }
+        lazyIdBit = bits;
+    }
+
+    /**
+     * Builds the request's value for one pending superglobal the first time anything reads or
+     * takes a reference to it. A write of the whole variable does not come here: it replaces the
+     * value, so there is nothing to preserve.
+     */
+    @TruffleBoundary
+    private Object materializeSuperglobal(int id) {
+        PhpRequest req = lazyRequest;
+        int bit = lazyIdBit[id] & 0xff;
+        Object value;
+        switch (bit) {
+            case SG_GET -> value = requestGet(req).share();
+            case SG_POST -> value = requestPost(req).share();
+            case SG_COOKIE -> value = requestCookies(req).share();
+            case SG_FILES -> value = new PhpArray();
+            case SG_REQUEST -> {
+                // FrankenPHP's variables_order is EGPCS with an empty request_order, so
+                // cookies are part of $_REQUEST and win over GET and POST for the same name.
+                PhpArray all = requestGet(req).share().forWrite();
+                for (var e : requestPost(req).entries()) {
+                    all.put(e.getKey(), e.getValue());
+                }
+                for (var e : requestCookies(req).entries()) {
+                    all.put(e.getKey(), e.getValue());
+                }
+                value = all;
+            }
+            case SG_SERVER -> value = serverArray(req);
+            case SG_ENV -> {
+                PhpArray environment = lazyEnvironment;
+                if (environment == null) {
+                    environment = environmentArray(req);
+                }
+                value = environment;
+            }
+            default -> {
+                return null;
+            }
+        }
+        lazyMask &= ~bit;
+        setGlobalById(id, value);
+        if (lazyMask == 0) {
+            clearLazyState();
+        }
+        return value;
+    }
+
+    /** The request's parsed query string, kept for {@code $_REQUEST} after {@code $_GET} changes. */
+    private PhpArray requestGet(PhpRequest req) {
+        if (lazyGet == null) {
+            lazyGet = req.queryString.isEmpty() ? toArray(req.get) : PhpQuery.parseQuery(req.queryString);
+        }
+        return lazyGet;
+    }
+
+    private PhpArray requestPost(PhpRequest req) {
+        if (lazyPost == null) {
+            String contentType = PhpQuery.header(req.headers, "Content-Type");
+            lazyPost = !req.body.isEmpty() && contentType != null
+                    && PhpStrings.lower(contentType).startsWith("application/x-www-form-urlencoded")
+                    ? PhpQuery.parseQuery(req.body) : toArray(req.post);
+        }
+        return lazyPost;
+    }
+
+    private PhpArray requestCookies(PhpRequest req) {
+        if (lazyCookies == null) {
+            lazyCookies = PhpQuery.parseCookies(PhpQuery.header(req.headers, "Cookie"));
+        }
+        return lazyCookies;
+    }
+
+    /**
+     * {@code $_SERVER} in FrankenPHP's order: the process environment first, then the CGI
+     * variables of this request (including the defaults {@code WorkerPool.prepare} fills in).
+     * The environment entries are already PHP strings, converted once per worker.
+     */
+    private PhpArray serverArray(PhpRequest req) {
+        List<String[]> environment = lazyServerEnvironment;
+        int cgi = req.serverFiller != null ? 32 + req.headers.size() : req.server.size();
+        int capacity = (environment == null ? 0 : environment.size()) + cgi;
+        PhpArray server = PhpArray.withCapacity(capacity, true);
+        if (environment != null) {
+            for (String[] entry : environment) {
+                server.put(entry[0], entry[1]);
+            }
+        } else {
+            req.environment.forEach((key, value) -> server.put(
+                    PhpStrings.fromJava(key), PhpStrings.fromJava(value)));
+        }
+        if (req.serverFiller != null) {
+            req.serverFiller.fillServer(req, server);
+            return server;
+        }
+        for (Map.Entry<String, String> e : req.server.entrySet()) {
+            server.put(e.getKey(), e.getValue());
+        }
+        if (!req.scriptFilename.isEmpty() && !req.server.containsKey("SCRIPT_FILENAME")) {
+            server.put("SCRIPT_FILENAME", PhpStrings.fromJava(req.scriptFilename));
+        }
+        return server;
+    }
+
+    private static PhpArray environmentArray(PhpRequest req) {
+        PhpArray environment = new PhpArray();
+        req.environment.forEach((key, value) -> environment.put(
+                PhpStrings.fromJava(key), PhpStrings.fromJava(value)));
+        return environment.freeze();
+    }
+
+    /** True when {@code id} names a superglobal whose request value has not been built yet. */
+    private boolean isLazy(int id) {
+        byte[] bits = lazyIdBit;
+        int mask = lazyMask;
+        return mask != 0 && bits != null && id >= 0 && id < bits.length && (mask & bits[id]) != 0;
+    }
+
+    /** A write of the whole variable replaces it; the request value never needs building. */
+    private void consumeLazy(int id) {
+        if (lazyMask == 0) {
+            return;
+        }
+        byte[] bits = lazyIdBit;
+        if (bits == null || id < 0 || id >= bits.length) {
+            return;
+        }
+        int bit = bits[id] & 0xff;
+        if (bit != 0 && (lazyMask & bit) != 0) {
+            lazyMask &= ~bit;
+            if (lazyMask == 0) {
+                clearLazyState();
+            }
+        }
+    }
+
+    private void clearLazyState() {
+        lazyRequest = null;
+        lazyMask = 0;
+        lazyGet = null;
+        lazyPost = null;
+        lazyCookies = null;
+        lazyEnvironment = null;
+        lazyServerEnvironment = null;
+    }
+
+    /** Materializes every pending superglobal, for {@code $GLOBALS} and snapshots. */
+    @TruffleBoundary
+    private void materializeAllSuperglobals() {
+        if (lazyMask == 0) {
+            return;
+        }
+        byte[] bits = lazyIdBit;
+        if (bits == null) {
+            return;
+        }
+        for (String name : WORKER_SUPERGLOBALS) {
+            int id = language.globalId(name);
+            if (id < bits.length && (lazyMask & bits[id]) != 0) {
+                materializeSuperglobal(id);
+            }
+        }
+    }
+
+    /** The global's value without the lazy-superglobal check, for materialization itself. */
+    private void setGlobalById(int id, Object value) {
+        PhpReference[] table = globalsById;
+        if (id < table.length) {
+            PhpReference cell = table[id];
+            if (cell != null) {
+                cell.setValue(value);
+                return;
+            }
+        }
+        createGlobalCellById(id, value);
+    }
+
+    /**
+     * Ends one request on a long-lived worker context: flushes what the request left open,
+     * restores the worker's own superglobals and binds the worker's own request again.
+     */
+    @TruffleBoundary
+    public void endWorkerRequest(Superglobals boot, PhpRequest bootRequest) {
+        try {
+            flush();
+        } catch (Throwable ignored) {
+            // A cancelled context cannot write anything; the response was already settled.
+        }
+        if (buffers != null) {
+            buffers.clear();
+        }
+        output.setLength(0);
+        outputStarted = false;
+        envOut = null;
+        clearLazyState();
+        for (Map.Entry<String, Object> e : boot.values.entrySet()) {
+            writeGlobal(e.getKey(), e.getValue());
+        }
+        bindRequest(bootRequest);
+    }
+
+    /** Everything the current request produced but has not written yet, without running handlers. */
+    @TruffleBoundary
+    public String takePendingOutput() {
+        StringBuilder sb = new StringBuilder();
+        if (buffers != null) {
+            for (OutputBuffer b : buffers) {
+                sb.append(b.text);
+            }
+            buffers.clear();
+        }
+        sb.append(output);
+        output.setLength(0);
+        return sb.toString();
+    }
+
+    /** How many shutdown functions exist now; a worker request runs only the ones added later. */
+    public int shutdownFunctionCount() {
+        return shutdownFunctions == null ? 0 : shutdownFunctions.size();
+    }
+
+    /** Runs the shutdown functions registered since {@code from}, in registration order. */
+    @TruffleBoundary
+    public void runShutdownFunctionsFrom(int from) {
+        if (shutdownFunctions == null) {
+            return;
+        }
+        for (int i = from; i < shutdownFunctions.size(); i++) {
+            ShutdownEntry entry = shutdownFunctions.get(i);
+            PhpCallable cb = PhpCallable.resolveOrNull(this, entry.callable());
+            if (cb != null) {
+                try {
+                    cb.call(this, null, null, entry.args());
+                } catch (ControlFlow.Exit e) {
+                    endedAbnormally = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    /** Drops the request's shutdown functions so the worker's own ones still see script end. */
+    public void removeShutdownFunctionsFrom(int from) {
+        if (shutdownFunctions != null) {
+            while (shutdownFunctions.size() > from) {
+                shutdownFunctions.remove(shutdownFunctions.size() - 1);
+            }
+        }
+    }
+
+    private static PhpArray toArray(Map<String, String> m) {
+        PhpArray a = new PhpArray();
+        m.forEach(a::put);
+        return a;
     }
 
     @TruffleBoundary
@@ -668,17 +1215,42 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpClass lookupClass(String name) {
+        Object cached = classByExactName.get(name);
+        if (cached instanceof PhpClass hit) {
+            int id = hit.classId();
+            PhpClass[] table = classesById;
+            if (id >= 0 && id < table.length && table[id] == hit) {
+                return hit;
+            }
+        } else if (cached instanceof Integer generation && generation == classGeneration) {
+            return null;
+        }
         String n = name.startsWith("\\") ? name.substring(1) : name;
         String lower = PhpStrings.lower(n);
-        PhpClass existing = classes.get(lower);
-        if (existing != null) {
-            return existing;
+        PhpClass found = classes.get(lower);
+        if (found == null) {
+            PhpClassTemplate builtin = language.builtinClassTemplate(lower);
+            if (builtin == null) {
+                rememberMissingClass(name);
+                return null;
+            }
+            found = declareClassInternal(builtin, true);
         }
-        PhpClassTemplate builtin = language.builtinClassTemplate(lower);
-        if (builtin != null) {
-            return declareClassInternal(builtin, true);
+        if (found != null) {
+            classByExactName.put(name, found);
         }
-        return null;
+        return found;
+    }
+
+    private void rememberMissingClass(String name) {
+        if (missingClassEntries >= 4096) {
+            // Names can come from input; keep the table bounded.
+            classByExactName.values().removeIf(v -> v instanceof Integer);
+            missingClassEntries = 0;
+        }
+        if (!(classByExactName.put(name, classGeneration) instanceof Integer)) {
+            missingClassEntries++;
+        }
     }
 
     /** class_alias(): makes an existing class reachable under another name in this request. */
@@ -690,7 +1262,9 @@ public final class PhpContext {
             return false;
         }
         classes.put(lower, cls);
+        classGeneration++;
         int id = language.classId(lower);
+        language.aliasCreated(id);
         if (id >= classesById.length) {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
         }
@@ -703,15 +1277,6 @@ public final class PhpContext {
         return java.util.Collections.unmodifiableMap(constants);
     }
 
-    private List<Object> autoloaders() {
-        List<Object> list = autoloaders;
-        if (list == null) {
-            list = new ArrayList<>();
-            autoloaders = list;
-        }
-        return list;
-    }
-
     private Set<String> autoloadingInProgress() {
         Set<String> set = autoloadingInProgress;
         if (set == null) {
@@ -719,6 +1284,23 @@ public final class PhpContext {
             autoloadingInProgress = set;
         }
         return set;
+    }
+
+    /** The resolved callable for each registered loader at the same index, cached until the list changes. */
+    private PhpCallable[] resolvedAutoloaders(Object[] loaders) {
+        PhpCallable[] resolved = autoloadCallables;
+        if (resolved == null || resolved.length != loaders.length) {
+            resolved = new PhpCallable[loaders.length];
+            for (int i = 0; i < loaders.length; i++) {
+                resolved[i] = loaders[i] == null ? null : PhpCallable.resolveOrNull(this, loaders[i]);
+            }
+            // Resolving a callback may itself autoload a class whose loader registers another
+            // one; only publish the cache for the list it was built from.
+            if (autoloaders == loaders) {
+                autoloadCallables = resolved;
+            }
+        }
+        return resolved;
     }
 
     @TruffleBoundary
@@ -729,24 +1311,52 @@ public final class PhpContext {
             return cls;
         }
         String lower = PhpStrings.lower(n);
-        List<Object> loaders = autoloaders;
-        if (loaders == null || loaders.isEmpty() || !autoloadingInProgress().add(lower)) {
+        if (autoloaders == null || autoloaders.length == 0 || !autoloadingInProgress().add(lower)) {
             return cls;
         }
         try {
-            for (Object cbVal : List.copyOf(loaders)) {
-                PhpCallable cb = PhpCallable.resolveOrNull(this, cbVal);
+            // A loader registered while another one runs joins this walk (php appends it to
+            // the list being iterated), and one unregistered before its turn is skipped.
+            for (int i = 0; ; i++) {
+                Object[] loaders = autoloaders;
+                if (loaders == null || i >= loaders.length) {
+                    break;
+                }
+                PhpCallable cb = resolvedAutoloaders(loaders)[i];
                 if (cb != null) {
+                    int generation = classGeneration;
                     cb.call(this, null, null, n);
-                    cls = lookupClass(n);
-                    if (cls != null) {
-                        return cls;
+                    if (classGeneration != generation) {
+                        cls = lookupClass(n);
+                        if (cls != null) {
+                            return cls;
+                        }
                     }
                 }
             }
             return null;
         } finally {
             autoloadingInProgress().remove(lower);
+        }
+    }
+
+    /** spl_autoload_call(): runs the loaders for any name, without the engine's guard or validation. */
+    @TruffleBoundary
+    public void callAutoloaders(String name) {
+        for (int i = 0; ; i++) {
+            Object[] loaders = autoloaders;
+            if (loaders == null || i >= loaders.length) {
+                break;
+            }
+            PhpCallable cb = resolvedAutoloaders(loaders)[i];
+            if (cb != null) {
+                cb.call(this, null, null, name);
+                // php stops after the loader that made the name exist, including when it
+                // already existed before the walk started.
+                if (lookupClass(name) != null) {
+                    return;
+                }
+            }
         }
     }
 
@@ -774,28 +1384,45 @@ public final class PhpContext {
 
     @TruffleBoundary
     public boolean registerAutoload(Object callable, boolean prepend) {
-        List<Object> loaders = autoloaders();
-        for (Object existing : loaders) {
-            if (sameCallback(existing, callable)) {
-                return true;
+        Object[] loaders = autoloaders;
+        if (loaders != null) {
+            for (Object existing : loaders) {
+                if (sameCallback(existing, callable)) {
+                    return true;
+                }
             }
         }
+        Object[] next;
         if (prepend) {
-            loaders.add(0, callable);
+            next = new Object[(loaders == null ? 0 : loaders.length) + 1];
+            next[0] = callable;
+            if (loaders != null) {
+                System.arraycopy(loaders, 0, next, 1, loaders.length);
+            }
+        } else if (loaders == null) {
+            next = new Object[]{callable};
         } else {
-            loaders.add(callable);
+            next = java.util.Arrays.copyOf(loaders, loaders.length + 1);
+            next[loaders.length] = callable;
         }
+        autoloaders = next;
+        autoloadCallables = null;
         return true;
     }
 
     @TruffleBoundary
     public boolean unregisterAutoload(Object callable) {
-        if (autoloaders == null) {
+        Object[] loaders = autoloaders;
+        if (loaders == null) {
             return false;
         }
-        for (int i = 0; i < autoloaders.size(); i++) {
-            if (sameCallback(autoloaders.get(i), callable)) {
-                autoloaders.remove(i);
+        for (int i = 0; i < loaders.length; i++) {
+            if (sameCallback(loaders[i], callable)) {
+                Object[] next = new Object[loaders.length - 1];
+                System.arraycopy(loaders, 0, next, 0, i);
+                System.arraycopy(loaders, i + 1, next, i, loaders.length - i - 1);
+                autoloaders = next;
+                autoloadCallables = null;
                 return true;
             }
         }
@@ -805,11 +1432,11 @@ public final class PhpContext {
     @TruffleBoundary
     public PhpArray autoloadFunctions() {
         PhpArray out = new PhpArray();
-        if (autoloaders == null) {
-            return out;
-        }
-        for (Object cb : autoloaders) {
-            out.append(PhpOps.copyOnAssign(cb));
+        Object[] loaders = autoloaders;
+        if (loaders != null) {
+            for (Object cb : loaders) {
+                out.append(PhpOps.copyOnAssign(cb));
+            }
         }
         return out;
     }
@@ -944,6 +1571,7 @@ public final class PhpContext {
             }
         }
         classes.put(lower, cls);
+        classGeneration++;
         int id = cls.classId();
         if (id >= classesById.length) {
             classesById = Arrays.copyOf(classesById, Math.max(id + 1, classesById.length * 2));
@@ -1013,9 +1641,25 @@ public final class PhpContext {
         return cls;
     }
 
+    /** Per-class request state by class id, the fast path of {@link #classState}. */
+    private PhpClass.RequestState[] classStatesById = new PhpClass.RequestState[16];
+
     /** This request's state of a shared class (static property values, evaluated constants). */
-    @TruffleBoundary
     public PhpClass.RequestState classState(PhpClass cls) {
+        int id = cls.classId();
+        PhpClass.RequestState[] byId = classStatesById;
+        if (id < byId.length) {
+            PhpClass.RequestState state = byId[id];
+            // Ids come from class names; the identity check keeps two classes of one name apart.
+            if (state != null && state.owner() == cls) {
+                return state;
+            }
+        }
+        return classStateSlow(cls);
+    }
+
+    @TruffleBoundary
+    private PhpClass.RequestState classStateSlow(PhpClass cls) {
         IdentityHashMap<PhpClass, PhpClass.RequestState> states = classStates;
         if (states == null) {
             states = new IdentityHashMap<>();
@@ -1023,9 +1667,15 @@ public final class PhpContext {
         }
         PhpClass.RequestState state = states.get(cls);
         if (state == null) {
-            state = new PhpClass.RequestState();
+            state = new PhpClass.RequestState(cls, this);
             states.put(cls, state);
         }
+        int id = cls.classId();
+        if (id >= classStatesById.length) {
+            classStatesById = java.util.Arrays.copyOf(classStatesById,
+                    Math.max(id + 1, classStatesById.length * 2));
+        }
+        classStatesById[id] = state;
         return state;
     }
 
@@ -1109,6 +1759,7 @@ public final class PhpContext {
     /** Every defined global in definition order, id-based first then dynamic, for capture. */
     @TruffleBoundary
     public List<SnapshotGlobal> snapshotGlobals() {
+        materializeAllSuperglobals();
         int dynamicCount = dynamicGlobals == null ? 0 : dynamicGlobals.size();
         List<SnapshotGlobal> out = new ArrayList<>(globalOrder.size() + dynamicCount);
         for (Map.Entry<String, Integer> entry : globalOrder.entrySet()) {
@@ -1156,7 +1807,8 @@ public final class PhpContext {
 
     @TruffleBoundary
     public List<Object> snapshotAutoloaders() {
-        return autoloaders == null ? List.of() : autoloaders;
+        Object[] loaders = autoloaders;
+        return loaders == null ? List.of() : java.util.Arrays.asList(loaders.clone());
     }
 
     @TruffleBoundary
@@ -1249,6 +1901,11 @@ public final class PhpContext {
     @TruffleBoundary
     public void restoreClass(String lowerName, PhpClass cls) {
         PhpClass existing = classes.putIfAbsent(lowerName, cls);
+        classGeneration++;
+        if (!lowerName.equals(cls.template().lowerName())) {
+            // A class_alias captured in the snapshot.
+            language.aliasCreated(language.classId(lowerName));
+        }
         if (existing != null) {
             if (existing != cls) {
                 throw new IllegalStateException("snapshot class " + lowerName
@@ -1265,7 +1922,11 @@ public final class PhpContext {
 
     @TruffleBoundary
     public void restoreAutoload(Object callable) {
-        autoloaders().add(callable);
+        Object[] loaders = autoloaders;
+        Object[] next = loaders == null ? new Object[1] : java.util.Arrays.copyOf(loaders, loaders.length + 1);
+        next[next.length - 1] = callable;
+        autoloaders = next;
+        autoloadCallables = null;
     }
 
     @TruffleBoundary
@@ -1416,19 +2077,36 @@ public final class PhpContext {
         return true;
     }
 
-    @TruffleBoundary
     public boolean hasConstant(String name) {
+        // The constant table is per request and found names stay defined, so the common repeat
+        // call is a map hit on the already-normalized name, without a boundary crossing.
+        if (!name.isEmpty() && name.charAt(0) != '\\' && name.indexOf("::") < 0
+                && foundConstants.containsKey(name)) {
+            return true;
+        }
+        return hasConstantSlow(name);
+    }
+
+    @TruffleBoundary
+    private boolean hasConstantSlow(String name) {
         String n = name.startsWith("\\") ? name.substring(1) : name;
         int sep = n.indexOf("::");
         if (sep > 0) {
             PhpClass cls = lookupClass(n.substring(0, sep));
             return cls != null && cls.lookupConstant(this, n.substring(sep + 2)) != null;
         }
+        if (foundConstants.containsKey(n)) {
+            return true;
+        }
         // User code cannot define a constant whose name equals a built-in one: define() refuses
         // it (php 8.5 warns, this runtime returns false) and true/false/null are reserved in any
         // case. Checking the user table first therefore cannot change the answer, and it skips
         // the lowercase-then-map lookup of lookupBuiltin for WordPress's own constants.
-        return constants.containsKey(n) || PhpConstants.lookupBuiltin(n) != null;
+        boolean found = constants.containsKey(n) || PhpConstants.lookupBuiltin(n) != null;
+        if (found) {
+            foundConstants.put(n, Boolean.TRUE);
+        }
+        return found;
     }
 
     /** A user-defined global constant (no namespace separator handling, no built-ins), or null. */
@@ -1468,14 +2146,140 @@ public final class PhpContext {
 
     /** One ob_start() level: its buffered text and, for ob_list_handlers, its handler. */
     public static final class OutputBuffer {
-        public final StringBuilder text = new StringBuilder();
+        public final StringBuilder text;
         public Object handler;
         public String handlerName = "default output handler";
+
+        public OutputBuffer(StringBuilder text) {
+            this.text = text;
+        }
     }
 
     /** ob_start() levels, innermost last. Null means echo goes straight to the response. */
     private java.util.ArrayList<OutputBuffer> buffers;
     private boolean outputStarted;
+    /**
+     * Builders of finished output buffers, reused by the next ob_start() of this request or the
+     * next request on this worker. A view render opens one per component, and each fresh
+     * builder grew from 16 bytes, allocating every step of the growth.
+     */
+    private java.util.ArrayDeque<StringBuilder> bufferPool;
+
+    private static final int BUFFER_POOL_SIZE = 8;
+    private static final int BUFFER_POOL_MAX_CAPACITY = 1 << 20;
+
+    /**
+     * Scratch for file_get_contents(): reading into a buffer that belongs to the context avoids
+     * allocating a fresh array the size of every file on every read. No guest code runs while
+     * the buffer is in use, so one per context is enough.
+     */
+    private byte[] fileReadBuffer;
+    private static final int FILE_READ_BUFFER_START = 8192;
+    private static final int FILE_READ_BUFFER_RETAIN = 1 << 21;
+
+    @TruffleBoundary
+    public byte[] fileReadBuffer() {
+        byte[] buffer = fileReadBuffer;
+        if (buffer == null) {
+            buffer = new byte[FILE_READ_BUFFER_START];
+            fileReadBuffer = buffer;
+        }
+        return buffer;
+    }
+
+    /** Replaces the read buffer with one twice as large, after it filled up. */
+    @TruffleBoundary
+    public byte[] growFileReadBuffer(byte[] current) {
+        byte[] grown = java.util.Arrays.copyOf(current, Math.max(FILE_READ_BUFFER_START, current.length * 2));
+        fileReadBuffer = grown;
+        return grown;
+    }
+
+    /** Drops a buffer grown by one huge file so the worker does not keep that memory forever. */
+    @TruffleBoundary
+    public void trimFileReadBuffer() {
+        byte[] buffer = fileReadBuffer;
+        if (buffer != null && buffer.length > FILE_READ_BUFFER_RETAIN) {
+            fileReadBuffer = new byte[FILE_READ_BUFFER_START];
+        }
+    }
+
+    /**
+     * Matchers of preg calls, one per pattern this context has seen. A Matcher is only a cursor
+     * over a subject plus the capture slots; reusing it saves an object and the capture array on
+     * every call. The busy flags make a nested preg call (a replace callback that matches again)
+     * take another slot instead of disturbing the outer loop. Fresh matchers beyond the table
+     * are simply not pooled.
+     */
+    private static final int MATCHER_POOL = 8;
+    private java.util.regex.Pattern[] matcherPatterns;
+    private java.util.regex.Matcher[] matcherPool;
+    private boolean[] matcherBusy;
+
+    @TruffleBoundary
+    public java.util.regex.Matcher acquireMatcher(java.util.regex.Pattern pattern, String subject) {
+        if (matcherPool == null) {
+            matcherPatterns = new java.util.regex.Pattern[MATCHER_POOL];
+            matcherPool = new java.util.regex.Matcher[MATCHER_POOL];
+            matcherBusy = new boolean[MATCHER_POOL];
+        }
+        for (int i = 0; i < MATCHER_POOL; i++) {
+            if (matcherPatterns[i] == pattern && !matcherBusy[i]) {
+                matcherBusy[i] = true;
+                return matcherPool[i].reset(subject);
+            }
+        }
+        for (int i = 0; i < MATCHER_POOL; i++) {
+            if (matcherPatterns[i] == null) {
+                matcherPatterns[i] = pattern;
+                matcherBusy[i] = true;
+                matcherPool[i] = pattern.matcher(subject);
+                return matcherPool[i];
+            }
+        }
+        return pattern.matcher(subject);
+    }
+
+    /** Returns a matcher from {@link #acquireMatcher}; a matcher that was not pooled is ignored. */
+    @TruffleBoundary
+    public void releaseMatcher(java.util.regex.Matcher matcher) {
+        for (int i = 0; i < MATCHER_POOL; i++) {
+            if (matcherPool[i] == matcher) {
+                matcherBusy[i] = false;
+                // Drop the subject, which can be large; the Pattern stays (it is shared anyway).
+                matcher.reset("");
+                return;
+            }
+        }
+    }
+
+    /** A builder for a new output buffer, keeping the capacity a previous one reached. */
+    @TruffleBoundary
+    public StringBuilder newOutputBufferText() {
+        if (bufferPool != null) {
+            StringBuilder reused = bufferPool.pollLast();
+            if (reused != null) {
+                reused.setLength(0);
+                return reused;
+            }
+        }
+        return new StringBuilder();
+    }
+
+    /** Returns a finished output buffer's builder for reuse. Its text must be consumed already. */
+    @TruffleBoundary
+    public void releaseOutputBufferText(StringBuilder text) {
+        if (text.capacity() > BUFFER_POOL_MAX_CAPACITY) {
+            return; // one huge render must not pin its buffer for the life of the worker
+        }
+        if (bufferPool == null) {
+            bufferPool = new java.util.ArrayDeque<>();
+        }
+        if (bufferPool.size() < BUFFER_POOL_SIZE) {
+            text.setLength(0);
+            bufferPool.addLast(text);
+        }
+    }
 
     public java.util.List<OutputBuffer> outputBuffers() {
         if (buffers == null) {
@@ -1513,7 +2317,9 @@ public final class PhpContext {
     public void flush() {
         while (buffers != null && !buffers.isEmpty()) {
             OutputBuffer top = buffers.remove(buffers.size() - 1);
-            echo(applyObHandler(top, top.text.toString(), 9L));
+            String text = top.text.toString();
+            releaseOutputBufferText(top.text);
+            echo(applyObHandler(top, text, 9L));
         }
         flushOutput();
     }
@@ -1538,8 +2344,33 @@ public final class PhpContext {
             return;
         }
         try {
-            OutputStream out = env.out();
-            out.write(PhpStrings.bytes(output.toString()));
+            OutputStream out = envOut;
+            if (out == null) {
+                out = requestOut != null ? requestOut : env.out();
+                envOut = out;
+            }
+            int length = output.length();
+            byte[] bytes = outputBytes;
+            if (bytes == null || bytes.length < length) {
+                bytes = new byte[Math.max(32, length)];
+                outputBytes = bytes;
+            }
+            boolean latin1 = true;
+            for (int i = 0; i < length; i++) {
+                char c = output.charAt(i);
+                if (c > 0xff) {
+                    latin1 = false;
+                    break;
+                }
+                bytes[i] = (byte) c;
+            }
+            if (latin1) {
+                out.write(bytes, 0, length);
+            } else {
+                // PHP strings are byte strings; this only covers a host bug or a malformed source
+                // string, and keeps the historical replacement behaviour.
+                out.write(PhpStrings.bytes(output.toString()));
+            }
             out.flush();
         } catch (IOException e) {
             throw new dev.phpruntime.runtime.PhpError("Failed writing output: " + PhpStrings.fromJava(e.getMessage()));
@@ -1660,6 +2491,51 @@ public final class PhpContext {
         emitDiagnostic(8192L, "Deprecated", message, line);
     }
 
+    // ---- the call-site stack for PHP stack traces
+
+    /**
+     * The call site of every guest call currently on the stack, oldest first. A call site
+     * pushes before it invokes the callee and restores the depth afterwards (also while
+     * unwinding), so an exception created in a callee reads the frames above it without
+     * walking the Truffle stack, which costs microseconds from compiled code. The callee of a
+     * frame is the function owning the site of the next inner frame, which keeps the entry to
+     * one reference.
+     */
+    private Object[] traceSites = new Object[64];
+    private int traceDepth;
+
+    public int traceDepth() {
+        return traceDepth;
+    }
+
+    public Object traceSite(int index) {
+        return traceSites[index];
+    }
+
+    /** Pushes a frame; returns the depth to give back to {@link #popTraceFrame}. */
+    public int pushTraceFrame(Object site) {
+        int depth = traceDepth;
+        Object[] sites = traceSites;
+        if (depth == sites.length) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreterAndInvalidate();
+            growTraceSites(depth);
+            sites = traceSites;
+        }
+        sites[depth] = site;
+        traceDepth = depth + 1;
+        return depth;
+    }
+
+    /** The rare deep-recursion path: keeping the copy out of every call site's compiled code. */
+    @TruffleBoundary
+    private void growTraceSites(int depth) {
+        traceSites = java.util.Arrays.copyOf(traceSites, depth * 2);
+    }
+
+    public void popTraceFrame(int depth) {
+        traceDepth = depth;
+    }
+
     /** A one-shot mode for the user function a builtin is about to call, or null. */
     private CallMode pendingCallMode;
 
@@ -1669,6 +2545,24 @@ public final class PhpContext {
 
     public void setPendingCallMode(CallMode mode) {
         this.pendingCallMode = mode;
+    }
+
+    /** Named arguments a forwarding builtin or method received, read by its implementation. */
+    private dev.phpruntime.runtime.ForwardedNamedArgs forwardedNamed;
+
+    public dev.phpruntime.runtime.ForwardedNamedArgs forwardedNamed() {
+        return forwardedNamed;
+    }
+
+    public void setForwardedNamed(dev.phpruntime.runtime.ForwardedNamedArgs named) {
+        this.forwardedNamed = named;
+    }
+
+    /** Takes and clears the forwarded named arguments, so a nested call cannot see them. */
+    public dev.phpruntime.runtime.ForwardedNamedArgs takeForwardedNamed() {
+        dev.phpruntime.runtime.ForwardedNamedArgs named = forwardedNamed;
+        forwardedNamed = null;
+        return named;
     }
 
     /**
@@ -1703,10 +2597,34 @@ public final class PhpContext {
 
     @TruffleBoundary
     private boolean emitDiagnostic(long errno, String label, String message, int line) {
-        String file = PhpStrings.fromJava(currentGuestFile());
         ErrorHandlerEntry handler = errorHandlers == null ? null : errorHandlers.peek();
-        if (handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
-                && (handler.errorLevels() & errno) != 0) {
+        boolean handlerWants = handler != null && handler.callable() != PhpNull.INSTANCE && !inErrorHandler
+                && (handler.errorLevels() & errno) != 0;
+        if (!handlerWants && (errorReporting & errno) == 0) {
+            // Nobody sees it: skip finding the location, which can take a stack walk.
+            return false;
+        }
+        String file = null;
+        if (line <= 0 && currentBuiltinCallSite != null) {
+            // Builtins pass 0; php reports the call that raised it. The call site node knows
+            // its file and line, so no stack walk is needed.
+            int siteLine = dev.phpruntime.runtime.PhpBacktrace.callSiteLine(currentBuiltinCallSite);
+            String sitePath = siteFile(currentBuiltinCallSite);
+            if (siteLine > 0 && sitePath != null) {
+                file = PhpStrings.fromJava(sitePath);
+                line = siteLine;
+            }
+        }
+        if (file == null) {
+            GuestLocation where = currentGuestLocation();
+            file = PhpStrings.fromJava(where.file());
+            if (line <= 0) {
+                int site = currentBuiltinCallSite != null
+                        ? dev.phpruntime.runtime.PhpBacktrace.callSiteLine(currentBuiltinCallSite) : 0;
+                line = site > 0 ? site : where.line();
+            }
+        }
+        if (handlerWants) {
             PhpCallable cb = PhpCallable.resolveOrNull(this, handler.callable());
             if (cb != null) {
                 inErrorHandler = true;
@@ -1720,7 +2638,46 @@ public final class PhpContext {
                 }
             }
         }
+        if ((errorReporting & errno) == 0) {
+            // A user handler sees every level it asked for; the default display honours
+            // error_reporting, so a masked deprecation stays silent as in php.
+            return false;
+        }
         errStream().println("PHP " + label + ":  " + message + (file.isEmpty() ? "" : " in " + file) + (line > 0 ? " on line " + line : ""));
         return false;
+    }
+
+    private record GuestLocation(String file, int line) {
+    }
+
+    /** The source path of the PHP function or file that contains a call site node, or null. */
+    private static String siteFile(Node site) {
+        if (site.getRootNode() instanceof dev.phpruntime.nodes.PhpRootNode root
+                && root.source() != null && root.source().getPath() != null) {
+            return root.source().getPath();
+        }
+        return null;
+    }
+
+    /** The file and current line of the innermost PHP frame. */
+    @TruffleBoundary
+    private GuestLocation currentGuestLocation() {
+        GuestLocation found = com.oracle.truffle.api.Truffle.getRuntime().iterateFrames(frame -> {
+            if (frame.getCallTarget() instanceof com.oracle.truffle.api.RootCallTarget target
+                    && target.getRootNode() instanceof dev.phpruntime.nodes.PhpRootNode root
+                    && root.source() != null && root.source().getPath() != null) {
+                int line = 0;
+                if (root instanceof dev.phpruntime.bytecode.PhpBytecodeRootNode) {
+                    com.oracle.truffle.api.source.SourceSection at =
+                            dev.phpruntime.bytecode.PhpBytecodeRootNode.callSiteSection(frame);
+                    if (at != null) {
+                        line = at.getStartLine();
+                    }
+                }
+                return new GuestLocation(root.source().getPath(), line);
+            }
+            return null;
+        });
+        return found != null ? found : new GuestLocation(request().scriptFilename, 0);
     }
 }

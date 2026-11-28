@@ -31,8 +31,11 @@ public final class SplCollectionMethodRootNode extends RootNode {
     @Override
     public Object execute(VirtualFrame frame) {
         if (!PhpStrings.CHECK) { return executeMethod(frame); }
-        PhpStrings.checkArguments(frame.getArguments(), owner + "::" + method);
-        return PhpStrings.checkReturn(executeMethod(frame), owner + "::" + method);
+        if (PhpStrings.CHECK) {
+            PhpStrings.checkArguments(frame.getArguments(), owner + "::" + method);
+        }
+        Object result = executeMethod(frame);
+        return PhpStrings.CHECK ? PhpStrings.checkReturn(result, owner + "::" + method) : result;
     }
 
     private Object executeMethod(VirtualFrame frame) {

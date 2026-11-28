@@ -1,0 +1,59 @@
+object(Defaults)#2 (3) {
+  ["count"]=>
+  int(3)
+  ["label"]=>
+  string(1) "x"
+  ["items"]=>
+  NULL
+  ["uninitialized"]=>
+  uninitialized(int)
+  ["readonlyValue"]=>
+  uninitialized(string)
+  ["name"]=>
+  uninitialized(string)
+  ["size"]=>
+  uninitialized(int)
+}
+int(3)
+string(1) "x"
+NULL
+static=9
+Error: Typed property Defaults::$uninitialized must not be accessed before initialization
+Error: Typed property Defaults::$readonlyValue must not be accessed before initialization
+string(3) "bob"
+int(4)
+int(3)
+string(3) "set"
+string(3) "ann"
+int(7)
+string(4) "solo"
+int(1)
+string(2) "12"
+int(5)
+string(6) "start!"
+int(11)
+int(5)
+string(7) "start!!"
+int(12)
+int(6)
+ReflectionException: Class NoConstructor does not have a constructor, so you cannot pass any constructor arguments
+Error: Unknown named parameter $nope
+ArgumentCountError: ReflectionClass::newInstanceWithoutConstructor() expects exactly 0 arguments, 1 given
+bool(true)
+string(8) "stdClass"
+bool(true)
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+ReflectionException: Class Closure is an internal class marked as final that cannot be instantiated without invoking its constructor
+ReflectionException: Class Generator is an internal class marked as final that cannot be instantiated without invoking its constructor
+ReflectionException: Class ReflectionReference is an internal class marked as final that cannot be instantiated without invoking its constructor
+Error: Cannot instantiate interface NotInstantiable
+Error: Cannot instantiate trait AlsoNot
+Error: Cannot instantiate enum NotEither
+Error: Cannot instantiate abstract class Abs
+string(3) "arg"
+int(1)

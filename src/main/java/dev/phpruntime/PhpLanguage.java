@@ -88,9 +88,13 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
                     dev.phpruntime.builtins.DateTimeClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.IntlClasses.buildTemplates(this, all);
                     all.putAll(SplClasses.buildTemplates(this));
+                    dev.phpruntime.builtins.SessionClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.FiberClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.DirClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.PdoClasses.buildTemplates(this, all);
                     dev.phpruntime.builtins.ReflectionClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.RandomClasses.buildTemplates(this, all);
+                    dev.phpruntime.builtins.BlitzClasses.buildTemplates(this, all);
                     m = Map.copyOf(all);
                     int max = -1;
                     for (String lower : m.keySet()) {
@@ -227,7 +231,30 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
         return null;
     }
 
-    private record CachedSource(long modified, Source source) {
+    /**
+     * A parsed file and the stat fields it was read under. The modification time alone is not
+     * enough: Symfony's PhpFilesAdapter backdates every cache file it writes to a fixed
+     * {@code startTime - 10}, so a rewritten file can keep its old mtime; size, inode (a rename
+     * over the file) and ctime (an in-place write) catch that.
+     */
+    private record CachedSource(long modified, long size, long inode, long ctime, Source source) {
+    }
+
+    /**
+     * Per class name id: no request has ever made that name a {@code class_alias}. While it
+     * holds, a class declared under the name is the only class it can denote, so an
+     * {@code instanceof} answer computed from a value's class is final.
+     */
+    private final ConcurrentHashMap<Integer, com.oracle.truffle.api.Assumption> neverAliased = new ConcurrentHashMap<>();
+
+    public com.oracle.truffle.api.Assumption neverAliased(int nameId) {
+        return neverAliased.computeIfAbsent(nameId,
+                id -> com.oracle.truffle.api.Truffle.getRuntime().createAssumption("no class_alias of name id " + id));
+    }
+
+    /** A request made the name with this id a class_alias: drop the code that assumed it never would. */
+    public void aliasCreated(int nameId) {
+        neverAliased(nameId).invalidate();
     }
 
     public static PhpLanguage get(com.oracle.truffle.api.nodes.Node node) {
@@ -304,6 +331,32 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
     }
 
     /**
+     * The hierarchy id every class of one name has had so far, valid while no context declares
+     * that name with a different parent chain. Compiled code reads it as a constant instead of
+     * looking the class up in the running context's table.
+     */
+    public record StableHierarchy(long id, com.oracle.truffle.api.Assumption valid) {
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<Integer, StableHierarchy> stableHierarchies =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Records that a class of name id {@code classId} with hierarchy {@code hierarchyId} exists. */
+    public void noteHierarchy(int classId, long hierarchyId) {
+        StableHierarchy seen = stableHierarchies.computeIfAbsent(classId, k -> new StableHierarchy(hierarchyId,
+                com.oracle.truffle.api.Truffle.getRuntime().createAssumption("stable hierarchy")));
+        if (seen.id() != hierarchyId) {
+            seen.valid().invalidate();
+        }
+    }
+
+    /** The stable hierarchy of a class name, or null if no class of that name was created yet. */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+    public StableHierarchy stableHierarchy(int classId) {
+        return stableHierarchies.get(classId);
+    }
+
+    /**
      * An include path already resolved to a parsed file: what {@code include} would find for
      * this path string from this directory, checked at {@code checkedAt} (System.nanoTime).
      */
@@ -319,6 +372,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
         return null;
     }
 
+    /**
+     * opcache_invalidate: forget the parsed source of this canonical path and every include
+     * resolution that points at it, so the next include stats and reparses the file.
+     * Returns whether anything was cached.
+     */
+    public boolean invalidateInclude(String canonicalPath) {
+        boolean had = sources.remove(canonicalPath) != null;
+        had |= includes.values().removeIf(r -> r.canonicalPath().equals(canonicalPath));
+        return had;
+    }
+
+    /** opcache_is_script_cached: whether a parsed source for this canonical path is held. */
+    public boolean isIncludeCached(String canonicalPath) {
+        return sources.containsKey(canonicalPath);
+    }
+
     public ResolvedInclude cacheInclude(String key, String canonicalPath, CallTarget target) {
         ResolvedInclude r = new ResolvedInclude(canonicalPath, target, System.nanoTime());
         includes.put(key, r);
@@ -329,12 +398,22 @@ public final class PhpLanguage extends TruffleLanguage<PhpContextHolder> {
     public Source loadSource(TruffleFile canonical) throws IOException {
         String key = canonical.getPath();
         long modified = canonical.getLastModifiedTime().toMillis();
+        long size = canonical.size();
+        long inode = -1;
+        long ctime = -1;
+        try {
+            inode = canonical.getAttribute(TruffleFile.UNIX_INODE);
+            ctime = canonical.getAttribute(TruffleFile.UNIX_CTIME).to(java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (UnsupportedOperationException e) {
+            // Not a POSIX file system: mtime and size only.
+        }
         CachedSource cached = sources.get(key);
-        if (cached != null && cached.modified() == modified) {
+        if (cached != null && cached.modified() == modified && cached.size() == size
+                && cached.inode() == inode && cached.ctime() == ctime) {
             return cached.source();
         }
         Source src = Source.newBuilder(ID, canonical).encoding(java.nio.charset.StandardCharsets.ISO_8859_1).cached(true).build();
-        sources.put(key, new CachedSource(modified, src));
+        sources.put(key, new CachedSource(modified, size, inode, ctime, src));
         return src;
     }
 

@@ -1,0 +1,29 @@
+replace-named: string(6) "bbnbnb"
+replace-named-count: int(3)
+starts-named: bool(true)
+ends-named: bool(true)
+contains-named: bool(true)
+trim-named: string(1) "x"
+ltrim-named: string(3) "abc"
+rtrim-named: string(3) "abc"
+strpos-named: int(4)
+substr-named: string(3) "bcd"
+substr-named-default: string(4) "cdef"
+in-array-named: bool(true)
+strtolower-named: string(3) "abc"
+explode-named: array(1) {
+  [0]=>
+  string(3) "a,b"
+}
+defined-named: bool(true)
+extension-named: bool(true)
+numeric-named: bool(true)
+key-last-named: string(1) "b"
+implode-named: string(3) "a-b"
+is-a-named: bool(true)
+is-a-named-string: bool(true)
+class-exists-named: bool(true)
+interface-exists-named: bool(true)
+replace-mixed: string(6) "bbnbnb"
+trim-mixed: string(1) "x"
+substr-mixed: string(2) "bc"

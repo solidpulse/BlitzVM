@@ -1,0 +1,11 @@
+Error: Cannot modify readonly property ReadonlyHolder::$number
+Error: Cannot modify readonly property ReadonlyHolder::$number
+Error: Cannot indirectly modify readonly property ReadonlyHolder::$items
+Error: Cannot indirectly modify readonly property ReadonlyHolder::$items
+Error: Cannot unset readonly property ReadonlyHolder::$number
+int(1)
+array(1) {
+  [0]=>
+  int(1)
+}
+Error: Cannot indirectly modify readonly property ReadonlyHolder::$items

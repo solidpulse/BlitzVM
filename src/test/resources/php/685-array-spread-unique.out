@@ -1,0 +1,99 @@
+array(6) {
+  ["x"]=>
+  int(20)
+  [0]=>
+  int(2)
+  [1]=>
+  int(3)
+  ["y"]=>
+  int(4)
+  [2]=>
+  int(10)
+  [3]=>
+  int(30)
+}
+array(4) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [2]=>
+  string(1) "a"
+  [3]=>
+  string(1) "b"
+}
+array(2) {
+  [0]=>
+  &string(7) "changed"
+  [1]=>
+  string(5) "plain"
+}
+array(2) {
+  [0]=>
+  &string(7) "changed"
+  [1]=>
+  string(5) "plain"
+}
+array(2) {
+  ["k"]=>
+  string(1) "v"
+  [0]=>
+  string(1) "z"
+}
+array(4) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  ["a"]=>
+  int(3)
+  [2]=>
+  int(4)
+}
+array(3) {
+  [0]=>
+  string(1) "a"
+  [1]=>
+  string(1) "b"
+  [3]=>
+  string(1) "c"
+}
+array(6) {
+  [0]=>
+  string(1) "1"
+  [1]=>
+  string(2) "01"
+  [2]=>
+  string(3) "1.0"
+  [6]=>
+  NULL
+  [7]=>
+  string(1) "a"
+  [8]=>
+  string(1) "A"
+}
+array(2) {
+  [0]=>
+  string(1) "a"
+  [2]=>
+  string(1) "b"
+}
+array(2) {
+  [5]=>
+  string(1) "a"
+  ["x"]=>
+  string(1) "b"
+}
+array(0) {
+}
+array(1) {
+  [0]=>
+  string(4) "only"
+}
+unique objects=2 keys=0,2
+array(2) {
+  [0]=>
+  &string(5) "later"
+  [1]=>
+  string(1) "x"
+}

@@ -1,0 +1,27 @@
+ctor params=3 required=1
+name|0|00|01|1|1|string|0|0|-|0|-|__construct|ParameterTarget|-
+age|1|10|01|1|1|?int|1|1|NULL|0|-|__construct|ParameterTarget|-
+code|2|10|01|0|1|string|int|0|1|10|1|self::LIMIT|__construct|ParameterTarget|-
+run params=5 required=1
+first|0|00|01|0|1|int|0|0|-|0|-|run|ParameterTarget|-
+second|1|10|01|0|1|?string|1|1|'two'|0|-|run|ParameterTarget|-
+third|2|10|01|0|1|string|int|0|1|10|1|ParameterTarget::LIMIT|run|ParameterTarget|-
+fourth|3|10|10|0|1|array|0|1|array (
+)|0|-|run|ParameterTarget|-
+rest|4|11|01|0|1|string|0|0|-|0|-|run|ParameterTarget|-
+create params=2 required=1
+other|0|00|01|0|1|ParameterTarget|0|0|-|0|-|create|ParameterTarget|ParameterTarget
+factory|1|10|01|0|1|?callable|1|1|NULL|0|-|create|ParameterTarget|-
+return=static|1
+function params=4 required=1
+a|0|00|01|0|1|int|0|0|-|0|-|plainFunction|-|-
+b|1|10|01|0|1|string|0|1|'b'|0|-|plainFunction|-|-
+c|2|10|10|0|0|none|1|1|NULL|0|-|plainFunction|-|-
+numbers|3|11|01|0|1|float|0|0|-|0|-|plainFunction|-|-
+closure params=2 required=1
+x|0|00|01|0|1|int|0|0|-|0|-|{closure}|-|-
+target|1|10|01|0|1|?ParameterTarget|1|1|NULL|0|-|{closure}|-|ParameterTarget
+second|1|ParameterTarget
+bool(true)
+string(3) "int"
+1|1

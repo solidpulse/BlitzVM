@@ -1,0 +1,14 @@
+current: int(1)
+key: string(1) "x"
+next: int(2)
+current-next: int(2)
+end: int(3)
+key-end: string(1) "z"
+reset: int(1)
+pos: int(1)
+named-next: int(2)
+value-current: int(2)
+cuf-reset: int(1)
+current-string: string(67) "current(): Argument #1 ($array) must be of type array, string given"
+key-float: string(62) "key(): Argument #1 ($array) must be of type array, float given"
+next-literal: string(61) "next(): Argument #1 ($array) could not be passed by reference"

@@ -1,0 +1,19 @@
+int(1)
+NULL
+string(10) "null-inner"
+int(5)
+string(1) "x"
+string(1) "x"
+bool(true)
+bool(false)
+bool(false)
+get:known,get:absent,get:same,set:same,set:added,get:added,isset:added,get:added,isset:added,isset:ghost,unset:added,isset:added
+array(1) {
+  [0]=>
+  string(6) "parent"
+}
+array(1) {
+  [0]=>
+  string(5) "child"
+}
+string(12) "parent-magic"

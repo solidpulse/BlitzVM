@@ -1,0 +1,67 @@
+string(5) " abc "
+string(5) " ABC "
+string(5) " AbC "
+string(5) " AbC "
+string(3) "AbC"
+string(5) " CbA "
+bool(true)
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+bool(true)
+array(3) {
+  [0]=>
+  int(3)
+  [1]=>
+  int(2)
+  [2]=>
+  int(1)
+}
+bool(true)
+array(3) {
+  [0]=>
+  int(3)
+  [1]=>
+  int(1)
+  [2]=>
+  int(2)
+}
+bool(true)
+array(3) {
+  [2]=>
+  int(2)
+  [1]=>
+  int(1)
+  [0]=>
+  int(3)
+}
+bool(true)
+array(3) {
+  [1]=>
+  int(1)
+  [2]=>
+  int(2)
+  [0]=>
+  int(3)
+}
+bool(true)
+array(3) {
+  [0]=>
+  int(3)
+  [2]=>
+  int(2)
+  [1]=>
+  int(1)
+}
+string(3) "x  "
+string(5) "c:x:3"
+string(5) "u:x:3"
+string(3) "bbb"
+int(3)
+string(3) "bbb"
+int(3)

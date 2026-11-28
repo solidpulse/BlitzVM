@@ -138,6 +138,43 @@ public final class CallMode {
         return found[0] != null ? found[0] : INTERNAL;
     }
 
+    /**
+     * Only the strict_types flag of the code calling {@code root}, found like {@link #of} but
+     * without resolving the call site's file and line, which costs a bytecode index search.
+     * Callers that need the location for an error message call {@link #of}.
+     */
+    @TruffleBoundary
+    public static boolean strictOfCallerOf(PhpBytecodeRootNode root, Node site) {
+        PhpContext ctx = PhpContext.get(site);
+        CallMode pending = ctx.pendingCallMode();
+        if (pending != null && (pending.target() == null || pending.target() == root.function())) {
+            return pending.strict();
+        }
+        Boolean found = Truffle.getRuntime().iterateFrames(new com.oracle.truffle.api.frame.FrameInstanceVisitor<Boolean>() {
+            private boolean skippedCallee;
+
+            @Override
+            public Boolean visitFrame(FrameInstance fi) {
+                if (!(fi.getCallTarget() instanceof RootCallTarget target)) {
+                    return null;
+                }
+                RootNode frameRoot = target.getRootNode();
+                if (!PhpFunctionRootNode.isGuestFrame(frameRoot)) {
+                    return null;
+                }
+                if (!skippedCallee) {
+                    skippedCallee = true;
+                    return null;
+                }
+                if (PhpFunctionRootNode.ofFrame(frameRoot) == null && !PhpMainRootNode.isMain(frameRoot)) {
+                    return null;
+                }
+                return strictness(frameRoot);
+            }
+        });
+        return found != null ? found : INTERNAL.strict();
+    }
+
     /** The strict_types flag of an executing root, wrapper roots included. */
     private static boolean strictness(RootNode root) {
         if (root instanceof PhpRootNode php) {
@@ -163,6 +200,13 @@ public final class CallMode {
         CallMode pending = ctx.pendingCallMode();
         if (pending != null && pending.target() == null) {
             return pending.strict();
+        }
+        // The site is a node of the calling PHP function: its root is the frame the walk below
+        // would stop at first, without materializing the stack (a frame walk per non-string
+        // argument of a string builtin cost several microseconds).
+        if (site != null && site.getRootNode() instanceof RootNode siteRoot
+                && PhpFunctionRootNode.isGuestFrame(siteRoot)) {
+            return strictness(siteRoot);
         }
         boolean[] strict = {false};
         Truffle.getRuntime().iterateFrames(fi -> {

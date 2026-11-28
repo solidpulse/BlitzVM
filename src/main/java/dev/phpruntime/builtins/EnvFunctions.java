@@ -28,7 +28,7 @@ final class EnvFunctions {
             Map.entry("file_uploads", "1"),
             Map.entry("allow_url_fopen", "1"),
             Map.entry("default_charset", "UTF-8"),
-            Map.entry("short_open_tag", "1"),
+            Map.entry("short_open_tag", ""),
             Map.entry("output_buffering", "0"),
             Map.entry("precision", "14"),
             Map.entry("serialize_precision", "-1"),
@@ -98,6 +98,9 @@ final class EnvFunctions {
             if (PhpStrings.lower(name).equals("unserialize_callback_func")) {
                 return ContextState.of(ctx).unserializeCallbackFunc;
             }
+            if (PhpStrings.lower(name).equals("error_reporting")) {
+                return String.valueOf(ctx.errorReportingIni());
+            }
             String v = INI.get(name);
             return v == null ? false : v;
         });
@@ -107,12 +110,19 @@ final class EnvFunctions {
             return v == null ? false : PhpStrings.fromJava(v);
         });
         Builtins.def("sys_get_temp_dir", 0, 0, (ctx, a) -> PhpStrings.fromJava(tempDir()));
-        Builtins.def("extension_loaded", 1, 1, (ctx, a) -> {
-            String name = PhpOps.toStr(a[0]);
-            return EXTENSIONS.stream().anyMatch(e -> e.equalsIgnoreCase(name));
-        });
+        Builtins.def("extension_loaded", 1, 1, (ctx, a) -> extensionLoaded(PhpOps.toStr(a[0])));
         Builtins.def("get_loaded_extensions", 0, 1, (ctx, a) ->
                 a.length > 0 && PhpOps.toBool(a[0]) ? new PhpArray() : PhpArray.ofList(EXTENSIONS));
+    }
+
+    /** extension_loaded(): the name is case-insensitive and the extension list is fixed. */
+    static boolean extensionLoaded(String name) {
+        for (String extension : EXTENSIONS) {
+            if (PhpStrings.equalsIgnoreCase(extension, name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** sys_get_temp_dir(): $TMPDIR without trailing slashes, else /tmp. */

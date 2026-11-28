@@ -1,0 +1,22 @@
+Error: Indirect modification of Hooked::$items is not allowed
+Error: Indirect modification of Hooked::$items is not allowed
+byref ok
+Error: Indirect modification of Hooked::$virtual is not allowed
+Error: Indirect modification of Hooked::$virtual is not allowed
+array(0) {
+}
+array(1) {
+  [0]=>
+  int(3)
+}
+array(1) {
+  [0]=>
+  int(9)
+}
+0
+array(2) {
+  [0]=>
+  int(7)
+  [1]=>
+  int(8)
+}

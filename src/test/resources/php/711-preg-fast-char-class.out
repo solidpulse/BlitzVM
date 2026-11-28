@@ -1,0 +1,6429 @@
+== /[&|]/ 613d3126623d327c633d33
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '&',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '&',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '&',
+        1 => 3,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => '|',
+        1 => 7,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '&',
+        1 => 3,
+      ),
+      1 => 
+      array (
+        0 => '|',
+        1 => 7,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2',
+    2 => 'c=3',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a=1&b=2|c=3',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2|c=3',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2',
+    2 => 'c=3',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2',
+    2 => 'c=3',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a=1&b=2|c=3',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2|c=3',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2',
+    2 => 'c=3',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2',
+    2 => 'c=3',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a=1&b=2|c=3',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2|c=3',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a=1',
+    1 => 'b=2',
+    2 => 'c=3',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b=2',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c=3',
+      1 => 8,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1&b=2|c=3',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b=2|c=3',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b=2',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c=3',
+      1 => 8,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b=2',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c=3',
+      1 => 8,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1&b=2|c=3',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b=2|c=3',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a=1',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b=2',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c=3',
+      1 => 8,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a=1<&>b=2<|>c=3',
+  1 => 0,
+)
+replace-empty: 'a=1b=2c=3'
+grep: array (
+  0 => 'a=1&b=2|c=3',
+)
+== /[&|]+/ 61262626627c7c63
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '&&&',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&&&',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '&&&',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&&&',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '&&&',
+        1 => 1,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => '||',
+        1 => 5,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '&&&',
+        1 => 1,
+      ),
+      1 => 
+      array (
+        0 => '||',
+        1 => 5,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a&&&b||c',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b||c',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a&&&b||c',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b||c',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a&&&b||c',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b||c',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a&&&b||c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b||c',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a&&&b||c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b||c',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a<&&&>b<||>c',
+  1 => 0,
+)
+replace-empty: 'abc'
+grep: array (
+  0 => 'a&&&b||c',
+)
+== /[&|]+/ 616263
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+)
+all-cols: array (
+  0 => 0,
+  1 => 
+  array (
+    0 => 
+    array (
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'abc',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'abc',
+  1 => 0,
+)
+replace-empty: 'abc'
+grep: array (
+)
+== /[a-z]+/ 31326162635859646566
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'abc',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 2,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'abc',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 2,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'abc',
+        1 => 2,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => 'def',
+        1 => 7,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'abc',
+        1 => 2,
+      ),
+      1 => 
+      array (
+        0 => 'def',
+        1 => 7,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XY',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => '12abcXYdef',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XYdef',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XY',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XY',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => '12abcXYdef',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XYdef',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XY',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XY',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => '12abcXYdef',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XYdef',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '12',
+    1 => 'XY',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'XY',
+      1 => 5,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => 10,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12abcXYdef',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'XYdef',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'XY',
+      1 => 5,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => 10,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'XY',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12abcXYdef',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'XYdef',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '12',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'XY',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '12<abc>XY<def>',
+  1 => 0,
+)
+replace-empty: '12XY'
+grep: array (
+  0 => '12abcXYdef',
+  1 => 'abc',
+)
+== /[^a]/ 61616162
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'b',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'b',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'b',
+        1 => 3,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'b',
+        1 => 3,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'aaab',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'aaa',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'aaab',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'aaa',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'aaa',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'aaab',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaab',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaab',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'aaa<b>',
+  1 => 0,
+)
+replace-empty: 'aaa'
+grep: array (
+  0 => 'aaab',
+  1 => 'abc',
+)
+== /[^a]+/ 616161626363
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'bcc',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'bcc',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'bcc',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'bcc',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'bcc',
+        1 => 3,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'bcc',
+        1 => 3,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'aaabcc',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'aaa',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'aaabcc',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'aaa',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'aaa',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'aaabcc',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'aaa',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 6,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaabcc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 6,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 6,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaabcc',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aaa',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'aaa<bcc>',
+  1 => 0,
+)
+replace-empty: 'aaa'
+grep: array (
+  0 => 'aaabcc',
+  1 => 'abc',
+)
+== /[0-9]+/ 6130316232333463
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '01',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '01',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '01',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '01',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '01',
+        1 => 1,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => '234',
+        1 => 4,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '01',
+        1 => 1,
+      ),
+      1 => 
+      array (
+        0 => '234',
+        1 => 4,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a01b234c',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b234c',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a01b234c',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b234c',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a01b234c',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b234c',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a01b234c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b234c',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a01b234c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b234c',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a<01>b<234>c',
+  1 => 0,
+)
+replace-empty: 'abc'
+grep: array (
+  0 => 'a01b234c',
+)
+== /[\d]+/ 6130316232333463
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '01',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '01',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '01',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '01',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '01',
+        1 => 1,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => '234',
+        1 => 4,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '01',
+        1 => 1,
+      ),
+      1 => 
+      array (
+        0 => '234',
+        1 => 4,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a01b234c',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b234c',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a01b234c',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b234c',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a01b234c',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b234c',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a01b234c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b234c',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a01b234c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b234c',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a<01>b<234>c',
+  1 => 0,
+)
+replace-empty: 'abc'
+grep: array (
+  0 => 'a01b234c',
+)
+== /[\s]+/ 6120090a2062
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' 	
+ ',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ' 	
+ ',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' 	
+ ',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ' 	
+ ',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ' 	
+ ',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ' 	
+ ',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a 	
+ b',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a 	
+ b',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a 	
+ b',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a 	
+ b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a 	
+ b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a< 	
+ >b',
+  1 => 0,
+)
+replace-empty: 'ab'
+grep: array (
+  0 => 'a 	
+ b',
+)
+== /[ \t]+/ 6120092062
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' 	 ',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ' 	 ',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' 	 ',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ' 	 ',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ' 	 ',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ' 	 ',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a 	 b',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a 	 b',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a 	 b',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a 	 b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a 	 b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a< 	 >b',
+  1 => 0,
+)
+replace-empty: 'ab'
+grep: array (
+  0 => 'a 	 b',
+)
+== /[a-cx-z]+/ 616271797a
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'ab',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'ab',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'ab',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'ab',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'ab',
+        1 => 0,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => 'yz',
+        1 => 3,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'ab',
+        1 => 0,
+      ),
+      1 => 
+      array (
+        0 => 'yz',
+        1 => 3,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'q',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'abqyz',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'qyz',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'q',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'q',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'abqyz',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'q',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'q',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'q',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'abqyz',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'qyz',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'q',
+    2 => '',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'q',
+      1 => 2,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abqyz',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'qyz',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'q',
+      1 => 2,
+    ),
+    2 => 
+    array (
+      0 => '',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'q',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'abqyz',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'q',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'q',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '<ab>q<yz>',
+  1 => 0,
+)
+replace-empty: 'q'
+grep: array (
+  0 => 'abqyz',
+  1 => 'abc',
+)
+== /[.]/ 612e62
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '.',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '.',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '.',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '.',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '.',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '.',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a.b',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a.b',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a.b',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a.b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a.b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a<.>b',
+  1 => 0,
+)
+replace-empty: 'ab'
+grep: array (
+  0 => 'a.b',
+)
+== /[\]]/ 615d62
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ']',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ']',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ']',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ']',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ']',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ']',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'a]b',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'a]b',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'a]b',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'a',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a]b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a]b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'a',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'a<]>b',
+  1 => 0,
+)
+replace-empty: 'ab'
+grep: array (
+  0 => 'a]b',
+)
+== /[-a]+/ 2d612d62
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '-a-',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '-a-',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '-a-',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '-a-',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => '-a-b',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'b',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => '-a-b',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'b',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'b',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => '-a-b',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '<-a->b',
+  1 => 0,
+)
+replace-empty: 'b'
+grep: array (
+  0 => '-a-b',
+  1 => 'abc',
+)
+== /[a-]+/ 2d612d62
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '-a-',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '-a-',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '-a-',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '-a-',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => '-a-b',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'b',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => '-a-b',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'b',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'b',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => '-a-b',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 'b',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '-a-b',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'b',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '<-a->b',
+  1 => 0,
+)
+replace-empty: 'b'
+grep: array (
+  0 => '-a-b',
+  1 => 'abc',
+)
+== /[&|]/u 61c3a92662f09f98807c63
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '&',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '&',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&',
+      1 => 3,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '&',
+        1 => 3,
+      ),
+    ),
+    1 => 
+    array (
+      0 => 
+      array (
+        0 => '|',
+        1 => 9,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 2,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => '&',
+        1 => 3,
+      ),
+      1 => 
+      array (
+        0 => '|',
+        1 => 9,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'aé&b😀|c',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀|c',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'aé&b😀|c',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀|c',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'aé&b😀|c',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀|c',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'aé',
+    1 => 'b😀',
+    2 => 'c',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b😀',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 10,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé&b😀|c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b😀|c',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b😀',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 10,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b😀',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 10,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé&b😀|c',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b😀|c',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'aé',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'b😀',
+      1 => 4,
+    ),
+    2 => 
+    array (
+      0 => 'c',
+      1 => 10,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'aé<&>b😀<|>c',
+  1 => 0,
+)
+replace-empty: 'aéb😀c'
+grep: array (
+  0 => 'aé&b😀|c',
+)
+== /[a-z]+/u c3a9616263c3a9
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'abc',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 2,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'abc',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 2,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'abc',
+        1 => 2,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'abc',
+        1 => 2,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'éabcé',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'éabcé',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'éabcé',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'é',
+    1 => 'é',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'é',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'é',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'éabcé',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'é',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'é',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'é',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'é',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'é',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'é',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'éabcé',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'é',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'é',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'é',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => 'é',
+      1 => 5,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'é<abc>é',
+  1 => 0,
+)
+replace-empty: 'éé'
+grep: array (
+  0 => 'éabcé',
+  1 => 'abc',
+)
+== /[ \t]+#/u 782009232079
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' 	#',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ' 	#',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' 	#',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => ' 	#',
+      1 => 1,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ' 	#',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => ' 	#',
+        1 => 1,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'x 	# y',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'x 	# y',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'x 	# y',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'x',
+    1 => ' y',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => ' y',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x 	# y',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => ' y',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => ' y',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => ' y',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x 	# y',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => ' y',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'x',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => ' y',
+      1 => 4,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'x< 	#> y',
+  1 => 0,
+)
+replace-empty: 'x y'
+grep: array (
+  0 => 'x 	# y',
+)
+== /[k]/iu e284aa
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'K',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'K',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'K',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'K',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 3,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '<K>',
+  1 => 0,
+)
+replace-empty: ''
+grep: array (
+  0 => 'K',
+)
+== /[s]/iu c5bf
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'ſ',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'ſ',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'ſ',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'ſ',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'ſ',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'ſ',
+        1 => 0,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'ſ',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'ſ',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'ſ',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '',
+    1 => '',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'ſ',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '',
+      1 => 2,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'ſ',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '<ſ>',
+  1 => 0,
+)
+replace-empty: ''
+grep: array (
+  0 => 'ſ',
+)
+== /[k]/i e284aa
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+)
+all-cols: array (
+  0 => 0,
+  1 => 
+  array (
+    0 => 
+    array (
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => 'K',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => 'K',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => 'K',
+  1 => 0,
+)
+replace-empty: 'K'
+grep: array (
+)
+== /[a-z]+/u f09f9880616263f09f9880
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'abc',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 4,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'abc',
+  ),
+  2 => 0,
+)
+match-768: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 4,
+    ),
+  ),
+  2 => 0,
+)
+all-set: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'abc',
+        1 => 4,
+      ),
+    ),
+  ),
+)
+all-cols: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 
+      array (
+        0 => 'abc',
+        1 => 4,
+      ),
+    ),
+  ),
+)
+split-0--1: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-0-1: array (
+  0 => 
+  array (
+    0 => '😀abc😀',
+  ),
+  1 => 0,
+)
+split-0-2: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-0-3: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-1--1: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-1-1: array (
+  0 => 
+  array (
+    0 => '😀abc😀',
+  ),
+  1 => 0,
+)
+split-1-2: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-1-3: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-2--1: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-2-1: array (
+  0 => 
+  array (
+    0 => '😀abc😀',
+  ),
+  1 => 0,
+)
+split-2-2: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-2-3: array (
+  0 => 
+  array (
+    0 => '😀',
+    1 => '😀',
+  ),
+  1 => 0,
+)
+split-4--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-4-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀abc😀',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-4-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-4-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7--1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7-1: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀abc😀',
+      1 => 0,
+    ),
+  ),
+  1 => 0,
+)
+split-7-2: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+split-7-3: array (
+  0 => 
+  array (
+    0 => 
+    array (
+      0 => '😀',
+      1 => 0,
+    ),
+    1 => 
+    array (
+      0 => '😀',
+      1 => 7,
+    ),
+  ),
+  1 => 0,
+)
+replace: array (
+  0 => '😀<abc>😀',
+  1 => 0,
+)
+replace-empty: '😀😀'
+grep: array (
+  0 => '😀abc😀',
+  1 => 'abc',
+)
+split-unmatched: array (
+  0 => '',
+  1 => 'a',
+  2 => '',
+  3 => 'c',
+  4 => '',
+)
+split-unmatched-offsets: array (
+  0 => 
+  array (
+    0 => '',
+    1 => 0,
+  ),
+  1 => 
+  array (
+    0 => 'a',
+    1 => 0,
+  ),
+  2 => 
+  array (
+    0 => '',
+    1 => -1,
+  ),
+  3 => 
+  array (
+    0 => 'c',
+    1 => 1,
+  ),
+  4 => 
+  array (
+    0 => '',
+    1 => 2,
+  ),
+)
+split-unmatched-empty: array (
+  0 => 'a',
+  1 => 'c',
+)
+replace-arrays: 'XYXYX'
+replace-subjects: array (
+  0 => 'X1',
+  1 => 'X2',
+  2 => '3',
+)
+callback: 'A1BC2D'
+callback-flags: array (
+  0 => '[["ab",0]] [["cd",3]]',
+  1 => 2,
+)
+callback-array: 'xyxyx'
+offset-end: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+)
+offset-past: array (
+  0 => false,
+  1 => 
+  array (
+  ),
+  2 => 1,
+  3 => 'Internal error',
+)
+offset-negative: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 'bc',
+  ),
+)
+anchored-run: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'abc',
+      1 => 2,
+    ),
+  ),
+)
+anchored-run-inside: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => 'xabc',
+      1 => 1,
+    ),
+  ),
+)
+anchored-class: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '&',
+      1 => 1,
+    ),
+  ),
+)
+anchored-run-lit: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '  #',
+      1 => 1,
+    ),
+  ),
+)

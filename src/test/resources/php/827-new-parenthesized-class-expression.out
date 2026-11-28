@@ -1,0 +1,6 @@
+string(6) "method"
+string(7) "literal"
+string(11) "static-prop"
+string(11) "class-const"
+string(8) "variable"
+Error: Class "NoSuchClass" not found

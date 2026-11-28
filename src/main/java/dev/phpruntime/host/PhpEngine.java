@@ -52,6 +52,11 @@ public final class PhpEngine implements AutoCloseable {
     private final ContextPool pool;
     private final int maxRequestsPerContext;
     private final ConcurrentHashMap<Path, CachedSource> sources = new ConcurrentHashMap<>();
+    /**
+     * Host services installed on every {@link PhpContext} this engine builds: the CLI uses it
+     * to let a script start a Blitz\Http\Server, which needs the engine to boot worker scripts.
+     */
+    private volatile Object serverHost;
 
     private record CachedSource(long modified, long size, Source source) {
     }
@@ -70,6 +75,8 @@ public final class PhpEngine implements AutoCloseable {
         return Math.max(2, Runtime.getRuntime().availableProcessors() - scheduler.cpus());
     }
 
+    private static final String DEFAULT_INLINING_BUDGET = "4500";
+
     public PhpEngine(Scheduler scheduler) {
         this(scheduler, scheduler == null ? 0 : Math.max(16, scheduler.cpus() * 8));
     }
@@ -85,6 +92,16 @@ public final class PhpEngine implements AutoCloseable {
         Engine.Builder builder = Engine.newBuilder("php", JsLanguage.ID)
                 .allowExperimentalOptions(true)
                 .option("engine.WarnInterpreterOnly", "false");
+        // Smaller inlining budgets than Truffle's 12000: inlining copies a callee into every
+        // caller, and on Tempest /blog the compiled guest code reached 23 MB against a 1 MB L2.
+        // At 4500, 1-2% more instructions run but cycles per request drop 5-11% (L2 misses per
+        // 1000 instructions 22-25 -> 17), 16 connections 492-521 -> 545 rps. A
+        // -Dpolyglot.compiler.Inlining*Budget property still overrides these.
+        for (String option : new String[]{"compiler.InliningExpansionBudget", "compiler.InliningInliningBudget"}) {
+            if (System.getProperty("polyglot." + option) == null) {
+                builder.option(option, DEFAULT_INLINING_BUDGET);
+            }
+        }
         int compilerThreads = defaultCompilerThreads(scheduler);
         if (compilerThreads > 0) {
             builder.option("engine.CompilerThreads", Integer.toString(compilerThreads));
@@ -99,9 +116,87 @@ public final class PhpEngine implements AutoCloseable {
         return scheduler;
     }
 
+    public void setServerHost(Object host) {
+        this.serverHost = host;
+    }
+
     /** Test hook: polyglot contexts built by the pool so far. */
     int contextsCreated() {
         return pool == null ? 0 : pool.created();
+    }
+
+    /** A long-lived worker context: one polyglot context and one permanent {@link PhpContext}. */
+    public final class WorkerContext implements AutoCloseable {
+        private final Context context;
+        private final PhpContextHolder holder;
+        private final RequestStreams streams;
+        private final PhpContext php;
+
+        private WorkerContext(Context context, PhpContextHolder holder, RequestStreams streams, PhpContext php) {
+            this.context = context;
+            this.holder = holder;
+            this.streams = streams;
+            this.php = php;
+        }
+
+        public Context context() {
+            return context;
+        }
+
+        public PhpContext php() {
+            return php;
+        }
+
+        public void installStreams(OutputStream out, OutputStream err) {
+            streams.install(out, err);
+        }
+
+        public void clearStreams() {
+            streams.clear();
+        }
+
+        @Override
+        public void close() {
+            streams.clear();
+            holder.clear();
+            try {
+                context.close();
+            } catch (RuntimeException ignored) {
+                // already closed by a timeout, or the engine is going away
+            }
+        }
+    }
+
+    /**
+     * Builds a long-lived context for one worker. It must be called, used and closed on the
+     * worker's own thread: Truffle tracks which threads have entered a context.
+     */
+    public WorkerContext newWorkerContext() {
+        RequestStreams streams = new RequestStreams();
+        PhpContextHolder holder = PhpContextHolder.prepare();
+        Context context = null;
+        try {
+            context = Context.newBuilder("php").engine(engine).allowIO(IOAccess.ALL)
+                    .out(streams.out()).err(streams.err()).build();
+            context.initialize("php");
+            if (!holder.isBound()) {
+                throw new IllegalStateException("PHP language context was not created");
+            }
+            PhpContext php = holder.install();
+            php.setServerHost(serverHost);
+            return new WorkerContext(context, holder, streams, php);
+        } catch (RuntimeException | Error e) {
+            if (context != null) {
+                try {
+                    context.close();
+                } catch (RuntimeException ignored) {
+                    // the failure is already being reported
+                }
+            }
+            throw e;
+        } finally {
+            PhpContextHolder.finishPrepare();
+        }
     }
 
     /** Executes a script and buffers its output, as the HTTP server needs. */
@@ -143,7 +238,15 @@ public final class PhpEngine implements AutoCloseable {
     /** Today's path: one polyglot context per execution, for CLI runs and JavaScript. */
     private int runSingleUse(Source source, PhpRequest request, OutputStream out, OutputStream err,
                              SnapshotRun snapshotRun, Scheduler.Task task, boolean js) {
+        // A PHP context prepared here is bound before the script runs, so host services are
+        // installed before the first guest instruction.
+        PhpContextHolder holder = js ? null : PhpContextHolder.prepare();
         try (Context ctx = Context.newBuilder(source.getLanguage()).engine(engine).allowIO(IOAccess.ALL).out(out).err(err).build()) {
+            if (holder != null) {
+                ctx.initialize("php");
+                PhpContext php = holder.install();
+                php.setServerHost(serverHost);
+            }
             if (task != null) {
                 task.bindContext(ctx);
                 task.acquire();
@@ -166,6 +269,10 @@ public final class PhpEngine implements AutoCloseable {
             // close() of a cancelled context rethrows the cancellation; report it only once
             return request.status >= 500 ? request.status : fail(request, out, task, e, js);
         } finally {
+            if (holder != null) {
+                PhpContextHolder.finishPrepare();
+                holder.clear();
+            }
             cleanup(request, snapshotRun);
         }
     }
@@ -194,6 +301,7 @@ public final class PhpEngine implements AutoCloseable {
             borrowed.streams.install(out, err);
             PhpContext php = borrowed.holder.install();
             borrowed.uses++;
+            php.setServerHost(serverHost);
             php.bindRequest(request);
             Context ctx = borrowed.context;
             if (task != null) {
@@ -315,7 +423,7 @@ public final class PhpEngine implements AutoCloseable {
         return sb.toString();
     }
 
-    private Source source(Path script) throws IOException {
+    Source source(Path script) throws IOException {
         Path abs = script.toAbsolutePath().normalize();
         // Size as well as mtime, from the same stat: a file rewritten within the timestamp's
         // granularity would otherwise keep its old parsed source.

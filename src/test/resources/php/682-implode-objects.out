@@ -1,0 +1,15 @@
+plain=1-2-3
+spaces=a b c
+single=only
+single-empty=|
+empty=|
+nested=Array,Array,x
+nulls=,,1,0,0,-0,1.5,end
+int-glue=a0b
+glue-only=|
+object=first|second|third items=["changed",{},"third","added"]
+object-single=only items=["changed","added"]
+refs=ref:plain:ref
+refs-after=now:plain:now
+sparse-single=five
+assoc=1,2

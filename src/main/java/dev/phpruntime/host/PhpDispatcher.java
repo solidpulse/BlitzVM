@@ -1,5 +1,6 @@
 package dev.phpruntime.host;
 
+import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpRequest;
 import dev.phpruntime.runtime.PhpQuery;
 import dev.phpruntime.runtime.PhpStrings;
@@ -66,10 +67,21 @@ public final class PhpDispatcher implements AutoCloseable {
     private final Path docRoot;
     private final PhpEngine engine;
     private final SnapshotServer snapshots;
+    private final WorkerPool workers;
     /** Resolved request paths, revalidated on the file system at most every {@link #routeRevalidateNanos}. */
     private final ConcurrentHashMap<String, Route> routes = new ConcurrentHashMap<>();
     /** Original request header name to its CGI server name, e.g. User-Agent to HTTP_USER_AGENT. */
     private final ConcurrentHashMap<String, String> cgiNames = new ConcurrentHashMap<>();
+    /** Worker-mode CGI values that never change: the script's names and the document root. */
+    private final String workerScriptName;
+    private final String workerScriptPath;
+    private final String workerScriptFilename;
+    private final String workerDocumentRoot;
+    /**
+     * Builds a worker request's {@code $_SERVER} on first access. One bound instance, so
+     * scheduling a request does not allocate a closure.
+     */
+    private final PhpRequest.ServerFiller workerServerFiller;
     private volatile long routeRevalidateNanos = DEFAULT_ROUTE_REVALIDATE_NANOS;
     private volatile int routeCacheLimit = DEFAULT_ROUTE_CACHE_LIMIT;
 
@@ -79,8 +91,30 @@ public final class PhpDispatcher implements AutoCloseable {
 
     /** With a profile, eligible requests are served from boot snapshots; without, nothing changes. */
     public PhpDispatcher(Path docRoot, PhpEngine engine, SnapshotProfile profile) {
+        this(docRoot, engine, profile, null);
+    }
+
+    /** With a worker pool, PHP routes are handed to a long-lived worker instead of a fresh run. */
+    public PhpDispatcher(Path docRoot, PhpEngine engine, SnapshotProfile profile, WorkerPool workers) {
         this.docRoot = docRoot.toAbsolutePath().normalize();
         this.engine = engine;
+        this.workers = workers;
+        if (workers == null) {
+            this.workerScriptName = null;
+            this.workerScriptPath = null;
+            this.workerScriptFilename = null;
+            this.workerDocumentRoot = null;
+            this.workerServerFiller = null;
+        } else {
+            // FrankenPHP reports the worker script as SCRIPT_NAME for every request it handles.
+            String name = "/" + this.docRoot.relativize(workers.workerScript())
+                    .toString().replace('\\', '/');
+            this.workerScriptName = PhpStrings.fromJava(name);
+            this.workerScriptPath = workers.workerScript().toString();
+            this.workerScriptFilename = PhpStrings.fromJava(this.workerScriptPath);
+            this.workerDocumentRoot = PhpStrings.fromJava(this.docRoot.toString());
+            this.workerServerFiller = this::fillWorkerServer;
+        }
         try {
             this.snapshots = profile == null ? null : new SnapshotServer(this.docRoot, engine, profile);
         } catch (IOException e) {
@@ -134,6 +168,14 @@ public final class PhpDispatcher implements AutoCloseable {
             }
             Path file = route.file();
             String pathInfo = route.pathInfo();
+            if (workers != null && file.toString().endsWith(".php")) {
+                PhpRequest request = buildWorkerRequest(req);
+                PhpEngine.Result result = workers.execute(request);
+                if (!result.errors().isEmpty()) {
+                    System.err.print(result.errors());
+                }
+                return response(request, result);
+            }
             PhpRequest request = buildRequest(req, file, pathInfo);
             SnapshotServer.Plan plan = null;
             if (snapshots != null) {
@@ -157,15 +199,34 @@ public final class PhpDispatcher implements AutoCloseable {
                     snapshots.verify(request, file, result, run);
                 }
             }
-            List<String[]> headers = new ArrayList<>(request.responseHeaders);
-            if (headers.stream().noneMatch(h -> h[0].equalsIgnoreCase("Content-Type"))) {
-                headers.add(new String[]{"Content-Type", "text/html; charset=UTF-8"});
-            }
-            headers.add(new String[]{"X-Powered-By", "php-truffle"});
-            return new Response(result.status(), headers, result.body());
+            return response(request, result);
         } catch (IOException | RuntimeException e) {
             return Response.text(500, "Internal Server Error: " + e + "\n");
         }
+    }
+
+    private static final String[] CONTENT_TYPE_HTML =
+            {"Content-Type", "text/html; charset=UTF-8"};
+    private static final String[] POWERED_BY = {"X-Powered-By", "php-truffle"};
+
+    private static Response response(PhpRequest request, PhpEngine.Result result) {
+        List<String[]> responseHeaders = request.responseHeaders;
+        if (responseHeaders.isEmpty()) {
+            return new Response(result.status(), List.of(CONTENT_TYPE_HTML, POWERED_BY), result.body());
+        }
+        List<String[]> headers = new ArrayList<>(responseHeaders.size() + 2);
+        boolean contentType = false;
+        for (String[] h : responseHeaders) {
+            if (h[0].equalsIgnoreCase("Content-Type")) {
+                contentType = true;
+            }
+            headers.add(h);
+        }
+        if (!contentType) {
+            headers.add(CONTENT_TYPE_HTML);
+        }
+        headers.add(POWERED_BY);
+        return new Response(result.status(), headers, result.body());
     }
 
     /**
@@ -268,6 +329,9 @@ public final class PhpDispatcher implements AutoCloseable {
         r.remoteAddr = req.remoteAddr();
         parseQuery(r.queryString, r.get);
         r.body = PhpStrings.of(req.body());
+        r.protocol = req.protocol();
+        r.serverHost = req.serverHost();
+        r.serverPort = req.serverPort();
         String contentType = null;
         String script = "/" + docRoot.relativize(file).toString().replace('\\', '/');
         Map<String, String> s = r.server;
@@ -308,6 +372,71 @@ public final class PhpDispatcher implements AutoCloseable {
             r.body = PhpStrings.toJava(r.body);
         }
         return r;
+    }
+
+    /**
+     * The worker-mode request: only what a handler can observe without touching a superglobal.
+     * The CGI variables are not materialized here; the worker's first access to {@code $_SERVER}
+     * asks {@link #fillWorkerServer} for them, so a request that never reads it builds neither
+     * the map nor its strings.
+     */
+    private PhpRequest buildWorkerRequest(Request req) {
+        PhpRequest r = PhpRequest.worker();
+        r.http = true;
+        r.method = req.method();
+        r.queryString = req.rawQuery() == null ? "" : req.rawQuery();
+        r.uri = req.rawPath() + (r.queryString.isEmpty() ? "" : "?" + r.queryString);
+        r.scriptFilename = workerScriptPath;
+        r.remoteAddr = req.remoteAddr();
+        r.body = req.body().length == 0 ? "" : PhpStrings.of(req.body());
+        r.protocol = req.protocol();
+        r.serverHost = req.serverHost();
+        r.serverPort = req.serverPort();
+        r.headers = req.headers();
+        r.serverFiller = workerServerFiller;
+        return r;
+    }
+
+    /**
+     * Appends the request's CGI variables in FrankenPHP's order, after the worker environment
+     * that {@code PhpContext} already put into the array: the fixed CGI values, the request
+     * headers, then the empty defaults.
+     */
+    private void fillWorkerServer(PhpRequest request, PhpArray server) {
+        server.put("REQUEST_METHOD", request.method);
+        server.put("REQUEST_URI", request.uri);
+        server.put("QUERY_STRING", request.queryString);
+        server.put("SCRIPT_NAME", workerScriptName);
+        server.put("PHP_SELF", workerScriptName);
+        server.put("GATEWAY_INTERFACE", "CGI/1.1");
+        server.put("REQUEST_SCHEME", "http");
+        long nowMillis = System.currentTimeMillis();
+        server.put("REQUEST_TIME_FLOAT", Double.toString(nowMillis / 1000.0));
+        server.put("SCRIPT_FILENAME", workerScriptFilename);
+        server.put("DOCUMENT_ROOT", workerDocumentRoot);
+        server.put("SERVER_PROTOCOL", request.protocol);
+        server.put("SERVER_SOFTWARE", "php-truffle");
+        server.put("SERVER_NAME", PhpStrings.fromJava(request.serverHost));
+        server.put("SERVER_PORT", Integer.toString(request.serverPort));
+        server.put("REMOTE_ADDR", request.remoteAddr);
+        server.put("REQUEST_TIME", Long.toString(nowMillis / 1000));
+        for (Map.Entry<String, String> h : request.headers.entrySet()) {
+            server.put(cgiName(h.getKey()), h.getValue());
+        }
+        putIfAbsent(server, "PATH_INFO", "");
+        putIfAbsent(server, "DOCUMENT_URI", "");
+        putIfAbsent(server, "HTTPS", "");
+        putIfAbsent(server, "AUTH_TYPE", "");
+        putIfAbsent(server, "REMOTE_HOST", request.remoteAddr);
+        putIfAbsent(server, "REMOTE_IDENT", "");
+        putIfAbsent(server, "CONTENT_TYPE", "");
+        putIfAbsent(server, "CONTENT_LENGTH", "");
+    }
+
+    private static void putIfAbsent(PhpArray server, String key, String value) {
+        if (!server.containsKey(key)) {
+            server.put(key, value);
+        }
     }
 
     /**

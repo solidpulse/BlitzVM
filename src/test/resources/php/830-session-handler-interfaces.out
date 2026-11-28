@@ -1,0 +1,16 @@
+SessionHandlerInterface interface
+  open($path, $name)
+  close()
+  read($id)
+  write($id, $data)
+  destroy($id)
+  gc($max_lifetime)
+SessionIdInterface interface
+  create_sid()
+SessionUpdateTimestampHandlerInterface interface
+  validateId($id)
+  updateTimestamp($id, $data)
+bool(true)
+bool(true)
+string(0) ""
+int(0)

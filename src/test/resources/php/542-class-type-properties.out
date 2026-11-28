@@ -1,0 +1,12 @@
+Square
+Square
+Square
+int(42)
+Square
+Cannot assign Other to property Box::$base of type Base
+Cannot assign Other to property Box::$shape of type Shape
+Cannot assign Other to property Box::$square of type ?Square
+Cannot assign Other to property Box::$union of type Base|int
+Cannot assign Other to property Box::$staticBase of type Base
+Square
+Cannot assign Other to property ParentBox::$item of type Base

@@ -13,7 +13,7 @@ too_few_exact => [ACE] ArgumentCountError: Too few arguments to function needTwo
 too_few_min => [ACE] ArgumentCountError: Too few arguments to function needAtLeastOne(), 0 passed in 085-engine-errors.php on line 31 and at least 1 expected (file=085-engine-errors.php line=14)
 builtin_arity => [ACE] ArgumentCountError: strlen() expects exactly 1 argument, 2 given (file=085-engine-errors.php line=32)
 count_type => [TE] TypeError: count(): Argument #1 ($value) must be of type Countable|array, int given (file=085-engine-errors.php line=33)
-explode_val => [VE] ValueError: explode(): Argument #1 ($separator) must not be empty (file=085-engine-errors.php line=34)
+explode_val => [VE] ValueError: explode(): Argument #1 ($separator) must not be empty, use str_split() to split a string into characters (file=085-engine-errors.php line=34)
 str_repeat_val => [VE] ValueError: str_repeat(): Argument #2 ($times) must be greater than or equal to 0 (file=085-engine-errors.php line=35)
 array_chunk_val => [VE] ValueError: array_chunk(): Argument #2 ($length) must be greater than 0 (file=085-engine-errors.php line=36)
 json_depth => [VE] ValueError: json_decode(): Argument #3 ($depth) must be greater than 0 (file=085-engine-errors.php line=37)

@@ -20,7 +20,7 @@ final class OutputBufferFunctions {
 
     static void register() {
         Builtins.def("ob_start", 0, 3, (ctx, a) -> {
-            OutputBuffer buf = new OutputBuffer();
+            OutputBuffer buf = new OutputBuffer(ctx.newOutputBufferText());
             if (a.length > 0 && a[0] != PhpNull.INSTANCE) {
                 dev.phpruntime.runtime.PhpCallable.resolve(ctx, a[0], null);
                 buf.handler = PhpOps.copyOnAssign(a[0]);
@@ -44,6 +44,7 @@ final class OutputBufferFunctions {
                 return false;
             }
             String raw = top.text.toString();
+            ctx.releaseOutputBufferText(top.text);
             ctx.applyObHandler(top, raw, 10L);
             return raw;
         });
@@ -53,6 +54,7 @@ final class OutputBufferFunctions {
                 return false;
             }
             String raw = top.text.toString();
+            ctx.releaseOutputBufferText(top.text);
             ctx.echo(ctx.applyObHandler(top, raw, 9L));
             return raw;
         });
@@ -61,7 +63,9 @@ final class OutputBufferFunctions {
             if (top == null) {
                 return false;
             }
-            ctx.applyObHandler(top, top.text.toString(), 10L);
+            String raw = top.text.toString();
+            ctx.releaseOutputBufferText(top.text);
+            ctx.applyObHandler(top, raw, 10L);
             return true;
         });
         Builtins.def("ob_end_flush", 0, 0, (ctx, a) -> {
@@ -69,7 +73,9 @@ final class OutputBufferFunctions {
             if (top == null) {
                 return false;
             }
-            ctx.echo(ctx.applyObHandler(top, top.text.toString(), 9L));
+            String raw = top.text.toString();
+            ctx.releaseOutputBufferText(top.text);
+            ctx.echo(ctx.applyObHandler(top, raw, 9L));
             return true;
         });
         Builtins.def("ob_clean", 0, 0, (ctx, a) -> {

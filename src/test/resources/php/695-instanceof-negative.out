@@ -1,0 +1,19 @@
+circle     true true true true false false false false false false false false
+square     true false true false true false false false false false false false
+plain      false false false false false false false false false false false false
+enum       false true false false false false false false false true false false
+closure    false false false false false false false false true false false false
+array      false false false false false false false false false false false false
+string     false false false false false false false false false false false false
+null       false false false false false false false false false false false false
+int        false false false false false false false false false false false false
+text       false false false false false false true false false false false false
+arrayobj   false false false false false true false true false false false false
+generator  false false false false false false false true false false false false
+false false
+true true
+false true
+false false
+false false
+later      false false false false false false false false false false false true
+later2     false false false false false false false false false false false true

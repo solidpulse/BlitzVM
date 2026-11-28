@@ -53,8 +53,14 @@ public final class PhpFunctionRootNode extends PhpRootNode {
      * time before the root is shared, so it is read without a guard.
      */
     @CompilationFinal private dev.phpruntime.runtime.PhpSignature signature = dev.phpruntime.runtime.PhpSignature.EMPTY;
+    /** {@link #qualifiedCallableName()}: fixed for the root, and built from the source path. */
+    private volatile String qualifiedName;
     /** Parameter names whose type is made nullable by a {@code null} default (php 8.4 deprecation). */
     @CompilationFinal(dimensions = 1) private String[] implicitNullable = new String[0];
+    /** What php calls this closure: {@code {closure:<declaration scope>:<line>}}. */
+    @CompilationFinal private String closureDisplay;
+    /** Whether a closure has {@code $this} bound, which a trace shows as {@code ->}. */
+    @CompilationFinal private boolean closureBoundThis;
     private final dev.phpruntime.runtime.PhpScopeLayout scopeLayout;
     private final int declaringClassId;
 
@@ -175,6 +181,11 @@ public final class PhpFunctionRootNode extends PhpRootNode {
         return declaringClass;
     }
 
+    /** The engine-wide class id of {@link #declaringClass()} for {@code PhpContext.classById}, or -1. */
+    public int declaringClassId() {
+        return declaringClassId;
+    }
+
     /**
      * The function metadata of a call target's root: this node itself, or the AST root a
      * bytecode root was compiled from. Null for any other root.
@@ -293,11 +304,44 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     }
     public boolean usesSymbolTable() { return scopeLayout != null; }
     public boolean isGenerator() { return generator; }
-    public int line() { return getSourceSection() != null ? getSourceSection().getStartLine() : -1; }
+    /** Start line of the declaration; cached because getStartLine() searches the source's line map. */
+    public int line() {
+        int l = cachedLine;
+        if (l == Integer.MIN_VALUE) {
+            com.oracle.truffle.api.source.SourceSection section = getSourceSection();
+            if (section == null) {
+                return -1;
+            }
+            l = section.getStartLine();
+            cachedLine = l;
+        }
+        return l;
+    }
+
+    private int cachedLine = Integer.MIN_VALUE;
 
     public PhpFunctionRootNode withGeneratorSource(PhpNode source) {
         this.generatorSource = source;
         return this;
+    }
+
+    /** Attaches php's closure name; called by the parser before this root is shared. */
+    public PhpFunctionRootNode withClosureDisplay(String display) {
+        this.closureDisplay = display;
+        return this;
+    }
+
+    public String closureDisplay() {
+        return closureDisplay;
+    }
+
+    public PhpFunctionRootNode closureBoundThis(boolean bound) {
+        this.closureBoundThis = bound;
+        return this;
+    }
+
+    public boolean closureBoundThis() {
+        return closureBoundThis;
     }
 
     /** Attaches the declared signature; called by the parser before this root is shared. */
@@ -448,7 +492,19 @@ public final class PhpFunctionRootNode extends PhpRootNode {
     }
 
     public String qualifiedCallableName() {
+        String cached = qualifiedName;
+        if (cached == null) {
+            cached = buildQualifiedCallableName();
+            qualifiedName = cached;
+        }
+        return cached;
+    }
+
+    private String buildQualifiedCallableName() {
         if (isClosure()) {
+            if (closureDisplay != null) {
+                return closureDisplay;
+            }
             String f = source() != null && source().getPath() != null && !source().getPath().isEmpty()
                     ? source().getPath()
                     : (source() != null ? source().getName() : "");
@@ -493,7 +549,7 @@ public final class PhpFunctionRootNode extends PhpRootNode {
      */
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public static PhpArray packVariadic(Object[] args, int from, boolean varByRef) {
-        PhpArray rest = new PhpArray();
+        PhpArray rest = PhpArray.withCapacity(Math.max(0, args.length - from), false);
         for (int i = from; i < args.length; i++) {
             Object item = args[i];
             if (item instanceof NamedVariadic nv) {

@@ -19,6 +19,7 @@ public final class StaticMethodCallNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final String[] argNames;
     @CompilationFinal(dimensions = 1) private final boolean[] spreads;
     private final boolean hasSpreadOrNamed;
+    private final boolean hasSpread;
 
     public StaticMethodCallNode(ClassRefNode classRef, String staticName, int methodId, PhpNode dynamicNameExpr,
                                 int thisSlot, int calledClassSlot, PhpNode[] args) {
@@ -40,6 +41,7 @@ public final class StaticMethodCallNode extends PhpNode {
         this.argNames = argNames;
         this.spreads = spreads;
         boolean complex = false;
+        boolean spreadSeen = false;
         if (argNames != null) {
             for (String s : argNames) {
                 if (s != null) {
@@ -48,15 +50,17 @@ public final class StaticMethodCallNode extends PhpNode {
                 }
             }
         }
-        if (!complex && spreads != null) {
+        if (spreads != null) {
             for (boolean b : spreads) {
                 if (b) {
                     complex = true;
+                    spreadSeen = true;
                     break;
                 }
             }
         }
         this.hasSpreadOrNamed = complex;
+        this.hasSpread = spreadSeen;
     }
 
     @Override
@@ -78,13 +82,22 @@ public final class StaticMethodCallNode extends PhpNode {
             e.loadSlotOrNull(calledClassSlot);
             b.endResolveStaticMethod();
             if (hasSpreadOrNamed) {
-                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
-                e.beginRawArgs(raw);
-                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexMethod(keepRef);
-                b.emitLoadLocal(callee);
-                b.emitLoadLocal(raw);
-                b.endDoComplexMethod();
+                if (!hasSpread) {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal args = e.temp();
+                    e.namedArgs(this.args, this.refTargets, this.argNames, callee, args);
+                    b.beginDoNamedMethod(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(args);
+                    b.endDoNamedMethod();
+                } else {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                    e.beginRawArgs(raw);
+                    e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                    b.beginDoComplexMethod(keepRef);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(raw);
+                    b.endDoComplexMethod();
+                }
             } else {
                 b.beginDoMethodCall(keepRef, callee);
                 for (int i = 0; i < args.length; i++) {

@@ -1,0 +1,13 @@
+default masks deprecations
+default reports warnings
+ini agrees: yes
+bool(false)
+old masked deprecations: yes, now E_ALL: yes
+bool(false)
+ini_set returns E_ALL: yes, ini_get 2
+error_reporting() 2
+after null 2
+bool(true)
+bool(true)
+handled 8192 on line 14, reported no
+handled 8192 on line 19, reported yes

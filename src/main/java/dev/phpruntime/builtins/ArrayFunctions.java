@@ -3,8 +3,10 @@ package dev.phpruntime.builtins;
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpCallable;
+import dev.phpruntime.runtime.PhpClosure;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpNull;
+import dev.phpruntime.runtime.PhpObject;
 import dev.phpruntime.runtime.PhpOps;
 import dev.phpruntime.runtime.PhpReference;
 
@@ -32,6 +34,19 @@ final class ArrayFunctions {
             return x;
         }
         throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #" + (i + 1) + " ($array) must be of type array, " + PhpOps.typeDescription(a[i]) + " given", null);
+    }
+
+    /**
+     * The function form of array_key_exists. Its message for an array or object key differs from
+     * the global-name intrinsic's ("Cannot access offset of type ..."), as php's function and its
+     * ZEND_ARRAY_KEY_EXISTS opcode do.
+     */
+    private static boolean keyExists(Object[] a, String fn) {
+        PhpArray array = arr(a, 1, fn);
+        if (a[0] instanceof PhpArray || a[0] instanceof PhpObject) {
+            throw new PhpError(PhpError.TYPE_ERROR, fn + "(): Argument #1 ($key) must be a valid array offset type", null);
+        }
+        return array.containsKey(a[0]);
     }
 
     /** Forced copy for the sort family and any builtin that runs a user callback, which must never see a half-modified array. */
@@ -78,8 +93,8 @@ final class ArrayFunctions {
             Object k = search(a[0], arr(a, 1, "array_search"), a.length > 2 && PhpOps.toBool(a[2]));
             return k == null ? false : k;
         });
-        Builtins.def("array_key_exists", 2, 2, (ctx, a) -> arr(a, 1, "array_key_exists").containsKey(a[0]));
-        Builtins.def("key_exists", 2, 2, (ctx, a) -> arr(a, 1, "key_exists").containsKey(a[0]));
+        Builtins.def("array_key_exists", 2, 2, (ctx, a) -> keyExists(a, "array_key_exists"));
+        Builtins.def("key_exists", 2, 2, (ctx, a) -> keyExists(a, "key_exists"));
         Builtins.def("array_key_first", 1, 1, (ctx, a) -> {
             List<Object> keys = arr(a, 0, "array_key_first").keys();
             return keys.isEmpty() ? PhpNull.INSTANCE : keys.get(0);
@@ -114,8 +129,24 @@ final class ArrayFunctions {
     }
 
     private static void construction() {
-        Builtins.def("array_keys", 1, 1, (ctx, a) -> PhpArray.ofList(arr(a, 0, "array_keys").keys()));
-        Builtins.def("array_values", 1, 1, (ctx, a) -> PhpArray.ofList(shared(arr(a, 0, "array_values").values())));
+        Builtins.def("array_keys", 1, 3, (ctx, a) -> {
+            PhpArray array = arr(a, 0, "array_keys");
+            PhpArray out = new PhpArray();
+            boolean filter = a.length > 1;
+            boolean strict = a.length > 2 && PhpOps.toBool(a[2]);
+            for (int pos = array.firstPos(); pos >= 0; pos = array.nextPos(pos)) {
+                Object v = array.rawValueAt(pos);
+                if (v instanceof PhpReference ref) {
+                    v = ref.getValue();
+                }
+                if (filter && !(strict ? PhpOps.strictEquals(a[1], v) : PhpOps.looseEquals(a[1], v))) {
+                    continue;
+                }
+                out.append(array.keyAt(pos));
+            }
+            return out;
+        });
+        Builtins.def("array_values", 1, 1, (ctx, a) -> valuesOf(arr(a, 0, "array_values")));
         Builtins.def("array_merge", 0, -1, (ctx, a) -> {
             int total = 0;
             boolean stringKeys = false;
@@ -179,20 +210,39 @@ final class ArrayFunctions {
             return out;
         });
         Builtins.def("array_unique", 1, 2, (ctx, a) -> {
+            PhpArray src = arr(a, 0, "array_unique");
+            long flags = a.length > 1 ? PhpOps.toLong(a[1]) : 2; // SORT_STRING
+            long base = flags & ~8L; // ~SORT_FLAG_CASE
+            boolean foldCase = (flags & 8L) != 0;
+            if (base == 2L || base == 5L) {
+                return uniqueByString(src, base == 2L && foldCase);
+            }
+            boolean natural = base == 6L;
+            boolean numeric = base == 1L;
             PhpArray out = new PhpArray();
             List<Object> seen = new ArrayList<>();
-            for (Map.Entry<Object, Object> e : arr(a, 0, "array_unique").entries()) {
-                boolean dup = false;
-                for (Object s : seen) {
-                    if (PhpOps.looseEquals(s, e.getValue())) {
-                        dup = true;
-                        break;
+            PhpArray view = src.walkView();
+            try {
+                for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                    Object raw = view.rawValueAt(pos);
+                    Object value = unwrap(raw);
+                    boolean dup = false;
+                    for (Object s : seen) {
+                        boolean equal = natural
+                                ? StringFunctions.natCompare(PhpOps.toStr(s), PhpOps.toStr(value), foldCase) == 0
+                                : numeric ? numericEquals(s, value) : PhpOps.looseEquals(s, value);
+                        if (equal) {
+                            dup = true;
+                            break;
+                        }
+                    }
+                    if (!dup) {
+                        seen.add(value);
+                        out.put(view.keyAt(pos), PhpOps.copyOnAssign(raw));
                     }
                 }
-                if (!dup) {
-                    seen.add(e.getValue());
-                    out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
-                }
+            } finally {
+                view.releaseShare();
             }
             return out;
         });
@@ -325,7 +375,7 @@ final class ArrayFunctions {
         Builtins.defRef("array_multisort", 1, -1, 0x7FFFFFFF, (ctx, a) -> arrayMultisort(a));
         Builtins.defRef("shuffle", 1, 1, REF_FIRST, (ctx, a) -> {
             List<Object> values = new ArrayList<>(writable(a).values());
-            Collections.shuffle(values, java.util.concurrent.ThreadLocalRandom.current());
+            RandomFunctions.shuffleValues(ctx, values);
             a[0] = PhpArray.ofList(values);
             return true;
         });
@@ -507,6 +557,11 @@ final class ArrayFunctions {
         return n;
     }
 
+    /** array_values: a list of the array's values, with reference cells copied as php does. */
+    static PhpArray valuesOf(PhpArray src) {
+        return PhpArray.ofList(shared(src.values()));
+    }
+
     private static List<Object> shared(List<Object> values) {
         values.replaceAll(PhpOps::copyOnAssign);
         return values;
@@ -659,9 +714,9 @@ final class ArrayFunctions {
             }
         }
         PhpArray out = new PhpArray();
-        boolean direct = !first.hasObjectValue();
+        boolean direct = !first.hasValueThatCanRunPhp();
         for (PhpArray other : others) {
-            if (other.hasObjectValue()) {
+            if (other.hasValueThatCanRunPhp()) {
                 direct = false;
                 break;
             }
@@ -810,15 +865,23 @@ final class ArrayFunctions {
     }
 
     private static PhpArray arrayMap(PhpContext ctx, Object[] a) {
-        PhpCallable cb = a[0] == PhpNull.INSTANCE ? null : PhpCallable.resolve(ctx, a[0], null);
+        Object cbValue = a[0];
+        PhpObject closureObj = cbValue instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = cbValue == PhpNull.INSTANCE || closure != null ? null : PhpCallable.resolve(ctx, cbValue, null);
         if (a.length == 2) {
             PhpArray src = arr(a, 1, "array_map");
             PhpArray out = new PhpArray();
-            if (cb == null) {
+            if (cb == null && closure == null) {
                 src.forEachEntry((key, value) -> out.put(key, PhpOps.copyOnAssign(value)));
             } else {
-                for (Map.Entry<Object, Object> e : src.entries()) {
-                    out.put(e.getKey(), cb.call(ctx, null, null, e.getValue()));
+                PhpArray view = src.walkView();
+                try {
+                    for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                        out.put(view.keyAt(pos), callback1(ctx, closureObj, closure, cb, view.valueAt(pos)));
+                    }
+                } finally {
+                    view.releaseShare();
                 }
             }
             return out;
@@ -840,14 +903,16 @@ final class ArrayFunctions {
                 List<Object> list = lists.get(j);
                 callArgs[j] = idx < list.size() ? list.get(idx) : PhpNull.INSTANCE;
             }
-            if (cb == null) {
+            if (cb == null && closure == null) {
                 PhpArray row = new PhpArray();
                 for (Object v : callArgs) {
                     row.append(PhpOps.copyOnAssign(v));
                 }
                 out.append(row);
             } else {
-                out.append(cb.call(ctx, null, null, callArgs));
+                out.append(closure != null
+                        ? PhpCallable.invokeClosure(ctx, null, null, closureObj, closure, callArgs)
+                        : cb.call(ctx, null, null, callArgs));
             }
         }
         return out;
@@ -855,10 +920,13 @@ final class ArrayFunctions {
 
     private static PhpArray arrayFilter(PhpContext ctx, Object[] a) {
         PhpArray src = arr(a, 0, "array_filter");
-        PhpCallable cb = a.length > 1 && a[1] != PhpNull.INSTANCE ? PhpCallable.resolve(ctx, a[1], null) : null;
+        Object cbValue = a.length > 1 ? a[1] : PhpNull.INSTANCE;
+        PhpObject closureObj = cbValue instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = cbValue == PhpNull.INSTANCE || closure != null ? null : PhpCallable.resolve(ctx, cbValue, null);
         long mode = a.length > 2 ? PhpOps.toLong(a[2]) : 0L;
         PhpArray out = new PhpArray();
-        if (cb == null) {
+        if (cb == null && closure == null) {
             src.forEachEntry((key, value) -> {
                 if (PhpOps.toBool(value)) {
                     out.put(key, PhpOps.copyOnAssign(value));
@@ -866,28 +934,45 @@ final class ArrayFunctions {
             });
             return out;
         }
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            boolean keep;
-            if (mode == 2L) { // ARRAY_FILTER_USE_KEY
-                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getKey()));
-            } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
-                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
-            } else {
-                keep = PhpOps.toBool(cb.call(ctx, null, null, e.getValue()));
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object key = view.keyAt(pos);
+                Object raw = view.rawValueAt(pos);
+                Object value = unwrap(raw);
+                boolean keep;
+                if (mode == 2L) { // ARRAY_FILTER_USE_KEY
+                    keep = PhpOps.toBool(callback1(ctx, closureObj, closure, cb, key));
+                } else if (mode == 1L) { // ARRAY_FILTER_USE_BOTH
+                    keep = PhpOps.toBool(callback2(ctx, closureObj, closure, cb, value, key));
+                } else {
+                    keep = PhpOps.toBool(callback1(ctx, closureObj, closure, cb, value));
+                }
+                if (keep) {
+                    // php copies the zval, so a reference cell stays a reference in the result.
+                    out.put(key, PhpOps.copyOnAssign(raw));
+                }
             }
-            if (keep) {
-                out.put(e.getKey(), PhpOps.copyOnAssign(e.getValue()));
-            }
+        } finally {
+            view.releaseShare();
         }
         return out;
     }
 
     private static Object arrayReduce(PhpContext ctx, Object[] a) {
         PhpArray src = arr(a, 0, "array_reduce");
-        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
+        Object cbValue = a[1];
+        PhpObject closureObj = cbValue instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = closure == null ? PhpCallable.resolve(ctx, cbValue, null) : null;
         Object acc = a.length > 2 ? PhpOps.copyOnAssign(a[2]) : PhpNull.INSTANCE;
-        for (Object v : src.values()) {
-            acc = cb.call(ctx, null, null, acc, v);
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                acc = callback2(ctx, closureObj, closure, cb, acc, view.valueAt(pos));
+            }
+        } finally {
+            view.releaseShare();
         }
         return acc;
     }
@@ -950,8 +1035,8 @@ final class ArrayFunctions {
         List<Map.Entry<Object, Object>> entries = new ArrayList<>(writable(a).entries());
         entries.sort((e1, e2) -> {
             Object res = byKey
-                    ? cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
-                    : cb.call(ctx, null, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
+                    ? cb.call2(ctx, ctx.currentBuiltinCallSite(), e1.getKey(), e2.getKey())
+                    : cb.call2(ctx, ctx.currentBuiltinCallSite(), e1.getValue(), e2.getValue());
             return PhpOps.compare(res, 0L);
         });
         if (keepKeys) {
@@ -968,27 +1053,94 @@ final class ArrayFunctions {
 
     private static Object findEntry(PhpContext ctx, Object[] a, String fn, boolean returnKey) {
         PhpArray src = arr(a, 0, fn);
-        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            if (PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()))) {
-                return returnKey ? e.getKey() : PhpOps.copyOnAssign(e.getValue());
+        PhpObject closureObj = a[1] instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = closure == null ? PhpCallable.resolve(ctx, a[1], null) : null;
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object value = view.valueAt(pos);
+                Object key = view.keyAt(pos);
+                if (PhpOps.toBool(callback2(ctx, closureObj, closure, cb, value, key))) {
+                    return returnKey ? key : PhpOps.copyOnAssign(value);
+                }
             }
+        } finally {
+            view.releaseShare();
         }
         return PhpNull.INSTANCE;
     }
 
     private static boolean anyOrAll(PhpContext ctx, Object[] a, boolean isAny) {
         PhpArray src = arr(a, 0, isAny ? "array_any" : "array_all");
-        PhpCallable cb = PhpCallable.resolve(ctx, a[1], null);
-        for (Map.Entry<Object, Object> e : src.entries()) {
-            boolean matched = PhpOps.toBool(cb.call(ctx, null, null, e.getValue(), e.getKey()));
-            if (isAny && matched) {
-                return true;
+        PhpObject closureObj = a[1] instanceof PhpObject o && o.closure() != null ? o : null;
+        PhpClosure closure = closureObj == null ? null : closureObj.closure();
+        PhpCallable cb = closure == null ? PhpCallable.resolve(ctx, a[1], null) : null;
+        PhpArray view = src.walkView();
+        try {
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object value = view.valueAt(pos);
+                Object key = view.keyAt(pos);
+                boolean matched = PhpOps.toBool(callback2(ctx, closureObj, closure, cb, value, key));
+                if (isAny && matched) {
+                    return true;
+                }
+                if (!isAny && !matched) {
+                    return false;
+                }
             }
-            if (!isAny && !matched) {
-                return false;
-            }
+        } finally {
+            view.releaseShare();
         }
         return !isAny;
+    }
+
+    /** A builtin callback resolved once: a closure object runs through its call target. */
+    private static Object callback1(PhpContext ctx, PhpObject closureObj, PhpClosure closure, PhpCallable cb, Object arg) {
+        return closure != null ? PhpCallable.invokeClosure1(ctx, null, closureObj, closure, arg) : cb.call1(ctx, null, arg);
+    }
+
+    private static Object callback2(PhpContext ctx, PhpObject closureObj, PhpClosure closure, PhpCallable cb,
+                                    Object first, Object second) {
+        return closure != null ? PhpCallable.invokeClosure2(ctx, null, closureObj, closure, first, second)
+                : cb.call2(ctx, null, first, second);
+    }
+
+    /**
+     * array_unique under SORT_STRING and SORT_LOCALE_STRING (the C locale compares bytes). The
+     * string cast is the comparison key, so a hash set replaces php's O(n^2) scan of previous
+     * values; php's own default does the same.
+     */
+    private static PhpArray uniqueByString(PhpArray src, boolean foldCase) {
+        PhpArray out = new PhpArray();
+        // toStr on an object runs __toString, which can write the array: the view keeps the walk
+        // on php's by-value snapshot without an entries() list.
+        PhpArray view = src.walkView();
+        try {
+            java.util.HashSet<String> seen = new java.util.HashSet<>();
+            for (int pos = view.firstPos(); pos >= 0; pos = view.nextPos(pos)) {
+                Object raw = view.rawValueAt(pos);
+                Object value = unwrap(raw);
+                String key = PhpOps.toStr(value);
+                if (foldCase) {
+                    key = dev.phpruntime.runtime.PhpStrings.lower(key);
+                }
+                if (seen.add(key)) {
+                    out.put(view.keyAt(pos), PhpOps.copyOnAssign(raw));
+                }
+            }
+        } finally {
+            view.releaseShare();
+        }
+        return out;
+    }
+
+    private static Object unwrap(Object value) {
+        return value instanceof PhpReference ref ? ref.getValue() : value;
+    }
+
+    /** SORT_NUMERIC compares every value as a double, so integers beyond 2^53 are not exact. */
+    private static boolean numericEquals(Object x, Object y) {
+        return PhpOps.toDouble(x) == PhpOps.toDouble(y);
     }
 }

@@ -84,6 +84,20 @@ public final class SnapshotProfile {
     }
 
     /**
+     * The built-in profile for the application in {@code docRoot}, or null when none is
+     * recognised. WordPress is recognised by the files every install has in its root:
+     * {@code wp-load.php}, {@code wp-settings.php} and {@code wp-includes/version.php}.
+     */
+    public static String detect(Path docRoot) {
+        if (docRoot != null && Files.isRegularFile(docRoot.resolve("wp-load.php"))
+                && Files.isRegularFile(docRoot.resolve("wp-settings.php"))
+                && Files.isRegularFile(docRoot.resolve("wp-includes").resolve("version.php"))) {
+            return "wordpress";
+        }
+        return null;
+    }
+
+    /**
      * Loads {@code --profile <name|file>}: the name {@code wordpress} is built in; anything else
      * is a properties file. Relative {@code boot} and {@code after_restore} paths resolve against
      * the document root.

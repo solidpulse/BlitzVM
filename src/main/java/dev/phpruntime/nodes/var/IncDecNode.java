@@ -16,6 +16,7 @@ public final class IncDecNode extends PhpNode {
     }
 
     /** Perl-style string increment: "a" becomes "b", "Az" becomes "Ba", "zz" becomes "aaa". */
+    @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
     public static String incrementString(String s) {
         if (s.isEmpty()) {
             return "1";

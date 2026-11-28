@@ -1,0 +1,79 @@
+any-list: bool(true)
+any-seen: array(3) {
+  [0]=>
+  array(2) {
+    [0]=>
+    int(0)
+    [1]=>
+    int(1)
+  }
+  [1]=>
+  array(2) {
+    [0]=>
+    int(1)
+    [1]=>
+    int(2)
+  }
+  [2]=>
+  array(2) {
+    [0]=>
+    int(2)
+    [1]=>
+    int(3)
+  }
+}
+any-miss: bool(false)
+all-hit: bool(true)
+all-assoc-miss: bool(false)
+all-seen: array(2) {
+  [0]=>
+  array(2) {
+    [0]=>
+    string(1) "a"
+    [1]=>
+    int(1)
+  }
+  [1]=>
+  array(2) {
+    [0]=>
+    string(1) "b"
+    [1]=>
+    int(2)
+  }
+}
+any-empty: bool(false)
+all-empty: bool(true)
+any-truthy: bool(true)
+all-truthy: bool(true)
+any-gapped-key: bool(true)
+all-gapped-value: bool(true)
+any-mutating: bool(true)
+any-mutated: array(5) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+  [3]=>
+  int(10)
+  [4]=>
+  int(20)
+}
+any-ref-cell: bool(true)
+by-ref-cell: int(1)
+throwing: string(6) "stop 1"
+named-function: bool(true)
+first-class-function: bool(true)
+value-call: bool(true)
+call-user-func: bool(true)
+call-user-func-array: bool(true)
+named-args: bool(true)
+named-args-reordered: bool(true)
+non-array: string(69) "array_any(): Argument #1 ($array) must be of type array, string given"
+non-array-all: string(67) "array_all(): Argument #1 ($array) must be of type array, null given"
+not-callable: string(5) "Error"
+null-callback: string(5) "Error"
+not-callable-all: string(5) "Error"
+weak-coerce: bool(true)
+weak-type-error: string(67) "{closure}(): Argument #1 ($value) must be of type int, string given"

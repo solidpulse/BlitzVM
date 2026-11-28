@@ -69,6 +69,7 @@ final class RuntimeFunctions {
         Builtins.def("get_defined_functions", 0, 1, (ctx, a) -> {
             boolean excludeDisabled = a.length == 0 || PhpOps.toBool(a[0]);
             List<String> internal = new ArrayList<>(Builtins.names());
+            internal.removeIf(n -> !WorkerFunctions.available(ctx, n));
             internal.sort(String::compareTo);
             PhpArray out = new PhpArray();
             PhpArray internalArr = new PhpArray();
@@ -144,7 +145,7 @@ final class RuntimeFunctions {
             }
             if ((what & 2L) != 0) {
                 sb.append("\nCore\n\nassert.active => On => On\n");
-                sb.append("error_reporting => 32767 => 32767\n");
+                sb.append("error_reporting => " + ctx.errorReportingIni() + " => " + ctx.errorReportingIni() + "\n");
                 sb.append("display_errors => On => On\n");
             }
             ctx.echo(sb.toString());

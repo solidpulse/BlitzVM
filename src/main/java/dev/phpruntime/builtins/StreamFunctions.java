@@ -67,6 +67,19 @@ final class StreamFunctions {
         return new PhpResource(streamId(ctx), "stream", s);
     }
 
+    /**
+     * The CLI SAPI's STDIN, STDOUT and STDERR constants, defined before the main script runs.
+     * They take php's fixed resource ids 1, 2 and 3; ContextState numbers everything else from 4.
+     */
+    static void defineCliStdio(PhpContext ctx) {
+        ctx.defineConstant("STDIN", new PhpResource(1, "stream",
+                new PhpStream.InputStreamStream(ctx.env().in(), "php://stdin")), 0);
+        ctx.defineConstant("STDOUT", new PhpResource(2, "stream",
+                new PhpStream.OutputStreamStream(ctx, ctx.env().out(), "wb", "php://stdout")), 0);
+        ctx.defineConstant("STDERR", new PhpResource(3, "stream",
+                new PhpStream.OutputStreamStream(ctx, ctx.env().err(), "wb", "php://stderr")), 0);
+    }
+
     static void register() {
         open();
         readWrite();
@@ -170,8 +183,9 @@ final class StreamFunctions {
                 case "memory" -> new PhpStream.MemoryStream("w+b", "php://memory", "MEMORY", null);
                 case "temp" -> new PhpStream.MemoryStream("w+b", "php://temp", "TEMP", null);
                 case "input" -> new PhpStream.MemoryStream("rb", "php://input", "Input",
-                        PhpStrings.bytes(ctx.request().body));
+                        PhpStrings.bytes(ctx.request().bodyText()));
                 case "output" -> new PhpStream.OutputStreamStream(ctx, null, "wb", "php://output");
+                case "stdin" -> new PhpStream.InputStreamStream(ctx.env().in(), "php://stdin");
                 case "stdout" -> new PhpStream.OutputStreamStream(ctx, ctx.env().out(), mode, "php://stdout");
                 case "stderr" -> new PhpStream.OutputStreamStream(ctx, ctx.env().err(), mode, "php://stderr");
                 default -> {
@@ -326,6 +340,23 @@ final class StreamFunctions {
             }
         });
         Builtins.def("fwrite", 2, 3, StreamFunctions::fwrite);
+        // fprintf/vfprintf: sprintf's formatting, written with fwrite; they return the length.
+        Builtins.def("fprintf", 2, -1, (ctx, a) -> {
+            String s = StringFunctions.sprintf(ctx, java.util.Arrays.copyOfRange(a, 1, a.length));
+            fwrite(ctx, new Object[]{a[0], s});
+            return (long) PhpStrings.bytes(s).length;
+        });
+        Builtins.def("vfprintf", 3, 3, (ctx, a) -> {
+            List<Object> vals = ((PhpArray) a[2]).values();
+            Object[] args = new Object[vals.size() + 1];
+            args[0] = a[1];
+            for (int i = 0; i < vals.size(); i++) {
+                args[i + 1] = vals.get(i);
+            }
+            String s = StringFunctions.sprintf(ctx, args);
+            fwrite(ctx, new Object[]{a[0], s});
+            return (long) PhpStrings.bytes(s).length;
+        });
         Builtins.def("fputs", 2, 3, StreamFunctions::fwrite);
         Builtins.def("feof", 1, 1, (ctx, a) -> stream(a[0], "feof").eof);
         Builtins.def("ftell", 1, 1, (ctx, a) -> stream(a[0], "ftell").tell());
@@ -459,6 +490,14 @@ final class StreamFunctions {
             return true;
         });
         Builtins.def("stream_set_write_buffer", 2, 2, (ctx, a) -> 0L);
+        Builtins.def("stream_set_chunk_size", 2, 2, (ctx, a) -> {
+            stream(a[0], "stream_set_chunk_size");
+            long size = PhpOps.toLong(a[1]);
+            if (size <= 0) {
+                throw new PhpError("ValueError", "stream_set_chunk_size(): Argument #2 ($size) must be greater than 0", null);
+            }
+            return size;
+        });
         Builtins.def("stream_is_local", 1, 1, (ctx, a) -> {
             if (a[0] instanceof PhpResource) {
                 return true;

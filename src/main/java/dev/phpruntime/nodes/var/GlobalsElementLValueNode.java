@@ -28,7 +28,11 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     @Override
     public Object read(VirtualFrame frame, Object[] keys) {
-        PhpContext ctx = PhpContext.get(this);
+        return read(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public Object read(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         if (constName != null) {
             return constGlobalId >= 0 ? ctx.readGlobalById(constGlobalId) : null;
         }
@@ -38,7 +42,11 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     @Override
     public void write(VirtualFrame frame, Object[] keys, Object value) {
-        PhpContext ctx = PhpContext.get(this);
+        write(frame, keys, value, PhpContext.get(this));
+    }
+
+    @Override
+    public void write(VirtualFrame frame, Object[] keys, Object value, PhpContext ctx) {
         if (constName != null) {
             if (constGlobalId < 0) {
                 throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
@@ -51,7 +59,11 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     @Override
     public PhpReference obtainCell(VirtualFrame frame, Object[] keys) {
-        PhpContext ctx = PhpContext.get(this);
+        return obtainCell(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public PhpReference obtainCell(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         if (constName != null) {
             if (constGlobalId < 0) {
                 throw PhpError.fatal("Cannot acquire reference to $GLOBALS").at(this);
@@ -63,7 +75,11 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     @Override
     public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell) {
-        PhpContext ctx = PhpContext.get(this);
+        bindCell(frame, keys, cell, PhpContext.get(this));
+    }
+
+    @Override
+    public void bindCell(VirtualFrame frame, Object[] keys, PhpReference cell, PhpContext ctx) {
         if (constName != null) {
             if (constGlobalId < 0) {
                 throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
@@ -76,7 +92,11 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     @Override
     public void unset(VirtualFrame frame, Object[] keys) {
-        PhpContext ctx = PhpContext.get(this);
+        unset(frame, keys, PhpContext.get(this));
+    }
+
+    @Override
+    public void unset(VirtualFrame frame, Object[] keys, PhpContext ctx) {
         if (constName != null) {
             if (constGlobalId < 0) {
                 throw PhpError.fatal("$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax").at(this);
@@ -89,9 +109,13 @@ public final class GlobalsElementLValueNode extends LValueNode {
 
     /** The rvalue read with the key already evaluated. */
     public Object executeWithKeys(VirtualFrame frame, Object[] keys) {
-        Object v = read(frame, keys);
+        return executeWithKeys(frame, keys, PhpContext.get(this));
+    }
+
+    public Object executeWithKeys(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        Object v = read(frame, keys, ctx);
         if (v == null) {
-            warnMissing(keys);
+            warnMissing(keys, ctx);
             return PhpNull.INSTANCE;
         }
         return v;
@@ -118,7 +142,7 @@ public final class GlobalsElementLValueNode extends LValueNode {
     }
 
     @TruffleBoundary
-    private void warnMissing(Object[] keys) {
+    private void warnMissing(Object[] keys, PhpContext ctx) {
         String shown;
         if (constName != null) {
             shown = '"' + constName + '"';
@@ -126,7 +150,7 @@ public final class GlobalsElementLValueNode extends LValueNode {
             Object k = PhpArray.normalizeKey(keys[0]);
             shown = k instanceof String s ? '"' + s + '"' : PhpOps.toStr(k);
         }
-        PhpContext.get(this).warning("Undefined array key " + shown, line());
+        ctx.warning("Undefined array key " + shown, line());
     }
 
     @Override
@@ -138,4 +162,11 @@ public final class GlobalsElementLValueNode extends LValueNode {
     public void emit(dev.phpruntime.bytecode.BytecodeEmitter e) {
         e.place(this, dev.phpruntime.bytecode.PhpBytecodeRootNode.P_READ, 0, null);
     }
+
+    @Override
+    public Object readValue(VirtualFrame frame, Object[] keys, PhpContext ctx) {
+        Object v = read(frame, keys, ctx);
+        return v == null ? undefined(ctx) : v;
+    }
+
 }

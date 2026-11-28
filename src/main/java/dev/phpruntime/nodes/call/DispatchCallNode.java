@@ -24,7 +24,15 @@ import dev.phpruntime.runtime.PhpOps;
 public final class DispatchCallNode extends Node {
 
     @Child private DirectCallNode directCall;
+    /** The second target a site saw: a site that alternates between two classes still calls directly. */
+    @Child private DirectCallNode secondDirectCall;
     @Child private IndirectCallNode indirectCall;
+
+    /** The last trait call site wrapped for the backtrace, so a call site does not allocate one per call. */
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal private TraitSiteCache traitSiteCache;
+
+    private record TraitSiteCache(dev.phpruntime.runtime.PhpBacktrace.TraceSite traceSite, Object site, PhpClass traitSelf) {
+    }
 
     public RootCallTarget cachedTarget() {
         DirectCallNode direct = directCall;
@@ -43,14 +51,133 @@ public final class DispatchCallNode extends Node {
     public Object call(RootCallTarget target, Object[] args) {
         // Read each child once: another request may be installing it concurrently.
         DirectCallNode direct = directCall;
-        if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(args);
+        if (direct != null) {
+            if (direct.getCallTarget() == target) {
+                return direct.call(args);
+            }
+            DirectCallNode second = secondDirectCall;
+            if (second != null && second.getCallTarget() == target) {
+                return second.call(args);
+            }
         }
         IndirectCallNode indirect = indirectCall;
         if (indirect != null) {
             return indirect.call(target, args);
         }
         return callDynamic(target, args);
+    }
+
+    /** {@link #call} with the call site pushed for the callee's exception traces. */
+    public Object call(RootCallTarget target, Object[] args, Object site) {
+        return call(target, args, site, null);
+    }
+
+    /** With the class a trait method runs for, which php reports as the frame's class. */
+    public Object call(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf) {
+        return callTraced(target, args, site, traitSelf, dev.phpruntime.PhpContext.get(this));
+    }
+
+    /**
+     * {@link #call} with the context the caller already has in hand. Guest code reads it once
+     * per invocation, so every call it makes must not repeat the lookup.
+     */
+    public Object callTraced(RootCallTarget target, Object[] args, Object site, PhpClass traitSelf,
+                             dev.phpruntime.PhpContext ctx) {
+        int depth = ctx.pushTraceFrame(traceSite(traitSelf != null && target != null && isTraitMethod(target), site, traitSelf));
+        try {
+            return call(target, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
+    /** {@link #callTraced} without a trait class. */
+    public Object callTraced(RootCallTarget target, Object[] args, Object site, dev.phpruntime.PhpContext ctx) {
+        return callTraced(target, args, site, null, ctx);
+    }
+
+    /**
+     * A magic method the runtime calls on its own: php gives its frame the caller's current
+     * line, which no call site here knows, so the frame is an unknown site.
+     */
+    public Object callUnsitedMethod(PhpClass.MethodEntry entry, Object[] args) {
+        dev.phpruntime.PhpContext ctx = dev.phpruntime.PhpContext.get(this);
+        int depth = ctx.pushTraceFrame(dev.phpruntime.runtime.PhpBacktrace.UNKNOWN_SITE);
+        try {
+            return callMethod(entry, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
+    /** {@link #callMethod} with the call site pushed for the callee's exception traces. */
+    public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site) {
+        return callMethod(entry, args, site, null);
+    }
+
+    public Object callMethod(PhpClass.MethodEntry entry, Object[] args, Node site, PhpClass traitSelf) {
+        return callMethodTraced(entry, args, site, traitSelf, dev.phpruntime.PhpContext.get(this));
+    }
+
+    /** {@link #callMethod} with the context the caller already holds. */
+    public Object callMethodTraced(PhpClass.MethodEntry entry, Object[] args, Node site, PhpClass traitSelf,
+                                   dev.phpruntime.PhpContext ctx) {
+        int depth = ctx.pushTraceFrame(traceSite(entry.fromTrait(), site, traitSelf));
+        try {
+            return callMethod(entry, args);
+        } finally {
+            ctx.popTraceFrame(depth);
+        }
+    }
+
+    /** {@link #callMethodTraced} without a trait class. */
+    public Object callMethodTraced(PhpClass.MethodEntry entry, Object[] args, Node site,
+                                   dev.phpruntime.PhpContext ctx) {
+        return callMethodTraced(entry, args, site, null, ctx);
+    }
+
+    /**
+     * {@code traitMethod} comes from the method entry where there is one: a method call passes
+     * its called class as {@code traitSelf}, and walking from a call target that is not a
+     * compile-time constant to its PHP function on every call cost each call site about 250
+     * IR nodes on /blog.
+     */
+    private Object traceSite(boolean traitMethod, Object site, PhpClass traitSelf) {
+        if (traitSelf == null || !traitMethod || !(site instanceof Node node)) {
+            return site;
+        }
+        TraitSiteCache cached = traitSiteCache;
+        if (cached != null) {
+            if (cached.site == site && cached.traitSelf == traitSelf) {
+                return cached.traceSite;
+            }
+            // Another using class at this site (a trait shared by several classes): a small
+            // record, allocated in place. Republishing the cache under the node lock on every
+            // change cost every worker a boundary call and the shared lock.
+            return new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
+        }
+        // Compiled code that folded the empty cache must not keep taking the slow path.
+        com.oracle.truffle.api.CompilerDirectives.transferToInterpreterAndInvalidate();
+        return traceSiteSlow(node, site, traitSelf);
+    }
+
+    /** The first trait call of a site publishes its trace site. */
+    @TruffleBoundary
+    private Object traceSiteSlow(Node node, Object site, PhpClass traitSelf) {
+        java.util.concurrent.locks.Lock lock = getLock();
+        lock.lock();
+        try {
+            TraitSiteCache cached = traitSiteCache;
+            if (cached != null) {
+                return cached.site == site && cached.traitSelf == traitSelf ? cached.traceSite
+                        : new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
+            }
+            dev.phpruntime.runtime.PhpBacktrace.TraceSite fresh = new dev.phpruntime.runtime.PhpBacktrace.TraceSite(node, traitSelf);
+            traitSiteCache = new TraitSiteCache(fresh, site, traitSelf);
+            return fresh;
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -61,15 +188,21 @@ public final class DispatchCallNode extends Node {
     public Object callMethod(PhpClass.MethodEntry entry, Object[] args) {
         RootCallTarget target = entry.callTarget();
         DirectCallNode direct = directCall;
-        if (direct != null && direct.getCallTarget() == target) {
-            return direct.call(isTraitMethod(direct.getCallTarget()) ? withTraitSelf(args, entry.declaringClass()) : args);
+        if (direct != null) {
+            if (direct.getCallTarget() == target) {
+                return direct.call(entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
+            }
+            DirectCallNode second = secondDirectCall;
+            if (second != null && second.getCallTarget() == target) {
+                return second.call(entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
+            }
         }
         if (indirectCall == null) {
-            // First call or a second target: keep the trait check and argument copy below out
+            // First call or a third target: keep the trait check and argument copy below out
             // of compiled code until the site is polymorphic.
             CompilerDirectives.transferToInterpreterAndInvalidate();
         }
-        return call(target, isTraitMethod(target) ? withTraitSelf(args, entry.declaringClass()) : args);
+        return call(target, entry.fromTrait() ? withTraitSelf(args, entry.declaringClass()) : args);
     }
 
     private static boolean isTraitMethod(CallTarget target) {
@@ -88,28 +221,33 @@ public final class DispatchCallNode extends Node {
 
     private Object callDynamic(RootCallTarget target, Object[] args) {
         CompilerDirectives.transferToInterpreterAndInvalidate();
-        if (prepareCall(target)) {
-            return directCall.call(args);
-        }
-        return indirectCall.call(target, args);
+        DirectCallNode direct = prepareCall(target);
+        return direct != null ? direct.call(args) : indirectCall.call(target, args);
     }
 
     @TruffleBoundary
-    private boolean prepareCall(RootCallTarget target) {
+    private DirectCallNode prepareCall(RootCallTarget target) {
         java.util.concurrent.locks.Lock lock = getLock();
         lock.lock();
         try {
             if (directCall == null) {
                 directCall = insert(DirectCallNode.create(target));
-                return true;
+                return directCall;
             }
             if (directCall.getCallTarget() == target) {
-                return true;
+                return directCall;
+            }
+            if (secondDirectCall == null) {
+                secondDirectCall = insert(DirectCallNode.create(target));
+                return secondDirectCall;
+            }
+            if (secondDirectCall.getCallTarget() == target) {
+                return secondDirectCall;
             }
             if (indirectCall == null) {
                 indirectCall = insert(Truffle.getRuntime().createIndirectCallNode());
             }
-            return false;
+            return null;
         } finally {
             lock.unlock();
         }

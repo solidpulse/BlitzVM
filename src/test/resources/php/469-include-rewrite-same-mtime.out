@@ -1,0 +1,10 @@
+string(5) "first"
+int(1700000000)
+string(6) "second"
+int(1700000000)
+string(6) "third!"
+int(1700000000)
+string(19) "a much longer value"
+bool(true)
+bool(true)
+bool(true)

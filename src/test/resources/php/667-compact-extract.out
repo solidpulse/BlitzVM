@@ -1,0 +1,46 @@
+Array
+(
+    [alpha] => 1
+    [beta] => two
+)
+Array
+(
+    [alpha] => 1
+    [gamma] => Array
+        (
+            [0] => 3
+        )
+
+)
+warning: compact(): Undefined variable $missing
+Array
+(
+    [alpha] => 1
+)
+Array
+(
+    [prefixed_one] => p1
+)
+warning: compact(): Argument #1 must be string or array of strings, int given
+warning: compact(): Argument #2 must be string or array of strings, null given
+array(1) {
+  ["alpha"]=>
+  int(1)
+}
+2old keep
+1 new
+1 same e2
+O T
+if
+bool(false)
+ref
+bool(false)
+bool(true)
+bool(false)
+bool(false)
+fine
+Array
+(
+    [local] => L
+)
+changed M

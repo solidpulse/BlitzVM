@@ -13,6 +13,7 @@ public final class NewNode extends PhpNode {
     @CompilationFinal(dimensions = 1) private final String[] argNames;
     @CompilationFinal(dimensions = 1) private final boolean[] spreads;
     private final boolean hasSpreadOrNamed;
+    private final boolean hasSpread;
 
     public NewNode(ClassRefNode classRef, PhpNode[] args) {
         this(classRef, args, new LValueNode[args.length], null, null);
@@ -25,6 +26,7 @@ public final class NewNode extends PhpNode {
         this.argNames = argNames;
         this.spreads = spreads;
         boolean complex = false;
+        boolean spreadSeen = false;
         if (argNames != null) {
             for (String s : argNames) {
                 if (s != null) {
@@ -33,15 +35,17 @@ public final class NewNode extends PhpNode {
                 }
             }
         }
-        if (!complex && spreads != null) {
+        if (spreads != null) {
             for (boolean b : spreads) {
                 if (b) {
                     complex = true;
+                    spreadSeen = true;
                     break;
                 }
             }
         }
         this.hasSpreadOrNamed = complex;
+        this.hasSpread = spreadSeen;
     }
 
     @Override
@@ -60,14 +64,24 @@ public final class NewNode extends PhpNode {
             b.emitLoadLocal(object);
             b.endResolveConstructor();
             if (hasSpreadOrNamed) {
-                com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
-                e.beginRawArgs(raw);
-                e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
-                b.beginDoComplexConstructor();
-                b.emitLoadLocal(object);
-                b.emitLoadLocal(callee);
-                b.emitLoadLocal(raw);
-                b.endDoComplexConstructor();
+                if (!hasSpread) {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal args = e.temp();
+                    e.namedArgs(this.args, this.refTargets, this.argNames, callee, args);
+                    b.beginDoNamedConstructor();
+                    b.emitLoadLocal(object);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(args);
+                    b.endDoNamedConstructor();
+                } else {
+                    com.oracle.truffle.api.bytecode.BytecodeLocal raw = e.temp();
+                    e.beginRawArgs(raw);
+                    e.complexArgs(args, refTargets, argNames, spreads, callee, raw);
+                    b.beginDoComplexConstructor();
+                    b.emitLoadLocal(object);
+                    b.emitLoadLocal(callee);
+                    b.emitLoadLocal(raw);
+                    b.endDoComplexConstructor();
+                }
             } else {
                 b.beginDoConstructorCall(callee);
                 b.emitLoadLocal(object);

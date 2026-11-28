@@ -82,6 +82,9 @@ public final class PhpExceptions {
         addSubclass(language, out, "UnexpectedValueException", "RuntimeException");
         addSubclass(language, out, "JsonException", EXCEPTION);
         addSubclass(language, out, "SodiumException", EXCEPTION);
+        addSubclass(language, out, "Random\\RandomException", EXCEPTION);
+        addSubclass(language, out, "Random\\RandomError", ERROR);
+        addSubclass(language, out, "Random\\BrokenRandomEngineError", "Random\\RandomError");
         addSubclass(language, out, "mysqli_sql_exception", "RuntimeException");
         addSubclass(language, out, "DateException", EXCEPTION);
         addSubclass(language, out, "DateInvalidTimeZoneException", "DateException");
@@ -391,7 +394,9 @@ public final class PhpExceptions {
     public static void initNewThrowable(PhpObject obj, Node newLocation) {
         String file = PhpBacktrace.sourcePath(newLocation);
         long line = PhpBacktrace.sourceLine(newLocation);
-        PhpBacktrace.LazyTrace trace = PhpBacktrace.capture(newLocation, false);
+        PhpBacktrace.LazyTrace trace = newLocation == null
+                ? PhpBacktrace.capture(null, false)
+                : PhpBacktrace.captureFromContext(PhpContext.get(newLocation), newLocation);
         DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
         put.execute(obj, "file", file);
         put.execute(obj, "line", line);
@@ -528,6 +533,7 @@ public final class PhpExceptions {
     }
 
     public static final class BuiltinMethodRootNode extends RootNode {
+        private static final Object[] NO_ARGS = new Object[0];
         private final String name;
         private final BuiltinMethod impl;
         private final long refMask;
@@ -554,14 +560,35 @@ public final class PhpExceptions {
             PhpObject self = raw[0] instanceof PhpObject o ? o : null;
             Object[] callArgs = raw.length > 2
                     ? java.util.Arrays.copyOfRange(raw, 2, raw.length)
-                    : new Object[0];
-            return runBoundary(PhpContext.get(this), self, callArgs);
+                    : NO_ARGS;
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = null;
+            if (callArgs.length > 0
+                    && callArgs[callArgs.length - 1] instanceof dev.phpruntime.runtime.ForwardedNamedArgs bag) {
+                forwarded = bag;
+                callArgs = java.util.Arrays.copyOf(callArgs, callArgs.length - 1);
+            }
+            return runBoundary(PhpContext.get(this), self, callArgs, forwarded);
         }
 
         @TruffleBoundary
-        private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs) {
-            PhpStrings.checkArguments(callArgs, name + "()");
-            Object value = impl.invoke(ctx, self, callArgs);
+        private Object runBoundary(PhpContext ctx, PhpObject self, Object[] callArgs,
+                                   dev.phpruntime.runtime.ForwardedNamedArgs forwarded) {
+            if (PhpStrings.CHECK) {
+                PhpStrings.checkArguments(callArgs, name + "()");
+            }
+            dev.phpruntime.runtime.ForwardedNamedArgs previous = null;
+            if (forwarded != null) {
+                previous = ctx.forwardedNamed();
+                ctx.setForwardedNamed(forwarded);
+            }
+            Object value;
+            try {
+                value = impl.invoke(ctx, self, callArgs);
+            } finally {
+                if (forwarded != null) {
+                    ctx.setForwardedNamed(previous);
+                }
+            }
             if (PhpStrings.CHECK) {
                 PhpStrings.checkValue(value, (self != null ? self.phpClass().name() + "::" : "static ") + name + "()");
             }

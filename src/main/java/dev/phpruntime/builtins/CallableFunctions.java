@@ -28,6 +28,10 @@ final class CallableFunctions {
         def("spl_autoload_unregister", 1, 1, (ctx, a) -> ctx.unregisterAutoload(PhpOps.copyOnAssign(a[0])));
         def("spl_autoload_functions", 0, 0, (ctx, a) -> ctx.autoloadFunctions());
         def("spl_autoload", 1, 2, CallableFunctions::splAutoload);
+        def("spl_autoload_call", 1, 1, (ctx, a) -> {
+            ctx.callAutoloaders(PhpOps.toStr(a[0]));
+            return PhpNull.INSTANCE;
+        });
 
         def("register_shutdown_function", 1, -1, CallableFunctions::registerShutdownFunction);
         def("set_error_handler", 1, 2, CallableFunctions::setErrorHandler);
@@ -41,6 +45,14 @@ final class CallableFunctions {
         CallMode previous = ctx.pendingCallMode();
         ctx.setPendingCallMode(CallMode.atBuiltin(ctx.currentBuiltinCallSite(), targetFunction(cb)));
         try {
+            dev.phpruntime.runtime.ForwardedNamedArgs forwarded = ctx.takeForwardedNamed();
+            if (forwarded != null) {
+                java.util.List<Object> positional = new java.util.ArrayList<>(a.length - 1);
+                for (int i = 1; i < a.length; i++) {
+                    positional.add(a[i]);
+                }
+                return cb.callNamed(ctx, ctx.currentBuiltinCallSite(), positional, forwarded.values());
+            }
             return cb.call(ctx, null, null, Arrays.copyOfRange(a, 1, a.length));
         } finally {
             ctx.setPendingCallMode(previous);
@@ -122,10 +134,38 @@ final class CallableFunctions {
                     default -> new Object[0];
                 };
                 dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs rawArgs =
-                        new dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs(pos, List.of(), List.of(), List.of(), named, null, null, null);
+                        new dev.phpruntime.nodes.call.CallArgHelper.RawCallArgs(pos, null, null, named, null, null);
                 Object[] frameArgs = dev.phpruntime.nodes.call.CallArgHelper.bindToFunction(prefix, rawArgs, fnRoot, ctx.currentBuiltinCallSite());
-                return dev.phpruntime.nodes.call.CallArgHelper.unwrapReturn(cb.callTarget().call(frameArgs));
+                Object site = ctx.currentBuiltinCallSite() != null ? ctx.currentBuiltinCallSite()
+                        : dev.phpruntime.runtime.PhpBacktrace.UNKNOWN_SITE;
+                int depth = ctx.pushTraceFrame(site);
+                try {
+                    return dev.phpruntime.nodes.call.CallArgHelper.unwrapReturn(cb.callTarget().call(frameArgs));
+                } finally {
+                    ctx.popTraceFrame(depth);
+                }
             }
+        }
+        if (arr.hasStringKey()) {
+            // php passes string-keyed entries to a builtin as named arguments, in array order.
+            java.util.List<Object> pos = new java.util.ArrayList<>();
+            java.util.Map<String, Object> named = new java.util.LinkedHashMap<>();
+            boolean seenNamed = false;
+            for (Object k : arr.keys()) {
+                Object rawVal = arr.getRaw(k);
+                Object v = rawVal instanceof dev.phpruntime.runtime.PhpReference ref
+                        ? ref : PhpOps.copyOnAssign(arr.get(k));
+                if (k instanceof String s) {
+                    seenNamed = true;
+                    named.put(s, v);
+                } else {
+                    if (seenNamed) {
+                        throw new PhpError("Cannot use positional argument after named argument", ctx.currentBuiltinCallSite());
+                    }
+                    pos.add(v);
+                }
+            }
+            return cb.callNamed(ctx, ctx.currentBuiltinCallSite(), pos, named);
         }
         return cb.call(ctx, null, ctx.currentBuiltinCallSite(), arr.rawValueArray());
     }

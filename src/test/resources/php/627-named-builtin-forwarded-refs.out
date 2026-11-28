@@ -1,0 +1,17 @@
+warning: bump(): Argument #1 ($x) must be passed by reference, value given
+int(2)
+int(1)
+int(2)
+int(2)
+warning: bump(): Argument #1 ($x) must be passed by reference, value given
+int(2)
+int(1)
+warning: bump(): Argument #1 ($x) must be passed by reference, value given
+int(2)
+int(1)
+warning: sort(): Argument #1 ($array) must be passed by reference, value given
+bool(true)
+warning: array_pop(): Argument #1 ($array) must be passed by reference, value given
+int(2)
+warning: str_replace(): Argument #4 ($count) must be passed by reference, value given
+string(3) "bbb"

@@ -1,0 +1,23 @@
+start er=22527
+  handler plain code=1024 er=22527
+after plain er=22527
+  handler silenced code=1024 er=4437
+after silenced er=22527
+  handler inside call code=1024 er=4437
+  call er=4437
+after silenced call er=22527
+  handler silenced deprecated code=16384 er=4437
+after silenced deprecated er=22527
+  handler Calling is_a() with a string when $allow_string is false code=8192 er=4437
+after silenced is_a er=22527
+  handler Undefined variable $undefinedForHandler code=2 er=4437
+after silenced variable er=22527
+  handler Undefined array key "key" code=2 er=4437
+after silenced key er=22527
+seen 0: code=1024 er=22527 silenced=no
+seen 1: code=1024 er=4437 silenced=yes
+seen 2: code=1024 er=4437 silenced=yes
+seen 3: code=16384 er=4437 silenced=yes
+seen 4: code=8192 er=4437 silenced=yes
+seen 5: code=2 er=4437 silenced=yes
+seen 6: code=2 er=4437 silenced=yes

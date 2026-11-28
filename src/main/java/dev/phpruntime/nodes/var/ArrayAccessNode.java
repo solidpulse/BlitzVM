@@ -18,7 +18,6 @@ public final class ArrayAccessNode extends Node {
     @Child private ObjectMethodNode set;
     @Child private ObjectMethodNode exists;
     @Child private ObjectMethodNode unset;
-    private final int getId;
     /**
      * Whether this site has seen an ArrayAccess object. Every index operation carries this
      * node, almost always on arrays; until an object arrives the compiled code holds a
@@ -32,7 +31,6 @@ public final class ArrayAccessNode extends Node {
     }
 
     public ArrayAccessNode(PhpLanguage language) {
-        getId = language.methodId("offsetGet");
         get = new ObjectMethodNode(language, "offsetGet");
         set = new ObjectMethodNode(language, "offsetSet");
         exists = new ObjectMethodNode(language, "offsetExists");
@@ -103,7 +101,9 @@ public final class ArrayAccessNode extends Node {
     }
 
     private boolean isNativeGet(PhpObject obj) {
-        return obj.phpClass().methodById(getId).callTarget().getRootNode() instanceof dev.phpruntime.nodes.call.SplMethodRootNode;
+        dev.phpruntime.runtime.PhpClass.MethodEntry entry = get.entryFor(obj);
+        return entry != null && entry.callTarget() != null
+                && entry.callTarget().getRootNode() instanceof dev.phpruntime.nodes.call.SplMethodRootNode;
     }
 
     public void set(PhpObject obj, Object key, Object value) {

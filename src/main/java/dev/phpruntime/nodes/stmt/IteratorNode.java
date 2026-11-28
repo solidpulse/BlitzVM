@@ -56,26 +56,47 @@ public final class IteratorNode extends Node {
     }
 
     public void rewind(PhpObject iterator) {
+        rewind(iterator, null);
+    }
+
+    /** The protocol call attributed to {@code site}, the foreach or yield-from construct. */
+    public void rewind(PhpObject iterator, Node site) {
         if (iterator.nativeState() instanceof dev.phpruntime.runtime.PhpGenerator generator && generator.isClosed()) {
             throw closedGenerator();
         }
-        rewind.call(iterator);
+        rewind.callAt(iterator, site);
     }
 
     public boolean valid(PhpObject iterator) {
-        return CondNode.toBool(CallArgHelper.unwrapReturn(valid.call(iterator)));
+        return valid(iterator, null);
+    }
+
+    public boolean valid(PhpObject iterator, Node site) {
+        return CondNode.toBool(CallArgHelper.unwrapReturn(valid.callAt(iterator, site)));
     }
 
     public Object current(PhpObject iterator) {
-        return CallArgHelper.unwrapReturn(current.call(iterator));
+        return current(iterator, null);
+    }
+
+    public Object current(PhpObject iterator, Node site) {
+        return CallArgHelper.unwrapReturn(current.callAt(iterator, site));
     }
 
     public Object key(PhpObject iterator) {
-        return CallArgHelper.unwrapReturn(key.call(iterator));
+        return key(iterator, null);
+    }
+
+    public Object key(PhpObject iterator, Node site) {
+        return CallArgHelper.unwrapReturn(key.callAt(iterator, site));
     }
 
     public void next(PhpObject iterator) {
-        next.call(iterator);
+        next(iterator, null);
+    }
+
+    public void next(PhpObject iterator, Node site) {
+        next.callAt(iterator, site);
     }
 
     @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary

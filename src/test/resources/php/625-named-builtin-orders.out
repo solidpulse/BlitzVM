@@ -1,0 +1,80 @@
+&lt;a&gt;
+&lt;a&gt;
+--ab--
+    ab
+string(3) "abc"
+string(3) "abc"
+string(9) "{"a":1.5}"
+string(11) "{"a":[1,2]}"
+array(2) {
+  [1]=>
+  string(3) "Def"
+  [2]=>
+  string(3) "abX"
+}
+array(7) {
+  [1]=>
+  string(3) "Def"
+  [2]=>
+  string(3) "abX"
+  [3]=>
+  string(2) "zz"
+  [4]=>
+  string(5) "Hello"
+  [5]=>
+  string(2) "ab"
+  [6]=>
+  string(1) "q"
+  [7]=>
+  string(5) "World"
+}
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+array(2) {
+  [0]=>
+  string(2) "He"
+  [1]=>
+  string(2) "lo"
+}
+array(2) {
+  [0]=>
+  string(2) "He"
+  [1]=>
+  string(2) "lo"
+}
+abc -Def-abX-zz-Hello-ab-q-World
+abc -Def-abX-zz-Hello-ab-q-World
+el
+el
+array(3) {
+  [0]=>
+  string(4) "abc "
+  [1]=>
+  string(3) "Def"
+  [2]=>
+  string(3) "abX"
+}
+array(2) {
+  [6]=>
+  string(1) "q"
+  [7]=>
+  string(5) "World"
+}
+int(1)
+int(1)
+string(7) "1.234,5"
+string(8) "1_234.50"
+array(1) {
+  [0]=>
+  int(3)
+}
+array(1) {
+  [0]=>
+  int(3)
+}
+string(4) "bbc "
+string(4) "bbc "
+float(1.23)
+float(1.23)

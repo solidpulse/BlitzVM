@@ -1,0 +1,25 @@
+user-unknown Error: Unknown named parameter $unknown
+user-overwrite Error: Named parameter $a overwrites previous argument
+user-duplicate Error: Named parameter $a overwrites previous argument
+user-missing ArgumentCountError: need(): Argument #1 ($a) not passed
+method-unknown Error: Unknown named parameter $nope
+method-overwrite Error: Named parameter $x overwrites previous argument
+method-duplicate Error: Named parameter $x overwrites previous argument
+static-unknown Error: Unknown named parameter $nope
+constructor-unknown Error: Unknown named parameter $nope
+constructor-overwrite Error: Named parameter $a overwrites previous argument
+closure-unknown Error: Unknown named parameter $nope
+builtin-unknown Error: Unknown named parameter $nope
+builtin-overwrite Error: Named parameter $string overwrites previous argument
+builtin-duplicate Error: Named parameter $string overwrites previous argument
+builtin-variadic Error: array_push(): Argument #1 ($array) could not be passed by reference
+builtin-default ArgumentCountError: array_keys(): Argument #2 ($filter_value) must be passed explicitly, because the default value is not known
+builtin-ref Error: preg_match(): Argument #3 ($matches) could not be passed by reference
+user-ref Error: byRef(): Argument #1 ($value) could not be passed by reference
+internal-unknown Error: Unknown named parameter $nope
+0 need:0,0
+1 need:1,2
+2 2 Error: Unknown named parameter $nope
+3 need:3,6
+4 4 Error: Named parameter $a overwrites previous argument
+5 need:5,10

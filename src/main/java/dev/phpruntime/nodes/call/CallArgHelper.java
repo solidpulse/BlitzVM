@@ -32,6 +32,26 @@ public final class CallArgHelper {
     private CallArgHelper() {
     }
 
+    /**
+     * {@link #findParamIndex} lookups: the generic named-binding path, exposed for tests. Counted
+     * only with assertions enabled (the test runs), so serving threads do not share the line.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong GENERIC_NAMED_BINDINGS =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    public static long genericNamedBindingCount() {
+        return GENERIC_NAMED_BINDINGS.get();
+    }
+
+    public static void resetGenericNamedBindingCount() {
+        GENERIC_NAMED_BINDINGS.set(0);
+    }
+
+    private static boolean countGenericNamedBinding() {
+        GENERIC_NAMED_BINDINGS.incrementAndGet();
+        return true;
+    }
+
     public static Object unwrapReturn(Object res) {
         if (res instanceof PhpReference ref) {
             return unwrapReturnedRef(ref);
@@ -54,6 +74,12 @@ public final class CallArgHelper {
     public static PhpError cannotPassByRef(PhpFunctionRootNode fnRoot, int paramIdx, Node site) {
         String fnDesc = fnRoot != null ? fnRoot.qualifiedCallableName() : "unknown";
         String pName = fnRoot != null ? fnRoot.paramName(paramIdx) : null;
+        return cannotPassByRef(fnDesc, pName, paramIdx, site);
+    }
+
+    /** The same error for a Java-implemented method, whose own entry supplies the description. */
+    @TruffleBoundary
+    public static PhpError cannotPassByRef(String fnDesc, String pName, int paramIdx, Node site) {
         String suffix = pName != null ? " ($" + pName + ")" : "";
         return new PhpError(fnDesc + "(): Argument #" + (paramIdx + 1) + suffix + " could not be passed by reference", site);
     }
@@ -62,16 +88,103 @@ public final class CallArgHelper {
      * Evaluates a call site that has spread ({@code ...$x}) or named ({@code k: v}) arguments
      * for a target {@link RootCallTarget}, packing prefix slots + resolved parameter values.
      */
-    public record RawCallArgs(List<Object> positional, List<LValueNode> posRefTargets,
-                              List<Object[]> posRefKeys, List<PhpNode> posNodes,
-                              Map<String, Object> named, Map<String, LValueNode> namedRefTargets,
-                              Map<String, Object[]> namedRefKeys, Map<String, PhpNode> namedNodes) {
+    /**
+     * The arguments of a call with spread or named arguments, built one at a time. The
+     * positional values are the only part every call needs; the by-reference side tables are
+     * created on the first by-reference argument, which is rare, and stay null otherwise.
+     */
+    public static final class RawCallArgs {
+        private final List<Object> positional;
+        private List<LValueNode> posRefTargets;
+        private List<Object[]> posRefKeys;
+        private final Map<String, Object> named;
+        private Map<String, LValueNode> namedRefTargets;
+        private Map<String, Object[]> namedRefKeys;
+
+        public RawCallArgs(List<Object> positional, List<LValueNode> posRefTargets,
+                           List<Object[]> posRefKeys, Map<String, Object> named,
+                           Map<String, LValueNode> namedRefTargets, Map<String, Object[]> namedRefKeys) {
+            this.positional = positional;
+            this.posRefTargets = posRefTargets;
+            this.posRefKeys = posRefKeys;
+            this.named = named;
+            this.namedRefTargets = namedRefTargets;
+            this.namedRefKeys = namedRefKeys;
+        }
+
+        public List<Object> positional() {
+            return positional;
+        }
+
+        public List<LValueNode> posRefTargets() {
+            return posRefTargets;
+        }
+
+        public List<Object[]> posRefKeys() {
+            return posRefKeys;
+        }
+
+        public Map<String, Object> named() {
+            return named;
+        }
+
+        public Map<String, LValueNode> namedRefTargets() {
+            return namedRefTargets;
+        }
+
+        public Map<String, Object[]> namedRefKeys() {
+            return namedRefKeys;
+        }
+
+        /** Appends a positional value; a null ref keeps the side tables absent while unused. */
+        public void addPositional(Object value, LValueNode ref, Object[] keys) {
+            int index = positional.size();
+            positional.add(value);
+            if (posRefTargets != null) {
+                posRefTargets.add(ref);
+                posRefKeys.add(keys);
+            } else if (ref != null || keys != null) {
+                posRefTargets = new ArrayList<>(index + 1);
+                posRefKeys = new ArrayList<>(index + 1);
+                for (int i = 0; i < index; i++) {
+                    posRefTargets.add(null);
+                    posRefKeys.add(null);
+                }
+                posRefTargets.add(ref);
+                posRefKeys.add(keys);
+            }
+        }
+
+        /** Adds one named argument, with its by-reference place when it has one. */
+        public void putNamed(String name, Object value, LValueNode ref, Object[] keys) {
+            named.put(name, value);
+            if (ref != null) {
+                if (namedRefTargets == null) {
+                    namedRefTargets = new LinkedHashMap<>();
+                    namedRefKeys = new LinkedHashMap<>();
+                }
+                namedRefTargets.put(name, ref);
+                namedRefKeys.put(name, keys);
+            }
+        }
     }
 
     /** An empty mutable argument list for bytecode, which evaluates one argument per operation. */
+    /** Whether a spread/named call collected named arguments (a map, so behind a boundary). */
+    @TruffleBoundary
+    public static boolean hasNamed(RawCallArgs raw) {
+        return raw.named() != null && !raw.named().isEmpty();
+    }
+
+    @TruffleBoundary
     public static RawCallArgs newRawCallArgs() {
-        return new RawCallArgs(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
-                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+        return new RawCallArgs(new ArrayList<>(), null, null, new LinkedHashMap<>(), null, null);
+    }
+
+    /** Already-evaluated arguments, with the reference side tables left to the caller. */
+    public static RawCallArgs newRawCallArgs(List<Object> positional, Map<String, Object> named) {
+        return new RawCallArgs(new ArrayList<>(positional), null, null,
+                new LinkedHashMap<>(named), null, null);
     }
 
     /** Exploded so each argument and ref-target node is a PE constant (no virtual calls, no frame escape). */
@@ -100,6 +213,7 @@ public final class CallArgHelper {
 
     @TruffleBoundary
     public static int findParamIndex(PhpFunctionRootNode fnRoot, String name) {
+        assert countGenericNamedBinding();
         String[] names = fnRoot.paramNames();
         int normal = fnRoot.normalParamCount();
         for (int i = 0; i < normal; i++) {
@@ -111,29 +225,26 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    public static void unpackCallArg(Object unpacked, PhpArray writableRefSource,
-                                      List<Object> positional, List<LValueNode> posRefs,
-                                      List<Object[]> posKeys, List<PhpNode> posNodes,
-                                      Map<String, Object> named, boolean alreadySeenNamed, Node site) {
+    public static void unpackCallArg(Object unpacked, PhpArray writableRefSource, RawCallArgs raw, Node site) {
+        List<Object> positional = raw.positional();
+        Map<String, Object> named = raw.named();
+        boolean alreadySeenNamed = !named.isEmpty();
         if (unpacked instanceof dev.phpruntime.runtime.PhpObject obj
                 && dev.phpruntime.runtime.SplInterfaces.has(obj, dev.phpruntime.runtime.SplInterfaces.TRAVERSABLE)) {
-            boolean seenNamed = alreadySeenNamed || !named.isEmpty();
+            boolean seenNamed = alreadySeenNamed;
             for (var entry : dev.phpruntime.runtime.SplIterators.entries(obj, site)) {
                 Object key = entry.getKey();
                 Object value = PhpOps.copyOnAssign(entry.getValue());
                 if (key instanceof String s) {
                     seenNamed = true;
                     checkDuplicateNamed(named, s, site);
-                    named.put(s, value);
+                    raw.putNamed(s, value, null, null);
                 } else if (key instanceof Long) {
                     if (seenNamed) {
                         com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                         throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
                     }
-                    positional.add(value);
-                    posRefs.add(null);
-                    posKeys.add(null);
-                    posNodes.add(null);
+                    raw.addPositional(value, null, null);
                 } else {
                     com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError(PhpError.TYPE_ERROR, "Keys must be of type int|string during argument unpacking", site);
@@ -146,8 +257,10 @@ public final class CallArgHelper {
             com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
             throw new PhpError(PhpError.TYPE_ERROR, "Only arrays and Traversables can be unpacked, " + given + " given", site);
         }
-        boolean seenNamed = alreadySeenNamed || !named.isEmpty();
-        for (Object k : src.keys()) {
+        boolean seenNamed = alreadySeenNamed;
+        // Walk the array's positions: a key list would allocate one entry per element.
+        for (int pos = src.firstPos(); pos >= 0; pos = src.nextPos(pos)) {
+            Object k = src.keyAt(pos);
             if (k instanceof String s) {
                 seenNamed = true;
                 if (named.containsKey(s)) {
@@ -155,19 +268,18 @@ public final class CallArgHelper {
                     throw new PhpError("Named parameter $" + s + " overwrites previous argument", site);
                 }
                 Object val = writableRefSource != null ? writableRefSource.obtainElementRef(k)
-                        : (src.getRaw(k) instanceof PhpReference ref ? ref : PhpOps.copyOnAssign(src.get(k)));
-                named.put(s, val);
+                        : (src.rawValueAt(pos) instanceof PhpReference ref ? ref
+                                : PhpOps.copyOnAssign(src.valueAt(pos)));
+                raw.putNamed(s, val, null, null);
             } else {
                 if (seenNamed) {
                     com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                     throw new PhpError("Cannot use positional argument after named argument during unpacking", site);
                 }
                 Object val = writableRefSource != null ? writableRefSource.obtainElementRef(k)
-                        : (src.getRaw(k) instanceof PhpReference ref ? ref : PhpOps.copyOnAssign(src.get(k)));
-                positional.add(val);
-                posRefs.add(null);
-                posKeys.add(null);
-                posNodes.add(null);
+                        : (src.rawValueAt(pos) instanceof PhpReference ref ? ref
+                                : PhpOps.copyOnAssign(src.valueAt(pos)));
+                raw.addPositional(val, null, null);
             }
         }
     }
@@ -234,12 +346,19 @@ public final class CallArgHelper {
 
     /**
      * Named arguments for an internal method: the parameter names come from the class
-     * template signature, since there is no guest function frame to read them from.
+     * template signature, since there is no guest function frame to read them from. A method
+     * php forwards named arguments through (the Reflection invoke and newInstance methods,
+     * Closure::call) gets the undeclared names appended as a {@link ForwardedNamedArgs}.
      */
-    public static Object[] bindToInternal(Object[] prefix, RawCallArgs raw, List<String> paramNames, Node site) {
+    @TruffleBoundary
+    public static Object[] bindToInternal(Object[] prefix, RawCallArgs raw,
+                                          dev.phpruntime.runtime.PhpClass.MethodEntry entry, Node site) {
+        List<String> paramNames = entry == null ? List.of() : entry.parameterNames();
+        int variadic = entry == null ? -1 : entry.variadicIndex();
+        boolean forwards = dev.phpruntime.runtime.NamedForwarding.forwardsMethod(entry);
         List<Object> pos = raw.positional();
         Map<String, Object> named = raw.named();
-        if (named == null || named.isEmpty() || paramNames.isEmpty()) {
+        if (named == null || named.isEmpty()) {
             Object[] out = new Object[prefix.length + pos.size()];
             System.arraycopy(prefix, 0, out, 0, prefix.length);
             for (int i = 0; i < pos.size(); i++) {
@@ -247,16 +366,29 @@ public final class CallArgHelper {
             }
             return out;
         }
+        if (paramNames.isEmpty() && !forwards) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+            throw new PhpError("Unknown named parameter $" + firstKey(named), site);
+        }
         List<Object> slots = new ArrayList<>(pos);
+        Map<String, Object> forwarded = null;
         for (Map.Entry<String, Object> e : named.entrySet()) {
             int idx = -1;
-            for (int i = 0; i < paramNames.size(); i++) {
-                if (paramNames.get(i).equalsIgnoreCase(e.getKey())) {
+            int normal = variadic >= 0 ? variadic : paramNames.size();
+            for (int i = 0; i < normal; i++) {
+                if (paramNames.get(i).equals(e.getKey())) {
                     idx = i;
                     break;
                 }
             }
             if (idx < 0) {
+                if (forwards) {
+                    if (forwarded == null) {
+                        forwarded = new LinkedHashMap<>();
+                    }
+                    forwarded.put(e.getKey(), e.getValue());
+                    continue;
+                }
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 throw new PhpError("Unknown named parameter $" + e.getKey(), site);
             }
@@ -269,6 +401,9 @@ public final class CallArgHelper {
             }
             slots.set(idx, e.getValue());
         }
+        if (forwarded != null) {
+            slots.add(new dev.phpruntime.runtime.ForwardedNamedArgs(forwarded));
+        }
         Object[] out = new Object[prefix.length + slots.size()];
         System.arraycopy(prefix, 0, out, 0, prefix.length);
         for (int i = 0; i < slots.size(); i++) {
@@ -277,13 +412,127 @@ public final class CallArgHelper {
         return out;
     }
 
+    /**
+     * Binds forwarded named arguments to a guest function, as php's forwarding builtins do:
+     * a named argument for a by-reference parameter has no place to write back, so it gets a
+     * temporary and the "must be passed by reference, value given" warning.
+     */
+    @TruffleBoundary
+    public static Object[] bindForwardedToFunction(PhpContext ctx, PhpFunctionRootNode fnRoot, Object[] prefix,
+                                                   List<Object> positional, Map<String, Object> named, Node site) {
+        List<Object> pos = new ArrayList<>(positional);
+        Map<String, Object> forwarded = new LinkedHashMap<>(named);
+        int normal = fnRoot.normalParamCount();
+        for (int i = 0; i < pos.size(); i++) {
+            if (fnRoot.isParamByRef(i) && !(pos.get(i) instanceof PhpReference)) {
+                warningValueForRef(ctx, fnRoot, i, i < normal ? fnRoot.paramName(i) : null, site);
+                pos.set(i, new PhpReference(PhpOps.copyOnAssign(pos.get(i))));
+            }
+        }
+        for (Map.Entry<String, Object> e : forwarded.entrySet()) {
+            int idx = findParamIndex(fnRoot, e.getKey());
+            boolean byRef = idx >= 0 ? fnRoot.isParamByRef(idx)
+                    : fnRoot.isVariadic() && fnRoot.isParamByRef(normal);
+            if (byRef && !(e.getValue() instanceof PhpReference)) {
+                warningValueForRef(ctx, fnRoot, idx >= 0 ? idx : normal,
+                        idx >= 0 ? fnRoot.paramName(idx) : e.getKey(), site);
+                e.setValue(new PhpReference(PhpOps.copyOnAssign(e.getValue())));
+            }
+        }
+        RawCallArgs raw = new RawCallArgs(pos, null, null, forwarded, null, null);
+        return bindToFunction(prefix, raw, fnRoot, site);
+    }
+
+    /** Binds and calls a builtin with forwarded named arguments, warning for by-reference ones. */
+    @TruffleBoundary
+    public static Object callForwardedBuiltin(PhpContext ctx, Builtins.Def def, List<Object> positional,
+                                              Map<String, Object> named, Node site) {
+        List<Object> pos = new ArrayList<>(positional);
+        Map<String, Object> forwarded = new LinkedHashMap<>(named);
+        BuiltinParams.Param[] params = BuiltinParams.forName(def.name());
+        if (params != null) {
+            int normal = params.length;
+            while (normal > 0 && params[normal - 1].variadic()) {
+                normal--;
+            }
+            for (int i = 0; i < pos.size(); i++) {
+                if (def.isRef(i) && !(pos.get(i) instanceof PhpReference)) {
+                    String name = i < normal ? params[i].name() : null;
+                    ctx.warning(def.name() + "(): Argument #" + (i + 1) + (name != null ? " ($" + name + ")" : "")
+                            + " must be passed by reference, value given", lineOf(site));
+                    pos.set(i, new PhpReference(PhpOps.copyOnAssign(pos.get(i))));
+                }
+            }
+            for (Map.Entry<String, Object> e : forwarded.entrySet()) {
+                int idx = -1;
+                for (int i = 0; i < normal; i++) {
+                    if (params[i].name().equals(e.getKey())) {
+                        idx = i;
+                        break;
+                    }
+                }
+                if (idx >= 0 && def.isRef(idx) && !(e.getValue() instanceof PhpReference)) {
+                    ctx.warning(def.name() + "(): Argument #" + (idx + 1) + " ($" + params[idx].name()
+                            + ") must be passed by reference, value given", lineOf(site));
+                    e.setValue(new PhpReference(PhpOps.copyOnAssign(e.getValue())));
+                }
+            }
+        }
+        LValueNode[] noRefs = null;
+        Object[][] noKeys = null;
+        RawCallArgs raw = new RawCallArgs(pos, null, null, forwarded, null, null);
+        BuiltinBound bound = bindNamedBuiltin(def, raw, site);
+        if (def.refMask() != 0) {
+            noRefs = new LValueNode[bound.values().length];
+            noKeys = new Object[bound.values().length][];
+        }
+        return callBoundBuiltin(null, def, bound.values(), bound.originals(), noRefs, noKeys, site);
+    }
+
+    private static void warningValueForRef(PhpContext ctx, PhpFunctionRootNode fnRoot, int index,
+                                           String name, Node site) {
+        String desc = fnRoot.qualifiedCallableName() + "(): Argument #" + (index + 1)
+                + (name != null ? " ($" + name + ")" : "");
+        ctx.warning(desc + " must be passed by reference, value given", lineOf(site));
+    }
+
+    private static int lineOf(Node site) {
+        if (site == null) {
+            return 0;
+        }
+        com.oracle.truffle.api.source.SourceSection section = site.getSourceSection();
+        return section != null ? section.getStartLine() : 0;
+    }
+
     /** Evaluates spread/named arguments for a builtin function, handling by-reference writeback. */
-    /** Binds and calls a builtin on already-evaluated raw arguments. */
     public static Object callComplexBuiltinRaw(VirtualFrame frame, Builtins.Def def, RawCallArgs raw, Node site) {
         BuiltinBound bound = hasNamed(raw.named())
                 ? bindNamedBuiltin(def, raw, site)
                 : positionalBuiltinBound(raw);
-        Object[] values = bound.values();
+        return callBoundBuiltin(frame, def, bound.values(), bound.originals(), bound.lvs(), bound.keys(), site);
+    }
+
+    /**
+     * Invokes a builtin on arguments already in parameter order. {@code originals}, {@code lvs}
+     * and {@code keys} describe by-reference arguments: the value before unwrapping and where a
+     * result is written back. They are null for builtins without by-reference parameters.
+     */
+    public static Object callBoundBuiltin(VirtualFrame frame, Builtins.Def def, Object[] values, Object[] originals,
+                                          LValueNode[] lvs, Object[][] keys, Node site) {
+        dev.phpruntime.runtime.ForwardedNamedArgs forwarded = null;
+        if (values.length > 0 && values[values.length - 1] instanceof dev.phpruntime.runtime.ForwardedNamedArgs bag) {
+            forwarded = bag;
+            values = java.util.Arrays.copyOf(values, values.length - 1);
+            if (originals != null) {
+                originals = java.util.Arrays.copyOf(originals, originals.length - 1);
+            }
+            if (lvs != null) {
+                lvs = java.util.Arrays.copyOf(lvs, lvs.length - 1);
+            }
+            if (keys != null) {
+                keys = java.util.Arrays.copyOf(keys, keys.length - 1);
+            }
+        }
         for (int i = 0; i < values.length; i++) {
             if (values[i] instanceof PhpReference ref && !def.isRef(i)) {
                 values[i] = ref.getValue() == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(ref.getValue());
@@ -292,10 +541,23 @@ public final class CallArgHelper {
             }
         }
         CallNode.checkArity(def, values.length, site);
-        Object result = invokeBuiltin(def, values, site);
+        PhpContext ctx = forwarded == null ? null : PhpContext.get(site);
+        dev.phpruntime.runtime.ForwardedNamedArgs previous = null;
+        if (ctx != null) {
+            previous = ctx.forwardedNamed();
+            ctx.setForwardedNamed(forwarded);
+        }
+        Object result;
+        try {
+            result = invokeBuiltin(def, values, site);
+        } finally {
+            if (ctx != null) {
+                ctx.setForwardedNamed(previous);
+            }
+        }
         if (def.refMask() != 0) {
             // Folds away for builtins without by-ref parameters when def is a PE constant.
-            writeBackBuiltinRefs(frame, def, bound);
+            writeBackBuiltinRefs(frame, def, values, originals, lvs, keys);
         }
         return result;
     }
@@ -307,8 +569,8 @@ public final class CallArgHelper {
     @TruffleBoundary
     private static BuiltinBound positionalBuiltinBound(RawCallArgs raw) {
         Object[] values = toObjectArray(raw.positional());
-        return new BuiltinBound(values, values.clone(), toLValueArray(raw.posRefTargets()),
-                toKeysArray(raw.posRefKeys()));
+        return new BuiltinBound(values, values.clone(), toLValueArray(raw.posRefTargets(), values.length),
+                toKeysArray(raw.posRefKeys(), values.length));
     }
 
     /**
@@ -324,6 +586,11 @@ public final class CallArgHelper {
         int passed = pos.size();
         BuiltinParams.Param[] params = BuiltinParams.forName(def.name());
         if (params == null) {
+            com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
+            if (def.maxArgs() < 0) {
+                throw new PhpError(PhpError.ARGUMENT_COUNT,
+                        "Internal function " + def.name() + "() does not accept named variadic arguments", site);
+            }
             throw new PhpError("Unknown named parameter $" + firstKey(named), site);
         }
         int normal = params.length;
@@ -331,16 +598,25 @@ public final class CallArgHelper {
             normal--;
         }
         boolean variadic = normal < params.length;
+        boolean forwards = dev.phpruntime.runtime.NamedForwarding.forwardsFunction(def.name());
+        Map<String, Object> forwarded = null;
         Map<Integer, String> namedAt = new LinkedHashMap<>();
         int highest = passed - 1;
         for (Map.Entry<String, Object> e : named.entrySet()) {
             String name = e.getKey();
             int idx = namedParamIndex(params, normal, name);
             if (idx < 0) {
+                if (forwards && variadic) {
+                    if (forwarded == null) {
+                        forwarded = new LinkedHashMap<>();
+                    }
+                    forwarded.put(name, e.getValue());
+                    continue;
+                }
                 com.oracle.truffle.api.CompilerDirectives.transferToInterpreter();
                 if (variadic) {
                     throw new PhpError(PhpError.ARGUMENT_COUNT,
-                            def.name() + "() does not accept unknown named parameters", site);
+                            "Internal function " + def.name() + "() does not accept named variadic arguments", site);
                 }
                 throw new PhpError("Unknown named parameter $" + name, site);
             }
@@ -365,8 +641,10 @@ public final class CallArgHelper {
         for (int i = 0; i < passed; i++) {
             values[i] = pos.get(i);
             originals[i] = values[i];
-            lvs[i] = raw.posRefTargets().get(i);
-            keys[i] = raw.posRefKeys().get(i);
+            lvs[i] = raw.posRefTargets() != null && i < raw.posRefTargets().size()
+                    ? raw.posRefTargets().get(i) : null;
+            keys[i] = raw.posRefKeys() != null && i < raw.posRefKeys().size()
+                    ? raw.posRefKeys().get(i) : null;
         }
         for (int i = passed; i < length; i++) {
             String name = namedAt.get(i);
@@ -389,6 +667,15 @@ public final class CallArgHelper {
             }
             Object defaultValue = param.defaultValue();
             values[i] = defaultValue == null ? PhpNull.INSTANCE : PhpOps.copyOnAssign(defaultValue);
+        }
+        if (forwarded != null) {
+            int at = values.length;
+            values = java.util.Arrays.copyOf(values, at + 1);
+            originals = java.util.Arrays.copyOf(originals, at + 1);
+            lvs = java.util.Arrays.copyOf(lvs, at + 1);
+            keys = java.util.Arrays.copyOf(keys, at + 1);
+            values[at] = new dev.phpruntime.runtime.ForwardedNamedArgs(forwarded);
+            originals[at] = values[at];
         }
         return new BuiltinBound(values, originals, lvs, keys);
     }
@@ -433,26 +720,38 @@ public final class CallArgHelper {
     }
 
     @TruffleBoundary
-    private static LValueNode[] toLValueArray(List<LValueNode> list) {
-        return list.toArray(new LValueNode[0]);
+    private static LValueNode[] toLValueArray(List<LValueNode> list, int length) {
+        LValueNode[] out = new LValueNode[length];
+        if (list != null) {
+            for (int i = 0; i < length && i < list.size(); i++) {
+                out[i] = list.get(i);
+            }
+        }
+        return out;
     }
 
     @TruffleBoundary
-    private static Object[][] toKeysArray(List<Object[]> list) {
-        return list.toArray(new Object[0][]);
+    private static Object[][] toKeysArray(List<Object[]> list, int length) {
+        Object[][] out = new Object[length][];
+        if (list != null) {
+            for (int i = 0; i < length && i < list.size(); i++) {
+                out[i] = list.get(i);
+            }
+        }
+        return out;
     }
 
-    private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, BuiltinBound bound) {
-        Object[] values = bound.values();
+    private static void writeBackBuiltinRefs(VirtualFrame frame, Builtins.Def def, Object[] values,
+                                             Object[] originals, LValueNode[] lvs, Object[][] keys) {
         for (int i = 0; i < values.length; i++) {
             if (!def.isRef(i)) {
                 continue;
             }
-            Object orig = bound.originals()[i];
+            Object orig = originals[i];
             if (orig instanceof PhpReference ref) {
                 ref.setValue(values[i]);
-            } else if (bound.lvs()[i] != null) {
-                bound.lvs()[i].write(frame, bound.keys()[i], values[i]);
+            } else if (lvs[i] != null) {
+                lvs[i].write(frame, keys[i], values[i]);
             }
         }
     }
@@ -461,13 +760,13 @@ public final class CallArgHelper {
     private static Object invokeBuiltin(Builtins.Def def, Object[] values, Node site) {
         PhpContext ctx = PhpContext.get(site);
         Node prev = ctx.currentBuiltinCallSite();
-        ctx.setCurrentBuiltinCallSite(site);
+        String prevName = ctx.enterBuiltin(site, def.name());
         try {
             return def.call(ctx, values);
         } catch (PhpError e) {
             throw e.withTrace(dev.phpruntime.runtime.PhpBacktrace.captureFromBuiltin(site, def.name())).at(site);
         } finally {
-            ctx.setCurrentBuiltinCallSite(prev);
+            ctx.exitBuiltin(prev, prevName);
         }
     }
 }

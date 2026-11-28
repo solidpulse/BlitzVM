@@ -1,0 +1,59 @@
+title|ChildPost|ChildPost|1|100|0001|string|1|'t'
+note|ChildPost|ChildPost|2|010|0001|?string|1|NULL
+tags|ChildPost|ChildPost|4|001|0001|array|1|array (
+)
+kind|ChildPost|ChildPost|17|100|1001|string|1|'post'
+author|ChildPost|ChildPost|1|100|0011|string|0|-
+views|ChildPost|ChildPost|4|001|0011|int|0|-
+slug|ChildPost|ChildPost|1|100|0001|string|1|'s'
+traitCount|ChildPost|ChildPost|2|010|0001|int|1|0
+id|ParentPost|ParentPost|1|100|0001|int|1|1
+status|ParentPost|ParentPost|2|010|0001|string|1|'draft'
+instances|ParentPost|ParentPost|17|100|1001|int|1|0
+public=title,kind,author,slug,id,instances,
+protected=note,traitCount,status,
+private=tags,views,
+static=kind,instances,
+public-static=title,kind,author,slug,id,instances,
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+tags|ChildPost|1
+views|1|1
+status|ParentPost
+array(9) {
+  ["id"]=>
+  int(1)
+  ["instances"]=>
+  int(0)
+  ["kind"]=>
+  string(4) "post"
+  ["note"]=>
+  NULL
+  ["slug"]=>
+  string(1) "s"
+  ["status"]=>
+  string(5) "draft"
+  ["tags"]=>
+  array(0) {
+  }
+  ["title"]=>
+  string(1) "t"
+  ["traitCount"]=>
+  int(0)
+}
+array(2) {
+  ["instances"]=>
+  int(3)
+  ["kind"]=>
+  string(5) "child"
+}
+bool(true)
+dynamic|0|1|0|1
+string(3) "dyn"
+string(7) "changed"
+author,id,instances,kind,note,slug,status,tags,title,traitCount,views
+ChildPost::author,ChildPost::kind,ChildPost::slug,ChildPost::title,ParentPost::id,ParentPost::instances

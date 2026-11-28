@@ -29,18 +29,36 @@ public final class SplBuiltinNode extends Node {
 
     public static boolean supports(String name) {
         return name.equals("count") || name.equals("sizeof") || name.equals("iterator_to_array")
-                || name.equals("iterator_count");
+                || name.equals("iterator_count") || name.equals("intdiv");
     }
 
     public Object execute(Object[] args) {
         return execute(args, this);
     }
 
+    /** Marks a call the fast path does not answer, so the builtin's own implementation runs. */
+    public static final Object UNHANDLED = new Object();
+
     /** Bytecode call sites: the cached node has no line of its own, so they pass the instruction's. */
     public Object execute(Object[] args, Node location) {
         if (!dev.phpruntime.runtime.PhpStrings.CHECK) { return executeBuiltin(args, location); }
         dev.phpruntime.runtime.PhpStrings.checkArguments(args, name);
         return dev.phpruntime.runtime.PhpStrings.checkReturn(executeBuiltin(args, location), name);
+    }
+
+    /**
+     * The fast path's answer, or {@link #UNHANDLED}. intdiv answers only the division that
+     * cannot fail; its errors go through the builtin call, which records the internal frame.
+     */
+    public Object executeOrUnhandled(Object[] args, Node location) {
+        if (name.equals("intdiv")) {
+            if (args.length == 2 && args[0] instanceof Long x && args[1] instanceof Long y
+                    && y != 0 && !(x == Long.MIN_VALUE && y == -1)) {
+                return x / y;
+            }
+            return UNHANDLED;
+        }
+        return execute(args, location);
     }
 
     private Object executeBuiltin(Object[] args, Node location) {

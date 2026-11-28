@@ -1,0 +1,82 @@
+function chain
+  640-debug-backtrace-stack.php:26 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:25 inner [file,line,function]
+  640-debug-backtrace-stack.php:27 outer [file,line,function]
+instance
+  640-debug-backtrace-stack.php:15 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:29 A->inst [file,line,function,class,type]
+static
+  640-debug-backtrace-stack.php:16 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:30 A::stat [file,line,function,class,type]
+trait method
+  640-debug-backtrace-stack.php:11 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:31 A->viaTrait [file,line,function,class,type]
+static trait
+  640-debug-backtrace-stack.php:11 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:32 A::staticTrait [file,line,function,class,type]
+inherited
+  640-debug-backtrace-stack.php:12 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:33 Base->inherited [file,line,function,class,type]
+__call missing
+  640-debug-backtrace-stack.php:17 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:34 A->__call [file,line,function,class,type]
+__callStatic missingStatic
+  640-debug-backtrace-stack.php:18 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:35 A::__callStatic [file,line,function,class,type]
+closure in method
+  640-debug-backtrace-stack.php:19 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:19 A->{closure:A::viaClosure():19} [file,line,function,class,type]
+  640-debug-backtrace-stack.php:36 A->viaClosure [file,line,function,class,type]
+static arrow
+  640-debug-backtrace-stack.php:20 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:20 A::{closure:A::viaStaticClosure():20} [file,line,function,class,type]
+  640-debug-backtrace-stack.php:37 A->viaStaticClosure [file,line,function,class,type]
+generator
+  640-debug-backtrace-stack.php:21 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:38 A->gen [file,line,function,class,type]
+limit 1
+  640-debug-backtrace-stack.php:23 bt640 [file,line,function]
+limit 2
+  640-debug-backtrace-stack.php:23 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:22 A->deeper [file,line,function,class,type]
+limit 0
+  640-debug-backtrace-stack.php:23 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:22 A->deeper [file,line,function,class,type]
+  640-debug-backtrace-stack.php:39 A->limited [file,line,function,class,type]
+array_map callback
+  640-debug-backtrace-stack.php:40 bt640 [file,line,function]
+  -:- {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:40} [function]
+  640-debug-backtrace-stack.php:40 array_map [file,line,function]
+instance
+  640-debug-backtrace-stack.php:15 bt640 [file,line,function]
+  -:- A->inst [function,class,type]
+  640-debug-backtrace-stack.php:41 array_map [file,line,function]
+function chain
+  640-debug-backtrace-stack.php:26 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:25 inner [file,line,function]
+  640-debug-backtrace-stack.php:42 outer [file,line,function]
+static
+  640-debug-backtrace-stack.php:16 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:43 A::stat [file,line,function,class,type]
+usort callback
+  640-debug-backtrace-stack.php:44 bt640 [file,line,function]
+  -:- {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:44} [function]
+  640-debug-backtrace-stack.php:44 usort [file,line,function]
+from include
+  640-bt-include.php:2 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:45 include [file,line,args,function]
+iife
+  640-debug-backtrace-stack.php:46 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:46 {closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:46} [file,line,function]
+top level
+  640-debug-backtrace-stack.php:47 bt640 [file,line,function]
+after catch
+  640-debug-backtrace-stack.php:48 bt640 [file,line,function]
+2 frames in trace
+in catcher
+  640-debug-backtrace-stack.php:50 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:51 catcher [file,line,function]
+bound closure
+  640-debug-backtrace-stack.php:52 bt640 [file,line,function]
+  640-debug-backtrace-stack.php:53 A->{closure:/home/silva/code/java/php-runtime-t64/src/test/resources/php/640-debug-backtrace-stack.php:52} [file,line,function,class,type]
+[]

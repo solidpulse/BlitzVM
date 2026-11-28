@@ -1,0 +1,10 @@
+string(6) "parent"
+string(5) "child"
+int(10)
+int(10)
+int(12)
+int(12)
+string(7) "cshared"
+string(7) "changed"
+string(6) "parent"
+string(5) "child"

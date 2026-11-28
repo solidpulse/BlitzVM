@@ -1,0 +1,119 @@
+/^[\s\r\n]?---[\s\r\n]?$/sm => 4: [["\n---",0],["---",14],[" ---",31],["---",41]]
+  offset 3: 1 [["---",14]]
+  replace: "<\n--->\ntitle: x\n<--->\nbody --- not\n< --->\n---x\n<--->"
+  split: ["","\ntitle: x\n","\nbody --- not\n","\n---x\n",""]
+/^[\s\r\n]?---[\s\r\n]?$/s => 0: []
+  offset 3: 0 []
+  replace: "---\nx"
+  split: ["---\nx"]
+/^[\s\r\n]?---[\s\r\n]?$/ => 1: [["\n---",0]]
+  offset 3: 0 []
+  replace: "<\n--->"
+  split: ["",""]
+/a?bc/ => 4: [["bc",1],["abc",3],["abc",7],["bc",11]]
+  offset 3: 1 [["abc",3]]
+  replace: "x<bc><abc>a<abc> <bc>"
+  split: ["x","","a"," ",""]
+/[ab]{1,3}xyz/ => 3: [["bxyz",5],["abaxyz",10],["babxyz",18]]
+  offset 3: 1 [["bxyz",5]]
+  replace: "cxyz <bxyz> <abaxyz> a<babxyz>"
+  split: ["cxyz "," "," a",""]
+/[ab]{2}xyz/ => 2: [["abxyz",5],["abxyz",12]]
+  offset 3: 1 [["abxyz",5]]
+  replace: "axyz <abxyz> b<abxyz>"
+  split: ["axyz "," b",""]
+/\d{1,2}--/ => 3: [["1--",0],["22--",3],["33--",8]]
+  offset 3: 1 [["22--",3]]
+  replace: "<1--><22-->3<33-->x--"
+  split: ["","","3","x--"]
+/.?.?ab/ => 4: [["ab",0],[" xab",2],["xxab",7],["xxab",13]]
+  offset 3: 1 [["xab",3]]
+  replace: "<ab>< xab> <xxab> x<xxab>"
+  split: ["",""," "," x",""]
+/\bfoo-bar/ => 2: [["foo-bar",0],["foo-bar",19]]
+  offset 3: 1 [["foo-bar",19]]
+  replace: "<foo-bar> xfoo-bar x <foo-bar>"
+  split: [""," xfoo-bar x ",""]
+/(?<=x)?ab/ => 1: [["ab",0]]
+  offset 3:  []
+  replace: "<ab>"
+  split: ["",""]
+/\sab\.cd/ => 2: [[" ab.cd",0],["\tab.cd",13]]
+  offset 3: 1 [["\tab.cd",13]]
+  replace: "< ab.cd> xab.cd<\tab.cd>"
+  split: [""," xab.cd",""]
+/[^a]?aaa/ => 3: [["aaa",0],["aaa",3],["baaa",8]]
+  offset 3: 1 [["aaa",3]]
+  replace: "<aaa><aaa>a <baaa>a"
+  split: ["","","a ","a"]
+/x?aa/ => 4: [["aa",0],["aa",2],["xaa",5],["xaa",8]]
+  offset 3: 1 [["xaa",5]]
+  replace: "<aa><aa> <xaa><xaa>"
+  split: ["",""," ","",""]
+/[\d]?12/ => 4: [["12",0],["12",2],["012",5],["912",10]]
+  offset 3: 1 [["012",5]]
+  replace: "<12><12> <012> 9<912>"
+  split: ["",""," "," 9",""]
+/a?b?abab/ => 2: [["ababab",0],["aabab",7]]
+  offset 3: 1 [["aabab",7]]
+  replace: "<ababab> <aabab>"
+  split: [""," ",""]
+/[a-z]?ÿÿ/ => 2: [["aÿÿ",0],["ÿÿ",6]]
+  offset 3: 1 [["ÿÿ",6]]
+  replace: "<aÿÿ> <ÿÿ>ÿ"
+  split: [""," ","ÿ"]
+/.?€€/u => 3: [["x€€",0],["😀€€",8],[" €€",18]]
+  offset 3:  []
+  replace: "<x€€> <😀€€>< €€>€"
+  split: [""," ","","€"]
+/[^x]?😀😀/u => 2: [["😀😀😀",0],["a😀😀",13]]
+  offset 3:  []
+  replace: "<😀😀😀> <a😀😀>"
+  split: [""," ",""]
+/\p{L}?abc/u => 3: [["éabc",0],["abc",6],["ßabc",10]]
+  offset 3: 1 [["abc",6]]
+  replace: "<éabc> <abc> <ßabc>"
+  split: [""," "," ",""]
+/^#?ab/m => 2: [["ab",0],["#ab",3]]
+  offset 3: 1 [["#ab",3]]
+  replace: "<ab>\n<#ab>\nx#ab"
+  split: ["","\n","\nx#ab"]
+/\Aab/ => 1: [["ab",0]]
+  offset 3: 0 []
+  replace: "<ab>ab"
+  split: ["","ab"]
+/[ab]?cd|ef/ => 3: [["cd",0],["ef",3],["acd",6]]
+  offset 3: 1 [["ef",3]]
+  replace: "<cd> <ef> <acd>"
+  split: [""," "," ",""]
+/a{0,2}bcd/ => 4: [["bcd",0],["abcd",4],["aabcd",9],["aabcd",16]]
+  offset 3: 1 [["abcd",4]]
+  replace: "<bcd> <abcd> <aabcd> a<aabcd>"
+  split: [""," "," "," a",""]
+/a?bc(?=d)/ => 2: [["abc",4],["bc",9]]
+  offset 3: 1 [["abc",4]]
+  replace: "bcx <abc>d <bc>d"
+  split: ["bcx ","d ","d"]
+/a?bc\b/ => 2: [["abc",5],["bc",9]]
+  offset 3: 1 [["abc",5]]
+  replace: "abcd <abc> <bc>"
+  split: ["abcd "," ",""]
+array(4) {
+  [0]=>
+  string(0) ""
+  [1]=>
+  string(27) "
+title: Hello
+tags: [a, b]
+"
+  [2]=>
+  string(17) "
+# Heading
+
+Text
+"
+  [3]=>
+  string(6) "
+More
+"
+}

@@ -27,18 +27,76 @@ public final class EnumBuiltins {
     private static final class EnumMethodRootNode extends RootNode {
         private final PhpClass enumClass;
         private final String name;
+        /**
+         * from()/tryFrom(): backing value to case name, built on first use when every case value
+         * is a literal (the same in every request). {@link #NO_INDEX} when some case value is an
+         * expression; those enums scan their cases.
+         */
+        private volatile java.util.Map<Object, String> backingIndex;
+        private static final java.util.Map<Object, String> NO_INDEX = java.util.Map.of();
+
+        private final boolean intBacked;
+        private final boolean stringBacked;
 
         EnumMethodRootNode(PhpLanguage language, PhpClass enumClass, String name) {
             super(language);
             this.enumClass = enumClass;
             this.name = name;
+            PhpType backing = enumClass.template().enumBackingType();
+            this.intBacked = backing instanceof PhpType.Named named && "int".equalsIgnoreCase(named.name());
+            this.stringBacked = backing != null && !intBacked;
         }
 
         @Override
         public Object execute(VirtualFrame frame) {
             Object[] raw = frame.getArguments();
+            PhpContext ctx = PhpContext.get(this);
+            // The common calls: a backing value of the enum's own type, one argument.
+            if (raw.length == 3 && (name.equals("tryFrom") || name.equals("from"))) {
+                Object arg = raw[2];
+                if (stringBacked && arg instanceof String s) {
+                    Object found = caseFor(ctx, s);
+                    if (found == null && name.equals("tryFrom")) {
+                        return PhpNull.INSTANCE;
+                    }
+                    if (found != null && found != SCAN) {
+                        return found;
+                    }
+                } else if (intBacked && arg instanceof Long l) {
+                    Object found = caseFor(ctx, l);
+                    if (found == null && name.equals("tryFrom")) {
+                        return PhpNull.INSTANCE;
+                    }
+                    if (found != null && found != SCAN) {
+                        return found;
+                    }
+                }
+            }
             Object[] args = raw.length > 2 ? java.util.Arrays.copyOfRange(raw, 2, raw.length) : new Object[0];
-            return invoke(PhpContext.get(this), args);
+            return invoke(ctx, args);
+        }
+
+        /** Marks an enum whose case values are expressions and need the scanning path. */
+        private static final Object SCAN = new Object();
+
+        /** The case object for a backing value from the literal-case index, or null. */
+        private Object caseFor(PhpContext ctx, Object value) {
+            java.util.Map<Object, String> index = backingIndex;
+            if (index == null) {
+                index = backingIndex();
+            }
+            if (index == NO_INDEX) {
+                return SCAN;
+            }
+            int position = lookupCase(index, value);
+            return position < 0 ? null : enumClass.enumCaseAt(ctx, position);
+        }
+
+        /** The declaration index of the case with this backing value, or -1 (maps, so a boundary). */
+        @TruffleBoundary
+        private int lookupCase(java.util.Map<Object, String> index, Object value) {
+            String caseName = index.get(value);
+            return caseName == null ? -1 : enumClass.template().enumCaseIndex(caseName);
         }
 
         @TruffleBoundary
@@ -77,7 +135,14 @@ public final class EnumBuiltins {
             }
             boolean expectsInt = isIntBacking(backingType);
             Object value = coerceArgument(ctx, args[0], expectsInt, method);
-            for (PhpClassTemplate.EnumCaseDecl decl : enumClass.template().enumCases()) {
+            java.util.Map<Object, String> index = backingIndex();
+            if (index != NO_INDEX) {
+                String caseName = index.get(value);
+                if (caseName != null) {
+                    Object caseObject = enumClass.enumCaseValue(ctx, caseName);
+                    return caseObject == null ? PhpNull.INSTANCE : caseObject;
+                }
+            } else for (PhpClassTemplate.EnumCaseDecl decl : enumClass.template().enumCases()) {
                 Object caseValue = caseBackingValue(ctx, enumClass, decl);
                 if (sameBacking(value, caseValue)) {
                     Object caseObject = enumClass.enumCaseValue(ctx, decl.name());
@@ -92,6 +157,25 @@ public final class EnumBuiltins {
                     : "\"" + value + "\"";
             throw new PhpError(PhpError.VALUE_ERROR,
                     rendered + " is not a valid backing value for enum " + enumClass.name(), this);
+        }
+
+        @TruffleBoundary
+        private java.util.Map<Object, String> backingIndex() {
+            java.util.Map<Object, String> index = backingIndex;
+            if (index == null) {
+                java.util.HashMap<Object, String> built = new java.util.HashMap<>();
+                for (PhpClassTemplate.EnumCaseDecl decl : enumClass.template().enumCases()) {
+                    Object v = decl.constValue();
+                    if (decl.valueTarget() != null || !(v instanceof Long || v instanceof String)) {
+                        built = null;
+                        break;
+                    }
+                    built.putIfAbsent(v, decl.name());
+                }
+                index = built == null ? NO_INDEX : built;
+                backingIndex = index;
+            }
+            return index;
         }
 
         private boolean isIntBacking(PhpType type) {
@@ -111,6 +195,10 @@ public final class EnumBuiltins {
 
         private Object coerceArgument(PhpContext ctx, Object raw, boolean expectsInt, String method) {
             Object value = raw == null ? PhpNull.INSTANCE : raw;
+            // The backing type itself passes the same way in strict and weak mode.
+            if (expectsInt ? value instanceof Long : value instanceof String) {
+                return value;
+            }
             String fn = enumClass.name() + "::" + method;
             String expected = expectsInt ? "int" : "string";
             if (!CallMode.strictOfCaller(this)) {
@@ -156,13 +244,11 @@ public final class EnumBuiltins {
                     ctx.deprecated(fn + "(): Passing null to parameter #1 ($value) of type string|int is deprecated", 0);
                     return expectsInt ? (Object) 0L : "0";
                 }
-                if (value instanceof PhpObject obj) {
-                    if (!expectsInt && obj.phpClass().toStringMethod() != null) {
-                        return PhpOps.toStr(obj);
-                    }
-                    throw typeError(fn, expected, value);
+                if (value instanceof PhpObject obj && !expectsInt && obj.phpClass().toStringMethod() != null) {
+                    return PhpOps.toStr(obj);
                 }
-                throw typeError(fn, expected, value);
+                // php reports the declared int|string for a string-backed enum in weak mode.
+                throw typeError(fn, expectsInt ? "int" : "string|int", value);
             }
             if (expectsInt) {
                 if (value instanceof Long l) {

@@ -1,0 +1,77 @@
+int(1)
+bool(true)
+string(7) "default"
+array(4) {
+  ["a"]=>
+  int(1)
+  ["k"]=>
+  int(2)
+  ["b"]=>
+  int(3)
+  ["list"]=>
+  array(2) {
+    [0]=>
+    int(4)
+    [1]=>
+    int(5)
+  }
+}
+bool(true)
+bool(false)
+bool(false)
+array(3) {
+  ["a"]=>
+  int(1)
+  ["k"]=>
+  int(2)
+  ["list"]=>
+  array(2) {
+    [0]=>
+    int(4)
+    [1]=>
+    int(5)
+  }
+}
+string(4) "made"
+int(11)
+int(11)
+int(8)
+array(5) {
+  ["a"]=>
+  int(1)
+  ["list"]=>
+  array(2) {
+    [0]=>
+    int(4)
+    [1]=>
+    int(5)
+  }
+  ["n"]=>
+  string(4) "made"
+  ["c"]=>
+  int(11)
+  ["d"]=>
+  int(8)
+}
+array(1) {
+  ["a"]=>
+  int(1)
+}
+int(1)
+bool(false)
+int(1)
+array(2) {
+  ["x"]=>
+  int(1)
+  ["y"]=>
+  int(3)
+}
+int(5)
+int(6)
+int(2)
+int(99)
+int(2)
+int(1)
+int(11)
+bool(false)
+string(4) "gone"

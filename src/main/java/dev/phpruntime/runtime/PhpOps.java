@@ -71,11 +71,20 @@ public final class PhpOps {
         throw new PhpError(PhpError.TYPE_ERROR, "Unsupported operand type " + typeName(v), null);
     }
 
-    @TruffleBoundary
     public static long toLong(Object v) {
         if (v instanceof Long l) {
             return l;
         }
+        return toLongSlow(v);
+    }
+
+    /**
+     * Everything except the common Long argument. Kept behind a boundary so the coercion code
+     * (string parsing in particular) is not copied into every caller; the Long check above is
+     * the one every loop with an integer argument takes.
+     */
+    @TruffleBoundary
+    private static long toLongSlow(Object v) {
         if (v instanceof Double d) {
             return doubleToLong(d);
         }
@@ -105,7 +114,6 @@ public final class PhpOps {
         return (long) d;
     }
 
-    @TruffleBoundary
     public static double toDouble(Object v) {
         if (v instanceof Double d) {
             return d;
@@ -113,6 +121,11 @@ public final class PhpOps {
         if (v instanceof Long l) {
             return l;
         }
+        return toDoubleSlow(v);
+    }
+
+    @TruffleBoundary
+    private static double toDoubleSlow(Object v) {
         if (v instanceof String s) {
             Object n = parseNumericPrefix(s);
             if (n == null) {
@@ -251,8 +264,8 @@ public final class PhpOps {
             PhpClass.MethodEntry ts = o.phpClass().toStringMethod();
             if (ts != null && ts.callTarget() != null) {
                 Object res = ts.fromTrait()
-                        ? ts.callTarget().call(o, o.phpClass(), ts.declaringClass())
-                        : ts.callTarget().call(o, o.phpClass());
+                        ? PhpBacktrace.callUnsited(ts.callTarget(), o, o.phpClass(), ts.declaringClass())
+                        : PhpBacktrace.callUnsited(ts.callTarget(), o, o.phpClass());
                 if (!(res instanceof String s)) {
                     throw new PhpError(o.phpClass().name() + "::__toString() must return a string value");
                 }
@@ -387,7 +400,17 @@ public final class PhpOps {
             return Long.compare(x, y);
         }
         if ((a instanceof Long || a instanceof Double) && (b instanceof Long || b instanceof Double)) {
-            return Double.compare(toDouble(a), toDouble(b)) == 0 ? 0 : (toDouble(a) < toDouble(b) ? -1 : 1);
+            double x = toDouble(a);
+            double y = toDouble(b);
+            // php: NAN is equal to nothing and sorts after everything (<=> returns 1);
+            // -0.0 == 0.0, unlike Double.compare.
+            if (x < y) {
+                return -1;
+            }
+            if (x > y) {
+                return 1;
+            }
+            return x == y ? 0 : 1;
         }
         if (a instanceof String x && b instanceof String y) {
             if (isNumericString(x) && isNumericString(y)) {

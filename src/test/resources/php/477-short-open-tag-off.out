@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed><? not php ?></feed>
+upper
+lower
+string(0) ""
+2<?phpx not a tag?>
+end

@@ -25,6 +25,8 @@ public final class PhpClosure {
     private final PhpClass traitSelf;
     private final Object[] captures;
     private final String magicMethodName;
+    /** The linked method a first-class callable of a Java method refers to, else null. */
+    private final PhpClass.MethodEntry methodEntry;
 
     public PhpClosure(Kind kind, RootCallTarget callTarget, Builtins.Def builtin,
                       Object boundThis, PhpClass calledClass, Object[] captures, String magicMethodName) {
@@ -34,6 +36,12 @@ public final class PhpClosure {
     public PhpClosure(Kind kind, RootCallTarget callTarget, Builtins.Def builtin,
                       Object boundThis, PhpClass calledClass, PhpClass traitSelf,
                       Object[] captures, String magicMethodName) {
+        this(kind, callTarget, builtin, boundThis, calledClass, traitSelf, captures, magicMethodName, null);
+    }
+
+    public PhpClosure(Kind kind, RootCallTarget callTarget, Builtins.Def builtin,
+                      Object boundThis, PhpClass calledClass, PhpClass traitSelf,
+                      Object[] captures, String magicMethodName, PhpClass.MethodEntry methodEntry) {
         this.kind = kind;
         this.callTarget = callTarget;
         this.builtin = builtin;
@@ -42,6 +50,7 @@ public final class PhpClosure {
         this.traitSelf = traitSelf;
         this.captures = captures;
         this.magicMethodName = magicMethodName;
+        this.methodEntry = methodEntry;
     }
 
     public static PhpClosure closure(RootCallTarget callTarget, Object boundThis, PhpClass calledClass, Object[] captures) {
@@ -65,8 +74,19 @@ public final class PhpClosure {
         return new PhpClosure(Kind.METHOD, callTarget, null, boundThis, calledClass, traitSelf, null, null);
     }
 
+    public static PhpClosure method(RootCallTarget callTarget, Object boundThis, PhpClass calledClass,
+                                    PhpClass traitSelf, PhpClass.MethodEntry methodEntry) {
+        return new PhpClosure(Kind.METHOD, callTarget, null, boundThis, calledClass, traitSelf, null, null, methodEntry);
+    }
+
     public static PhpClosure magicCall(RootCallTarget callTarget, Object boundThis, PhpClass calledClass, String magicMethodName) {
         return new PhpClosure(Kind.MAGIC_CALL, callTarget, null, boundThis, calledClass, null, null, magicMethodName);
+    }
+
+    /** A magic method declared in a trait runs for the using class passed as traitSelf. */
+    public static PhpClosure magicCall(RootCallTarget callTarget, Object boundThis, PhpClass calledClass,
+                                       PhpClass traitSelf, String magicMethodName) {
+        return new PhpClosure(Kind.MAGIC_CALL, callTarget, null, boundThis, calledClass, traitSelf, null, magicMethodName);
     }
 
     public static PhpClosure builtin(Builtins.Def builtin) {
@@ -105,13 +125,19 @@ public final class PhpClosure {
         return magicMethodName;
     }
 
+    /** The Java method this first-class callable refers to, or null for guest closures. */
+    public PhpClass.MethodEntry methodEntry() {
+        return methodEntry;
+    }
+
     public PhpClosure copy() {
         Object[] capCopy = captures == null ? null : captures.clone();
-        return new PhpClosure(kind, callTarget, builtin, boundThis, calledClass, traitSelf, capCopy, magicMethodName);
+        return new PhpClosure(kind, callTarget, builtin, boundThis, calledClass, traitSelf, capCopy, magicMethodName,
+                methodEntry);
     }
 
     public PhpClosure rebind(Object newThis, PhpClass newCalledClass, PhpClass newScope) {
         return new PhpClosure(kind, callTarget, builtin, newThis, newCalledClass, kind == Kind.CLOSURE ? newScope : traitSelf,
-                captures == null ? null : captures.clone(), magicMethodName);
+                captures == null ? null : captures.clone(), magicMethodName, methodEntry);
     }
 }

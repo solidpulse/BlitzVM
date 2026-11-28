@@ -70,19 +70,33 @@ final class HtmlEntities {
     }
 
     static Charset charset(String name) {
+        if (name.length() == 5 && name.equalsIgnoreCase("UTF-8")) {
+            return StandardCharsets.UTF_8;
+        }
         MbConvertFunctions.Encoding e = MbConvertFunctions.encoding(name);
         return e == null || e.charset() == null ? StandardCharsets.UTF_8 : e.charset();
     }
 
     static String encode(String php, long flags, String encoding, boolean doubleEncode, boolean all) {
         Charset cs = charset(encoding);
-        boolean valid = PhpStrings.isEncoding(php, cs);
-        if (!valid && (flags & (4 | ENT_SUBSTITUTE)) == 0) {
-            return "";
+        boolean ascii = cs.equals(StandardCharsets.UTF_8) && PhpStrings.isAscii(php);
+        String text;
+        if (ascii) {
+            // ASCII is valid UTF-8 and needs no decoder; php returns the same string when it
+            // has nothing to escape.
+            text = php;
+        } else {
+            boolean valid = PhpStrings.isEncoding(php, cs);
+            if (!valid && (flags & (4 | ENT_SUBSTITUTE)) == 0) {
+                return "";
+            }
+            text = cs.equals(StandardCharsets.UTF_8)
+                    ? PhpStrings.decodeUtf8Replacing(php, (flags & 4) != 0)
+                    : PhpStrings.decode(php, cs, (flags & 4) != 0 ? "" : "\uFFFD");
         }
-        String text = cs.equals(StandardCharsets.UTF_8)
-                ? PhpStrings.decodeUtf8Replacing(php, (flags & 4) != 0)
-                : PhpStrings.decode(php, cs, (flags & 4) != 0 ? "" : "\uFFFD");
+        if (ascii && nothingToEncode(text, flags)) {
+            return php;
+        }
         StringBuilder out = new StringBuilder(text.length());
         for (int i = 0; i < text.length();) {
             int cp = text.codePointAt(i);
@@ -226,6 +240,17 @@ final class HtmlEntities {
             cp = cp * (hex ? 16 : 10) + d;
         }
         return cp <= 0x10FFFF ? cp : -1;
+    }
+
+    /** True when the escaping loop would append {@code text} unchanged. */
+    private static boolean nothingToEncode(String text, long flags) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '&' || c == '<' || c == '>' || c == '"' || c == '\'' || c < 0x20 || c == 0x7F) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Which numeric references PHP decodes for the document type (unicode_cp_is_allowed). */

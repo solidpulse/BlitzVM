@@ -47,6 +47,10 @@ public final class Parser {
     private final List<PhpClassTemplate> topLevelClasses;
     private Scope scope;
     private String currentFunction;
+    /** The name php gives a closure declared here: a file path, {@code f()} or {@code C::m()}. */
+    private String currentFunctionDisplay;
+    /** Whether {@code $this} exists in the scope being parsed, which decides closure binding. */
+    private boolean currentThisAvailable;
     private String currentClass;
     private String currentParentClass;
     private boolean currentIsTrait;
@@ -97,6 +101,9 @@ public final class Parser {
         this.topLevelClasses = topLevelClasses;
         this.currentFunction = currentFunction;
         this.currentClass = currentClass;
+        this.currentFunctionDisplay = source.getPath() != null && !source.getPath().isEmpty()
+                ? dev.phpruntime.runtime.PhpStrings.fromJava(source.getPath())
+                : (source.getName() != null ? dev.phpruntime.runtime.PhpStrings.fromJava(source.getName()) : "");
         this.currentIsTrait = currentIsTrait;
         this.currentNamespace = currentNamespace;
         this.classAliases = classAliases;
@@ -1118,11 +1125,15 @@ public final class Parser {
         String name = qualifyDeclaration(nameTok.text());
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
         String outerClass = currentClass;
         boolean outerIsTrait = currentIsTrait;
         boolean outerReturnsRef = currentReturnsRef;
         scope = new Scope(language, false);
         currentFunction = name;
+        currentFunctionDisplay = name + "()";
+        boolean outerThis = currentThisAvailable;
+        currentThisAvailable = false;
         currentClass = null;
         currentIsTrait = false;
         currentReturnsRef = returnsRef;
@@ -1154,6 +1165,8 @@ public final class Parser {
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentClass = outerClass;
             currentIsTrait = outerIsTrait;
             currentReturnsRef = outerReturnsRef;
@@ -1164,9 +1177,15 @@ public final class Parser {
         boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
+        String display = closureDisplay(line);
+        boolean bound = !isStatic && currentThisAvailable;
+        boolean outerThis = currentThisAvailable;
         boolean outerReturnsRef = currentReturnsRef;
         scope = Scope.forClosure(language, outer, !isStatic, false);
         currentFunction = "{closure}";
+        currentFunctionDisplay = display;
+        currentThisAvailable = bound;
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
@@ -1190,11 +1209,13 @@ public final class Parser {
             expectOp("{");
             PhpNode body = blockUntil("}");
             scope.validateGotos();
-            return finishClosure(outer, !isStatic, returnsRef, params,
-                    signature.withEndLine(lastBlockEndLine), body, line, "{closure}");
+            return finishClosure(outer, !isStatic, bound, returnsRef, params,
+                    signature.withEndLine(lastBlockEndLine), body, line, "{closure}", display);
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
@@ -1203,9 +1224,15 @@ public final class Parser {
         boolean returnsRef = acceptOp("&");
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
+        String display = closureDisplay(line);
+        boolean bound = !isStatic && currentThisAvailable;
+        boolean outerThis = currentThisAvailable;
         boolean outerReturnsRef = currentReturnsRef;
         scope = Scope.forClosure(language, outer, !isStatic, true);
         currentFunction = "{closure}";
+        currentFunctionDisplay = display;
+        currentThisAvailable = bound;
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams();
@@ -1218,17 +1245,25 @@ public final class Parser {
                 lv.kind().markCell();
             }
             PhpNode body = new JumpNode(JumpNode.Kind.RETURN, 0, expr, returnsRef).at(line);
-            return finishClosure(outer, !isStatic, returnsRef, params,
-                    signature.withEndLine(expr.line()), body, line, "{closure}");
+            return finishClosure(outer, !isStatic, bound, returnsRef, params,
+                    signature.withEndLine(expr.line()), body, line, "{closure}", display);
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
 
-    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean returnsRef, ParsedParams params,
-                                  PhpSignature signature, PhpNode body, int line, String fnName) {
+    /** The name php gives a closure declared at {@code line}, from the enclosing scope. */
+    private String closureDisplay(int line) {
+        return "{closure:" + currentFunctionDisplay + ":" + line + "}";
+    }
+
+    private PhpNode finishClosure(Scope outer, boolean bindThis, boolean boundThis, boolean returnsRef,
+                                  ParsedParams params, PhpSignature signature, PhpNode body, int line, String fnName,
+                                  String displayName) {
         List<Scope.Capture> caps = scope.captures();
         int[] captureSlots = new int[caps.size()];
         VarKind[] captureKinds = new VarKind[caps.size()];
@@ -1253,7 +1288,7 @@ public final class Parser {
                 captureSlots, captureKinds, byRef,
                 params.names(), params.slots(), params.kinds(), params.byRef(),
                 params.defaults(), params.variadic(), body).closureMetadata(bindThis && scope.usesThis())
-                .withSignature(signature));
+                .closureBoundThis(boundThis).withClosureDisplay(displayName).withSignature(signature));
         root.withCaptureNames(captureNames);
         root.setStrictTypes(strictTypes);
         if (scope.isGenerator()) {
@@ -1571,9 +1606,13 @@ public final class Parser {
                                                 boolean inAbstract, int line) {
         Scope outer = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
         boolean outerReturnsRef = currentReturnsRef;
         scope = currentIsTrait ? Scope.forTraitMethod(language) : Scope.forMethod(language);
         currentFunction = "$" + propName + "::" + hookName;
+        currentFunctionDisplay = (currentClass != null ? currentClass + "::" : "") + "$" + propName + "::" + hookName + "()";
+        boolean outerThis = currentThisAvailable;
+        currentThisAvailable = true;
         currentReturnsRef = byRef;
         try {
             String paramName = hookName.equals("set") ? "value" : null;
@@ -1685,6 +1724,8 @@ public final class Parser {
         } finally {
             scope = outer;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
@@ -1810,9 +1851,13 @@ public final class Parser {
         boolean isCtor = "__construct".equals(lower);
         Scope outerScope = scope;
         String outerFunction = currentFunction;
+        String outerDisplay = currentFunctionDisplay;
         boolean outerReturnsRef = currentReturnsRef;
         scope = currentIsTrait ? Scope.forTraitMethod(language) : Scope.forMethod(language);
         currentFunction = mName;
+        currentFunctionDisplay = (currentClass != null ? currentClass + "::" : "") + mName + "()";
+        boolean outerThis = currentThisAvailable;
+        currentThisAvailable = !isStatic;
         currentReturnsRef = returnsRef;
         try {
             ParsedParams params = parseParams(isCtor && !isAbstract);
@@ -1874,6 +1919,8 @@ public final class Parser {
         } finally {
             scope = outerScope;
             currentFunction = outerFunction;
+            currentFunctionDisplay = outerDisplay;
+            currentThisAvailable = outerThis;
             currentReturnsRef = outerReturnsRef;
         }
     }
@@ -2116,11 +2163,14 @@ public final class Parser {
                 }
                 case "@" -> {
                     next();
-                    return binary(UNARY_POWER - 1);
+                    return new SilenceNode(binary(UNARY_POWER - 1)).at(line);
                 }
                 case "++", "--" -> {
                     next();
-                    LValueNode target = lvalue(postfixOnly());
+                    PhpNode operand = postfixOnly();
+                    // --f()['n']: a prefix step on an element of a temporary value, as php allows.
+                    LValueNode target = operand instanceof IndexReadNode read
+                            ? tempIndexTarget(read, line) : lvalue(operand);
                     return new IncDecNode(target, t.text().equals("++"), true).at(line);
                 }
                 case "(" -> {
@@ -2265,6 +2315,9 @@ public final class Parser {
             PhpNode rhs = binary(4);
             return new DestructureAssignNode(dest, rhs, lvalueOrNull(rhs)).at(line);
         }
+        if (e instanceof IndexReadNode read && peek().kind() == Kind.OP && isAssignmentOp(peek().text())) {
+            e = tempIndexTarget(read, line);
+        }
         if (e instanceof LValueNode target) {
             Token t = peek();
             if (t.kind() == Kind.OP) {
@@ -2307,6 +2360,25 @@ public final class Parser {
             }
         }
         return e;
+    }
+
+    private boolean isAssignmentOp(String op) {
+        return op.equals("=") || op.equals("++") || op.equals("--") || compoundOp(op) != null;
+    }
+
+    /**
+     * {@code f()[a][b]} parsed as reads, followed by an assignment: the same keys as a write
+     * target whose base is the temporary value of {@code f()}.
+     */
+    private LValueNode tempIndexTarget(IndexReadNode read, int line) {
+        List<PhpNode> keys = new ArrayList<>();
+        PhpNode base = read;
+        while (base instanceof IndexReadNode r) {
+            keys.add(0, r.key());
+            base = r.target();
+        }
+        return new IndexLValueNode(language, new TempValueBase(base).at(line),
+                keys.toArray(new PhpNode[0])).at(line);
     }
 
     /** The binary operator for a compound assignment that has a typed operator node. */
@@ -2359,6 +2431,11 @@ public final class Parser {
         } else {
             e = primary();
         }
+        return postfixLoop(e, allowCall, line);
+    }
+
+    /** The postfix chain ([...], ->, ::, calls when allowed) after an already parsed base. */
+    private PhpNode postfixLoop(PhpNode e, boolean allowCall, int line) {
         boolean nullsafeChain = false;
         while (true) {
             if (acceptOp("[")) {
@@ -2392,6 +2469,18 @@ public final class Parser {
                     } else {
                         e = new IndexLValueNode(language, lv, keys.toArray(new PhpNode[0])).at(line);
                     }
+                } else if (peek().isOp("]")) {
+                    // f()[] = $v: an append can only be a write target, on a temporary value.
+                    List<PhpNode> keys = new ArrayList<>();
+                    keys.add(null);
+                    expectOp("]");
+                    while (peek().isOp("[")) {
+                        next();
+                        keys.add(peek().isOp("]") ? null : expression());
+                        expectOp("]");
+                    }
+                    e = new IndexLValueNode(language, new TempValueBase(e).at(line),
+                            keys.toArray(new PhpNode[0])).at(line);
                 } else {
                     PhpNode key = expression();
                     expectOp("]");
@@ -2399,9 +2488,9 @@ public final class Parser {
                 }
             } else if (acceptOp("?->")) {
                 nullsafeChain = true;
-                e = parseMemberAccess(e, line, true);
+                e = parseMemberAccess(e, line, true, allowCall);
             } else if (acceptOp("->")) {
-                e = parseMemberAccess(e, line, nullsafeChain);
+                e = parseMemberAccess(e, line, nullsafeChain, allowCall);
             } else if (acceptOp("::")) {
                 if (e instanceof StaticPropertyLValueNode sp && peek().kind() == Kind.IDENT
                         && peek(1).isOp("(")
@@ -2447,11 +2536,19 @@ public final class Parser {
     }
 
     private PhpNode parseMemberAccess(PhpNode target, int line, boolean nullsafe) {
+        return parseMemberAccess(target, line, nullsafe, true);
+    }
+
+    /**
+     * With {@code allowCall} false (the class expression of {@code new $o->cls(...)}), a following
+     * "(" is not a method call: it belongs to the caller (the constructor's arguments).
+     */
+    private PhpNode parseMemberAccess(PhpNode target, int line, boolean nullsafe, boolean allowCall) {
         PhpNode nodeTarget = nullsafe ? null : target;
         PhpNode access;
         if (peek().kind() == Kind.IDENT) {
             String member = next().text();
-            if (acceptOp("(")) {
+            if (allowCall && acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, member, language.methodId(member), null, line, nullsafe);
             } else {
                 if (hookBackingProp != null && member.equals(hookBackingProp)) {
@@ -2462,7 +2559,7 @@ public final class Parser {
         } else if (peek().kind() == Kind.VARIABLE) {
             Token vt = next();
             PhpNode nameExpr = scope.variable(vt.text()).at(vt.line());
-            if (acceptOp("(")) {
+            if (allowCall && acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, null, -1, nameExpr, line, nullsafe);
             } else {
                 access = new PropertyLValueNode(nodeTarget, null, nameExpr, currentClassLower(), scope.traitSelfSlot()).at(line);
@@ -2470,7 +2567,7 @@ public final class Parser {
         } else if (acceptOp("{")) {
             PhpNode nameExpr = expression();
             expectOp("}");
-            if (acceptOp("(")) {
+            if (allowCall && acceptOp("(")) {
                 access = parseMemberCallableOrCall(nodeTarget, null, -1, nameExpr, line, nullsafe);
             } else {
                 access = new PropertyLValueNode(nodeTarget, null, nameExpr, currentClassLower(), scope.traitSelfSlot()).at(line);
@@ -2684,12 +2781,26 @@ public final class Parser {
         Token t = peek();
         if (t.kind() == Kind.IDENT) {
             next();
-            return makeClassRefFromName(resolveClassName(t.text()));
+            ClassRefNode named = makeClassRefFromName(resolveClassName(t.text()));
+            if (!allowDynamic && peek().isOp("::") && peek(1).kind() == Kind.VARIABLE) {
+                // new static::$builder(...), new Foo::$cls[0](...): the class name is the value
+                // of a static property (and its index/property chain); the parentheses that
+                // follow are the constructor's arguments.
+                int line = t.line();
+                next();
+                Token vt = next();
+                PhpNode prop = new StaticPropertyLValueNode(
+                        named, vt.text(), null, currentClassLower(), scope.traitSelfSlot()).at(line);
+                return ClassRefNode.dynamic(postfixLoop(prop, false, line));
+            }
+            return named;
         }
         if (t.kind() == Kind.VARIABLE) {
             return ClassRefNode.dynamic(postfixOnly(false));
         }
-        if (allowDynamic && t.isOp("(")) {
+        if (t.isOp("(")) {
+            // new ($factory->className())(...), new ('Foo')(...): a parenthesized expression
+            // names the class and the parentheses after it are the constructor's arguments.
             return ClassRefNode.dynamic(primary());
         }
         throw error("syntax error, unexpected " + describe(t) + ", expecting class name");
@@ -2802,7 +2913,10 @@ public final class Parser {
             next();
             return parseStaticMember(makeClassRefFromName(resolveClassName(name)), line);
         }
-        switch (lower) {
+        // \func_num_args() and friends are language constructs: the leading backslash of a
+        // fully qualified name must not hide them from the special forms below.
+        String special = lower.startsWith("\\") ? lower.substring(1) : lower;
+        switch (special) {
             case "true" -> {
                 return new ConstNode(true).at(line);
             }
@@ -2898,7 +3012,7 @@ public final class Parser {
                 if (peek().isOp("(") && !(peek(1).isOp("...") && peek(2).isOp(")"))) {
                     next();
                     PhpNode[] args = parseCallArgs();
-                    return switch (lower) {
+                    return switch (special) {
                         case "func_num_args" -> new FuncArgsNode(FuncArgsNode.Kind.NUM_ARGS, scope.argOffset(),
                                 scope.paramNames(), scope.paramSlots(), scope.paramKinds(),
                                 scope.normalParamCount(), null).at(line);

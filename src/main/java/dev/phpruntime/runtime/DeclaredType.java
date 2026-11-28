@@ -49,6 +49,13 @@ public final class DeclaredType {
     private final int mask;
     private final List<ClassGroup> classGroups;
     private final int fastClassId;
+    /**
+     * Class ids of every class member when each is one plain class or interface (no
+     * intersection, self, parent or static), as in {@code Reflector|ReflectionType|string};
+     * null otherwise. Lets an object argument to such a union skip the boundary call.
+     */
+    @com.oracle.truffle.api.CompilerDirectives.CompilationFinal(dimensions = 1)
+    private final int[] fastClassIds;
 
     private DeclaredType(PhpType type, String declaredClass, PhpLanguage language) {
         this.type = type;
@@ -64,6 +71,16 @@ public final class DeclaredType {
             fast = groups.get(0).fastClassId();
         }
         this.fastClassId = fast;
+        int[] ids = groups.isEmpty() ? null : new int[groups.size()];
+        for (int i = 0; ids != null && i < groups.size(); i++) {
+            ClassGroup g = groups.get(i);
+            if (g.names().size() != 1 || g.fastClassId() < 0) {
+                ids = null;
+            } else {
+                ids[i] = g.fastClassId();
+            }
+        }
+        this.fastClassIds = fast >= 0 ? new int[]{fast} : ids;
     }
 
     public static DeclaredType of(PhpType type, String declaredClass, PhpLanguage language) {
@@ -118,19 +135,27 @@ public final class DeclaredType {
         return (mask & OBJECT) != 0;
     }
 
-    /** Whether the class fast path can run (one plain class/interface member). */
+    /** Whether the class fast path can run (every class member one plain class/interface). */
     public boolean hasFastClass() {
-        return fastClassId >= 0;
+        return fastClassIds != null;
     }
 
-    /** The one cheap guard for an object of the declared class (or a subclass/implementor). */
-    public boolean fastClassMatches(PhpObject value, PhpContext ctx, PhpClass selfClass) {
-        PhpClass target = ctx.classById(fastClassId);
-        if (target == null && selfClass != null) {
-            // A self/parent type left unresolved in a trait.
-            target = resolveGroupName(0, selfClass, null, ctx);
+    /**
+     * The cheap guard for an object of a declared class (or a subclass/implementor): the
+     * declared class name ids against the value class's ancestor name ids, with no context, no
+     * class table read and no boundary. A name that only resolves through {@code class_alias}
+     * misses the set; the caller's exact path accepts it.
+     */
+    @com.oracle.truffle.api.nodes.ExplodeLoop
+    public boolean fastClassMatches(PhpObject value) {
+        int[] ids = fastClassIds;
+        PhpClass cls = value.phpClass();
+        for (int i = 0; i < ids.length; i++) {
+            if (cls.matchesNameId(ids[i])) {
+                return true;
+            }
         }
-        return target != null && value.phpClass().isInstanceOf(target);
+        return false;
     }
 
     // ------------------------------------------------------------------ fast matching
@@ -220,6 +245,14 @@ public final class DeclaredType {
             return false;
         }
         ClassGroup group = classGroups.get(index);
+        if (group.fastClassId() >= 0) {
+            // A single named class: the context's id table finds a declared class without
+            // lowercasing and hashing the name; autoload still goes through resolveClass.
+            PhpClass target = ctx.classById(group.fastClassId());
+            if (target != null) {
+                return obj.phpClass().isInstanceOf(target);
+            }
+        }
         for (String name : group.names()) {
             PhpClass target = resolveClass(name, ctx, selfClass, calledClass);
             if (target == null || !obj.phpClass().isInstanceOf(target)) {
@@ -227,11 +260,6 @@ public final class DeclaredType {
             }
         }
         return true;
-    }
-
-    private PhpClass resolveGroupName(int index, PhpClass selfClass, PhpClass calledClass, PhpContext ctx) {
-        ClassGroup group = classGroups.get(index);
-        return group.names().isEmpty() ? null : resolveClass(group.names().get(0), ctx, selfClass, calledClass);
     }
 
     private PhpClass resolveClass(String name, PhpContext ctx, PhpClass selfClass, PhpClass calledClass) {
@@ -384,12 +412,22 @@ public final class DeclaredType {
     public Object checkParameter(Object value, PhpBytecodeRootNode root, Node site, int paramIndex,
                                  String paramName, PhpClass selfClass, PhpClass calledClass) {
         PhpContext ctx = PhpContext.get(site);
-        CallMode mode = CallMode.of(root, site);
         PhpFunctionRootNode fn = root.function();
-        Object result = matchOrCoerce(value, ctx, selfClass, calledClass, mode.strict(), fn.line());
-        if (result != NO_MATCH) {
-            return result;
+        // A value strict mode accepts (an exact match, or an int widened to float) comes out the
+        // same in weak mode, so the caller's mode only matters when that fails. Finding it walks
+        // the stack, which typed code would otherwise pay on every class-typed argument.
+        // The strict pass never coerces, so it needs no line; looking one up costs a source scan.
+        Object strictResult = matchOrCoerce(value, ctx, selfClass, calledClass, true, 0);
+        if (strictResult != NO_MATCH) {
+            return strictResult;
         }
+        if (!CallMode.strictOfCallerOf(root, site)) {
+            Object result = matchOrCoerce(value, ctx, selfClass, calledClass, false, fn.line());
+            if (result != NO_MATCH) {
+                return result;
+            }
+        }
+        CallMode mode = CallMode.of(root, site);
         StringBuilder msg = new StringBuilder(fn.qualifiedCallableName()).append("(): Argument #")
                 .append(paramIndex + 1);
         if (paramName != null) {
@@ -423,6 +461,10 @@ public final class DeclaredType {
             return PhpNull.INSTANCE;
         }
         PhpContext ctx = PhpContext.get(site);
+        if (matches(v, ctx, selfClass, calledClass)) {
+            return v;
+        }
+        // The line is only for a weak-mode coercion's deprecation.
         int line = Math.max(0, PhpBacktrace.sourceLine(site));
         Object result = matchOrCoerce(v, ctx, selfClass, calledClass, root.strictTypes(), line);
         if (result != NO_MATCH) {
@@ -431,8 +473,53 @@ public final class DeclaredType {
         String given = implicit && v == PhpNull.INSTANCE ? "none returned"
                 : givenType(v) + " returned";
         String msg = root.function().qualifiedCallableName() + "(): Return value must be of type "
-                + display + ", " + given;
+                + displayForReturn(calledClass) + ", " + given;
         throw new PhpError(PhpError.TYPE_ERROR, msg, site);
+    }
+
+    /**
+     * The type for a return error. A {@code static} member names the called class, as php
+     * prints it ({@code ?B}, {@code B|null}); everywhere else {@code display} is the answer.
+     */
+    private String displayForReturn(PhpClass calledClass) {
+        if (calledClass == null) {
+            return display;
+        }
+        PhpType resolved = replaceStatic(type, calledClass.name());
+        return resolved == type ? display : display(resolved);
+    }
+
+    private static PhpType replaceStatic(PhpType type, String className) {
+        if (type instanceof PhpType.Named named) {
+            return PhpStrings.lower(named.name()).equals("static") ? new PhpType.Named(className) : type;
+        }
+        if (type instanceof PhpType.Nullable nullable) {
+            PhpType inner = replaceStatic(nullable.inner(), className);
+            return inner == nullable.inner() ? type : new PhpType.Nullable(inner);
+        }
+        if (type instanceof PhpType.Union union) {
+            List<PhpType> members = replaceStatic(union.members(), className);
+            return members == union.members() ? type : new PhpType.Union(members);
+        }
+        if (type instanceof PhpType.Intersection intersection) {
+            List<PhpType> members = replaceStatic(intersection.members(), className);
+            return members == intersection.members() ? type : new PhpType.Intersection(members);
+        }
+        return type;
+    }
+
+    private static List<PhpType> replaceStatic(List<PhpType> members, String className) {
+        List<PhpType> out = null;
+        for (int i = 0; i < members.size(); i++) {
+            PhpType replaced = replaceStatic(members.get(i), className);
+            if (replaced != members.get(i) && out == null) {
+                out = new ArrayList<>(members);
+            }
+            if (out != null) {
+                out.set(i, replaced);
+            }
+        }
+        return out == null ? members : out;
     }
 
     /** Checks the Generator object a generator function returns, against its declared type. */
@@ -451,7 +538,8 @@ public final class DeclaredType {
     public Object checkProperty(Object value, PhpContext ctx, Node site, boolean strict, PhpClass selfClass,
                                 String owner, String property) {
         Object v = value == null ? PhpNull.INSTANCE : value;
-        if (matchesFast(v)) {
+        if ((v instanceof PhpObject obj && fastClassIds != null && fastClassMatches(obj))
+                || matchesFast(v) || matches(v, ctx, selfClass, null)) {
             return v;
         }
         int line = site == null ? 0 : Math.max(0, PhpBacktrace.sourceLine(site));

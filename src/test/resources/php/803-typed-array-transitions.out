@@ -1,0 +1,260 @@
+ints:
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+array (
+  0 => 1,
+  1 => 2,
+  2 => 3,
+)
+a:3:{i:0;i:1;i:1;i:2;i:2;i:3;}
+[1,2,3]
+bool(true)
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+bool(true)
+int copy original:
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+int copy changed:
+array(3) {
+  [0]=>
+  int(10)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+float into int:
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  float(1.5)
+  [2]=>
+  int(3)
+}
+int into float:
+array(2) {
+  [0]=>
+  int(2)
+  [1]=>
+  float(2.5)
+}
+string then int append:
+array(4) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  string(1) "x"
+  [3]=>
+  int(3)
+}
+object class: stdClass
+null bool array object into float:
+array(6) {
+  [0]=>
+  float(1.5)
+  [1]=>
+  NULL
+  [2]=>
+  bool(true)
+  [3]=>
+  bool(false)
+  [4]=>
+  array(1) {
+    [0]=>
+    int(4)
+  }
+  [5]=>
+  object(stdClass)#1 (0) {
+  }
+}
+reference cell:
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  &int(7)
+  [2]=>
+  int(3)
+}
+int(7)
+int(7)
+foreach by reference: 10,20,30
+int(60)
+unset middle then append:
+array(4) {
+  [0]=>
+  int(1)
+  [2]=>
+  int(3)
+  [3]=>
+  int(4)
+  [4]=>
+  int(5)
+}
+unset end then append:
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [3]=>
+  int(4)
+}
+generalized copy original:
+array(3) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+generalized copy changed:
+array(3) {
+  [0]=>
+  string(1) "s"
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+float copy original:
+array(1) {
+  [0]=>
+  float(1.5)
+}
+float copy changed:
+array(2) {
+  [0]=>
+  float(1.5)
+  [1]=>
+  int(2)
+}
+nested original:
+array(2) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+}
+nested outer:
+array(2) {
+  [0]=>
+  array(2) {
+    [0]=>
+    int(9)
+    [1]=>
+    int(2)
+  }
+  [1]=>
+  int(3)
+}
+key beyond size:
+array(4) {
+  [0]=>
+  int(1)
+  [1]=>
+  int(2)
+  [5]=>
+  int(3)
+  [6]=>
+  int(4)
+}
+negative keys:
+array(2) {
+  [-2]=>
+  string(1) "a"
+  [-1]=>
+  string(1) "b"
+}
+negative keys append:
+array(3) {
+  [-2]=>
+  string(1) "a"
+  [-1]=>
+  string(1) "b"
+  [0]=>
+  string(1) "c"
+}
+int overflow:
+array(2) {
+  [0]=>
+  float(9.223372036854776E+18)
+  [1]=>
+  float(-9.223372036854776E+18)
+}
+int extremes:
+array(2) {
+  [0]=>
+  int(9223372036854775807)
+  [1]=>
+  int(-9223372036854775808)
+}
+float compound:
+array(2) {
+  [0]=>
+  float(3.5)
+  [1]=>
+  float(5)
+}
+compound value:
+array(3) {
+  [0]=>
+  int(6)
+  [1]=>
+  int(2)
+  [2]=>
+  int(3)
+}
+int(6)
+floats:
+array(2) {
+  [0]=>
+  float(1.5)
+  [1]=>
+  float(2.5)
+}
+array (
+  0 => 1.5,
+  1 => 2.5,
+)
+a:2:{i:0;d:1.5;i:1;d:2.5;}
+[1.5,2.5]
+special floats:
+array(3) {
+  [0]=>
+  float(INF)
+  [1]=>
+  float(NAN)
+  [2]=>
+  float(-0)
+}
+array (
+  0 => INF,
+  1 => NAN,
+  2 => -0.0,
+)
+a:3:{i:0;d:INF;i:1;d:NAN;i:2;d:-0;}
+[0,0,-0]

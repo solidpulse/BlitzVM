@@ -126,7 +126,8 @@ abstract class PhpStream {
     static final class FileStream extends PhpStream {
 
         private final SeekableByteChannel channel;
-        private final byte[] buffer = new byte[8192];
+        /** Allocated on the first buffered read: a stream read whole never needs it. */
+        private byte[] buffer;
         private long bufferStart;
         private int bufferLength;
         private long position;
@@ -145,6 +146,9 @@ abstract class PhpStream {
                     channel.position(position);
                 }
                 bufferStart = position;
+                if (buffer == null) {
+                    buffer = new byte[8192];
+                }
                 int n = channel.read(ByteBuffer.wrap(buffer));
                 bufferLength = Math.max(0, n);
                 channelPosition = position + bufferLength;
@@ -157,6 +161,51 @@ abstract class PhpStream {
             System.arraycopy(buffer, at, buf, off, n);
             position += n;
             return n;
+        }
+
+        /**
+         * The rest of the file read straight into an array sized from the channel, with no
+         * intermediate buffer. A file that grew since size() is still read to its end.
+         */
+        @Override
+        byte[] readAll() throws IOException {
+            long remaining = Math.max(0, channel.size() - position);
+            if (remaining > (8L << 20)) {
+                return super.readAll();
+            }
+            byte[] out = new byte[(int) remaining];
+            int got = 0;
+            if (position >= bufferStart && position < bufferStart + bufferLength) {
+                int at = (int) (position - bufferStart);
+                got = Math.min(out.length, bufferLength - at);
+                System.arraycopy(buffer, at, out, 0, got);
+                position += got;
+            }
+            if (channelPosition != position) {
+                channel.position(position);
+            }
+            while (true) {
+                if (got == out.length) {
+                    // Probe for growth past the size seen above; the common case ends here.
+                    byte[] probe = new byte[1];
+                    if (channel.read(ByteBuffer.wrap(probe)) <= 0) {
+                        break;
+                    }
+                    out = Arrays.copyOf(out, Math.max(got + 1, Math.max(256, out.length * 2)));
+                    out[got++] = probe[0];
+                    position++;
+                    continue;
+                }
+                int r = channel.read(ByteBuffer.wrap(out, got, out.length - got));
+                if (r < 0) {
+                    break;
+                }
+                got += r;
+                position += r;
+            }
+            channelPosition = position;
+            eof = true;
+            return got == out.length ? out : Arrays.copyOf(out, got);
         }
 
         @Override
@@ -363,6 +412,62 @@ abstract class PhpStream {
         @Override
         String streamType() {
             return raw == null ? "Output" : "STDIO";
+        }
+    }
+
+    /** php://stdin: the process's standard input, read-only and not seekable. */
+    static final class InputStreamStream extends PhpStream {
+
+        private final java.io.InputStream raw;
+        private long consumed;
+
+        InputStreamStream(java.io.InputStream raw, String uri) {
+            super("rb", uri);
+            this.raw = raw;
+        }
+
+        @Override
+        int read(byte[] buf, int off, int len) throws IOException {
+            int n = raw.read(buf, off, len);
+            if (n > 0) {
+                consumed += n;
+            }
+            return n;
+        }
+
+        @Override
+        void write(byte[] data) {
+            // canWrite is false for "rb", so fwrite() refuses before reaching this.
+        }
+
+        @Override
+        long tell() {
+            return consumed;
+        }
+
+        @Override
+        boolean seek(long pos) {
+            return false;
+        }
+
+        @Override
+        boolean seekable() {
+            return false;
+        }
+
+        @Override
+        long size() {
+            return 0;
+        }
+
+        @Override
+        String wrapperType() {
+            return "PHP";
+        }
+
+        @Override
+        String streamType() {
+            return "STDIO";
         }
     }
 

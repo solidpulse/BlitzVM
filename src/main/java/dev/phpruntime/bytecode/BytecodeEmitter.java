@@ -4,6 +4,7 @@ import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.bytecode.BytecodeConfig;
 import com.oracle.truffle.api.bytecode.BytecodeLabel;
 import com.oracle.truffle.api.bytecode.BytecodeLocal;
+import com.oracle.truffle.api.bytecode.LocalAccessor;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.source.SourceSection;
 import dev.phpruntime.PhpLanguage;
@@ -63,6 +64,8 @@ public final class BytecodeEmitter {
     private int currentLine = -1;
 
     private BytecodeLocal hoisted;
+    /** The local the root prolog stores the request's context in; see PhpBytecodeRootNode#context. */
+    private BytecodeLocal contextLocal;
     /** The PhpGenerator of a generator function's body (null elsewhere). */
     private BytecodeLocal generator;
     /** The declared return type of the function being compiled, checked on every return. */
@@ -90,8 +93,10 @@ public final class BytecodeEmitter {
     /** The call target for a file's top-level code. */
     public static RootCallTarget mainTarget(PhpLanguage language, dev.phpruntime.nodes.PhpMainRootNode main) {
         try {
+            BytecodeEmitter[] emitter = new BytecodeEmitter[1];
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, language, null, main.source()).emitMain(main)).getNode(0);
+                    builder -> (emitter[0] = new BytecodeEmitter(builder, language, null, main.source())).emitMain(main)).getNode(0);
+            root.initContext(LocalAccessor.constantOf(emitter[0].contextLocal));
             root.initMain(main);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -115,9 +120,11 @@ public final class BytecodeEmitter {
     public static RootCallTarget exprTarget(PhpLanguage language, Source source,
                                             dev.phpruntime.nodes.PhpNode expr, int traitSelfSlot) {
         try {
+            BytecodeEmitter[] emitter = new BytecodeEmitter[1];
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, language, null, source)
+                    builder -> (emitter[0] = new BytecodeEmitter(builder, language, null, source))
                             .emitExpression(expr, traitSelfSlot)).getNode(0);
+            root.initContext(LocalAccessor.constantOf(emitter[0].contextLocal));
             root.initExpression(source, expr.line(), traitSelfSlot);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -145,6 +152,7 @@ public final class BytecodeEmitter {
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.beginRoot();
+        initContext();
         if (traitSelfSlot >= 0) {
             storeArgument(traitSelfSlot, 0);
         }
@@ -158,6 +166,15 @@ public final class BytecodeEmitter {
         b.endSource();
     }
 
+    /**
+     * The root's first instruction. Every root kind stores the context it runs with in this
+     * local, so each operation can read it with a frame load instead of a context lookup.
+     */
+    private void initContext() {
+        contextLocal = b.createLocal("#context", null);
+        b.emitInitContext(contextLocal);
+    }
+
     private void emitMain(dev.phpruntime.nodes.PhpMainRootNode main) {
         b.beginSource(source);
         SourceSection whole = source != null && source.getLineCount() >= 1 ? source.createSection(1) : null;
@@ -165,6 +182,7 @@ public final class BytecodeEmitter {
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.beginRoot();
+        initContext();
         if (main.usesSymbolTable()) {
             // Arguments: (include path or eval mode, the caller's symbol table).
             mainLayout = main.scopeLayout();
@@ -220,8 +238,10 @@ public final class BytecodeEmitter {
             if (fn.isGenerator() && fn.generatorSource() == null) {
                 throw new Unsupported("generator");
             }
+            BytecodeEmitter[] emitter = new BytecodeEmitter[1];
             PhpBytecodeRootNode root = PhpBytecodeRootNodeGen.create(language, BytecodeConfig.WITH_SOURCE,
-                    builder -> new BytecodeEmitter(builder, language, fn).emitRoot()).getNode(0);
+                    builder -> (emitter[0] = new BytecodeEmitter(builder, language, fn)).emitRoot()).getNode(0);
+            root.initContext(LocalAccessor.constantOf(emitter[0].contextLocal));
             root.init(fn);
             if (DUMP) {
                 System.err.println(root.dump());
@@ -255,6 +275,7 @@ public final class BytecodeEmitter {
             b.beginSourceSection(whole.getCharIndex(), whole.getCharLength());
         }
         b.beginRoot();
+        initContext();
         b.emitEnter();
         bindSpecialSlots();
         bindParameters();
@@ -628,7 +649,146 @@ public final class BytecodeEmitter {
         return form(lv).spec();
     }
 
+    /**
+     * False when a key expression is a constant that evaluates to something other than a long.
+     * Such a key can never select a primitive element operation; the fixed-arity operations
+     * would only add their fallback in front of the general place engine.
+     */
+    public static boolean mayBeIntKey(dev.phpruntime.nodes.PhpNode key) {
+        return !(key instanceof dev.phpruntime.nodes.expr.ConstNode c) || c.value() instanceof Long;
+    }
+
+    /**
+     * True when the right-hand side can arrive unboxed at a fixed element operation: a numeric
+     * literal, an arithmetic result, an increment, or an element read (which the emitter turns
+     * into the primitive-capable read). A plain local or object-producing expression cannot,
+     * so the general place engine is smaller and just as fast for it.
+     */
+    private static boolean primitiveElementValue(dev.phpruntime.nodes.PhpNode value) {
+        if (value instanceof dev.phpruntime.nodes.expr.ConstNode c) {
+            return c.value() instanceof Long || c.value() instanceof Double;
+        }
+        return value instanceof dev.phpruntime.nodes.expr.AddNode
+                || value instanceof dev.phpruntime.nodes.expr.SubNode
+                || value instanceof dev.phpruntime.nodes.expr.MulNode
+                || value instanceof dev.phpruntime.nodes.expr.DivNode
+                || value instanceof dev.phpruntime.nodes.expr.ModNode
+                || value instanceof dev.phpruntime.nodes.expr.NegNode
+                || value instanceof dev.phpruntime.nodes.var.IncDecNode
+                || value instanceof dev.phpruntime.nodes.var.IndexLValueNode
+                || value instanceof dev.phpruntime.nodes.var.IndexReadNode;
+    }
+
+    /**
+     * The fixed-operand forms of an element write. They exist so key and value can stay unboxed
+     * from their producers into the store; every shape they cannot handle inside their
+     * specializations reuses the general place engine, so this only decides which operation a
+     * site starts with.
+     */
+    private boolean emitPrimitiveIndexPlace(dev.phpruntime.nodes.var.IndexLValueNode il,
+                                            int mode, int arg, Runnable value,
+                                            dev.phpruntime.nodes.PhpNode valueNode) {
+        dev.phpruntime.nodes.PhpNode[] keys = il.keyNodes();
+        if (keys.length == 0 || keys.length > 2 || value == null) {
+            return false;
+        }
+        for (dev.phpruntime.nodes.PhpNode key : keys) {
+            if (key == null || !mayBeIntKey(key)) {
+                return false;
+            }
+        }
+        boolean compound = mode == PhpBytecodeRootNode.P_COMPOUND
+                || mode == PhpBytecodeRootNode.P_COMPOUND_DISCARD;
+        if (mode != PhpBytecodeRootNode.P_WRITE && !compound) {
+            return false;
+        }
+        if (compound && arg != dev.phpruntime.runtime.PhpArith.Op.ADD.ordinal()
+                && arg != dev.phpruntime.runtime.PhpArith.Op.SUB.ordinal()
+                && arg != dev.phpruntime.runtime.PhpArith.Op.MUL.ordinal()) {
+            return false;
+        }
+        // The two-level write is the only primitive path for a packed typed row, and its value
+        // usually comes from a local. Single-key operations only pay for themselves when the
+        // value can reach them unboxed.
+        if (keys.length == 1 && !primitiveElementValue(valueNode)) {
+            return false;
+        }
+        Form f = form(il);
+        if (f.local() != null) {
+            if (keys.length == 2) {
+                if (compound) {
+                    return false;
+                }
+                b.beginLocalIndexWrite2(accessor(f.local()), info(f.local()), f.spec());
+                expr(keys[0]);
+                expr(keys[1]);
+                value.run();
+                b.emitReadVarCurrent(accessor(f.local()));
+                b.endLocalIndexWrite2();
+            } else if (compound) {
+                b.beginLocalIndexCompound(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
+                expr(keys[0]);
+                value.run();
+                b.emitReadVarCurrent(accessor(f.local()));
+                b.endLocalIndexCompound();
+            } else {
+                b.beginLocalIndexWrite(accessor(f.local()), info(f.local()), f.spec());
+                expr(keys[0]);
+                value.run();
+                b.emitReadVarCurrent(accessor(f.local()));
+                b.endLocalIndexWrite();
+            }
+            return true;
+        }
+        if (keys.length == 1 && il.base() instanceof dev.phpruntime.nodes.var.GlobalVarNode g
+                && !g.isGlobalsSuperglobal()) {
+            if (compound) {
+                b.beginGlobalIndexCompound(g.globalId(), f.spec(), mode, arg);
+                expr(keys[0]);
+                value.run();
+                b.emitReadGlobal(g.globalId());
+                b.endGlobalIndexCompound();
+            } else {
+                b.beginGlobalIndexWrite(g.globalId(), f.spec());
+                expr(keys[0]);
+                value.run();
+                b.emitReadGlobal(g.globalId());
+                b.endGlobalIndexWrite();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** {@code $global[$key]} read with the key first, as {@code GlobalPlace} does. */
+    public void globalIndexRead(dev.phpruntime.nodes.var.IndexLValueNode lv,
+                                dev.phpruntime.nodes.var.GlobalVarNode global) {
+        Form f = form(lv);
+        b.beginGlobalIndexRead(global.globalId(), f.spec());
+        expr(lv.keyNodes()[0]);
+        b.emitReadGlobal(global.globalId());
+        b.endGlobalIndexRead();
+    }
+
+    /** {@code $local[$i][$j]} read with the container first, as {@code IndexPath} does. */
+    public void indexRead2(LocalVarNode local, dev.phpruntime.nodes.PhpNode[] keys) {
+        b.beginLocalIndexRead2(accessor(local), info(local));
+        b.emitReadVarIfSet(accessor(local), info(local));
+        expr(keys[0]);
+        expr(keys[1]);
+        b.endLocalIndexRead2();
+    }
+
     public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value) {
+        place(lv, mode, arg, value, null);
+    }
+
+    public void place(dev.phpruntime.nodes.var.LValueNode lv, int mode, int arg, Runnable value,
+                      dev.phpruntime.nodes.PhpNode valueNode) {
+        if (lv instanceof dev.phpruntime.nodes.var.IndexLValueNode il
+                && emitPrimitiveIndexPlace(il, mode, arg, value, valueNode)) {
+            return;
+        }
         Form f = form(lv);
         if (f.local() != null) {
             b.beginVarPlace(accessor(f.local()), info(f.local()), f.spec(), mode, arg);
@@ -1034,6 +1194,12 @@ public final class BytecodeEmitter {
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length,
                         globalsBaseCount(g)), null, globalsBase(g), il.keyNodes(), false, false);
             }
+            if (il.base() instanceof dev.phpruntime.nodes.var.TempValueBase temp) {
+                // f()[k] = v: the temporary is evaluated once as the place's single base operand.
+                var template = il.headless(language, temp.headless());
+                return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length, 1),
+                        null, () -> expr(temp.expr()), il.keyNodes(), false, false);
+            }
             if (isTableVar(il.base())) {
                 var template = il.headless(language, tableHeadless(il.base()));
                 return new Form(new PhpBytecodeRootNode.PlaceSpec(template, il.keyNodes().length),
@@ -1154,6 +1320,89 @@ public final class BytecodeEmitter {
                     argNames != null ? argNames[i] : null,
                     spreads != null && spreads[i], callee, raw);
         }
+    }
+
+    /**
+     * A named call without spread: one pre-sized value buffer, then each argument is evaluated
+     * into its constant index. The site's names and argument forms are a constant operand, so
+     * binding can be planned once per callee.
+     */
+    public void namedArgs(PhpNode[] args, dev.phpruntime.nodes.var.LValueNode[] refTargets,
+                          String[] argNames, BytecodeLocal callee, BytecodeLocal argsLocal) {
+        byte[] kinds = new byte[args.length];
+        byte[] valueKinds = new byte[args.length];
+        for (int i = 0; i < args.length; i++) {
+            kinds[i] = namedArgKind(refTargets != null ? refTargets[i] : null);
+            valueKinds[i] = (byte) namedValueKind(args[i]);
+        }
+        b.beginStoreLocal(argsLocal);
+        b.beginStartNamedArgs(new NamedArgs.Spec(argNames, kinds, valueKinds));
+        b.emitLoadLocal(callee);
+        b.endStartNamedArgs();
+        b.endStoreLocal();
+        for (int i = 0; i < args.length; i++) {
+            namedArg(args[i], refTargets != null ? refTargets[i] : null,
+                    argNames != null ? argNames[i] : null, kinds[i], i, callee, argsLocal);
+        }
+    }
+
+    /** How a named call's argument is prepared, matching {@link #complexArg}'s classification. */
+    private byte namedArgKind(dev.phpruntime.nodes.var.LValueNode refTarget) {
+        if (refTarget instanceof LocalVarNode) {
+            return NamedArgs.ARG_VAR;
+        }
+        if (refTarget != null && isPlace(refTarget)) {
+            return NamedArgs.ARG_PLACE;
+        }
+        if (refTarget == null) {
+            return NamedArgs.ARG_VALUE;
+        }
+        throw new Unsupported("named argument from " + refTarget.getClass().getSimpleName());
+    }
+
+    /** One argument of a named call, evaluated into its constant buffer index. */
+    public void namedArg(PhpNode arg, dev.phpruntime.nodes.var.LValueNode refTarget, String name, byte kind,
+                         int index, BytecodeLocal callee, BytecodeLocal argsLocal) {
+        String n = name == null ? "" : name;
+        if (kind == NamedArgs.ARG_VAR) {
+            LocalVarNode lv = (LocalVarNode) refTarget;
+            b.emitNamedVarArg(index, n, accessor(lv), info(lv), callee, argsLocal);
+            return;
+        }
+        if (kind == NamedArgs.ARG_PLACE) {
+            BytecodeLocal prepared = temp();
+            b.beginStoreLocal(prepared);
+            place(refTarget, PhpBytecodeRootNode.P_KEYS, 0, null);
+            b.endStoreLocal();
+            Form f = form(refTarget);
+            if (f.local() != null) {
+                b.beginNamedVarPlaceArg(placeSpec(refTarget), index, n, callee, argsLocal,
+                        accessor(f.local()), info(f.local()));
+            } else {
+                b.beginNamedPlaceArg(placeSpec(refTarget), index, n, callee, argsLocal);
+            }
+            b.emitLoadLocal(prepared);
+            if (f.local() != null) {
+                b.endNamedVarPlaceArg();
+            } else {
+                b.endNamedPlaceArg();
+            }
+            return;
+        }
+        b.beginNamedValueArg(index, n, namedValueKind(arg), callee, argsLocal);
+        exprForRef(arg);
+        b.endNamedValueArg();
+    }
+
+    /** A value argument's form: a plain expression, a call result, or {@code new}. */
+    private static int namedValueKind(PhpNode arg) {
+        if (arg instanceof dev.phpruntime.nodes.expr.NewNode) {
+            return NamedArgs.VALUE_NEW;
+        }
+        return arg instanceof dev.phpruntime.nodes.call.CallNode
+                || arg instanceof dev.phpruntime.nodes.call.MethodCallNode
+                || arg instanceof dev.phpruntime.nodes.call.StaticMethodCallNode
+                || arg instanceof dev.phpruntime.nodes.call.CallValueNode ? NamedArgs.VALUE_CALL : NamedArgs.VALUE_PLAIN;
     }
 
     /**

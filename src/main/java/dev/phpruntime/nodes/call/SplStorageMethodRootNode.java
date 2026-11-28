@@ -20,8 +20,11 @@ public final class SplStorageMethodRootNode extends RootNode {
     @Override
     public Object execute(VirtualFrame frame) {
         if (!PhpStrings.CHECK) { return executeMethod(frame); }
-        PhpStrings.checkArguments(frame.getArguments(), "SPL storage method");
-        return PhpStrings.checkReturn(executeMethod(frame), "SPL storage method");
+        if (PhpStrings.CHECK) {
+            PhpStrings.checkArguments(frame.getArguments(), "SPL storage method");
+        }
+        Object result = executeMethod(frame);
+        return PhpStrings.CHECK ? PhpStrings.checkReturn(result, "SPL storage method") : result;
     }
 
     private Object executeMethod(VirtualFrame frame) {

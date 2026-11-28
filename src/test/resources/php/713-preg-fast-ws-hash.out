@@ -1,0 +1,377 @@
+== 613a2062202320636f6d6d656e74
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => 'a: b # comment',
+  1 => 0,
+)
+replace-count: array (
+  0 => 'a: b # comment',
+  1 => 0,
+)
+split: array (
+  0 => 'a: b # comment',
+)
+grep: array (
+  2 => '# y',
+)
+== 613a2062
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => 'a: b',
+  1 => 0,
+)
+replace-count: array (
+  0 => 'a: b',
+  1 => 0,
+)
+split: array (
+  0 => 'a: b',
+)
+grep: array (
+  2 => '# y',
+)
+== 612023206f6e650a6220232074776f
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => 'a # one
+b # two',
+  1 => 0,
+)
+replace-count: array (
+  0 => 'a # one
+b # two',
+  1 => 0,
+)
+split: array (
+  0 => 'a # one
+b # two',
+)
+grep: array (
+  2 => '# y',
+)
+== 232077686f6c65206c696e65
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '# whole line',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '# whole line',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '# whole line',
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => '',
+  1 => 0,
+)
+replace-count: array (
+  0 => '<# whole line>',
+  1 => 1,
+)
+split: array (
+  0 => '',
+  1 => '',
+)
+grep: array (
+  0 => '# whole line',
+  2 => '# y',
+)
+== 2020092320696e64656e746564
+match-0: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '  	# indented',
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '  	# indented',
+      1 => 0,
+    ),
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => '  	# indented',
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => '',
+  1 => 0,
+)
+replace-count: array (
+  0 => '<  	# indented>',
+  1 => 1,
+)
+split: array (
+  0 => '',
+  1 => '',
+)
+grep: array (
+  0 => '  	# indented',
+  2 => '# y',
+)
+== 610a23206c61746572
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => 'a
+# later',
+  1 => 0,
+)
+replace-count: array (
+  0 => 'a
+# later',
+  1 => 0,
+)
+split: array (
+  0 => 'a
+# later',
+)
+grep: array (
+  2 => '# y',
+)
+== 
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => '',
+  1 => 0,
+)
+replace-count: array (
+  0 => '',
+  1 => 0,
+)
+split: array (
+  0 => '',
+)
+grep: array (
+  2 => '# y',
+)
+== 612362
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => 'a#b',
+  1 => 0,
+)
+replace-count: array (
+  0 => 'a#b',
+  1 => 0,
+)
+split: array (
+  0 => 'a#b',
+)
+grep: array (
+  2 => '# y',
+)
+== 61200920232078200d
+match-0: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-256: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+match-512: array (
+  0 => 0,
+  1 => 
+  array (
+  ),
+  2 => 0,
+)
+replace: array (
+  0 => 'a 	 # x ',
+  1 => 0,
+)
+replace-count: array (
+  0 => 'a 	 # x ',
+  1 => 0,
+)
+split: array (
+  0 => 'a 	 # x ',
+)
+grep: array (
+  2 => '# y',
+)
+offset-space: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '  # c',
+      1 => 1,
+    ),
+  ),
+)
+offset-hash: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => 
+    array (
+      0 => '# c',
+      1 => 3,
+    ),
+  ),
+)
+offset-bad: array (
+  0 => 1,
+  1 => 
+  array (
+    0 => ' # c',
+  ),
+)

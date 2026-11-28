@@ -1,0 +1,26 @@
+int(3)
+int(1)
+array(3) {
+  [0]=>
+  int(9)
+  [1]=>
+  int(1)
+  [2]=>
+  int(2)
+}
+string(13) "ArrayIterator"
+int(2)
+int(2)
+int(2)
+bool(true)
+string(5) "first"
+int(1)
+int(2)
+int(1)
+bool(true)
+int(2)
+int(1)
+int(2)
+Error: Unknown named parameter $bogus
+Error: Named parameter $key overwrites previous argument
+Error: Unknown named parameter $o

@@ -1,5 +1,6 @@
 package dev.phpruntime.runtime;
 
+import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.object.DynamicObject;
@@ -26,11 +27,18 @@ public final class PhpClass {
 
     public record MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
                               boolean isStatic, boolean isFinal, boolean fromTrait,
-                              RootCallTarget callTarget, List<String> parameterNames) {
+                              RootCallTarget callTarget, List<String> parameterNames,
+                              long refMask, int variadicIndex) {
         public MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
                            boolean isStatic, boolean isFinal, boolean fromTrait,
                            RootCallTarget callTarget) {
-            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, List.of());
+            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, List.of(), 0L, -1);
+        }
+
+        public MethodEntry(String name, PhpClass declaringClass, Visibility visibility,
+                           boolean isStatic, boolean isFinal, boolean fromTrait,
+                           RootCallTarget callTarget, List<String> parameterNames) {
+            this(name, declaringClass, visibility, isStatic, isFinal, fromTrait, callTarget, parameterNames, 0L, -1);
         }
     }
 
@@ -77,6 +85,19 @@ public final class PhpClass {
 
         /** The stored value, possibly a {@link PhpReference} cell; runs the initializer on first use. */
         private Object raw() {
+            if (initialized) {
+                return value;
+            }
+            return initializeAndGet();
+        }
+
+        /**
+         * The first read of a static property, which runs its initializer expression. That runs
+         * once per request and pulls in the expression's call machinery, so it stays out of the
+         * compiled read: every later static property access is two field reads and a branch.
+         */
+        @TruffleBoundary
+        private Object initializeAndGet() {
             if (!initialized) {
                 // Set first so a self-referencing initializer sees null instead of recursing;
                 // reset on failure so a throwing initializer is retried, as php does.
@@ -94,17 +115,28 @@ public final class PhpClass {
         /** The value, with a reference cell bound to this property unwrapped. */
         public Object get() {
             Object v = raw();
-            return v instanceof PhpReference ref ? ref.getValue() : v;
+            return v instanceof PhpReference ref ? getThroughCell(ref) : v;
+        }
+
+        /** A reference bound with {@code &Cls::$p}: rare, so its append-buffer handling stays out. */
+        @TruffleBoundary
+        private static Object getThroughCell(PhpReference ref) {
+            return ref.getValue();
         }
 
         /** Assigns, writing through a reference cell bound to this property. */
         public void set(Object v) {
             if (initialized && value instanceof PhpReference ref) {
-                ref.setValue(v);
+                setThroughCell(ref, v);
                 return;
             }
             initialized = true;
             value = v;
+        }
+
+        @TruffleBoundary
+        private static void setThroughCell(PhpReference ref, Object v) {
+            ref.setValue(v);
         }
 
         /** The cell for {@code &Cls::$p}, converting the plain value into one on first use. */
@@ -179,12 +211,25 @@ public final class PhpClass {
 
     /** One request's state of one class: static property values, evaluated constants and defaults. */
     public static final class RequestState {
+        /** The class whose state this is, for stable declaration indexes, and its request. */
+        private final PhpClass cls;
+        private final PhpContext ctx;
         private final HashMap<String, StaticSlot> statics = new HashMap<>();
         private HashMap<String, Object> constants;
         private HashSet<String> evaluatingConstants;
         private Object[] defaultValues;
-        /** Canonical enum case objects for this request, so repeated lookups return one object. */
-        private HashMap<String, Object> enumCases;
+        /** Canonical enum case objects by declaration index, so repeated lookups return one. */
+        private PhpObject[] enumCaseObjects;
+
+        public RequestState(PhpClass cls, PhpContext ctx) {
+            this.cls = cls;
+            this.ctx = ctx;
+        }
+
+        /** The class whose state this is. */
+        public PhpClass owner() {
+            return cls;
+        }
 
         /** A captured static property: whether its initializer ran and the raw stored value. */
         public record StaticValue(boolean initialized, Object value) {
@@ -221,20 +266,82 @@ public final class PhpClass {
             return new StateSnapshot(slots,
                     constants == null ? null : new LinkedHashMap<>(constants),
                     defaultValues == null ? null : defaultValues.clone(),
-                    enumCases == null ? null : new LinkedHashMap<>(enumCases));
+                    snapshotEnumCases());
         }
 
-        /** The canonical enum case object for {@code caseName}, or null before it is created. */
+        /** The canonical case object already created in this request, or null. */
         public Object enumCase(String caseName) {
-            return enumCases == null ? null : enumCases.get(caseName);
+            int index = cls.template().enumCaseIndex(caseName);
+            PhpObject[] cases = enumCaseObjects;
+            return index < 0 || cases == null || index >= cases.length ? null : cases[index];
+        }
+
+        /** The case at a declaration index, created on first use. */
+        public PhpObject enumCaseAt(int index) {
+            PhpObject[] cases = enumCaseObjects;
+            if (cases != null) {
+                PhpObject existing = cases[index];
+                if (existing != null) {
+                    return existing;
+                }
+            }
+            return createEnumCase(index);
+        }
+
+        /** The first use of a case in this request: kept out of compiled code at every use. */
+        @com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
+        private PhpObject createEnumCase(int index) {
+            PhpObject[] cases = enumCaseObjects;
+            if (cases == null) {
+                cases = enumCaseObjects = new PhpObject[cls.template().enumCases().size()];
+            }
+            PhpObject existing = cases[index];
+            if (existing != null) {
+                return existing;
+            }
+            PhpClassTemplate.EnumCaseDecl decl = cls.template().enumCases().get(index);
+            String caseName = decl.name();
+            Object value = decl.constValue();
+            if (decl.valueTarget() != null) {
+                value = cls.evalExpr(decl.constValue(), decl.valueTarget(), cls);
+            }
+            PhpObject obj = new PhpObject(cls, ctx.nextEnumObjectId());
+            DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
+            put.execute(obj, "name", caseName);
+            boolean backed = cls.template().enumBackingType() != null;
+            if (backed) {
+                put.execute(obj, "value", value == null ? PhpNull.INSTANCE : value);
+            }
+            obj.setNativeState(new EnumCaseState(cls.template().name(), caseName, backed, value));
+            cases[index] = obj;
+            return obj;
         }
 
         /** Installs a restored canonical enum case object. */
         public void putEnumCase(String caseName, Object value) {
-            if (enumCases == null) {
-                enumCases = new HashMap<>();
+            int index = cls.template().enumCaseIndex(caseName);
+            if (index >= 0 && value instanceof PhpObject obj) {
+                if (enumCaseObjects == null) {
+                    enumCaseObjects = new PhpObject[cls.template().enumCases().size()];
+                }
+                enumCaseObjects[index] = obj;
             }
-            enumCases.put(caseName, value);
+        }
+
+        /** The created case objects by name, for snapshots; null when none has been created. */
+        private Map<String, Object> snapshotEnumCases() {
+            PhpObject[] cases = enumCaseObjects;
+            if (cases == null) {
+                return null;
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            List<PhpClassTemplate.EnumCaseDecl> decls = cls.template().enumCases();
+            for (int i = 0; i < cases.length && i < decls.size(); i++) {
+                if (cases[i] != null) {
+                    out.put(decls.get(i).name(), cases[i]);
+                }
+            }
+            return out.isEmpty() ? null : out;
         }
 
     }
@@ -332,6 +439,17 @@ public final class PhpClass {
     private final PhpLanguage language;
     private final PhpClass parent;
     private final List<PhpClass> interfaces;
+    /**
+     * The engine-wide name ids of this class and every ancestor: itself, its parent chain, every
+     * implemented interface and the interfaces those extend, including interfaces added
+     * implicitly ({@code Stringable}, {@code UnitEnum}, {@code BackedEnum}). Sorted ascending
+     * and immutable, built once when the class is linked. Lets a class check membership by name
+     * id without a request's class table; {@link #isInstanceOf} and the declared type guards use
+     * it.
+     */
+    @CompilationFinal(dimensions = 1)
+    private final int[] ancestorIds;
+
     private final List<PhpClass> usedTraits;
     private final List<PhpClassTemplate.PropertyDecl> traitProperties;
     private final List<PhpClassTemplate.ConstantDecl> traitConstants;
@@ -357,6 +475,12 @@ public final class PhpClass {
 
     private final boolean isThrowable;
     private final int splInterfaces;
+    /**
+     * Whether an instance may carry an {@link SplArrayState} (ArrayObject, ArrayIterator and their
+     * subclasses). A property access can only reach the array behind such an object, so every
+     * other class skips checking the native state.
+     */
+    private final boolean splArrayState;
 
     public PhpClass(PhpLanguage language, PhpClassTemplate template, PhpClass parent, List<PhpClass> interfaces) {
         this(language, template, parent, interfaces, Map.of());
@@ -376,6 +500,9 @@ public final class PhpClass {
             interfaceBits |= iface.splInterfaces;
         }
         this.splInterfaces = interfaceBits;
+        this.splArrayState = "arrayobject".equals(template.lowerName())
+                || "arrayiterator".equals(template.lowerName())
+                || (parent != null && parent.splArrayState);
         this.isThrowable = (parent != null && parent.isThrowable)
                 || "exception".equals(template.lowerName())
                 || "error".equals(template.lowerName());
@@ -398,6 +525,7 @@ public final class PhpClass {
         }
         this.hierarchyId = language.hierarchyId(chain);
         this.classId = language.classId(template.lowerName());
+        language.noteHierarchy(classId, hierarchyId);
 
         // Inherit methods from parent, compose traits, then overlay this class's declared methods.
         int maxMethodId = parent != null ? parent.methodsById.length : 0;
@@ -418,9 +546,7 @@ public final class PhpClass {
 
         boolean ownIsTrait = template.isTrait();
         for (PhpClassTemplate.MethodDecl m : template.methods().values()) {
-            MethodEntry entry = new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(),
-                    ownIsTrait, m.callTarget(), m.signature() == null ? List.of() : m.signature().parameters().stream()
-                            .map(PhpParameter::name).toList());
+            MethodEntry entry = methodEntry(m, ownIsTrait);
             putMethod(m.lowerName(), m.methodId(), entry);
         }
 
@@ -496,7 +622,41 @@ public final class PhpClass {
                         Visibility.PUBLIC, true, false, false, EnumBuiltins.callTarget(language, this, "tryFrom")));
             }
         }
+        this.ancestorIds = ancestryIds(this);
     }
+
+    /**
+     * The sorted, deduplicated name ids of {@code self}, its parent chain, and every interface
+     * those implement, directly or through other interfaces. Each parent and interface already
+     * has its own complete set, so this is an assembly rather than a walk of the hierarchy.
+     */
+    private static int[] ancestryIds(PhpClass self) {
+        int[] parentIds = self.parent == null ? EMPTY_IDS : self.parent.ancestorIds;
+        List<PhpClass> ifaces = self.interfaces;
+        int size = 1 + parentIds.length;
+        for (int i = 0; i < ifaces.size(); i++) {
+            size += ifaces.get(i).ancestorIds.length;
+        }
+        int[] ids = new int[size];
+        ids[0] = self.classId;
+        System.arraycopy(parentIds, 0, ids, 1, parentIds.length);
+        int n = 1 + parentIds.length;
+        for (int i = 0; i < ifaces.size(); i++) {
+            int[] ifaceIds = ifaces.get(i).ancestorIds;
+            System.arraycopy(ifaceIds, 0, ids, n, ifaceIds.length);
+            n += ifaceIds.length;
+        }
+        java.util.Arrays.sort(ids, 0, n);
+        int unique = 0;
+        for (int i = 0; i < n; i++) {
+            if (unique == 0 || ids[unique - 1] != ids[i]) {
+                ids[unique++] = ids[i];
+            }
+        }
+        return unique == n ? ids : java.util.Arrays.copyOf(ids, unique);
+    }
+
+    private static final int[] EMPTY_IDS = new int[0];
 
     private void addEnumProperty(String name) {
         InstanceProp prop = new InstanceProp(name, name, Visibility.PUBLIC, true, this,
@@ -512,6 +672,47 @@ public final class PhpClass {
             this.methodsById = java.util.Arrays.copyOf(this.methodsById, Math.max(methodId + 1, this.methodsById.length * 2));
         }
         this.methodsById[methodId] = entry;
+    }
+
+    /**
+     * The linked entry for a method declared on this template. An explicit signature (guest
+     * code, or a Java method that registers its names) supplies the names; a Java method
+     * without one takes php's names from the generated {@link InternalParamNames} table.
+     */
+    private MethodEntry methodEntry(PhpClassTemplate.MethodDecl m, boolean fromTrait) {
+        List<String> names = List.of();
+        long refMask = 0L;
+        int variadic = -1;
+        if (m.signature() != null) {
+            List<PhpParameter> parameters = m.signature().parameters();
+            List<String> declared = new ArrayList<>(parameters.size());
+            for (int i = 0; i < parameters.size(); i++) {
+                PhpParameter parameter = parameters.get(i);
+                declared.add(parameter.name());
+                if (parameter.byRef()) {
+                    // Same layout as PhpFunctionRootNode.refMask: bit i below 63, the sign bit
+                    // for parameter 63 and every later position.
+                    if (i < 63) {
+                        refMask |= 1L << i;
+                    } else {
+                        refMask |= Long.MIN_VALUE;
+                    }
+                }
+                if (parameter.variadic()) {
+                    variadic = i;
+                }
+            }
+            names = List.copyOf(declared);
+        } else {
+            InternalParamNames.Params params = InternalParamNames.forMethod(template.lowerName(), m.lowerName());
+            if (params != null) {
+                names = params.names();
+                refMask = params.refMask();
+                variadic = params.variadicIndex();
+            }
+        }
+        return new MethodEntry(m.name(), this, m.visibility(), m.isStatic(), m.isFinal(),
+                fromTrait, m.callTarget(), names, refMask, variadic);
     }
 
     private void composeTraitMethods(PhpLanguage language, Map<String, PhpClass> resolvedTraits) {
@@ -549,7 +750,8 @@ public final class PhpClass {
                         }
                     }
                     composed.put(mLower, new MethodEntry(
-                            tm.name(), this, tm.visibility(), tm.isStatic(), tm.isFinal(), true, tm.callTarget()));
+                            tm.name(), this, tm.visibility(), tm.isStatic(), tm.isFinal(), true, tm.callTarget(),
+                            tm.parameterNames(), tm.refMask(), tm.variadicIndex()));
                     sourceTrait.put(mLower, tCls.name());
                 }
             }
@@ -563,10 +765,12 @@ public final class PhpClass {
                 if (al.aliasName() != null) {
                     String aLower = PhpStrings.lower(al.aliasName());
                     composed.put(aLower, new MethodEntry(
-                            al.aliasName(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
+                            al.aliasName(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget(),
+                            src.parameterNames(), src.refMask(), src.variadicIndex()));
                 } else {
                     composed.put(mLower, new MethodEntry(
-                            src.name(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget()));
+                            src.name(), this, vis, src.isStatic(), src.isFinal(), true, src.callTarget(),
+                            src.parameterNames(), src.refMask(), src.variadicIndex()));
                 }
             }
         }
@@ -917,6 +1121,11 @@ public final class PhpClass {
         return (splInterfaces & bit) != 0;
     }
 
+    /** Whether instances may carry an ArrayObject-style {@link SplArrayState}. */
+    public boolean mayHaveSplArrayState() {
+        return splArrayState;
+    }
+
     public MethodEntry methodById(int id) {
         return id < methodsById.length ? methodsById[id] : null;
     }
@@ -970,20 +1179,28 @@ public final class PhpClass {
         return getMethod != null || setMethod != null || issetMethod != null || unsetMethod != null;
     }
 
-    @TruffleBoundary
-    public boolean isInstanceOf(PhpClass target) {
-        if (target == null) {
-            return false;
-        }
-        if (this == target) {
-            return true;
-        }
-        for (PhpClass iface : interfaces) {
-            if (iface.isInstanceOf(target)) {
+    /**
+     * Whether this class is the class of name id {@code targetId} or a descendant or
+     * implementor of it. Name ids are engine-wide and unique per lower-case class name, and a
+     * request has at most one class per name, so the set is exact for values of this request.
+     * {@code class_alias} names are not in any set: the declared type guard falls through to
+     * the exact lookup for those.
+     */
+    public boolean matchesNameId(int targetId) {
+        int[] ids = ancestorIds;
+        for (int i = 0; i < ids.length; i++) {
+            if (ids[i] == targetId) {
                 return true;
             }
+            if (ids[i] > targetId) {
+                return false;
+            }
         }
-        return parent != null && parent.isInstanceOf(target);
+        return false;
+    }
+
+    public boolean isInstanceOf(PhpClass target) {
+        return target != null && matchesNameId(target.classId);
     }
 
     /** This request's slot for a static property, or null if the class has none by that name. */
@@ -1049,32 +1266,13 @@ public final class PhpClass {
     /** The canonical object for an enum case in this request, or null if the case is unknown. */
     @TruffleBoundary
     public Object enumCaseValue(PhpContext ctx, String caseName) {
-        PhpClassTemplate.EnumCaseDecl decl = template.enumCase(caseName);
-        if (decl == null) {
-            return null;
-        }
-        RequestState state = ctx.classState(this);
-        if (state.enumCases == null) {
-            state.enumCases = new HashMap<>();
-        }
-        Object existing = state.enumCases.get(caseName);
-        if (existing != null) {
-            return existing;
-        }
-        Object value = decl.constValue();
-        if (decl.valueTarget() != null) {
-            value = evalExpr(decl.constValue(), decl.valueTarget(), this);
-        }
-        PhpObject obj = new PhpObject(this, ctx.nextEnumObjectId());
-        DynamicObject.PutNode put = DynamicObject.PutNode.getUncached();
-        put.execute(obj, "name", caseName);
-        boolean backed = template.enumBackingType() != null;
-        if (backed) {
-            put.execute(obj, "value", value == null ? PhpNull.INSTANCE : value);
-        }
-        obj.setNativeState(new EnumCaseState(template.name(), caseName, backed, value));
-        state.enumCases.put(caseName, obj);
-        return obj;
+        int index = template.enumCaseIndex(caseName);
+        return index < 0 ? null : ctx.classState(this).enumCaseAt(index);
+    }
+
+    /** The case object at a declaration index, created on first use (one per request). */
+    public PhpObject enumCaseAt(PhpContext ctx, int index) {
+        return ctx.classState(this).enumCaseAt(index);
     }
 
     /**
@@ -1459,7 +1657,7 @@ public final class PhpClass {
             } else {
                 args = java.util.Arrays.copyOf(args, at);
             }
-            return hook.callTarget().call(args);
+            return PhpBacktrace.callUnsited(hook.callTarget(), args);
         } finally {
             if (!already) {
                 obj.exitMagic(prop.name(), kind);
