@@ -140,6 +140,10 @@ public final class PhpContext {
         errorReportingIni = level;
     }
     private final StringBuilder output = new StringBuilder();
+    /** The polyglot output stream, cached for the request because {@code env.out()} allocates one. */
+    private OutputStream envOut;
+    /** Reused ISO-8859-1 bytes for the response body, so a flush does not allocate a String. */
+    private byte[] outputBytes;
     /** Built on first use: a PrintStream allocates a writer, an encoder and two 8 KB buffers. */
     private PrintStream err;
     private PhpRequest request;
@@ -451,6 +455,9 @@ public final class PhpContext {
     }
 
     public Object readGlobalById(int id) {
+        if (isLazy(id)) {
+            return materializeSuperglobal(id);
+        }
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
@@ -460,6 +467,7 @@ public final class PhpContext {
     }
 
     public void writeGlobalById(int id, Object value) {
+        consumeLazy(id);
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
@@ -472,6 +480,9 @@ public final class PhpContext {
     }
 
     public String appendGlobalById(int id, String suffix, boolean resultNeeded) {
+        if (isLazy(id)) {
+            materializeSuperglobal(id);
+        }
         PhpReference[] table = globalsById;
         PhpReference cell = id < table.length ? table[id] : null;
         if (cell == null) { cell = createGlobalCellById(id, null); }
@@ -495,6 +506,9 @@ public final class PhpContext {
     }
 
     public PhpReference globalRefById(int id) {
+        if (isLazy(id)) {
+            materializeSuperglobal(id);
+        }
         PhpReference[] table = globalsById;
         if (id < table.length) {
             PhpReference cell = table[id];
@@ -507,6 +521,7 @@ public final class PhpContext {
     }
 
     public void bindGlobalById(int id, PhpReference cell) {
+        consumeLazy(id);
         if (id >= globalsById.length) {
             growGlobalsTable(id);
         }
@@ -523,6 +538,7 @@ public final class PhpContext {
     }
 
     public void unsetGlobalById(int id) {
+        consumeLazy(id);
         PhpReference[] table = globalsById;
         if (id < table.length) {
             table[id] = null;
@@ -587,6 +603,9 @@ public final class PhpContext {
         }
         Integer id = language.lookupGlobalId(name);
         if (id != null) {
+            if (isLazy(id)) {
+                materializeSuperglobal(id);
+            }
             PhpReference[] table = globalsById;
             return id < table.length && table[id] != null && table[id].getValue() != null;
         }
@@ -621,6 +640,7 @@ public final class PhpContext {
 
     @TruffleBoundary
     public PhpArray buildGlobalsSnapshot() {
+        materializeAllSuperglobals();
         PhpArray snap = new PhpArray();
         for (var entry : globalOrder.entrySet()) {
             int i = entry.getValue();
@@ -650,6 +670,15 @@ public final class PhpContext {
     private static final String[] WORKER_SUPERGLOBALS =
             {"_GET", "_POST", "_COOKIE", "_FILES", "_REQUEST", "_SERVER", "_ENV"};
 
+    private static final int SG_GET = 1;
+    private static final int SG_POST = 1 << 1;
+    private static final int SG_COOKIE = 1 << 2;
+    private static final int SG_FILES = 1 << 3;
+    private static final int SG_REQUEST = 1 << 4;
+    private static final int SG_SERVER = 1 << 5;
+    private static final int SG_ENV = 1 << 6;
+    private static final int SG_ALL = SG_GET | SG_POST | SG_COOKIE | SG_FILES | SG_REQUEST | SG_SERVER | SG_ENV;
+
     /** The superglobals a worker had before its first request; restored after every request. */
     public static final class Superglobals {
         private final Map<String, Object> values;
@@ -658,6 +687,29 @@ public final class PhpContext {
             this.values = values;
         }
     }
+
+    /**
+     * The request a worker is serving, while at least one of its superglobals has not been
+     * built yet. Accessing a global consults {@link #lazyIdBit}; when nothing is pending (the
+     * common case outside worker requests, and after all seven were touched) every check is
+     * one field read.
+     */
+    private PhpRequest lazyRequest;
+    /** Bit per global id for the seven names in {@link #WORKER_SUPERGLOBALS}; 0 for others. */
+    private byte[] lazyIdBit;
+    private int lazyMask;
+    /** The worker's environment as a frozen array, built once and shared by every request. */
+    private PhpArray lazyEnvironment;
+    /** Environment entries as PHP strings in environment order, for building {@code $_SERVER}. */
+    private List<String[]> lazyServerEnvironment;
+    /**
+     * The request's parsed GET, POST and cookie arrays, kept separate from the globals so
+     * {@code $_REQUEST} is a copy of what the request carried even after the script changed
+     * {@code $_GET} or {@code $_POST}.
+     */
+    private PhpArray lazyGet;
+    private PhpArray lazyPost;
+    private PhpArray lazyCookies;
 
     /** Captures the worker's own superglobal values before the first request replaces them. */
     @TruffleBoundary
@@ -672,9 +724,15 @@ public final class PhpContext {
     /**
      * Starts one request on a long-lived worker context. Unlike a fresh context, the script's
      * globals, functions, classes and static state stay; only what a request owns is replaced.
+     *
+     * <p>The superglobals are not built here. Until the script reads or writes one its global
+     * still holds the worker's own value, and the first access builds the request's value from
+     * {@code req}; a handler that never touches them (hello world, most API endpoints) allocates
+     * nothing for them. {@code environment} and {@code serverEnvironment} are the worker's
+     * prebuilt environment, shared by every request it handles.
      */
     @TruffleBoundary
-    public void beginWorkerRequest(PhpRequest req) {
+    public void beginWorkerRequest(PhpRequest req, PhpArray environment, List<String[]> serverEnvironment) {
         bindRequest(req);
         // A request starts with no output buffers and a response that has not been sent.
         if (buffers != null) {
@@ -682,36 +740,208 @@ public final class PhpContext {
         }
         output.setLength(0);
         outputStarted = false;
-        PhpArray get = req.queryString.isEmpty() ? toArray(req.get) : PhpQuery.parseQuery(req.queryString);
-        String contentType = PhpQuery.header(req.headers, "Content-Type");
-        PhpArray post = !req.body.isEmpty() && contentType != null
-                && PhpStrings.lower(contentType).startsWith("application/x-www-form-urlencoded")
-                ? PhpQuery.parseQuery(req.body) : toArray(req.post);
-        writeGlobal("_GET", get);
-        writeGlobal("_POST", post);
-        PhpArray all = get.share().forWrite();
-        for (var e : post.entries()) {
-            all.put(e.getKey(), e.getValue());
+        envOut = null;
+        lazyRequest = req;
+        lazyEnvironment = environment;
+        lazyServerEnvironment = serverEnvironment;
+        lazyGet = null;
+        lazyPost = null;
+        lazyCookies = null;
+        installLazyIds();
+        lazyMask = SG_ALL;
+    }
+
+    /** Maps the seven superglobal names to their global ids once per worker context. */
+    @TruffleBoundary
+    private void installLazyIds() {
+        if (lazyIdBit != null) {
+            return;
         }
-        writeGlobal("_REQUEST", all);
-        PhpArray cookies = PhpQuery.parseCookies(PhpQuery.header(req.headers, "Cookie"));
-        writeGlobal("_COOKIE", cookies);
-        // FrankenPHP's variables_order is EGPCS with an empty request_order, so cookies are
-        // part of $_REQUEST and win over GET and POST for the same name.
-        for (var e : cookies.entries()) {
-            all.put(e.getKey(), e.getValue());
+        byte[] bits = new byte[language.globalIdCount()];
+        for (int i = 0; i < WORKER_SUPERGLOBALS.length; i++) {
+            int id = language.globalId(WORKER_SUPERGLOBALS[i]);
+            if (id >= bits.length) {
+                bits = Arrays.copyOf(bits, id + 1);
+            }
+            bits[id] = (byte) (1 << i);
         }
-        writeGlobal("_FILES", new PhpArray());
+        lazyIdBit = bits;
+    }
+
+    /**
+     * Builds the request's value for one pending superglobal the first time anything reads or
+     * takes a reference to it. A write of the whole variable does not come here: it replaces the
+     * value, so there is nothing to preserve.
+     */
+    @TruffleBoundary
+    private Object materializeSuperglobal(int id) {
+        PhpRequest req = lazyRequest;
+        int bit = lazyIdBit[id] & 0xff;
+        Object value;
+        switch (bit) {
+            case SG_GET -> value = requestGet(req).share();
+            case SG_POST -> value = requestPost(req).share();
+            case SG_COOKIE -> value = requestCookies(req).share();
+            case SG_FILES -> value = new PhpArray();
+            case SG_REQUEST -> {
+                // FrankenPHP's variables_order is EGPCS with an empty request_order, so
+                // cookies are part of $_REQUEST and win over GET and POST for the same name.
+                PhpArray all = requestGet(req).share().forWrite();
+                for (var e : requestPost(req).entries()) {
+                    all.put(e.getKey(), e.getValue());
+                }
+                for (var e : requestCookies(req).entries()) {
+                    all.put(e.getKey(), e.getValue());
+                }
+                value = all;
+            }
+            case SG_SERVER -> value = serverArray(req);
+            case SG_ENV -> {
+                PhpArray environment = lazyEnvironment;
+                if (environment == null) {
+                    environment = environmentArray(req);
+                }
+                value = environment;
+            }
+            default -> {
+                return null;
+            }
+        }
+        lazyMask &= ~bit;
+        setGlobalById(id, value);
+        if (lazyMask == 0) {
+            clearLazyState();
+        }
+        return value;
+    }
+
+    /** The request's parsed query string, kept for {@code $_REQUEST} after {@code $_GET} changes. */
+    private PhpArray requestGet(PhpRequest req) {
+        if (lazyGet == null) {
+            lazyGet = req.queryString.isEmpty() ? toArray(req.get) : PhpQuery.parseQuery(req.queryString);
+        }
+        return lazyGet;
+    }
+
+    private PhpArray requestPost(PhpRequest req) {
+        if (lazyPost == null) {
+            String contentType = PhpQuery.header(req.headers, "Content-Type");
+            lazyPost = !req.body.isEmpty() && contentType != null
+                    && PhpStrings.lower(contentType).startsWith("application/x-www-form-urlencoded")
+                    ? PhpQuery.parseQuery(req.body) : toArray(req.post);
+        }
+        return lazyPost;
+    }
+
+    private PhpArray requestCookies(PhpRequest req) {
+        if (lazyCookies == null) {
+            lazyCookies = PhpQuery.parseCookies(PhpQuery.header(req.headers, "Cookie"));
+        }
+        return lazyCookies;
+    }
+
+    /**
+     * {@code $_SERVER} in FrankenPHP's order: the process environment first, then the CGI
+     * variables of this request (including the defaults {@code WorkerPool.prepare} fills in).
+     * The environment entries are already PHP strings, converted once per worker.
+     */
+    private PhpArray serverArray(PhpRequest req) {
+        List<String[]> environment = lazyServerEnvironment;
+        int cgi = req.serverFiller != null ? 32 + req.headers.size() : req.server.size();
+        int capacity = (environment == null ? 0 : environment.size()) + cgi;
+        PhpArray server = PhpArray.withCapacity(capacity, true);
+        if (environment != null) {
+            for (String[] entry : environment) {
+                server.put(entry[0], entry[1]);
+            }
+        } else {
+            req.environment.forEach((key, value) -> server.put(
+                    PhpStrings.fromJava(key), PhpStrings.fromJava(value)));
+        }
+        if (req.serverFiller != null) {
+            req.serverFiller.fillServer(req, server);
+            return server;
+        }
+        for (Map.Entry<String, String> e : req.server.entrySet()) {
+            server.put(e.getKey(), e.getValue());
+        }
+        if (!req.scriptFilename.isEmpty() && !req.server.containsKey("SCRIPT_FILENAME")) {
+            server.put("SCRIPT_FILENAME", PhpStrings.fromJava(req.scriptFilename));
+        }
+        return server;
+    }
+
+    private static PhpArray environmentArray(PhpRequest req) {
         PhpArray environment = new PhpArray();
         req.environment.forEach((key, value) -> environment.put(
                 PhpStrings.fromJava(key), PhpStrings.fromJava(value)));
-        writeGlobal("_ENV", environment);
-        writeGlobal("_SERVER", toArray(req.server));
-        if (!req.scriptFilename.isEmpty() && !req.server.containsKey("SCRIPT_FILENAME")) {
-            PhpArray server = toArray(req.server);
-            server.put("SCRIPT_FILENAME", PhpStrings.fromJava(req.scriptFilename));
-            writeGlobal("_SERVER", server);
+        return environment.freeze();
+    }
+
+    /** True when {@code id} names a superglobal whose request value has not been built yet. */
+    private boolean isLazy(int id) {
+        byte[] bits = lazyIdBit;
+        int mask = lazyMask;
+        return mask != 0 && bits != null && id >= 0 && id < bits.length && (mask & bits[id]) != 0;
+    }
+
+    /** A write of the whole variable replaces it; the request value never needs building. */
+    private void consumeLazy(int id) {
+        if (lazyMask == 0) {
+            return;
         }
+        byte[] bits = lazyIdBit;
+        if (bits == null || id < 0 || id >= bits.length) {
+            return;
+        }
+        int bit = bits[id] & 0xff;
+        if (bit != 0 && (lazyMask & bit) != 0) {
+            lazyMask &= ~bit;
+            if (lazyMask == 0) {
+                clearLazyState();
+            }
+        }
+    }
+
+    private void clearLazyState() {
+        lazyRequest = null;
+        lazyMask = 0;
+        lazyGet = null;
+        lazyPost = null;
+        lazyCookies = null;
+        lazyEnvironment = null;
+        lazyServerEnvironment = null;
+    }
+
+    /** Materializes every pending superglobal, for {@code $GLOBALS} and snapshots. */
+    @TruffleBoundary
+    private void materializeAllSuperglobals() {
+        if (lazyMask == 0) {
+            return;
+        }
+        byte[] bits = lazyIdBit;
+        if (bits == null) {
+            return;
+        }
+        for (String name : WORKER_SUPERGLOBALS) {
+            int id = language.globalId(name);
+            if (id < bits.length && (lazyMask & bits[id]) != 0) {
+                materializeSuperglobal(id);
+            }
+        }
+    }
+
+    /** The global's value without the lazy-superglobal check, for materialization itself. */
+    private void setGlobalById(int id, Object value) {
+        PhpReference[] table = globalsById;
+        if (id < table.length) {
+            PhpReference cell = table[id];
+            if (cell != null) {
+                cell.setValue(value);
+                return;
+            }
+        }
+        createGlobalCellById(id, value);
     }
 
     /**
@@ -730,6 +960,8 @@ public final class PhpContext {
         }
         output.setLength(0);
         outputStarted = false;
+        envOut = null;
+        clearLazyState();
         for (Map.Entry<String, Object> e : boot.values.entrySet()) {
             writeGlobal(e.getKey(), e.getValue());
         }
@@ -1476,6 +1708,7 @@ public final class PhpContext {
     /** Every defined global in definition order, id-based first then dynamic, for capture. */
     @TruffleBoundary
     public List<SnapshotGlobal> snapshotGlobals() {
+        materializeAllSuperglobals();
         int dynamicCount = dynamicGlobals == null ? 0 : dynamicGlobals.size();
         List<SnapshotGlobal> out = new ArrayList<>(globalOrder.size() + dynamicCount);
         for (Map.Entry<String, Integer> entry : globalOrder.entrySet()) {
@@ -2060,8 +2293,33 @@ public final class PhpContext {
             return;
         }
         try {
-            OutputStream out = env.out();
-            out.write(PhpStrings.bytes(output.toString()));
+            OutputStream out = envOut;
+            if (out == null) {
+                out = env.out();
+                envOut = out;
+            }
+            int length = output.length();
+            byte[] bytes = outputBytes;
+            if (bytes == null || bytes.length < length) {
+                bytes = new byte[Math.max(32, length)];
+                outputBytes = bytes;
+            }
+            boolean latin1 = true;
+            for (int i = 0; i < length; i++) {
+                char c = output.charAt(i);
+                if (c > 0xff) {
+                    latin1 = false;
+                    break;
+                }
+                bytes[i] = (byte) c;
+            }
+            if (latin1) {
+                out.write(bytes, 0, length);
+            } else {
+                // PHP strings are byte strings; this only covers a host bug or a malformed source
+                // string, and keeps the historical replacement behaviour.
+                out.write(PhpStrings.bytes(output.toString()));
+            }
             out.flush();
         } catch (IOException e) {
             throw new dev.phpruntime.runtime.PhpError("Failed writing output: " + PhpStrings.fromJava(e.getMessage()));

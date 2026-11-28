@@ -2,6 +2,7 @@ package dev.phpruntime.host;
 
 import dev.phpruntime.PhpContext;
 import dev.phpruntime.runtime.GuestScheduler;
+import dev.phpruntime.runtime.PhpArray;
 import dev.phpruntime.runtime.PhpCallable;
 import dev.phpruntime.runtime.PhpError;
 import dev.phpruntime.runtime.PhpException;
@@ -65,6 +66,8 @@ public final class WorkerPool implements AutoCloseable {
     private final int workerCount;
     private final int port;
     private final Map<String, String> environment;
+    /** The environment as PHP strings, in environment order; converted once for the pool. */
+    private final List<String[]> environmentEntries;
 
     private final BlockingQueue<Job> queue = new LinkedBlockingQueue<>();
     private final CountDownLatch ready;
@@ -88,6 +91,11 @@ public final class WorkerPool implements AutoCloseable {
         this.workerCount = Math.max(1, workerCount);
         this.port = port;
         this.environment = Map.copyOf(environment);
+        List<String[]> entries = new ArrayList<>(this.environment.size());
+        for (Map.Entry<String, String> e : this.environment.entrySet()) {
+            entries.add(new String[]{PhpStrings.fromJava(e.getKey()), PhpStrings.fromJava(e.getValue())});
+        }
+        this.environmentEntries = List.copyOf(entries);
         this.ready = new CountDownLatch(this.workerCount);
     }
 
@@ -128,19 +136,15 @@ public final class WorkerPool implements AutoCloseable {
     }
 
     /**
-     * Fills in what every worker-mode request carries beyond the CGI variables: the process
-     * environment and the empty CGI keys FrankenPHP leaves as empty strings.
+     * Fills in the CGI keys FrankenPHP leaves as empty strings. The process environment no
+     * longer travels through this request: the worker's prebuilt environment is prepended to
+     * {@code $_SERVER} when the request first reads it.
      */
     public void prepare(PhpRequest request) {
-        // FrankenPHP's request $_SERVER lists the process environment first, then the CGI
-        // variables; a CGI value wins when a name appears in both.
-        Map<String, String> cgi = new java.util.LinkedHashMap<>(request.server);
-        request.server.clear();
-        for (Map.Entry<String, String> e : environment.entrySet()) {
-            request.server.put(PhpStrings.fromJava(e.getKey()), PhpStrings.fromJava(e.getValue()));
-            request.environment.putIfAbsent(e.getKey(), e.getValue());
+        if (request.serverFiller != null) {
+            // A worker request builds its CGI values and defaults on first $_SERVER access.
+            return;
         }
-        request.server.putAll(cgi);
         request.server.putIfAbsent("PATH_INFO", "");
         request.server.putIfAbsent("DOCUMENT_URI", "");
         request.server.putIfAbsent("HTTPS", "");
@@ -311,8 +315,8 @@ public final class WorkerPool implements AutoCloseable {
         String name = "/" + workerScript.getFileName();
         long nowMillis = System.currentTimeMillis();
         Map<String, String> s = r.server;
-        for (Map.Entry<String, String> e : environment.entrySet()) {
-            s.put(PhpStrings.fromJava(e.getKey()), PhpStrings.fromJava(e.getValue()));
+        for (String[] entry : environmentEntries) {
+            s.put(entry[0], entry[1]);
         }
         s.put("FRANKENPHP_WORKER", "1");
         s.put("GATEWAY_INTERFACE", "CGI/1.1");
@@ -350,6 +354,10 @@ public final class WorkerPool implements AutoCloseable {
 
         private final int index;
         private final PhpEngine.WorkerContext wc;
+        /** The worker's {@code $_ENV}, built once and shared (frozen) by every request. */
+        private final PhpArray environmentArray;
+        /** "worker-N", built once; the scheduler task name is the same for every request. */
+        private final String taskName;
         private PhpRequest bootRequest;
         private PhpContext.Superglobals bootSuperglobals;
         private Scheduler.Task heldBootTask;
@@ -377,6 +385,12 @@ public final class WorkerPool implements AutoCloseable {
         WorkerInstance(int index, PhpEngine.WorkerContext wc) {
             this.index = index;
             this.wc = wc;
+            this.taskName = "worker-" + index;
+            PhpArray environment = PhpArray.withCapacity(environmentEntries.size(), true);
+            for (String[] entry : environmentEntries) {
+                environment.put(entry[0], entry[1]);
+            }
+            this.environmentArray = environment.freeze();
         }
 
         @Override
@@ -447,7 +461,7 @@ public final class WorkerPool implements AutoCloseable {
             currentOut = out;
             currentErr = err;
             wc.installStreams(out, err);
-            Scheduler.Task task = scheduler == null ? null : scheduler.newTask("worker-" + index);
+            Scheduler.Task task = scheduler == null ? null : scheduler.newTask(taskName);
             request.scheduler = task == null ? GuestScheduler.NONE : task;
             boolean slotHeld = false;
             int shutdownBase = ctx.shutdownFunctionCount();
@@ -465,7 +479,7 @@ public final class WorkerPool implements AutoCloseable {
                         return;
                     }
                 }
-                ctx.beginWorkerRequest(request);
+                ctx.beginWorkerRequest(request, environmentArray, environmentEntries);
                 callback.call(ctx, null, null);
             } catch (dev.phpruntime.nodes.ControlFlow.Exit e) {
                 exited = true;

@@ -14,6 +14,16 @@ public final class PhpRequest {
 
     private static final ThreadLocal<PhpRequest> CURRENT = new ThreadLocal<>();
 
+    /**
+     * Host hook that appends this request's CGI variables to {@code $_SERVER}, after the
+     * worker's environment entries. Worker mode installs it so a request that never reads
+     * {@code $_SERVER} does not build its map or its strings.
+     */
+    @FunctionalInterface
+    public interface ServerFiller {
+        void fillServer(PhpRequest request, PhpArray server);
+    }
+
     /** HTTP protocol data below is PHP bytes; scriptFilename alone is a Java path. */
     public String method = "GET";
     public String uri = "/";
@@ -21,14 +31,53 @@ public final class PhpRequest {
     public String scriptFilename = "";
     public String remoteAddr = "";
     public String body = "";
+    /** The request's HTTP version and local endpoint, as the CGI variables report them. */
+    public String protocol = "HTTP/1.1";
+    public String serverHost = "localhost";
+    public int serverPort;
     /** PHP byte strings; file names outside these guest-facing fields remain Java paths. */
     public String[] argv = new String[0];
-    public final Map<String, String> headers = new LinkedHashMap<>();
-    public final Map<String, String> get = new LinkedHashMap<>();
-    public final Map<String, String> post = new LinkedHashMap<>();
-    public final Map<String, String> server = new LinkedHashMap<>();
+    /**
+     * Header names keep their original case. The transport's per-request map is used directly
+     * in worker mode; nothing on the request path mutates it afterwards.
+     */
+    public Map<String, String> headers;
+    public final Map<String, String> get;
+    public final Map<String, String> post;
+    public final Map<String, String> server;
     /** Java OS environment text supplied by an embedder; empty by default, like php-cli. */
-    public final Map<String, String> environment = new LinkedHashMap<>();
+    public final Map<String, String> environment;
+    /** Builds {@code $_SERVER} on first access in worker mode; null otherwise. */
+    public ServerFiller serverFiller;
+
+    public PhpRequest() {
+        this(false);
+    }
+
+    /**
+     * A worker request needs none of the Java request maps: the guest sees superglobals built
+     * by {@code PhpContext}, and the CGI values come from {@link #serverFiller}. Sharing the
+     * immutable empty maps keeps five empty maps out of every hello-style request.
+     */
+    public static PhpRequest worker() {
+        return new PhpRequest(true);
+    }
+
+    private PhpRequest(boolean minimal) {
+        if (minimal) {
+            headers = Map.of();
+            get = Map.of();
+            post = Map.of();
+            server = Map.of();
+            environment = Map.of();
+        } else {
+            headers = new LinkedHashMap<>();
+            get = new LinkedHashMap<>();
+            post = new LinkedHashMap<>();
+            server = new LinkedHashMap<>();
+            environment = new LinkedHashMap<>();
+        }
+    }
 
     /** True when serving HTTP (a JS module's exported handler is then called with req/res). */
     public boolean http;

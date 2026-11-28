@@ -10,7 +10,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -107,6 +109,231 @@ class WorkerModeTest {
             }
         }
         return n;
+    }
+
+    @Test
+    void serverAndEnvHaveFrankenPhpOrderAndValuesAcrossRequests() throws Exception {
+        Map<String, String> environment = new LinkedHashMap<>();
+        environment.put("T82_ENV", "env-value");
+        environment.put("T82_HEADERLIKE", "env-value-2");
+        start("""
+                <?php
+                $n = 0;
+                $handler = static function () use (&$n): void {
+                    $n++;
+                    $s = $_SERVER;
+                    unset($s['REQUEST_TIME'], $s['REQUEST_TIME_FLOAT']);
+                    foreach ($s as $k => $v) {
+                        echo 'S ', $k, '=', $v, "\\n";
+                    }
+                    foreach ($_ENV as $k => $v) {
+                        echo 'E ', $k, '=', $v, "\\n";
+                    }
+                    echo 'TIME ', is_numeric($_SERVER['REQUEST_TIME']), ' ',
+                        is_numeric($_SERVER['REQUEST_TIME_FLOAT']), "\\n";
+                    if ($n === 1) {
+                        $_SERVER['T82_LEAK'] = 's';
+                        $_ENV['T82_LEAK'] = 'e';
+                        $_GET['T82_LEAK'] = 'g';
+                        $_POST['T82_LEAK'] = 'p';
+                        $_COOKIE['T82_LEAK'] = 'c';
+                        $_REQUEST['T82_LEAK'] = 'r';
+                        $_FILES['T82_LEAK'] = 'f';
+                        echo 'MOD ', json_encode([$_SERVER['T82_LEAK'], $_ENV['T82_LEAK'],
+                            $_GET['T82_LEAK'], $_POST['T82_LEAK'], $_COOKIE['T82_LEAK'],
+                            $_REQUEST['T82_LEAK'], $_FILES['T82_LEAK']]), "\\n";
+                    } else {
+                        echo 'CLEAN ', json_encode([
+                            isset($_SERVER['T82_LEAK']), isset($_ENV['T82_LEAK']),
+                            isset($_GET['T82_LEAK']), isset($_POST['T82_LEAK']),
+                            isset($_COOKIE['T82_LEAK']), isset($_REQUEST['T82_LEAK']),
+                            isset($_FILES['T82_LEAK'])]), "\\n";
+                    }
+                };
+                while (frankenphp_handle_request($handler)) {
+                }
+                """, 2, 1, 0, environment);
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Host", "example.test");
+        headers.put("User-Agent", "t82");
+        headers.put("X-Probe", "probe");
+        headers.put("Cookie", "c=d");
+        headers.put("Content-Type", "application/x-www-form-urlencoded");
+
+        List<String> expected = new ArrayList<>();
+        for (Map.Entry<String, String> e : workers.environment().entrySet()) {
+            expected.add("S " + e.getKey() + "=" + e.getValue());
+        }
+        expected.add("S REQUEST_METHOD=POST");
+        expected.add("S REQUEST_URI=/first?a=1");
+        expected.add("S QUERY_STRING=a=1");
+        expected.add("S SCRIPT_NAME=/worker.php");
+        expected.add("S PHP_SELF=/worker.php");
+        expected.add("S GATEWAY_INTERFACE=CGI/1.1");
+        expected.add("S REQUEST_SCHEME=http");
+        expected.add("S SCRIPT_FILENAME=" + dir.resolve("worker.php"));
+        expected.add("S DOCUMENT_ROOT=" + dir);
+        expected.add("S SERVER_PROTOCOL=HTTP/1.1");
+        expected.add("S SERVER_SOFTWARE=php-truffle");
+        expected.add("S SERVER_NAME=localhost");
+        expected.add("S SERVER_PORT=80");
+        expected.add("S REMOTE_ADDR=127.0.0.1");
+        expected.add("S HTTP_HOST=example.test");
+        expected.add("S HTTP_USER_AGENT=t82");
+        expected.add("S HTTP_X_PROBE=probe");
+        expected.add("S HTTP_COOKIE=c=d");
+        expected.add("S CONTENT_TYPE=application/x-www-form-urlencoded");
+        expected.add("S PATH_INFO=");
+        expected.add("S DOCUMENT_URI=");
+        expected.add("S HTTPS=");
+        expected.add("S AUTH_TYPE=");
+        expected.add("S REMOTE_HOST=127.0.0.1");
+        expected.add("S REMOTE_IDENT=");
+        expected.add("S CONTENT_LENGTH=");
+        for (Map.Entry<String, String> e : workers.environment().entrySet()) {
+            expected.add("E " + e.getKey() + "=" + e.getValue());
+        }
+        expected.add("TIME 1 1");
+
+        String[] first = text(send("POST", "/first", "a=1", headers, "k=v")).split("\n");
+        String[] second = text(send("POST", "/first", "a=1", headers, "k=v")).split("\n");
+        for (int i = 0; i < expected.size(); i++) {
+            assertEquals(expected.get(i), first[i], "first request line " + i);
+            assertEquals(expected.get(i), second[i], "second request line " + i);
+        }
+        assertEquals("MOD [\"s\",\"e\",\"g\",\"p\",\"c\",\"r\",\"f\"]",
+                first[expected.size()], String.join("\n", first));
+        assertEquals("CLEAN [false,false,false,false,false,false,false]",
+                second[expected.size()], String.join("\n", second));
+        assertEquals(expected.size() + 1, first.length, String.join("\n", first));
+        assertEquals(expected.size() + 1, second.length, String.join("\n", second));
+    }
+
+    @Test
+    void lazySuperglobalsAreBuiltOnFirstAccessThroughEachPath() throws Exception {
+        start("""
+                <?php
+                $handler = static function (): void {
+                    $p = $_GET['p'] ?? '';
+                    switch ($p) {
+                        case 'globals':
+                            echo $GLOBALS['_SERVER']['HTTP_X_PROBE'];
+                            break;
+                        case 'globalsEnv':
+                            echo $GLOBALS['_ENV']['T82_ENV'] ?? 'missing';
+                            break;
+                        case 'extract':
+                            extract($GLOBALS);
+                            echo $_SERVER['HTTP_X_PROBE'];
+                            break;
+                        case 'compact':
+                            // PHP's compact() reads the current symbol table, not the globals:
+                            // inside a function it does not see a superglobal.
+                            $c = compact('_SERVER');
+                            echo isset($c['_SERVER']) ? 'found' : 'missing';
+                            break;
+                        case 'isset':
+                            echo isset($_SERVER) ? 'set' : 'unset';
+                            break;
+                        case 'foreach':
+                            foreach ($_SERVER as $k => $v) {
+                                if ($k === 'HTTP_X_PROBE') {
+                                    echo $v;
+                                    break;
+                                }
+                            }
+                            break;
+                        case 'byref':
+                            $s = &$_SERVER;
+                            echo $s['HTTP_X_PROBE'];
+                            $s['T82_REF'] = 'yes';
+                            echo $_SERVER['T82_REF'];
+                            break;
+                        case 'checkref':
+                            echo isset($_SERVER['T82_REF']) ? 'leak' : 'clean';
+                            break;
+                        case 'post':
+                            echo $_POST['k'] ?? 'missing';
+                            break;
+                        case 'cookie':
+                            echo $_COOKIE['c'] ?? 'missing';
+                            break;
+                        case 'request':
+                            echo ($_REQUEST['k'] ?? 'missing'), '/', ($_REQUEST['c'] ?? 'missing');
+                            break;
+                        case 'files':
+                            echo is_array($_FILES) ? 'array' : 'not-array';
+                            break;
+                        case 'envArray':
+                            echo is_array($_ENV) && ($_ENV['T82_ENV'] ?? '') === 'env-value'
+                                ? 'env' : 'bad';
+                            break;
+                        case 'getenv':
+                            echo getenv('PATH') !== false ? 'getenv-ok' : 'getenv-missing';
+                            break;
+                    }
+                };
+                while (frankenphp_handle_request($handler)) {
+                }
+                """, 2, 1, 0, Map.of("T82_ENV", "env-value"));
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("X-Probe", "probe");
+        headers.put("Cookie", "c=d");
+        headers.put("Content-Type", "application/x-www-form-urlencoded");
+
+        Map<String, String> expected = new LinkedHashMap<>();
+        expected.put("globals", "probe");
+        expected.put("globalsEnv", "env-value");
+        expected.put("extract", "probe");
+        expected.put("compact", "missing");
+        expected.put("isset", "set");
+        expected.put("foreach", "probe");
+        expected.put("byref", "probeyes");
+        expected.put("checkref", "clean");
+        expected.put("post", "v");
+        expected.put("cookie", "d");
+        expected.put("request", "v/d");
+        expected.put("files", "array");
+        expected.put("envArray", "env");
+        expected.put("getenv", "getenv-ok");
+        for (Map.Entry<String, String> e : expected.entrySet()) {
+            PhpDispatcher.Response response = send("POST", "/lazy", "p=" + e.getKey(), headers, "k=v");
+            assertEquals(e.getValue(), text(response), e.getKey() + " via " + headers);
+        }
+    }
+
+    @Test
+    void classicModeSuperglobalsAreStillBuiltEagerly() throws Exception {
+        Path plain = dir.resolve("plain.php");
+        Files.writeString(plain, """
+                <?php
+                echo 'S ', implode(',', array_keys($_SERVER)), "\\n";
+                echo 'M ', $_SERVER['REQUEST_METHOD'], ' ', $_SERVER['HTTP_X_PLAIN'] ?? 'missing', "\\n";
+                echo 'E ', $_ENV['T82_ENV'] ?? 'missing', "\\n";
+                echo 'G ', json_encode($_GET), "\\n";
+                """);
+        try (Scheduler plainScheduler = new Scheduler(1, 10, 0);
+             PhpEngine plainEngine = new PhpEngine(plainScheduler, 1)) {
+            PhpRequest request = new PhpRequest();
+            request.http = true;
+            request.method = "POST";
+            request.uri = "/plain?x=1";
+            request.queryString = "x=1";
+            request.scriptFilename = plain.toString();
+            request.server.put("REQUEST_METHOD", "POST");
+            request.server.put("QUERY_STRING", "x=1");
+            request.server.put("HTTP_X_PLAIN", "yes");
+            request.environment.put("T82_ENV", "env-value");
+            PhpEngine.Result result = plainEngine.execute(plain, request);
+            assertEquals("""
+                    S REQUEST_METHOD,QUERY_STRING,HTTP_X_PLAIN,SCRIPT_FILENAME
+                    M POST yes
+                    E env-value
+                    G {"x":"1"}
+                    """, result.bodyText(), result.errors());
+        }
     }
 
     @Test
