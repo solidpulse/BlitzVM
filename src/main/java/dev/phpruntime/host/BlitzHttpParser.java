@@ -33,7 +33,9 @@ final class BlitzHttpParser {
     private String path;
     private String query;
     private String version;
-    private byte[] headerBlock;
+    private byte[] headerData;
+    private int headerStart;
+    private int headerLength;
     private boolean head;
     private boolean keepAlive;
     private boolean expectContinue;
@@ -90,18 +92,27 @@ final class BlitzHttpParser {
             return null;
         }
         int lineEnd = lineFeed > start && in.data[lineFeed - 1] == '\r' ? lineFeed - 1 : lineFeed;
-        String requestLine = PhpStrings.of(in.data, start, lineEnd - start);
-        int firstSpace = requestLine.indexOf(' ');
-        if (firstSpace <= 0) {
+        int firstSpace = indexOf(in.data, start, lineEnd, (byte) ' ');
+        if (firstSpace <= start) {
             throw new BlitzHttpException(400, "malformed request line");
         }
-        int secondSpace = requestLine.indexOf(' ', firstSpace + 1);
+        int secondSpace = indexOf(in.data, firstSpace + 1, lineEnd, (byte) ' ');
         if (secondSpace <= firstSpace + 1) {
             throw new BlitzHttpException(400, "malformed request line");
         }
-        method = requestLine.substring(0, firstSpace);
-        target = requestLine.substring(firstSpace + 1, secondSpace);
-        version = requestLine.substring(secondSpace + 1).trim();
+        int versionStart = secondSpace + 1;
+        int versionEnd = lineEnd;
+        while (versionStart < versionEnd
+                && (in.data[versionStart] == ' ' || in.data[versionStart] == '\t')) {
+            versionStart++;
+        }
+        while (versionEnd > versionStart
+                && (in.data[versionEnd - 1] == ' ' || in.data[versionEnd - 1] == '\t')) {
+            versionEnd--;
+        }
+        method = PhpStrings.of(in.data, start, firstSpace - start);
+        target = PhpStrings.of(in.data, firstSpace + 1, secondSpace - firstSpace - 1);
+        version = PhpStrings.of(in.data, versionStart, versionEnd - versionStart);
         if (!version.equals("HTTP/1.1") && !version.equals("HTTP/1.0")) {
             throw new BlitzHttpException(505, "unsupported HTTP version");
         }
@@ -111,7 +122,8 @@ final class BlitzHttpParser {
         head = method.equals("HEAD");
         normalizeTarget();
 
-        int headerStart = lineFeed + 1;
+        int blockStart = lineFeed + 1;
+        int headerStart = blockStart;
         int cursor = headerStart;
         int headerEnd = -1;
         int headerCount = 0;
@@ -203,7 +215,9 @@ final class BlitzHttpParser {
         contentLength = (int) Math.max(0, seenContentLength);
         boolean http10 = version.equals("HTTP/1.0");
         keepAlive = !connectionClose && (!http10 || connectionKeepAlive);
-        headerBlock = in.copy(headerStart - start, headerEnd - headerStart);
+        headerData = in.data;
+        this.headerStart = blockStart;
+        headerLength = headerEnd - blockStart;
         in.start = headerEnd;
 
         if (transferChunked) {
@@ -319,7 +333,8 @@ final class BlitzHttpParser {
     private BlitzHttpRequest buildRequest(byte[] requestBody) {
         long now = System.currentTimeMillis();
         BlitzHttpRequest request = new BlitzHttpRequest(method, target, path, query, version,
-                headerBlock, requestBody == null || requestBody.length == 0 ? null : requestBody,
+                headerData, headerStart, headerLength,
+                requestBody == null || requestBody.length == 0 ? null : requestBody,
                 owner.remoteAddr(), owner.remotePort(), owner.localAddr(), owner.localPort(),
                 owner.id(), now, owner.createdMillis(), keepAlive, head,
                 owner.scriptFilename(), owner.documentRoot());
@@ -334,7 +349,9 @@ final class BlitzHttpParser {
         path = null;
         query = null;
         version = null;
-        headerBlock = null;
+        headerData = null;
+        headerStart = 0;
+        headerLength = 0;
         head = false;
         keepAlive = false;
         expectContinue = false;

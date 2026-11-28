@@ -177,12 +177,14 @@ final class BlitzHttpConnection {
                 }
                 return;
             }
-            input.compact();
             worker.handle(request, this);
             if (!request.keepAlive() || closeAfterFlush) {
                 closeAfterFlush = true;
                 return;
             }
+            // The request's header block is a view into this window, so it is only reclaimed
+            // after the handler has run.
+            input.compact();
         }
     }
 

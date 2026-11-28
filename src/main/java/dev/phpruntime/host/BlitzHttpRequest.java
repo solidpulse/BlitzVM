@@ -20,7 +20,13 @@ public final class BlitzHttpRequest {
     final String path;
     final String query;
     final String version;
-    final byte[] headerBlock;
+    /**
+     * The raw header block is a view into the connection's read window, not a copy. It stays
+     * valid until the handler returns; the connection compacts the window only after that.
+     */
+    final byte[] headerData;
+    final int headerStart;
+    final int headerLength;
     final byte[] body;
     final String remoteAddr;
     final int remotePort;
@@ -43,16 +49,18 @@ public final class BlitzHttpRequest {
     private String bodyString;
 
     BlitzHttpRequest(String method, String target, String path, String query, String version,
-                     byte[] headerBlock, byte[] body, String remoteAddr, int remotePort,
-                     String localAddr, int localPort, long connectionId, long requestTimeMillis,
-                     long masterTimeMillis, boolean keepAlive, boolean head,
-                     String scriptFilename, String documentRoot) {
+                     byte[] headerData, int headerStart, int headerLength, byte[] body,
+                     String remoteAddr, int remotePort, String localAddr, int localPort,
+                     long connectionId, long requestTimeMillis, long masterTimeMillis,
+                     boolean keepAlive, boolean head, String scriptFilename, String documentRoot) {
         this.method = method;
         this.target = target;
         this.path = path;
         this.query = query;
         this.version = version;
-        this.headerBlock = headerBlock;
+        this.headerData = headerData;
+        this.headerStart = headerStart;
+        this.headerLength = headerLength;
         this.body = body;
         this.remoteAddr = remoteAddr;
         this.remotePort = remotePort;
@@ -135,36 +143,36 @@ public final class BlitzHttpRequest {
     public Map<String, String> headers() {
         if (headers == null) {
             Map<String, String> map = new LinkedHashMap<>();
-            if (headerBlock != null) {
-                int i = 0;
-                while (i < headerBlock.length) {
-                    int lf = indexOf(headerBlock, (byte) '\n', i);
+            if (headerData != null) {
+                int i = headerStart;
+                int limit = headerStart + headerLength;
+                while (i < limit) {
+                    int lf = indexOf(headerData, (byte) '\n', i, limit);
                     if (lf < 0) {
                         break;
                     }
-                    int end = lf > i && headerBlock[lf - 1] == '\r' ? lf - 1 : lf;
+                    int end = lf > i && headerData[lf - 1] == '\r' ? lf - 1 : lf;
                     if (end == i) {
                         break;
                     }
-                    int colon = indexOf(headerBlock, (byte) ':', i);
+                    int colon = indexOf(headerData, (byte) ':', i, limit);
                     if (colon < 0 || colon > end) {
                         i = lf + 1;
                         continue;
                     }
-                    String name = lowerAscii(headerBlock, i, colon);
+                    String name = lowerAscii(headerData, i, colon);
                     int valueStart = colon + 1;
-                    while (valueStart < end && (headerBlock[valueStart] == ' ' || headerBlock[valueStart] == '\t')) {
+                    while (valueStart < end && (headerData[valueStart] == ' ' || headerData[valueStart] == '\t')) {
                         valueStart++;
                     }
                     int valueEnd = end;
                     while (valueEnd > valueStart
-                            && (headerBlock[valueEnd - 1] == ' ' || headerBlock[valueEnd - 1] == '\t')) {
+                            && (headerData[valueEnd - 1] == ' ' || headerData[valueEnd - 1] == '\t')) {
                         valueEnd--;
                     }
-                    String value = PhpStrings.of(headerBlock, valueStart, valueEnd - valueStart);
+                    String value = PhpStrings.of(headerData, valueStart, valueEnd - valueStart);
                     map.merge(name, value, (a, b) -> a + ", " + b);
-                    i = lf + 1;
-                }
+                    i = lf + 1;                }
             }
             headers = map;
         }
@@ -272,7 +280,11 @@ public final class BlitzHttpRequest {
     }
 
     static int indexOf(byte[] bytes, byte value, int from) {
-        for (int i = from; i < bytes.length; i++) {
+        return indexOf(bytes, value, from, bytes.length);
+    }
+
+    static int indexOf(byte[] bytes, byte value, int from, int to) {
+        for (int i = from; i < to && i < bytes.length; i++) {
             if (bytes[i] == value) {
                 return i;
             }

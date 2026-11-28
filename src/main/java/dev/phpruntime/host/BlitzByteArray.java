@@ -91,12 +91,6 @@ final class BlitzByteArray {
         }
     }
 
-    byte[] copy(int offset, int length) {
-        byte[] out = new byte[length];
-        System.arraycopy(data, start + offset, out, 0, length);
-        return out;
-    }
-
     byte[] toArray() {
         byte[] out = new byte[end - start];
         System.arraycopy(data, start, out, 0, out.length);
