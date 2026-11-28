@@ -113,11 +113,17 @@ public final class NettyPhpServer implements PhpServer {
     /** One per connection. Its fields are only touched on the connection's event loop. */
     private final class Handler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
+        private static final byte[] EMPTY_BODY = new byte[0];
+
         private record Pending(PhpDispatcher.Request request, io.netty.handler.codec.http.HttpVersion version, boolean keepAlive) {
         }
 
         private final java.util.ArrayDeque<Pending> queue = new java.util.ArrayDeque<>();
         private boolean busy;
+        /** The connection's endpoints; both are constant for its lifetime. */
+        private String remoteAddr;
+        private String serverHost;
+        private int serverPort;
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
@@ -128,18 +134,23 @@ public final class NettyPhpServer implements PhpServer {
             for (Map.Entry<String, String> h : msg.headers()) {
                 headers.merge(h.getKey(), h.getValue(), (a, b) -> a + ", " + b);
             }
-            InetSocketAddress remote = (InetSocketAddress) ctx.channel().remoteAddress();
-            InetSocketAddress local = (InetSocketAddress) ctx.channel().localAddress();
+            if (remoteAddr == null) {
+                InetSocketAddress remote = (InetSocketAddress) ctx.channel().remoteAddress();
+                InetSocketAddress local = (InetSocketAddress) ctx.channel().localAddress();
+                remoteAddr = remote.getAddress().getHostAddress();
+                serverHost = local.getHostString();
+                serverPort = local.getPort();
+            }
             PhpDispatcher.Request req = new PhpDispatcher.Request(
                     msg.method().name(),
                     q < 0 ? uri : uri.substring(0, q),
                     q < 0 ? null : uri.substring(q + 1),
                     msg.protocolVersion().text(),
                     headers,
-                    ByteBufUtil.getBytes(msg.content()),
-                    remote.getAddress().getHostAddress(),
-                    local.getHostString(),
-                    local.getPort());
+                    msg.content().isReadable() ? ByteBufUtil.getBytes(msg.content()) : EMPTY_BODY,
+                    remoteAddr,
+                    serverHost,
+                    serverPort);
             queue.add(new Pending(req, msg.protocolVersion(), keepAlive));
             ctx.channel().config().setAutoRead(false);
             if (!busy) {
