@@ -131,7 +131,7 @@ public final class BlitzServerState implements PhpNativeState {
                 maxBodyBytes = (int) n;
             }
             case "document_root" -> documentRoot = PhpOps.toStr(value);
-            case "worker_num_hint", "max_request", "max_conn", "log_level", "enable_coroutine",
+            case "max_request", "max_conn", "log_level", "enable_coroutine",
                  "hook_flags", "enable_preemptive_scheduler", "enable_static_handler" ->
                     // Accepted for parity with common Swoole configurations; this server has
                     // no coroutines, no request cap and no static handler.
