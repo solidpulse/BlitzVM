@@ -41,7 +41,11 @@ final class BlitzServerCore {
     private final CountDownLatch ready;
     private final CountDownLatch gate = new CountDownLatch(1);
     private final CountDownLatch finished;
+    private final CountDownLatch allFinished;
     private final Selector[] selectors;
+    private final BlitzServerWorker[] workers;
+    private final boolean stats = Boolean.getBoolean("blitz.server.stats");
+    private Thread shutdownHook;
 
     BlitzServerCore(BlitzServerInfo info, String host, int requestedPort,
                     int workerNum, int backlog, int maxBodyBytes) {
@@ -50,7 +54,9 @@ final class BlitzServerCore {
         this.maxBodyBytes = maxBodyBytes;
         this.ready = new CountDownLatch(Math.max(0, workerNum - 1));
         this.finished = new CountDownLatch(Math.max(0, workerNum - 1));
+        this.allFinished = new CountDownLatch(workerNum);
         this.selectors = new Selector[workerNum];
+        this.workers = new BlitzServerWorker[workerNum];
         try {
             this.listener = ServerSocketChannel.open();
             this.listener.setOption(StandardSocketOptions.SO_REUSEADDR, true);
@@ -64,6 +70,17 @@ final class BlitzServerCore {
             throw new IllegalStateException("cannot listen on " + host + ":" + requestedPort + ": "
                     + e.getMessage(), e);
         }
+        if (stats) {
+            shutdownHook = new Thread(() -> {
+                stop();
+                try {
+                    allFinished.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "blitz-shutdown");
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
+        }
     }
 
     BlitzServerInfo info() {
@@ -76,6 +93,11 @@ final class BlitzServerCore {
 
     int workerNum() {
         return workerNum;
+    }
+
+    /** For tests and the stats line: the worker object in one slot, or null before it started. */
+    BlitzServerWorker worker(int index) {
+        return index >= 0 && index < workers.length ? workers[index] : null;
     }
 
     int maxBodyBytes() {
@@ -136,103 +158,124 @@ final class BlitzServerCore {
     /** Runs one worker's selector loop on the calling thread until stop() or a fatal failure. */
     void runWorker(BlitzServerWorker worker) {
         int index = worker.index();
-        Selector selector;
+        workers[index] = worker;
+        Thread thread = Thread.currentThread();
+        String previousName = thread.getName();
+        thread.setName("blitz-worker-" + index);
         try {
-            selector = Selector.open();
-        } catch (IOException e) {
-            workerFailed(e);
-            if (index != 0) {
-                finished.countDown();
-            }
-            return;
-        }
-        selectors[index] = selector;
-        try {
-            listener.register(selector, SelectionKey.OP_ACCEPT);
-        } catch (IOException | RuntimeException e) {
-            workerFailed(e);
-            closeSelector(selector);
-            if (index != 0) {
-                finished.countDown();
-            }
-            return;
-        }
-        try {
-            worker.installHostRequest();
-            BlitzServerState state = worker.state();
-            PhpCallable workerStart = state == null ? null : state.workerStartCallback();
-            if (workerStart != null) {
-                try {
-                    workerStart.call2(worker.php(), null, state.phpObject(), (long) index);
-                } catch (Throwable t) {
-                    System.err.println("blitz http: workerStart failed: " + t);
+            Selector selector;
+            try {
+                selector = Selector.open();
+            } catch (IOException e) {
+                workerFailed(e);
+                if (index != 0) {
+                    finished.countDown();
                 }
+                return;
             }
-            while (running.get()) {
-                int selected;
-                try {
-                    selected = selector.select(1000);
-                } catch (IOException e) {
-                    if (running.get()) {
-                        workerFailed(e);
+            selectors[index] = selector;
+            try {
+                listener.register(selector, SelectionKey.OP_ACCEPT);
+            } catch (IOException | RuntimeException e) {
+                workerFailed(e);
+                closeSelector(selector);
+                if (index != 0) {
+                    finished.countDown();
+                }
+                return;
+            }
+            try {
+                worker.installHostRequest();
+                BlitzServerState state = worker.state();
+                PhpCallable workerStart = state == null ? null : state.workerStartCallback();
+                if (workerStart != null) {
+                    try {
+                        workerStart.call2(worker.php(), null, state.phpObject(), (long) index);
+                    } catch (Throwable t) {
+                        System.err.println("blitz http: workerStart failed: " + t);
                     }
-                    break;
                 }
-                if (!running.get()) {
-                    break;
-                }
-                if (selected == 0) {
-                    continue;
-                }
-                Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
-                while (keys.hasNext()) {
-                    SelectionKey key = keys.next();
-                    keys.remove();
-                    if (!key.isValid()) {
+                while (running.get()) {
+                    int selected;
+                    try {
+                        selected = selector.select(1000);
+                    } catch (IOException e) {
+                        if (running.get()) {
+                            workerFailed(e);
+                        }
+                        break;
+                    }
+                    if (!running.get()) {
+                        break;
+                    }
+                    if (selected == 0) {
                         continue;
                     }
-                    try {
-                        if (key.isAcceptable()) {
-                            accept(selector, worker);
-                        } else {
-                            BlitzHttpConnection connection = (BlitzHttpConnection) key.attachment();
-                            if (connection == null) {
-                                key.cancel();
-                                continue;
-                            }
-                            if (key.isReadable()) {
-                                connection.onReadable();
-                            }
-                            if (key.isValid() && key.isWritable()) {
-                                connection.onWritable();
-                            }
+                    Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
+                    while (keys.hasNext()) {
+                        SelectionKey key = keys.next();
+                        keys.remove();
+                        if (!key.isValid()) {
+                            continue;
                         }
-                    } catch (RuntimeException e) {
-                        if (running.get()) {
-                            System.err.println("blitz http: connection failed: " + e);
-                        }
-                        key.cancel();
-                        Object attachment = key.attachment();
-                        if (attachment instanceof BlitzHttpConnection connection) {
-                            connection.close();
+                        try {
+                            if (key.isAcceptable()) {
+                                accept(selector, worker);
+                            } else {
+                                BlitzHttpConnection connection = (BlitzHttpConnection) key.attachment();
+                                if (connection == null) {
+                                    key.cancel();
+                                    continue;
+                                }
+                                if (key.isReadable()) {
+                                    connection.onReadable();
+                                }
+                                if (key.isValid() && key.isWritable()) {
+                                    connection.onWritable();
+                                }
+                            }
+                        } catch (RuntimeException e) {
+                            if (running.get()) {
+                                System.err.println("blitz http: connection failed: " + e);
+                            }
+                            key.cancel();
+                            Object attachment = key.attachment();
+                            if (attachment instanceof BlitzHttpConnection connection) {
+                                connection.close();
+                            }
                         }
                     }
+                }
+            } finally {
+                worker.uninstallHostRequest();
+                BlitzServerState state = worker.state();
+                PhpCallable workerStop = state == null ? null : state.workerStopCallback();
+                if (workerStop != null) {
+                    try {
+                        workerStop.call2(worker.php(), null, state.phpObject(), (long) index);
+                    } catch (Throwable t) {
+                        System.err.println("blitz http: workerStop failed: " + t);
+                    }
+                }
+                closeSelector(selector);
+                if (index != 0) {
+                    finished.countDown();
                 }
             }
         } finally {
-            worker.uninstallHostRequest();
-            BlitzServerState state = worker.state();
-            PhpCallable workerStop = state == null ? null : state.workerStopCallback();
-            if (workerStop != null) {
-                try {
-                    workerStop.call2(worker.php(), null, state.phpObject(), (long) index);
-                } catch (Throwable t) {
-                    System.err.println("blitz http: workerStop failed: " + t);
-                }
+            if (stats) {
+                System.err.println("blitz http: worker " + index + " requests="
+                        + worker.requestsHandled() + " connections=" + worker.connectionsAccepted());
             }
-            closeSelector(selector);
-            if (index != 0) {
-                finished.countDown();
+            allFinished.countDown();
+            thread.setName(previousName);
+            if (index == 0 && shutdownHook != null) {
+                try {
+                    Runtime.getRuntime().removeShutdownHook(shutdownHook);
+                } catch (IllegalStateException ignored) {
+                    // already shutting down
+                }
+                shutdownHook = null;
             }
         }
     }
@@ -256,6 +299,7 @@ final class BlitzServerCore {
             try {
                 channel.configureBlocking(false);
                 channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+                worker.countConnection();
                 BlitzHttpConnection connection = new BlitzHttpConnection(channel, worker,
                         connectionIds.incrementAndGet(), maxBodyBytes, info.scriptFilename(),
                         info.documentRoot());

@@ -41,6 +41,9 @@ final class BlitzServerWorker {
         return request == null ? "" : request.bodyText();
     };
     private int index;
+    /** Worker-thread counters, read by the worker itself at stop and by the tests. */
+    private long requestsHandled;
+    private long connectionsAccepted;
 
     BlitzServerWorker(BlitzServerCore core, PhpContext php, BlitzServerState state,
                       PhpCallable callback, int index) {
@@ -81,12 +84,25 @@ final class BlitzServerWorker {
         this.index = index;
     }
 
+    long requestsHandled() {
+        return requestsHandled;
+    }
+
+    long connectionsAccepted() {
+        return connectionsAccepted;
+    }
+
+    void countConnection() {
+        connectionsAccepted++;
+    }
+
     BlitzServerInfo info() {
         return core.info();
     }
 
     /** Called on this worker's selector thread for one complete request. */
     void handle(BlitzHttpRequest request, BlitzHttpConnection connection) {
+        requestsHandled++;
         if (out.size() > RETAIN) {
             out = new ByteArrayOutputStream(256);
         } else {

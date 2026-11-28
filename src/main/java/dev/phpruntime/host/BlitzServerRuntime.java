@@ -159,7 +159,7 @@ public final class BlitzServerRuntime {
             } finally {
                 inheritedCore.remove();
             }
-        }, "blitz-http-worker-" + number, true);
+        }, "blitz-worker-" + number, true);
         synchronized (threads) {
             threads.add(thread);
         }
