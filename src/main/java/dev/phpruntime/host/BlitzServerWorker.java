@@ -96,8 +96,12 @@ final class BlitzServerWorker {
         host.scheduler = GuestScheduler.NONE;
         host.status = 200;
         host.jsonLastError = 0;
-        host.responseHeaders.clear();
-        host.closeResources();
+        if (!host.responseHeaders.isEmpty()) {
+            host.responseHeaders.clear();
+        }
+        if (!host.resources.isEmpty()) {
+            host.closeResources();
+        }
 
         BlitzHttpResponseWriter response = new BlitzHttpResponseWriter(connection, request);
         BlitzRequestState requestState = new BlitzRequestState(request, connection.id());
